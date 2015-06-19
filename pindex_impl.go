@@ -193,7 +193,7 @@ func (d *PIndexStoreStats) WriteJSON(w io.Writer) {
 			j, ok := e.Value.(string)
 			if ok && j != "" {
 				if i > 0 {
-					w.Write(jsonComma)
+					w.Write(JsonComma)
 				}
 				w.Write([]byte(j))
 			}
@@ -203,7 +203,7 @@ func (d *PIndexStoreStats) WriteJSON(w io.Writer) {
 		w.Write([]byte(`]`))
 	}
 
-	w.Write(jsonCloseBrace)
+	w.Write(JsonCloseBrace)
 }
 
 var prefixPIndexStoreStats = []byte(`{"pindexStoreStats":`)

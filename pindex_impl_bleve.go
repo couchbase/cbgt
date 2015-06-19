@@ -571,10 +571,10 @@ func (t *BleveDest) Stats(w io.Writer) (err error) {
 	if err == nil {
 		w.Write([]byte(`,"basic":{"DocCount":`))
 		w.Write([]byte(strconv.FormatUint(c, 10)))
-		w.Write(jsonCloseBrace)
+		w.Write(JsonCloseBrace)
 	}
 
-	w.Write(jsonCloseBrace)
+	w.Write(JsonCloseBrace)
 
 	return nil
 }

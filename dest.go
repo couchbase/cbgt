@@ -148,7 +148,7 @@ func (d *DestStats) WriteJSON(w io.Writer) {
 	w.Write([]byte(`,"TimerRollback":`))
 	WriteTimerJSON(w, d.TimerRollback)
 
-	w.Write(jsonCloseBrace)
+	w.Write(JsonCloseBrace)
 }
 
 // A DestPartitionFunc allows a level of indirection/abstraction for

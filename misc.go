@@ -43,11 +43,11 @@ type Documentation struct {
 
 var EMPTY_BYTES = []byte{}
 
-var jsonNULL = []byte("null")
-var jsonOpenBrace = []byte("{")
-var jsonCloseBrace = []byte("}")
-var jsonCloseBraceComma = []byte("},")
-var jsonComma = []byte(",")
+var JsonNULL = []byte("null")
+var JsonOpenBrace = []byte("{")
+var JsonCloseBrace = []byte("}")
+var JsonCloseBraceComma = []byte("},")
+var JsonComma = []byte(",")
 
 // IndentJSON is a helper func that returns indented JSON for its
 // interface{} x parameter.

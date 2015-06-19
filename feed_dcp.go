@@ -267,7 +267,7 @@ func (t *DCPFeed) Stats(w io.Writer) error {
 	w.Write(prefixDestStats)
 	t.stats.WriteJSON(w)
 
-	_, err = w.Write(jsonCloseBrace)
+	_, err = w.Write(JsonCloseBrace)
 	return err
 }
 

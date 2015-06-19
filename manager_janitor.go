@@ -364,7 +364,8 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 		for _, dest := range feed.Dests() {
 			if dest == pindex.Dest {
 				if err := mgr.stopFeed(feed); err != nil {
-					panic(fmt.Sprintf("janitor: stopping feed, err: %v", err))
+					panic(fmt.Sprintf("janitor: stopping feed,"+
+						" err: %v", err))
 				}
 			}
 		}
@@ -377,7 +378,7 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 			pindex.Name, remove, time.Now().Format(time.RFC3339Nano))))
 		err := pindex.Dest.Stats(buf)
 		if err == nil {
-			buf.Write(jsonCloseBrace)
+			buf.Write(JsonCloseBrace)
 			mgr.addEvent(buf.Bytes())
 		}
 	}
@@ -458,7 +459,7 @@ func (mgr *Manager) stopFeed(feed Feed) error {
 		feed.Name(), time.Now().Format(time.RFC3339Nano))))
 	err := feed.Stats(buf)
 	if err == nil {
-		buf.Write(jsonCloseBrace)
+		buf.Write(JsonCloseBrace)
 		mgr.addEvent(buf.Bytes())
 	}
 
