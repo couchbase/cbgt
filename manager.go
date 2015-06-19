@@ -575,6 +575,11 @@ func (mgr *Manager) ParsePIndexPath(pindexPath string) (string, bool) {
 
 // ---------------------------------------------------------------
 
+// Returns the version of a Manager.
+func (mgr *Manager) Version() string {
+	return mgr.version
+}
+
 // Returns the configured Cfg of a Manager.
 func (mgr *Manager) Cfg() Cfg {
 	return mgr.cfg
@@ -583,6 +588,12 @@ func (mgr *Manager) Cfg() Cfg {
 // Returns the UUID (the "node UUID") of a Manager.
 func (mgr *Manager) UUID() string {
 	return mgr.uuid
+}
+
+// Returns the configured tags map of a Manager, which should be
+// treated as immutable / read-only.
+func (mgr *Manager) TagsMap() map[string]bool {
+	return mgr.tagsMap
 }
 
 // Returns the configured data dir of a Manager.
