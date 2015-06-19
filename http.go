@@ -11,83 +11,22 @@ package cbft
 
 import (
 	"net/http"
-	"os"
-
-	"github.com/elazarl/go-bindata-assetfs"
 
 	"github.com/gorilla/mux"
-
-	log "github.com/couchbase/clog"
 )
 
-// AssetFS returns the assetfs.AssetFS "filesystem" that holds static
-// HTTP resources (css/html/js/images, etc) for the web UI.
-//
-// Users might introduce their own static HTTP resources and override
-// resources from AssetFS() with their own resource lookup chaining.
-func AssetFS() *assetfs.AssetFS {
-	return assetFS()
+func MuxVariableLookup(req *http.Request, name string) string {
+	return mux.Vars(req)[name]
 }
 
-// InitStaticFileRouter adds static HTTP resource routes to a router.
-func InitStaticFileRouter(r *mux.Router, staticDir, staticETag string,
-	pages []string) *mux.Router {
-	PIndexTypesInitRouter(r, "static.before")
-
-	var s http.FileSystem
-	if staticDir != "" {
-		if _, err := os.Stat(staticDir); err == nil {
-			log.Printf("http: serving assets from staticDir: %s", staticDir)
-			s = http.Dir(staticDir)
-		}
-	}
-	if s == nil {
-		log.Printf("http: serving assets from embedded data")
-		s = AssetFS()
-	}
-
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
-		myFileHandler{http.FileServer(s), staticETag}))
-	// Bootstrap UI insists on loading templates from this path.
-	r.PathPrefix("/template/").Handler(http.StripPrefix("/template/",
-		myFileHandler{http.FileServer(s), staticETag}))
-
-	for _, p := range pages {
-		// If client ask for any of the pages, redirect.
-		r.PathPrefix(p).Handler(RewriteURL("/", http.FileServer(s)))
-	}
-
-	r.Handle("/index.html", http.RedirectHandler("/static/index.html", 302))
-	r.Handle("/", http.RedirectHandler("/static/index.html", 302))
-
-	PIndexTypesInitRouter(r, "static.after")
-
-	return r
+func DocIDLookup(req *http.Request) string {
+	return MuxVariableLookup(req, "docID")
 }
 
-type myFileHandler struct {
-	h    http.Handler
-	etag string
+func IndexNameLookup(req *http.Request) string {
+	return MuxVariableLookup(req, "indexName")
 }
 
-func (mfh myFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if mfh.etag != "" {
-		w.Header().Set("Etag", mfh.etag)
-	}
-	mfh.h.ServeHTTP(w, r)
-}
-
-// RewriteURL is a helper function that returns a URL path rewriter
-// HandlerFunc, rewriting the URL path to a provided "to" string.
-func RewriteURL(to string, h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.URL.Path = to
-		h.ServeHTTP(w, r)
-	})
-}
-
-func showError(w http.ResponseWriter, r *http.Request,
-	msg string, code int) {
-	log.Printf("http: error code: %d, msg: %s", code, msg)
-	http.Error(w, msg, code)
+func PIndexNameLookup(req *http.Request) string {
+	return MuxVariableLookup(req, "pindexName")
 }
