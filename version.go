@@ -9,21 +9,21 @@
 //  express or implied. See the License for the specific language
 //  governing permissions and limitations under the License.
 
-package cbft
+package cbgt
 
 import (
 	"fmt"
 )
 
-// The cbft.VERSION tracks persistence versioning (schema/format of
-// persisted data and configuration).  The main.VERSION (see
-// cmd/cbft/...), in contrast, is an overall "product" version.  For
-// example, we might introduce new UI-only features or fix a UI typo,
-// in which case we'd bump the main.VERSION number; but, if the
-// persisted data/config format was unchanged, then the cbft.VERSION
-// number should remain unchanged.
+// The cbgt.VERSION tracks persistence versioning (schema/format of
+// persisted data and configuration).  The main.VERSION that's part of
+// an executable command, in contrast, is an overall "product"
+// version.  For example, we might introduce new UI-only features or
+// fix a UI typo, in which case we'd bump the main.VERSION number;
+// but, if the persisted data/config format was unchanged, then the
+// cbgt.VERSION number should remain unchanged.
 //
-// NOTE: You *must* update cbft.VERSION if you change what's stored in
+// NOTE: You *must* update cbgt.VERSION if you change what's stored in
 // the Cfg (such as the JSON/struct definitions or the planning
 // algorithms).
 const VERSION = "3.1.0"

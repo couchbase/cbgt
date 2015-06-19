@@ -11,7 +11,7 @@
 
 // +build go1.4,vlite
 
-package cbft
+package cbgt
 
 import (
 	"bytes"

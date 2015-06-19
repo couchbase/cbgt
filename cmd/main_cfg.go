@@ -18,7 +18,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/couchbaselabs/cbft"
+	"github.com/couchbaselabs/cbgt"
 )
 
 var ErrorBindHttp = errors.New("main_cfg:" +
@@ -27,7 +27,7 @@ var ErrorBindHttp = errors.New("main_cfg:" +
 	"  (non-loopback, non-127.0.0.1/localhost, non-0.0.0.0)\n" +
 	"  so that this node can be clustered with other nodes.")
 
-func MainCfg(baseName, connect, bindHttp, register, dataDir string) (cbft.Cfg, error) {
+func MainCfg(baseName, connect, bindHttp, register, dataDir string) (cbgt.Cfg, error) {
 	// TODO: One day, the default cfg provider should not be simple.
 	// TODO: One day, cfg provider lookup should be table driven.
 	if connect == "" || connect == "simple" {
@@ -41,14 +41,14 @@ func MainCfg(baseName, connect, bindHttp, register, dataDir string) (cbft.Cfg, e
 }
 
 func MainCfgSimple(baseName, connect, bindHttp, register, dataDir string) (
-	cbft.Cfg, error) {
+	cbgt.Cfg, error) {
 	cfgPath := dataDir + string(os.PathSeparator) + baseName + ".cfg"
 	cfgPathExists := false
 	if _, err := os.Stat(cfgPath); err == nil {
 		cfgPathExists = true
 	}
 
-	cfg := cbft.NewCfgSimple(cfgPath)
+	cfg := cbgt.NewCfgSimple(cfgPath)
 	if cfgPathExists {
 		err := cfg.Load()
 		if err != nil {
@@ -60,7 +60,7 @@ func MainCfgSimple(baseName, connect, bindHttp, register, dataDir string) (
 }
 
 func MainCfgCB(baseName, urlStr, bindHttp, register, dataDir string) (
-	cbft.Cfg, error) {
+	cbgt.Cfg, error) {
 	if (bindHttp[0] == ':' ||
 		strings.HasPrefix(bindHttp, "0.0.0.0:") ||
 		strings.HasPrefix(bindHttp, "127.0.0.1:") ||
@@ -80,7 +80,7 @@ func MainCfgCB(baseName, urlStr, bindHttp, register, dataDir string) (
 		bucket = u.User.Username()
 	}
 
-	cfg, err := cbft.NewCfgCB(urlStr, bucket)
+	cfg, err := cbgt.NewCfgCB(urlStr, bucket)
 	if err != nil {
 		return nil, err
 	}

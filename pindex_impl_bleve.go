@@ -9,7 +9,7 @@
 //  express or implied. See the License for the specific language
 //  governing permissions and limitations under the License.
 
-package cbft
+package cbgt
 
 import (
 	"container/heap"
@@ -373,7 +373,7 @@ func (t *BleveDest) Rollback(partition string, rollbackSeq uint64) error {
 	// TODO: Implement partial rollback one day.  Implementation
 	// sketch: we expect bleve to one day to provide an additional
 	// Snapshot() and Rollback() API, where Snapshot() returns some
-	// opaque and persistable snapshot ID ("SID"), which cbft can
+	// opaque and persistable snapshot ID ("SID"), which cbgt can
 	// occasionally record into the bleve's Get/SetInternal() storage.
 	// A stream rollback operation then needs to loop through
 	// appropriate candidate SID's until a Rollback(SID) succeeds.

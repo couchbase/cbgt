@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package cbft
+package cbgt
 
 import (
 	"bytes"
@@ -29,10 +29,10 @@ var httpGet = http.Get   // Overridable for unit-testability.
 var indexClientUnimplementedErr = errors.New("unimplemented")
 
 // IndexClient implements the Search() and DocCount() subset of the
-// bleve.Index interface by accessing a remote cbft server via REST
-// protocol.  This allows callers to add a IndexClient as a target of
-// a bleve.IndexAlias, and implements cbft protocol features like
-// query consistency and auth.
+// bleve.Index interface by accessing a remote node via REST protocol.
+// This allows callers to add a IndexClient as a target of a
+// bleve.IndexAlias, and implements protocol features like query
+// consistency and auth.
 //
 // TODO: Implement propagating auth info in IndexClient.
 type IndexClient struct {

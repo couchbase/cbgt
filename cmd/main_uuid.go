@@ -18,11 +18,11 @@ import (
 	"strings"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbaselabs/cbft"
+	"github.com/couchbaselabs/cbgt"
 )
 
 func MainUUID(baseName, dataDir string) (string, error) {
-	uuid := cbft.NewUUID()
+	uuid := cbgt.NewUUID()
 	uuidPath := dataDir + string(os.PathSeparator) + baseName + ".uuid"
 	uuidBuf, err := ioutil.ReadFile(uuidPath)
 	if err == nil {

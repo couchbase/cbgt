@@ -9,7 +9,7 @@
 //  express or implied. See the License for the specific language
 //  governing permissions and limitations under the License.
 
-package cbft
+package cbgt
 
 import (
 	"encoding/json"
@@ -19,7 +19,7 @@ import (
 
 // CfgSimple is a local-only, persisted (in a single file)
 // implementation of the Cfg interface that's useful for
-// non-clustered, single-node instances of cbft for developers.
+// non-clustered, single-node instances for developers.
 type CfgSimple struct {
 	m      sync.Mutex
 	path   string

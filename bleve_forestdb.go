@@ -12,7 +12,7 @@
 
 // +build forestdb
 
-package cbft
+package cbgt
 
 import (
 	_ "github.com/blevesearch/bleve/index/store/forestdb"
