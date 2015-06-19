@@ -601,6 +601,11 @@ func (mgr *Manager) DataDir() string {
 	return mgr.dataDir
 }
 
+// Copies the current manager stats to the dst manager stats.
+func (mgr *Manager) StatsCopyTo(dst *ManagerStats) {
+	mgr.stats.AtomicCopyTo(dst)
+}
+
 // --------------------------------------------------------
 
 func (mgr *Manager) Lock() {
