@@ -23,8 +23,8 @@ import (
 	"github.com/blevesearch/bleve/index/store"
 )
 
-var httpPost = http.Post // Overridable for unit-testability.
-var httpGet = http.Get   // Overridable for unit-testability.
+var HttpPost = http.Post // Overridable for unit-testability.
+var HttpGet = http.Get   // Overridable for unit-testability.
 
 var indexClientUnimplementedErr = errors.New("unimplemented")
 
@@ -61,7 +61,7 @@ func (r *IndexClient) DocCount() (uint64, error) {
 	if r.CountURL == "" {
 		return 0, fmt.Errorf("remote: no CountURL provided")
 	}
-	resp, err := httpGet(r.CountURL)
+	resp, err := HttpGet(r.CountURL)
 	if err != nil {
 		return 0, err
 	}
@@ -193,7 +193,7 @@ func (r *IndexClient) Count() (uint64, error) {
 }
 
 func (r *IndexClient) Query(buf []byte) ([]byte, error) {
-	resp, err := httpPost(r.QueryURL, "application/json", bytes.NewBuffer(buf))
+	resp, err := HttpPost(r.QueryURL, "application/json", bytes.NewBuffer(buf))
 	if err != nil {
 		return nil, err
 	}
