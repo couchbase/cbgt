@@ -280,7 +280,7 @@ func QueryBlevePIndexImpl(mgr *Manager, indexName, indexUUID string,
 
 	case <-doneCh:
 		if searchResult != nil {
-			mustEncode(res, searchResult)
+			MustEncode(res, searchResult)
 		}
 	}
 
@@ -498,7 +498,7 @@ func (t *BleveDest) Query(pindex *PIndex, req []byte, res io.Writer,
 		return err
 	}
 
-	mustEncode(res, searchResponse)
+	MustEncode(res, searchResponse)
 
 	return nil
 }

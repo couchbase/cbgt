@@ -112,7 +112,7 @@ func QueryAlias(mgr *Manager, indexName, indexUUID string,
 		return err
 	}
 
-	mustEncode(res, searchResponse)
+	MustEncode(res, searchResponse)
 
 	return nil
 }

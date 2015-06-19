@@ -194,7 +194,7 @@ func TimeoutCancelChan(timeout int64) <-chan bool {
 	return nil
 }
 
-func mustEncode(w io.Writer, i interface{}) {
+func MustEncode(w io.Writer, i interface{}) {
 	if headered, ok := w.(http.ResponseWriter); ok {
 		headered.Header().Set("Cache-Control", "no-cache")
 		headered.Header().Set("Content-type", "application/json")

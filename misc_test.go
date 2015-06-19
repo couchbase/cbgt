@@ -189,7 +189,7 @@ func TestMustEncode(t *testing.T) {
 			t.Errorf("expected must encode panic and recover")
 		}
 	}()
-	mustEncode(&bytes.Buffer{}, func() {})
+	MustEncode(&bytes.Buffer{}, func() {})
 	t.Errorf("expected must encode panic")
 }
 
