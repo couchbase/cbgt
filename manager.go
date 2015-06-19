@@ -60,8 +60,8 @@ type Manager struct {
 	m         sync.Mutex
 	feeds     map[string]Feed    // Key is Feed.Name().
 	pindexes  map[string]*PIndex // Key is PIndex.Name().
-	plannerCh chan *workReq      // Used to kick planner that there's more work.
-	janitorCh chan *workReq      // Used to kick janitor that there's more work.
+	plannerCh chan *workReq      // Kicks planner that there's more work.
+	janitorCh chan *workReq      // Kicks janitor that there's more work.
 	meh       ManagerEventHandlers
 
 	lastIndexDefs          *IndexDefs
@@ -599,6 +599,23 @@ func (mgr *Manager) TagsMap() map[string]bool {
 // Returns the configured data dir of a Manager.
 func (mgr *Manager) DataDir() string {
 	return mgr.dataDir
+}
+
+// --------------------------------------------------------
+
+func (mgr *Manager) Lock() {
+	mgr.m.Lock()
+}
+
+func (mgr *Manager) Unlock() {
+	mgr.m.Unlock()
+}
+
+// --------------------------------------------------------
+
+// Events must be invoked holding the manager lock.
+func (mgr *Manager) Events() *list.List {
+	return mgr.events
 }
 
 // --------------------------------------------------------
