@@ -26,9 +26,9 @@ failures, the client should get expected results.
 Full-text queries should be consistent even as data source (Couchbase
 Server) nodes are added and removed in a clean rebalance.
 
-# CR2 - Consistent queries under cbft topology change.
+# CR2 - Consistent queries under cbgt topology change.
 
-Full-text queries should be consistent even as cbft nodes are added
+Full-text queries should be consistent even as cbgt nodes are added
 and removed in a clean takeover fashion.
 
 Implementation sketch: perhaps don't blow away the index on the old
@@ -104,8 +104,8 @@ In ES, an index alias can point to multiple indexes to support MQ1.
 # NI1 - Resilient to datasource node down scenarios.
 
 If a data source (couchbase cluster server node) goes down, then the
-subset of a cbft cluster that was indexing data from the down node
-will not be able to make indexing progress.  Those cbft instances
+subset of a cbgt cluster that was indexing data from the down node
+will not be able to make indexing progress.  Those cbgt instances
 should try to automatically reconnect and resume indexing from where
 they left off.
 
@@ -126,7 +126,7 @@ bounce-iness.
 
 # NQ1 - Querying still possible if datasource node goes down.
 
-Querying of a cbft cluster should be able to continue even if some
+Querying of a cbgt cluster should be able to continue even if some
 datasource nodes are down.
 
 # PI1 - Ability to pause/resume indexing.
@@ -150,7 +150,7 @@ bucket.
 ---------------------------------------------
 # Proposed highlevel design concepts and "subparts"...
 
-Inside a single cbft process...
+Inside a single cbgt process...
 
 - PIndex - an "Index Partition".
 
@@ -172,7 +172,7 @@ Inside a single cbft process...
 - Cfg - a distributed, consistent config database
         where index definitions and plans can be stored.
 
-Every cbft node is homogeneous in order to provide a simple story for
+Every cbgt node is homogeneous in order to provide a simple story for
 deployment.
 
 A PIndex (a.k.a, an Index Partition, or a "Physical Index") will have
@@ -198,16 +198,16 @@ implement reconnection backoff strategies.
 
 A Manager has a collection of PIndexes and Feeds and manages the
 hook-ups between them.  A Manager singleton will be that single
-"global" object in a cbft process rather than having many global
+"global" object in a cbgt process rather than having many global
 variables (although for testing, there might be many Manager instances
 in a test process to validate difficult cluster scenarios, etc).  A
 Manager has API to list, create and delete logical indexes for use by
-higher levels of cbft (like admin REST endpoints).
+higher levels of cbgt (like admin REST endpoints).
 
 The Manager has helpers: Planner & Janitor.  When a new logical index
 is created, for example, the Manager engages its Planner to assign
 data source partitions to PIndexes and also to assign those PIndexes
-across cbft nodes.  A Planner, then, decides the 1-to-1, 1-to-N,
+across cbgt nodes.  A Planner, then, decides the 1-to-1, 1-to-N,
 N-to-1, N-to-M fan-in-or-out assignment of partitions to PIndexes.
 
 Once the Planner has updated the plans, the Janitor then will detect
@@ -238,62 +238,62 @@ layer will provide the necessary AUTH checks.
 Let's "follow a request" through the system of a user creating a
 logical full-text index.  The user supplies inputs of data source
 bucket, indexType, indexName, indexParams, using a client SDK that
-eventually communicates with some cbft instance (doesn't matter which
+eventually communicates with some cbgt instance (doesn't matter which
 one).
 
-10 Then Manager.CreateIndex() on that cbft instance is invoked with
+10 Then Manager.CreateIndex() on that cbgt instance is invoked with
 the creation arguments.
 
 20 The Manager saves logical full-text instance configuration data
 (aka, a new IndexDef) to the Cfg system.
 
 30 The Cfg store should have enough "watcher" or pub/sub capability so
-that any other subscribed cbft instances can hear about the news that
+that any other subscribed cbgt instances can hear about the news that
 the Cfg has changed.
 
-40 So, Planners across the various cbft nodes across the cbft cluster
+40 So, Planners across the various cbgt nodes across the cbgt cluster
 will be awoken (hey, something changed, there's (re-)planning
 needed).
 
-50 ASIDE: By the way, each cbft instance or process has its own
-unique, persistent cbft-ID (like a UUID, likely saved in the dataDir
+50 ASIDE: By the way, each cbgt instance or process has its own
+unique, persistent cbgt-ID (like a UUID, likely saved in the dataDir
 somewhere).
 
-52 And all those cbft-ID's will also be listed in the Cfg.
+52 And all those cbgt-ID's will also be listed in the Cfg.
 
-53 That is, when a cbft instance starts up it writes its cbft-ID and
+53 That is, when a cbgt instance starts up it writes its cbgt-ID and
 related instance data (like, here's my address, and I have N cpus and
 M amount of RAM here) to the Cfg.
 
-54 Those brand new cbft instances, however, are not engaged right
-away.  Only some subset of cbft-ID's, however, will be explicitly
+54 Those brand new cbgt instances, however, are not engaged right
+away.  Only some subset of cbgt-ID's, however, will be explicitly
 listed as "wanted" by the user or sysadmin.  This is akin to how
 Couchbase Server has an extra step between Add Server and Rebalance.
 
 56 The sysadmin can use some API's to mark some subset of the known
-cbft instances as "wanted" in the Cfg.
+cbgt instances as "wanted" in the Cfg.
 
 58 END ASIDE.
 
-60 Each awoken (or "kicked") Planner in a cbft instance will work
+60 Each awoken (or "kicked") Planner in a cbgt instance will work
 independently of its concurrent peers in the cluster.
 
 70 The Planner takes input of logical full-text configuration (the
-IndexDef's), the list of wanted cbft-instances, and version info.
+IndexDef's), the list of wanted cbgt-instances, and version info.
 
 72 If any of the above inputs changes, the Planner needs to be
 re-awoken and re-run.
 
 80 The Planner functionally (in a deterministic, mathematical function
 sense) computes an assignment of partitions (in this case, vbuckets)
-to PIndexes and then also functionally assigns those PIndexes to cbft
+to PIndexes and then also functionally assigns those PIndexes to cbgt
 instances.
 
-90 So, there are N indepedent Planners running across the cbft cluster
+90 So, there are N indepedent Planners running across the cbgt cluster
 that independently see something needs to be planned, and assumming
 the planning algorithm is deterministic, each Planner instance should
 come up with the same plan, the same determinstic calculation results,
-no matter where it's running on whatever cbft node.
+no matter where it's running on whatever cbgt node.
 
 92 ASIDE: what about cases of versioning, where some newer software
 versions, not yet deployed and running homogenously on every node,
@@ -307,7 +307,7 @@ they detect that their version is outdated.
 96 END ASIDE.
 
 100 The first version Planner might be very simple, such as a basic
-1-to-1 mapping.  For example, perhaps every cbft-instance receives
+1-to-1 mapping.  For example, perhaps every cbgt-instance receives
 _every_ vbucket partition into a single PIndex instead of actually
 doing real partitoning (so, that handles the "single node"
 requirements of the first Developer Preview).
@@ -326,7 +326,7 @@ can take that into account.)
 that later parts of the system can use it as input.
 
 122 Also clients will be able to access the plan from the Cfg in order
-to learn of the expected locations of PIndexes across the cbft
+to learn of the expected locations of PIndexes across the cbgt
 cluster.
 
 130 Some CAS-like facility in Cfg will be necessary to make this
@@ -337,7 +337,7 @@ because planning might need to include things like, cpu utilization,
 disk space, number of Pindexes already on a node, etc.
 
 142 The key idea is that re-planning should only be done on topology
-changes (add/remove wanted cbft nodes or logical config changes
+changes (add/remove wanted cbgt nodes or logical config changes
 (add/remove logical full-text index)).  In contrast, if CPU
 utilization changes, we won't do replanning, similar to how we don't
 do an automatic Rebalance in Couchbase if CPU on just a single
@@ -349,10 +349,10 @@ where we expect # of CPU's won't change per machine; or, even if #
 cpu's does change, we won't blithely replan.
 
 146 A related thought is we'd want to keep PIndex assignments across a
-cbft cluster relatively stable (not try to move or rebuild potentially
+cbgt cluster relatively stable (not try to move or rebuild potentially
 large, persisted PIndex files at the drop of a hat).
 
-160 Consider the case where a new cbft node joins and is added to the
+160 Consider the case where a new cbgt node joins and is added to the
 "wanted" list.  Some nodes have seen the news, others haven't yet, so
 it's an inherently race-full situation where Planners are racing
 to recompute their plans.
@@ -363,17 +363,17 @@ consistent storage semantics.
 164 And, the Cfg system should provide some CAS-like facilities for
 any Planners that are racing to save their latest plans.
 
-166 Still, some cbft nodes might be slow in hearing the news, and
-clients must be careful to handle this situation of out-of-date cbft
-nodes, which is a guaranteed-to-happen scenario.  (Imagine a cbft node
+166 Still, some cbgt nodes might be slow in hearing the news, and
+clients must be careful to handle this situation of out-of-date cbgt
+nodes, which is a guaranteed-to-happen scenario.  (Imagine a cbgt node
 that's just overworked, slow and out-of-date.)
 
-170 Eventually, a cbft instance / Manager / Planner is going to have a
+170 Eventually, a cbgt instance / Manager / Planner is going to have a
 new, latest & greatest plan that's different than its previous plan.
 Next, responsibility switches to the Janitor.
 
-180 Each Janitor running a cbft node knows its cbft-ID, and can focus
-on the subset of the plan related to that cbft-ID.
+180 Each Janitor running a cbgt node knows its cbgt-ID, and can focus
+on the subset of the plan related to that cbgt-ID.
 
 190 A Janitor can then create or delete local PIndexes and
 setup/teardown Feeds as needed to match its subset of the plan.
@@ -405,7 +405,7 @@ approach and use the Cfg system to help determine a single, leased
 master Planner to do the planning and write results into the Cfg
 
 310 But, even with a single, elected master Planner, it'll still take
-some time for news of the new plan to get out to all the cbft
+some time for news of the new plan to get out to all the cbgt
 instances; so, everyone should be aware of the inherently concurrent
 race conditions here.
 
@@ -413,12 +413,12 @@ race conditions here.
 haven't heard the news yet.
 
 330 To alleviate that, one thought is perhaps a Queryer might try to
-ask all its target cbft nodes "are you up to plan #12343?" before
+ask all its target cbgt nodes "are you up to plan #12343?" before
 doing a full query across those nodes?  Or, only do this PIndex query
 if you are up to plan #12343, and I'm willing to wait/block for T
 timeout seconds for you to get up to date.
 
-400 With this design, the hope is the cbft instances are all
+400 With this design, the hope is the cbgt instances are all
 homogeneous, and during their independent Planning and Janitoring,
 that they also don't have to talk to each other but can separately
 work and arrive at the same answers.
@@ -427,16 +427,16 @@ work and arrive at the same answers.
 # What about downgrades?
 
 Downgrades might happen when a user starts a rolling upgrade her
-cluster of cbft nodes to a latest cbft version.  The new version of
-cbft planners will start update Cfg entries with the latest
-"ImplVersion" field value, which signals to older cbft nodes to stop
+cluster of cbgt nodes to a latest cbgt version.  The new version of
+cbgt planners will start update Cfg entries with the latest
+"ImplVersion" field value, which signals to older cbgt nodes to stop
 planning (since they might be using an older algorithm).
 
-But, if the user changes her mind and wants to downgrade the cbft
+But, if the user changes her mind and wants to downgrade the cbgt
 nodes, those latest Cfg entries will remain incorrectly "prioritized",
-where the remaining old-version cbft nodes won't do any re-planning or
+where the remaining old-version cbgt nodes won't do any re-planning or
 overwriting.
 
 To solve this, there might need to be a tool (lower priority) to
-overwrite the ImplVersion's in the Cfg so that old cbft nodes will
+overwrite the ImplVersion's in the Cfg so that old cbgt nodes will
 again start participating in planning and Cfg updates.
