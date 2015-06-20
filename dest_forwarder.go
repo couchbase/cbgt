@@ -20,8 +20,7 @@ import (
 //
 // It is useful for pindex backend implementations that have their own
 // level-of-indirection features.  One example would be pindex
-// backends that track a separate batch per partition (ex: see the
-// bleve pindex backend).
+// backends that track a separate batch per partition.
 type DestForwarder struct {
 	DestProvider DestProvider
 }

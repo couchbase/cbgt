@@ -393,12 +393,12 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 
 // -------------------------------------------------------
 
-type vbucketMetaData struct {
+type VBucketMetaData struct {
 	FailOverLog [][]uint64 `json:"failOverLog"`
 }
 
-func parseOpaqueToUUID(b []byte) string {
-	vmd := &vbucketMetaData{}
+func ParseOpaqueToUUID(b []byte) string {
+	vmd := &VBucketMetaData{}
 	err := json.Unmarshal(b, &vmd)
 	if err != nil {
 		return ""

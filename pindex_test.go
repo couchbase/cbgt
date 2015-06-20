@@ -19,7 +19,7 @@ import (
 )
 
 func TestOpenPIndex(t *testing.T) {
-	pindex, err := OpenPIndex(nil, "not-a-bleve-file")
+	pindex, err := OpenPIndex(nil, "not-a-real-file")
 	if pindex != nil || err == nil {
 		t.Errorf("expected OpenPIndex to fail on a bad file")
 	}
@@ -30,8 +30,9 @@ func TestNewPIndex(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	pindex, err := NewPIndex(nil, "fake", "uuid",
-		"bleve", "indexName", "indexUUID", "",
-		"sourceType", "sourceName", "sourceUUID", "sourceParams", "sourcePartitions",
+		"blackhole", "indexName", "indexUUID", "",
+		"sourceType", "sourceName", "sourceUUID",
+		"sourceParams", "sourcePartitions",
 		PIndexPath(emptyDir, "fake"))
 	if pindex == nil || err != nil {
 		t.Errorf("expected NewPIndex to work")
@@ -39,32 +40,6 @@ func TestNewPIndex(t *testing.T) {
 	err = pindex.Close(true)
 	if err != nil {
 		t.Errorf("expected Close to work")
-	}
-}
-
-func TestNewPIndexEmptyJSON(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
-
-	pindex, err := NewPIndex(nil, "fake", "uuid",
-		"bleve", "indexName", "indexUUID", "{}",
-		"sourceType", "sourceName", "sourceUUID", "sourceParams", "sourcePartitions",
-		PIndexPath(emptyDir, "fake"))
-	if pindex == nil || err != nil {
-		t.Errorf("expected NewPIndex to fail with empty json map")
-	}
-}
-
-func TestNewPIndexBadMapping(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
-
-	pindex, err := NewPIndex(nil, "fake", "uuid",
-		"bleve", "indexName", "indexUUID", "} hey this isn't json :-(",
-		"sourceType", "sourceName", "sourceUUID", "sourceParams", "sourcePartitions",
-		PIndexPath(emptyDir, "fake"))
-	if pindex != nil || err == nil {
-		t.Errorf("expected NewPIndex to fail with bad json")
 	}
 }
 
@@ -78,18 +53,21 @@ func TestNewPIndexImpl(t *testing.T) {
 
 	indexParams := ""
 
-	pindexImpl, dest, err := NewPIndexImpl("AN UNKNOWN PINDEX IMPL TYPE",
-		indexParams, emptyDir, restart)
+	pindexImpl, dest, err :=
+		NewPIndexImpl("AN UNKNOWN PINDEX IMPL TYPE",
+			indexParams, emptyDir, restart)
 	if err == nil || pindexImpl != nil || dest != nil {
 		t.Errorf("expected err on unknown impl type")
 	}
 
-	pindexImpl, dest, err = OpenPIndexImpl("AN UNKNOWN PINDEX IMPL TYPE", emptyDir, restart)
+	pindexImpl, dest, err =
+		OpenPIndexImpl("AN UNKNOWN PINDEX IMPL TYPE", emptyDir, restart)
 	if err == nil || pindexImpl != nil || dest != nil {
 		t.Errorf("expected err on unknown impl type")
 	}
 
-	pindexImpl, dest, err = NewPIndexImpl("bleve", indexParams, emptyDir, restart)
+	pindexImpl, dest, err =
+		NewPIndexImpl("blackhole", indexParams, emptyDir, restart)
 	if err == nil || pindexImpl != nil || dest != nil {
 		t.Errorf("expected err on existing dir")
 	}
@@ -103,17 +81,20 @@ func TestBlackholePIndexImpl(t *testing.T) {
 		t.Errorf("not expecting a restart")
 	}
 
-	pindex, dest, err := OpenBlackHolePIndexImpl("blackhole", emptyDir, restart)
+	pindex, dest, err :=
+		OpenBlackHolePIndexImpl("blackhole", emptyDir, restart)
 	if err == nil || pindex != nil || dest != nil {
 		t.Errorf("expected OpenBlackHolePIndexImpl to error on emptyDir")
 	}
 
-	pindex, dest, err = NewBlackHolePIndexImpl("blackhole", "", emptyDir, restart)
+	pindex, dest, err =
+		NewBlackHolePIndexImpl("blackhole", "", emptyDir, restart)
 	if err != nil || pindex == nil || dest == nil {
 		t.Errorf("expected NewBlackHolePIndexImpl to work")
 	}
 
-	pindex, dest, err = OpenBlackHolePIndexImpl("blackhole", emptyDir, restart)
+	pindex, dest, err =
+		OpenBlackHolePIndexImpl("blackhole", emptyDir, restart)
 	if err != nil || pindex == nil || dest == nil {
 		t.Errorf("expected OpenBlackHolePIndexImpl to work")
 	}

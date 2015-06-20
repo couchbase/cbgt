@@ -15,11 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
-	"runtime"
-	"strings"
 	"testing"
-
-	"github.com/blevesearch/bleve"
 )
 
 // Implements ManagerEventHandlers interface.
@@ -46,9 +42,11 @@ func (meh *TestMEH) OnUnregisterPIndex(pindex *PIndex) {
 }
 
 func TestPIndexPath(t *testing.T) {
-	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", "dir", "svr", nil)
+	m := NewManager(VERSION, nil, NewUUID(), nil,
+		"", 1, "", "", "dir", "svr", nil)
 	p := m.PIndexPath("x")
-	expected := "dir" + string(os.PathSeparator) + "x" + pindexPathSuffix
+	expected :=
+		"dir" + string(os.PathSeparator) + "x" + pindexPathSuffix
 	if p != expected {
 		t.Errorf("wrong pindex path %s, %s", p, expected)
 	}
@@ -56,18 +54,21 @@ func TestPIndexPath(t *testing.T) {
 	if !ok || n != "x" {
 		t.Errorf("parse pindex path not ok, %v, %v", n, ok)
 	}
-	n, ok = m.ParsePIndexPath("totally not a pindex path" + pindexPathSuffix)
+	n, ok =
+		m.ParsePIndexPath("totally not a pindex path" + pindexPathSuffix)
 	if ok {
 		t.Errorf("expected not-ok on bad pindex path")
 	}
-	n, ok = m.ParsePIndexPath("dir" + string(os.PathSeparator) + "not-a-pindex")
+	n, ok =
+		m.ParsePIndexPath("dir" + string(os.PathSeparator) + "not-a-pindex")
 	if ok {
 		t.Errorf("expected not-ok on bad pindex path")
 	}
 }
 
 func TestManagerStart(t *testing.T) {
-	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", "dir", "not-a-real-svr", nil)
+	m := NewManager(VERSION, nil, NewUUID(), nil,
+		"", 1, "", "", "dir", "not-a-real-svr", nil)
 	if m.Start("") == nil {
 		t.Errorf("expected NewManager() with bad svr should fail")
 	}
@@ -75,7 +76,8 @@ func TestManagerStart(t *testing.T) {
 		t.Errorf("wrong data dir")
 	}
 
-	m = NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", "not-a-real-dir", "", nil)
+	m = NewManager(VERSION, nil, NewUUID(), nil,
+		"", 1, "", "", "not-a-real-dir", "", nil)
 	if m.Start("") == nil {
 		t.Errorf("expected NewManager() with bad dir should fail")
 	}
@@ -86,13 +88,16 @@ func TestManagerStart(t *testing.T) {
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
-	m = NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", emptyDir, "", nil)
+	m = NewManager(VERSION, nil, NewUUID(), nil,
+		"", 1, "", "", emptyDir, "", nil)
 	if err := m.Start(""); err != nil {
-		t.Errorf("expected NewManager() with empty dir to work, err: %v", err)
+		t.Errorf("expected NewManager() with empty dir to work,"+
+			" err: %v", err)
 	}
 
 	cfg := NewCfgMem()
-	m = NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	m = NewManager(VERSION, cfg, NewUUID(),
+		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	if err := m.Start("known"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
@@ -106,7 +111,8 @@ func TestManagerStart(t *testing.T) {
 	}
 
 	cfg = NewCfgMem()
-	m = NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	m = NewManager(VERSION, cfg, NewUUID(),
+		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	if err := m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
@@ -125,28 +131,31 @@ func TestManagerRestart(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
-	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil)
 	if err := m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	sourceParams := ""
 	if err := m.CreateIndex("primary", "default", "123", sourceParams,
-		"bleve", "foo", "", PlanParams{}, "bad-prevIndexUUID"); err == nil {
-		t.Errorf("expected CreateIndex() err on attempted create-with-prevIndexUUID")
+		"blackhole", "foo", "", PlanParams{},
+		"bad-prevIndexUUID"); err == nil {
+		t.Errorf("expected CreateIndex() err on create-with-prevIndexUUID")
 	}
 	if err := m.CreateIndex("primary", "default", "123", sourceParams,
-		"bleve", "foo", "", PlanParams{}, ""); err != nil {
+		"blackhole", "foo", "", PlanParams{}, ""); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
 	if err := m.CreateIndex("primary", "default", "123", sourceParams,
-		"bleve", "foo", "", PlanParams{}, "bad-prevIndexUUID"); err == nil {
-		t.Errorf("expected CreateIndex() err on update with wrong prevIndexUUID")
+		"blackhole", "foo", "", PlanParams{},
+		"bad-prevIndexUUID"); err == nil {
+		t.Errorf("expected CreateIndex() err update wrong prevIndexUUID")
 	}
 	m.Kick("test0")
 	m.PlannerNOOP("test0")
 	feeds, pindexes := m.CurrentMaps()
 	if len(feeds) != 1 || len(pindexes) != 1 {
-		t.Errorf("expected to be 1 feed and 1 pindex, got feeds: %+v, pindexes: %+v",
+		t.Errorf("expected 1 feed, 1 pindex, feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}
 	for _, pindex := range pindexes {
@@ -156,7 +165,8 @@ func TestManagerRestart(t *testing.T) {
 		}
 	}
 
-	m2 := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	m2 := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil)
 	m2.uuid = m.uuid
 	if err := m2.Start("wanted"); err != nil {
 		t.Errorf("expected reload Manager.Start() to work, err: %v", err)
@@ -165,7 +175,7 @@ func TestManagerRestart(t *testing.T) {
 	m2.PlannerNOOP("test2")
 	feeds, pindexes = m2.CurrentMaps()
 	if len(feeds) != 1 || len(pindexes) != 1 {
-		t.Errorf("expected to load 1 feed and 1 pindex, got feeds: %+v, pindexes: %+v",
+		t.Errorf("expected load 1 feed, 1 pindex, got: %+v, %+v",
 			feeds, pindexes)
 	}
 }
@@ -175,17 +185,18 @@ func TestManagerCreateDeleteIndex(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
-	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil)
 	if err := m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	sourceParams := ""
 	if err := m.CreateIndex("primary", "default", "123", sourceParams,
-		"bleve", "foo", "", PlanParams{}, ""); err != nil {
+		"blackhole", "foo", "", PlanParams{}, ""); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
 	if err := m.CreateIndex("primary", "default", "123", sourceParams,
-		"bleve", "foo", "", PlanParams{}, ""); err == nil {
+		"blackhole", "foo", "", PlanParams{}, ""); err == nil {
 		t.Errorf("expected re-CreateIndex() to fail")
 	}
 	if err := m.DeleteIndex("not-an-actual-index-name"); err == nil {
@@ -195,18 +206,21 @@ func TestManagerCreateDeleteIndex(t *testing.T) {
 	m.JanitorNOOP("test")
 	feeds, pindexes := m.CurrentMaps()
 	if len(feeds) != 1 || len(pindexes) != 1 {
-		t.Errorf("expected to be 1 feed and 1 pindex, got feeds: %+v, pindexes: %+v",
+		t.Errorf("expected to be 1 feed and 1 pindex,"+
+			" got feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}
 
 	if err := m.DeleteIndex("foo"); err != nil {
-		t.Errorf("expected DeleteIndex() to work on actual index, err: %v", err)
+		t.Errorf("expected DeleteIndex() to work on actual index,"+
+			" err: %v", err)
 	}
 	m.PlannerNOOP("test")
 	m.JanitorNOOP("test")
 	feeds, pindexes = m.CurrentMaps()
 	if len(feeds) != 0 || len(pindexes) != 0 {
-		t.Errorf("expected to be 0 feed and 0 pindex, got feeds: %+v, pindexes: %+v",
+		t.Errorf("expected to be 0 feed and 0 pindex,"+
+			" got feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}
 }
@@ -215,7 +229,8 @@ func TestManagerRegisterPIndex(t *testing.T) {
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
-	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", emptyDir, "", meh)
+	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "",
+		emptyDir, "", meh)
 	if meh.lastPIndex != nil || meh.lastCall != "" {
 		t.Errorf("expected no callback events to meh")
 	}
@@ -233,9 +248,10 @@ func TestManagerRegisterPIndex(t *testing.T) {
 	}
 
 	sourceParams := ""
-	p, err := NewPIndex(m, "p0", "uuid", "bleve",
+	p, err := NewPIndex(m, "p0", "uuid", "blackhole",
 		"indexName", "indexUUID", "",
-		"sourceType", "sourceName", "sourceUUID", sourceParams, "sourcePartitions",
+		"sourceType", "sourceName", "sourceUUID",
+		sourceParams, "sourcePartitions",
 		m.PIndexPath("p0"))
 	if err != nil {
 		t.Errorf("expected NewPIndex() to work")
@@ -311,7 +327,8 @@ func TestManagerRegisterFeed(t *testing.T) {
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
-	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", emptyDir, "", meh)
+	m := NewManager(VERSION, nil, NewUUID(),
+		nil, "", 1, "", "", emptyDir, "", meh)
 	if meh.lastPIndex != nil || meh.lastCall != "" {
 		t.Errorf("expected no callback events to meh")
 	}
@@ -402,12 +419,14 @@ func testManagerStartDCPFeed(t *testing.T, sourceType string) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
-	mgr := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	mgr := NewManager(VERSION, cfg, NewUUID(),
+		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	if err := mgr.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	sourceParams := ""
-	err := mgr.startFeedByType("feedName", "indexName", "indexUUID", sourceType,
+	err := mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", sourceType,
 		"sourceName", "sourceUUID", sourceParams, nil)
 	if err != nil {
 		t.Errorf("expected startFeedByType ok for sourceType: %s, err: %v",
@@ -424,15 +443,17 @@ func testManagerStartDCPFeed(t *testing.T, sourceType string) {
 	if _, ok := f.(*DCPFeed); !ok {
 		t.Errorf("expected a DCPFeed")
 	}
-	err = mgr.startFeedByType("feedName", "indexName", "indexUUID", sourceType,
+	err = mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", sourceType,
 		"sourceName", "sourceUUID", sourceParams, nil)
 	if err == nil {
 		t.Errorf("expected re-startFeedByType to fail")
 	}
-	err = mgr.startFeedByType("feedName2", "indexName2", "indexUUID2", sourceType,
+	err = mgr.startFeedByType("feedName2",
+		"indexName2", "indexUUID2", sourceType,
 		"sourceName2", "sourceUUID2", "NOT-VALID-JSON-sourceParams", nil)
 	if err == nil {
-		t.Errorf("expected startFeedByType to fail on non-json sourceParams")
+		t.Errorf("expected startFeedByType fail on non-json sourceParams")
 	}
 }
 
@@ -441,12 +462,14 @@ func TestManagerStartTAPFeed(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
-	mgr := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	mgr := NewManager(VERSION, cfg, NewUUID(),
+		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	if err := mgr.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	sourceParams := ""
-	err := mgr.startFeedByType("feedName", "indexName", "indexUUID", "couchbase-tap",
+	err := mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", "couchbase-tap",
 		"sourceName", "sourceUUID", sourceParams, nil)
 	if err != nil {
 		t.Errorf("expected startFeedByType ok for simple sourceType")
@@ -462,15 +485,17 @@ func TestManagerStartTAPFeed(t *testing.T) {
 	if _, ok := f.(*TAPFeed); !ok {
 		t.Errorf("expected a TAPFeed")
 	}
-	err = mgr.startFeedByType("feedName", "indexName", "indexUUID", "couchbase-tap",
+	err = mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", "couchbase-tap",
 		"sourceName", "sourceUUID", sourceParams, nil)
 	if err == nil {
 		t.Errorf("expected re-startFeedByType to fail")
 	}
-	err = mgr.startFeedByType("feedName2", "indexName2", "indexUUID2", "couchbase-tap",
+	err = mgr.startFeedByType("feedName2",
+		"indexName2", "indexUUID2", "couchbase-tap",
 		"sourceName2", "sourceUUID2", "NOT-VALID-JSON-sourceParams", nil)
 	if err == nil {
-		t.Errorf("expected startFeedByType to fail on non-json sourceParams")
+		t.Errorf("expected startFeedByType fail on non-json sourceParams")
 	}
 }
 
@@ -479,11 +504,13 @@ func TestManagerStartNILFeed(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
-	mgr := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	mgr := NewManager(VERSION, cfg, NewUUID(),
+		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	if err := mgr.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
-	err := mgr.startFeedByType("feedName", "indexName", "indexUUID", "nil",
+	err := mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", "nil",
 		"sourceName", "sourceUUID", "sourceParams", nil)
 	if err != nil {
 		t.Errorf("expected startFeedByType ok for nil sourceType")
@@ -499,7 +526,8 @@ func TestManagerStartNILFeed(t *testing.T) {
 	if _, ok := f.(*NILFeed); !ok {
 		t.Errorf("expected a NILFeed")
 	}
-	err = mgr.startFeedByType("feedName", "indexName", "indexUUID", "nil",
+	err = mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", "nil",
 		"sourceName", "sourceUUID", "sourceParams", nil)
 	if err == nil {
 		t.Errorf("expected re-startFeedByType to fail")
@@ -511,11 +539,13 @@ func TestManagerStartSimpleFeed(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
-	mgr := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
+	mgr := NewManager(VERSION, cfg, NewUUID(),
+		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	if err := mgr.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
-	err := mgr.startFeedByType("feedName", "indexName", "indexUUID", "primary",
+	err := mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", "primary",
 		"sourceName", "sourceUUID", "sourceParams", nil)
 	if err != nil {
 		t.Errorf("expected startFeedByType ok for simple sourceType")
@@ -531,7 +561,8 @@ func TestManagerStartSimpleFeed(t *testing.T) {
 	if _, ok := f.(*PrimaryFeed); !ok {
 		t.Errorf("expected a SimpleFeed")
 	}
-	err = mgr.startFeedByType("feedName", "indexName", "indexUUID", "primary",
+	err = mgr.startFeedByType("feedName",
+		"indexName", "indexUUID", "primary",
 		"sourceName", "sourceUUID", "sourceParams", nil)
 	if err == nil {
 		t.Errorf("expected re-startFeedByType to fail")
@@ -565,15 +596,17 @@ func TestManagerClosePIndex(t *testing.T) {
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
-	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", emptyDir, "", meh)
+	m := NewManager(VERSION, nil, NewUUID(),
+		nil, "", 1, "", "", emptyDir, "", meh)
 	if meh.lastPIndex != nil || meh.lastCall != "" {
 		t.Errorf("expected no callback events to meh")
 	}
 	m.Start("wanted")
 	sourceParams := ""
-	p, err := NewPIndex(m, "p0", "uuid", "bleve",
+	p, err := NewPIndex(m, "p0", "uuid", "blackhole",
 		"indexName", "indexUUID", "",
-		"sourceType", "sourceName", "sourceUUID", sourceParams, "sourcePartitions",
+		"sourceType", "sourceName", "sourceUUID",
+		sourceParams, "sourcePartitions",
 		m.PIndexPath("p0"))
 	m.registerPIndex(p)
 	feeds, pindexes := m.CurrentMaps()
@@ -611,9 +644,10 @@ func TestManagerRemovePIndex(t *testing.T) {
 	}
 	m.Start("wanted")
 	sourceParams := ""
-	p, err := NewPIndex(m, "p0", "uuid", "bleve",
+	p, err := NewPIndex(m, "p0", "uuid", "blackhole",
 		"indexName", "indexUUID", "",
-		"sourceType", "sourceName", "sourceUUID", sourceParams, "sourcePartitions",
+		"sourceType", "sourceName", "sourceUUID",
+		sourceParams, "sourcePartitions",
 		m.PIndexPath("p0"))
 	m.registerPIndex(p)
 	feeds, pindexes := m.CurrentMaps()
@@ -652,8 +686,9 @@ func TestManagerStrangeWorkReqs(t *testing.T) {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	sourceParams := ""
-	if err := m.CreateIndex("primary", "sourceName", "sourceUUID", sourceParams,
-		"bleve", "foo", "", PlanParams{}, ""); err != nil {
+	if err := m.CreateIndex("primary",
+		"sourceName", "sourceUUID", sourceParams,
+		"blackhole", "foo", "", PlanParams{}, ""); err != nil {
 		t.Errorf("expected simple CreateIndex() to work")
 	}
 	if err := syncWorkReq(m.plannerCh, "whoa-this-isn't-a-valid-op",
@@ -673,7 +708,8 @@ func TestManagerStartFeedByType(t *testing.T) {
 	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "",
 		emptyDir, "", nil)
 	err := m.startFeedByType("feedName", "indexName", "indexUUID",
-		"sourceType-is-unknown", "sourceName", "sourceUUID", "sourceParams", nil)
+		"sourceType-is-unknown",
+		"sourceName", "sourceUUID", "sourceParams", nil)
 	if err == nil {
 		t.Errorf("expected err on unknown source type")
 	}
@@ -689,9 +725,12 @@ func TestManagerStartPIndex(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected err on unknown index type")
 	}
-	err = m.startPIndex(&PlanPIndex{IndexType: "bleve", IndexName: "a"})
+	err = m.startPIndex(&PlanPIndex{
+		IndexType: "blackhole",
+		IndexName: "a",
+	})
 	if err != nil {
-		t.Errorf("expected new bleve pindex to work, err: %v", err)
+		t.Errorf("expected new blackhole pindex to work, err: %v", err)
 	}
 }
 
@@ -703,7 +742,11 @@ func TestManagerReStartPIndex(t *testing.T) {
 	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "",
 		emptyDir, "", meh)
 
-	err := m.startPIndex(&PlanPIndex{Name: "p", IndexType: "bleve", IndexName: "i"})
+	err := m.startPIndex(&PlanPIndex{
+		Name:      "p",
+		IndexType: "blackhole",
+		IndexName: "i",
+	})
 	if err != nil {
 		t.Errorf("expected first start to work")
 	}
@@ -711,7 +754,10 @@ func TestManagerReStartPIndex(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected close pindex to work")
 	}
-	err = m.startPIndex(&PlanPIndex{Name: "p", IndexType: "bleve", IndexName: "i"})
+	err = m.startPIndex(&PlanPIndex{
+		Name:      "p",
+		IndexType: "blackhole",
+		IndexName: "i"})
 	if err != nil {
 		t.Errorf("expected close+restart pindex to work")
 	}
@@ -729,15 +775,17 @@ func testManagerSimpleFeed(t *testing.T,
 	if err := m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
-	if err := m.CreateIndex("primary", "sourceName", "sourceUUID", sourceParams,
-		"bleve", "foo", "", planParams, ""); err != nil {
+	if err := m.CreateIndex("primary",
+		"sourceName", "sourceUUID", sourceParams,
+		"blackhole", "foo", "", planParams, ""); err != nil {
 		t.Errorf("expected simple CreateIndex() to work")
 	}
 	m.PlannerNOOP("test")
 	m.JanitorNOOP("test")
 	feeds, pindexes := m.CurrentMaps()
 	if len(feeds) != 1 || len(pindexes) != 1 {
-		t.Errorf("expected to be 1 feed and 1 pindex, got feeds: %+v, pindexes: %+v",
+		t.Errorf("expected 1 feed, 1 pindex,"+
+			" got feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}
 	if meh.lastPIndex == nil {
@@ -767,650 +815,6 @@ func TestManagerCreateSimpleFeed(t *testing.T) {
 				t.Errorf("expected simple feed close to work")
 			}
 		})
-}
-
-func TestBasicStreamMutations(t *testing.T) {
-	sourceParams := ""
-	testManagerSimpleFeed(t, sourceParams, PlanParams{},
-		func(mgr *Manager, sf *PrimaryFeed, meh *TestMEH) {
-			pindex := meh.lastPIndex
-			bindex, ok := pindex.Impl.(bleve.Index)
-			if !ok || bindex == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			if len(sf.Dests()) != 1 {
-				t.Errorf("expected just 1 dest")
-			}
-
-			partition := ""
-			key := []byte("hello")
-			seq := uint64(0)
-			val := []byte("{}")
-			err := sf.DataUpdate(partition, key, seq, val,
-				0, DEST_EXTRAS_TYPE_NIL, nil)
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-
-			key = []byte("goodbye")
-			val = []byte("{}")
-			err = sf.DataUpdate(partition, key, seq, val,
-				0, DEST_EXTRAS_TYPE_NIL, nil)
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-
-			n, err := bindex.DocCount()
-			if n != 2 {
-				t.Errorf("expected 2 docs in bindex, got: %d", n)
-			}
-
-			key = []byte("goodbye")
-			err = sf.DataDelete(partition, key, seq,
-				0, DEST_EXTRAS_TYPE_NIL, nil)
-			if err != nil {
-				t.Errorf("expected no error to DELETE, err: %v", err)
-			}
-
-			n, err = bindex.DocCount()
-			if n != 1 {
-				t.Errorf("expected 1 docs in bindex, got: %d", n)
-			}
-
-			mehCh := make(chan bool, 10)
-			meh.ch = mehCh
-			err = sf.Rollback(partition, seq)
-			if err != nil {
-				t.Errorf("expected no error to ROLLBACK, err: %v", err)
-			}
-
-			runtime.Gosched()
-			<-mehCh
-			mgr.Kick("after-rollback")
-			mgr.PlannerNOOP("after-rollback")
-			mgr.JanitorNOOP("after-rollback")
-			runtime.Gosched()
-			<-mehCh
-			feeds, pindexes := mgr.CurrentMaps()
-			if len(feeds) != 1 || len(pindexes) != 1 {
-				t.Errorf("expected to be 1 feed and 1 pindex, got feeds: %+v, pindexes: %+v",
-					feeds, pindexes)
-			}
-			var pindex2 *PIndex
-			for _, p := range pindexes {
-				pindex2 = p
-			}
-			if pindex == pindex2 {
-				t.Errorf("expected new pindex to be re-built")
-			}
-			bindex2 := pindex2.Impl.(bleve.Index)
-			if bindex == bindex2 {
-				t.Errorf("expected new bindex to be re-built")
-			}
-			n, err = bindex2.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex2, got: %d", n)
-			}
-		})
-}
-
-func TestStreamGetSetMeta(t *testing.T) {
-	sourceParams := ""
-	testManagerSimpleFeed(t, sourceParams, PlanParams{},
-		func(mgr *Manager, sf *PrimaryFeed, meh *TestMEH) {
-			pindex := meh.lastPIndex
-			bindex, ok := pindex.Impl.(bleve.Index)
-			if !ok || bindex == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			if len(sf.Dests()) != 1 {
-				t.Errorf("expected just 1 dest")
-			}
-
-			partition := "0"
-			v, lastSeq, err := sf.OpaqueGet(partition)
-			if err != nil {
-				t.Errorf("expected no error to get, err: %v", err)
-			}
-			if v != nil {
-				t.Errorf("expected []byte{nil} for get, got: %s", v)
-			}
-			n, err := bindex.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex, got: %d", n)
-			}
-
-			err = sf.OpaqueSet(partition, []byte("dinner"))
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-			n, err = bindex.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex after set, got: %d", n)
-			}
-
-			v, lastSeq, err = sf.OpaqueGet(partition)
-			if err != nil {
-				t.Errorf("expected no error to get, err: %v", err)
-			}
-			if string(v) != "dinner" {
-				t.Errorf("expected dinner")
-			}
-			if lastSeq != 0 {
-				t.Errorf("expected 0 lastSeq")
-			}
-			n, err = bindex.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex after set, got: %d", n)
-			}
-		})
-}
-
-func TestMultiStreamGetSetMeta(t *testing.T) {
-	sourceParams := "{\"numPartitions\":2}"
-	testManagerSimpleFeed(t, sourceParams, PlanParams{},
-		func(mgr *Manager, sf *PrimaryFeed, meh *TestMEH) {
-			pindex := meh.lastPIndex
-			bindex, ok := pindex.Impl.(bleve.Index)
-			if !ok || bindex == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			if len(sf.Dests()) != 2 {
-				t.Errorf("expected 2 entries in dests")
-			}
-
-			partition := "0"
-			v, lastSeq, err := sf.OpaqueGet(partition)
-			if err != nil {
-				t.Errorf("expected no error to get, err: %v", err)
-			}
-			if v != nil {
-				t.Errorf("expected nil []byte, got: %#v", v)
-			}
-			n, err := bindex.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex, got: %d", n)
-			}
-
-			err = sf.OpaqueSet(partition, []byte("dinner"))
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-			n, err = bindex.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex after set, got: %d", n)
-			}
-
-			v, lastSeq, err = sf.OpaqueGet(partition)
-			if err != nil {
-				t.Errorf("expected no error to get, err: %v", err)
-			}
-			if string(v) != "dinner" {
-				t.Errorf("expected dinner, got: %s", v)
-			}
-			if lastSeq != 0 {
-				t.Errorf("expected 0 lastSeq")
-			}
-			n, err = bindex.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex after set, got: %d", n)
-			}
-		})
-}
-
-func testPartitioning(t *testing.T,
-	sourceParams string,
-	planParams PlanParams,
-	expectedNumPIndexes int,
-	expectedNumDests int,
-	andThen func(mgr *Manager, sf *PrimaryFeed, pindexes map[string]*PIndex)) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
-
-	cfg := NewCfgMem()
-	meh := &TestMEH{}
-	mgr := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", meh)
-	if err := mgr.Start("wanted"); err != nil {
-		t.Errorf("expected Manager.Start() to work, err: %v", err)
-	}
-
-	if err := mgr.CreateIndex("primary", "sourceName", "sourceUUID", sourceParams,
-		"bleve", "foo", "", planParams, ""); err != nil {
-		t.Errorf("expected CreateIndex() to work")
-	}
-
-	mgr.Kick("test")
-	mgr.PlannerNOOP("test")
-	mgr.JanitorNOOP("test")
-	feeds, pindexes := mgr.CurrentMaps()
-	if len(feeds) != 1 {
-		t.Errorf("expected to be 1 feed, got feeds: %+v", feeds)
-	}
-	if len(pindexes) != expectedNumPIndexes {
-		t.Errorf("expected to be %d pindex, got pindexes: %+v",
-			expectedNumPIndexes, pindexes)
-	}
-	var feed Feed
-	for _, f := range feeds {
-		feed = f
-	}
-	sf, ok := feed.(*PrimaryFeed)
-	if !ok || sf == nil {
-		t.Errorf("expected feed to be simple")
-	}
-	if len(sf.Dests()) != expectedNumDests {
-		t.Errorf("expected %d dests", expectedNumDests)
-	}
-
-	if andThen != nil {
-		andThen(mgr, sf, pindexes)
-	}
-}
-
-func TestPartitioning(t *testing.T) {
-	sourceParams := "{\"numPartitions\":2}"
-	planParams := PlanParams{
-		MaxPartitionsPerPIndex: 1,
-	}
-	expectedNumPIndexes := 2
-	expectedNumStreams := 2
-	testPartitioning(t, sourceParams, planParams,
-		expectedNumPIndexes, expectedNumStreams, nil)
-
-	sourceParams = "{\"numPartitions\":10}"
-	planParams = PlanParams{
-		MaxPartitionsPerPIndex: 1,
-	}
-	expectedNumPIndexes = 10
-	expectedNumStreams = 10
-	testPartitioning(t, sourceParams, planParams,
-		expectedNumPIndexes, expectedNumStreams, nil)
-
-	sourceParams = "{\"numPartitions\":5}"
-	planParams = PlanParams{
-		MaxPartitionsPerPIndex: 2,
-	}
-	expectedNumPIndexes = 3
-	expectedNumStreams = 5
-	testPartitioning(t, sourceParams, planParams,
-		expectedNumPIndexes, expectedNumStreams, nil)
-}
-
-func TestPartitioningMutations(t *testing.T) {
-	sourceParams := "{\"numPartitions\":2}"
-	planParams := PlanParams{
-		MaxPartitionsPerPIndex: 1,
-	}
-	expectedNumPIndexes := 2
-	expectedNumStreams := 2
-	testPartitioning(t, sourceParams, planParams,
-		expectedNumPIndexes, expectedNumStreams,
-		func(mgr *Manager, sf *PrimaryFeed, pindexes map[string]*PIndex) {
-			var pindex0 *PIndex
-			var pindex1 *PIndex
-			for _, pindex := range pindexes {
-				if pindex.SourcePartitions == "0" {
-					pindex0 = pindex
-				}
-				if pindex.SourcePartitions == "1" {
-					pindex1 = pindex
-				}
-			}
-			if pindex0 == nil {
-				t.Errorf("expected pindex0")
-			}
-			if pindex1 == nil {
-				t.Errorf("expected pindex1")
-			}
-			bindex0, ok := pindex0.Impl.(bleve.Index)
-			if !ok || bindex0 == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			bindex1, ok := pindex1.Impl.(bleve.Index)
-			if !ok || bindex1 == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			n, err := bindex0.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex0, got: %d", n)
-			}
-			n, err = bindex1.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex1, got: %d", n)
-			}
-
-			partition := "0"
-			key := []byte("hello")
-			seq := uint64(0)
-			val := []byte("{}")
-			err = sf.DataUpdate(partition, key, seq, val,
-				0, DEST_EXTRAS_TYPE_NIL, nil)
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-			n, err = bindex0.DocCount()
-			if n != 1 {
-				t.Errorf("expected 1 docs in bindex0, got: %d", n)
-			}
-			n, err = bindex1.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex1, got: %d", n)
-			}
-		})
-}
-
-func TestFanInPartitioningMutations(t *testing.T) {
-	sourceParams := "{\"numPartitions\":3}"
-	planParams := PlanParams{
-		MaxPartitionsPerPIndex: 2,
-	}
-	expectedNumPIndexes := 2
-	expectedNumStreamsEntries := 3
-	testPartitioning(t, sourceParams, planParams,
-		expectedNumPIndexes, expectedNumStreamsEntries,
-		func(mgr *Manager, sf *PrimaryFeed, pindexes map[string]*PIndex) {
-			var pindex0_0 *PIndex
-			var pindex0_1 *PIndex
-			var pindex1 *PIndex
-			for _, pindex := range pindexes {
-				if strings.Contains(pindex.SourcePartitions, "0") {
-					pindex0_0 = pindex
-				}
-				if strings.Contains(pindex.SourcePartitions, "1") {
-					pindex0_1 = pindex
-				}
-				if pindex.SourcePartitions == "2" {
-					pindex1 = pindex
-				}
-			}
-			if pindex0_0 == nil || pindex0_1 == nil {
-				t.Errorf("expected pindex0_0/1")
-			}
-			if pindex0_0 != pindex0_1 {
-				t.Errorf("expected pindex0 equality")
-			}
-			if pindex1 == nil {
-				t.Errorf("expected pindex1")
-			}
-			bindex0, ok := pindex0_0.Impl.(bleve.Index)
-			if !ok || bindex0 == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			bindex1, ok := pindex1.Impl.(bleve.Index)
-			if !ok || bindex1 == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			n, err := bindex0.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex0, got: %d", n)
-			}
-			n, err = bindex1.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex1, got: %d", n)
-			}
-
-			partition := "0"
-			key := []byte("hello")
-			seq := uint64(0)
-			val := []byte("{}")
-			err = sf.DataUpdate(partition, key, seq, val,
-				0, DEST_EXTRAS_TYPE_NIL, nil)
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-			n, err = bindex0.DocCount()
-			if n != 1 {
-				t.Errorf("expected 1 docs in bindex0, got: %d", n)
-			}
-			n, err = bindex1.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex1, got: %d", n)
-			}
-
-			partition = "2"
-			key = []byte("hi")
-			val = []byte("{}")
-			err = sf.DataUpdate(partition, key, seq, val,
-				0, DEST_EXTRAS_TYPE_NIL, nil)
-			if err != nil {
-				t.Errorf("expected no error to update, err: %v", err)
-			}
-			n, err = bindex0.DocCount()
-			if n != 1 {
-				t.Errorf("expected 1 docs in bindex0, got: %d", n)
-			}
-			n, err = bindex1.DocCount()
-			if n != 1 {
-				t.Errorf("expected 1 docs in bindex1, got: %d", n)
-			}
-
-			err = sf.Rollback("1", 0)
-			if err != nil {
-				t.Errorf("expected no error to rollback, err: %v", err)
-			}
-			runtime.Gosched()
-			mgr.Kick("after-rollback")
-			mgr.PlannerNOOP("after-rollback")
-			mgr.JanitorNOOP("after-rollback")
-			runtime.Gosched()
-			mgr.PlannerNOOP("after-rollback")
-			mgr.JanitorNOOP("after-rollback")
-			feeds, pindexes := mgr.CurrentMaps()
-			if len(feeds) != 1 {
-				t.Errorf("expected to be 1 feed, got feeds: %+v", feeds)
-			}
-			if len(pindexes) != 2 {
-				t.Errorf("expected to be %d pindex, got pindexes: %+v",
-					2, pindexes)
-			}
-			for _, pindex := range pindexes {
-				if strings.Contains(pindex.SourcePartitions, "0") {
-					pindex0_0 = pindex
-				}
-				if strings.Contains(pindex.SourcePartitions, "1") {
-					pindex0_1 = pindex
-				}
-				if pindex.SourcePartitions == "2" {
-					pindex1 = pindex
-				}
-			}
-			if pindex0_0 == nil || pindex0_1 == nil {
-				t.Errorf("expected pindex0_0/1")
-			}
-			if pindex0_0 != pindex0_1 {
-				t.Errorf("expected pindex0 equality")
-			}
-			if pindex1 == nil {
-				t.Errorf("expected pindex1")
-			}
-			bindex0, ok = pindex0_0.Impl.(bleve.Index)
-			if !ok || bindex0 == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			bindex1, ok = pindex1.Impl.(bleve.Index)
-			if !ok || bindex1 == nil {
-				t.Errorf("expected bleve.Index")
-			}
-			n, err = bindex0.DocCount()
-			if n != 0 {
-				t.Errorf("expected 0 docs in bindex0 after rollback, got: %d", n)
-			}
-			n, err = bindex1.DocCount()
-			if n != 1 {
-				t.Errorf("expected 1 docs in bindex1 after rollback, got: %d", n)
-			}
-		})
-}
-
-func TestManagerIndexControl(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
-
-	cfg := NewCfgMem()
-	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
-	if err := m.Start("wanted"); err != nil {
-		t.Errorf("expected Manager.Start() to work, err: %v", err)
-	}
-	sourceParams := ""
-	if err := m.CreateIndex("primary", "default", "123", sourceParams,
-		"bleve", "foo", "", PlanParams{}, ""); err != nil {
-		t.Errorf("expected CreateIndex() to work, err: %v", err)
-	}
-	m.Kick("test0")
-	m.PlannerNOOP("test0")
-
-	err := m.IndexControl("foo", "wrong-uuid", "", "", "")
-	if err == nil {
-		t.Errorf("expected err on wrong UUID")
-	}
-
-	indexDefs, _, _ := CfgGetIndexDefs(cfg)
-	npp := indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp != nil {
-		t.Errorf("expected nil npp")
-	}
-
-	err = m.IndexControl("foo", "", "", "", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] != nil {
-		t.Errorf("expected nil npp.sub")
-	}
-
-	err = m.IndexControl("foo", "", "disallow", "", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] == nil {
-		t.Errorf("expected npp.sub")
-	}
-	if npp[""].CanRead {
-		t.Errorf("expected CanRead false")
-	}
-	if !npp[""].CanWrite {
-		t.Errorf("expected CanWrite")
-	}
-
-	err = m.IndexControl("foo", "", "", "", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] == nil {
-		t.Errorf("expected npp.sub")
-	}
-	if npp[""].CanRead {
-		t.Errorf("expected CanRead false")
-	}
-	if !npp[""].CanWrite {
-		t.Errorf("expected CanWrite")
-	}
-
-	err = m.IndexControl("foo", "", "", "pause", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] == nil {
-		t.Errorf("expected npp.sub")
-	}
-	if npp[""].CanRead {
-		t.Errorf("expected CanRead false")
-	}
-	if npp[""].CanWrite {
-		t.Errorf("expected CanWrite false")
-	}
-
-	err = m.IndexControl("foo", "", "", "", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] == nil {
-		t.Errorf("expected npp.sub")
-	}
-	if npp[""].CanRead {
-		t.Errorf("expected CanRead false")
-	}
-	if npp[""].CanWrite {
-		t.Errorf("expected CanWrite false")
-	}
-
-	err = m.IndexControl("foo", "", "", "resume", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] == nil {
-		t.Errorf("expected npp.sub")
-	}
-	if npp[""].CanRead {
-		t.Errorf("expected CanRead false")
-	}
-	if !npp[""].CanWrite {
-		t.Errorf("expected CanWrite")
-	}
-
-	err = m.IndexControl("foo", "", "allow", "resume", "")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	npp = indexDefs.IndexDefs["foo"].PlanParams.NodePlanParams[""]
-	if npp == nil {
-		t.Errorf("expected npp")
-	}
-	if npp[""] != nil {
-		t.Errorf("expected nil npp.sub")
-	}
-
-	if indexDefs.IndexDefs["foo"].PlanParams.PlanFrozen {
-		t.Errorf("expected not yet frozen")
-	}
-	err = m.IndexControl("foo", "", "", "", "freeze")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	if !indexDefs.IndexDefs["foo"].PlanParams.PlanFrozen {
-		t.Errorf("expected frozen")
-	}
-
-	err = m.IndexControl("foo", "", "", "", "unfreeze")
-	if err != nil {
-		t.Errorf("expected ok")
-	}
-	indexDefs, _, _ = CfgGetIndexDefs(cfg)
-	if indexDefs.IndexDefs["foo"].PlanParams.PlanFrozen {
-		t.Errorf("expected not frozen")
-	}
 }
 
 func TestRemoveNodeDef(t *testing.T) {

@@ -32,7 +32,7 @@ type IndexDefs struct {
 
 // An IndexDef is a logical index definition.
 type IndexDef struct {
-	Type         string     `json:"type"` // Ex: "bleve", "alias", "blackhole", etc.
+	Type         string     `json:"type"` // Ex: "blackhole", etc.
 	Name         string     `json:"name"`
 	UUID         string     `json:"uuid"`
 	Params       string     `json:"params"`
