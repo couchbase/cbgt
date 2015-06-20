@@ -65,12 +65,6 @@ func TestNewPIndexImpl(t *testing.T) {
 	if err == nil || pindexImpl != nil || dest != nil {
 		t.Errorf("expected err on unknown impl type")
 	}
-
-	pindexImpl, dest, err =
-		NewPIndexImpl("blackhole", indexParams, emptyDir, restart)
-	if err == nil || pindexImpl != nil || dest != nil {
-		t.Errorf("expected err on existing dir")
-	}
 }
 
 func TestBlackholePIndexImpl(t *testing.T) {
