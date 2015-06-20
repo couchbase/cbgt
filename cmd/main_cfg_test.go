@@ -39,12 +39,14 @@ func TestMainCfg(t *testing.T) {
 		t.Errorf("expected Set() to work")
 	}
 
-	cfg, err = MainCfg("cbgt", "simple", bindHttp, register, emptyDir)
+	cfg, err = MainCfg("cbgt", "simple",
+		bindHttp, register, emptyDir)
 	if err != nil || cfg == nil {
-		t.Errorf("expected MainCfg() to work on simple provider when reload")
+		t.Errorf("expected MainCfg() ok simple provider when reload")
 	}
 
-	cfg, err = MainCfg("cbgt", "couchbase:http://", bindHttp, register, emptyDir)
+	cfg, err = MainCfg("cbgt", "couchbase:http://",
+		bindHttp, register, emptyDir)
 	if err == nil || cfg != nil {
 		t.Errorf("expected err on bad url")
 	}

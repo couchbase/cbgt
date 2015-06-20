@@ -27,7 +27,8 @@ var ErrorBindHttp = errors.New("main_cfg:" +
 	"  (non-loopback, non-127.0.0.1/localhost, non-0.0.0.0)\n" +
 	"  so that this node can be clustered with other nodes.")
 
-func MainCfg(baseName, connect, bindHttp, register, dataDir string) (cbgt.Cfg, error) {
+func MainCfg(baseName, connect, bindHttp,
+	register, dataDir string) (cbgt.Cfg, error) {
 	// TODO: One day, the default cfg provider should not be simple.
 	// TODO: One day, cfg provider lookup should be table driven.
 	if connect == "" || connect == "simple" {
