@@ -379,7 +379,7 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 		err := pindex.Dest.Stats(buf)
 		if err == nil {
 			buf.Write(JsonCloseBrace)
-			mgr.addEvent(buf.Bytes())
+			mgr.AddEvent(buf.Bytes())
 		}
 	}
 
@@ -460,7 +460,7 @@ func (mgr *Manager) stopFeed(feed Feed) error {
 	err := feed.Stats(buf)
 	if err == nil {
 		buf.Write(JsonCloseBrace)
-		mgr.addEvent(buf.Bytes())
+		mgr.AddEvent(buf.Bytes())
 	}
 
 	feedUnreg := mgr.unregisterFeed(feed.Name())

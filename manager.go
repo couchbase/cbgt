@@ -625,7 +625,7 @@ func (mgr *Manager) Events() *list.List {
 
 // --------------------------------------------------------
 
-func (mgr *Manager) addEvent(jsonBytes []byte) {
+func (mgr *Manager) AddEvent(jsonBytes []byte) {
 	mgr.m.Lock()
 	for mgr.events.Len() >= MANAGER_MAX_EVENTS {
 		mgr.events.Remove(mgr.events.Front())
