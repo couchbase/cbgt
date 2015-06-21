@@ -7,7 +7,7 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-package cbft
+package rest
 
 import (
 	"flag"
@@ -24,9 +24,16 @@ import (
 	"github.com/gorilla/mux"
 
 	log "github.com/couchbase/clog"
+	"github.com/couchbaselabs/cbgt"
 )
 
 var startTime = time.Now()
+
+func showError(w http.ResponseWriter, r *http.Request,
+	msg string, code int) {
+	log.Printf("rest: error code: %d, msg: %s", code, msg)
+	http.Error(w, msg, code)
+}
 
 // RESTMeta represents the metadata of a REST API endpoint and is used
 // for auto-generated REST API documentation.
@@ -43,34 +50,11 @@ type RESTOpts interface {
 	RESTOpts(map[string]string)
 }
 
-// NewManagerRESTRouter creates a mux.Router initialized with the REST
-// API and web UI routes.  See also InitStaticFileRouter and
-// InitManagerRESTRouter if you need finer control of the router
-// initialization.
-func NewManagerRESTRouter(versionMain string, mgr *Manager,
-	staticDir, staticETag string, mr *MsgRing) (
-	*mux.Router, map[string]RESTMeta, error) {
-	r := mux.NewRouter()
-	r.StrictSlash(true)
-
-	r = InitStaticFileRouter(r,
-		staticDir, staticETag, []string{
-			"/indexes",
-			"/nodes",
-			"/monitor",
-			"/manage",
-			"/logs",
-			"/debug",
-		})
-
-	return InitManagerRESTRouter(r, versionMain, mgr,
-		staticDir, staticETag, mr)
-}
-
 // InitManagerRESTRouter initializes a mux.Router with REST API
 // routes.
 func InitManagerRESTRouter(r *mux.Router, versionMain string,
-	mgr *Manager, staticDir, staticETag string, mr *MsgRing) (
+	mgr *cbgt.Manager, staticDir, staticETag string,
+	mr *cbgt.MsgRing) (
 	*mux.Router, map[string]RESTMeta, error) {
 	PIndexTypesInitRouter(r, "manager.before")
 
@@ -123,7 +107,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
-	if mgr == nil || mgr.tagsMap == nil || mgr.tagsMap["queryer"] {
+	if mgr == nil || mgr.TagsMap() == nil || mgr.TagsMap()["queryer"] {
 		handle("/api/index/{indexName}/count", "GET",
 			NewCountHandler(mgr),
 			map[string]string{
@@ -178,7 +162,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
-	if mgr == nil || mgr.tagsMap == nil || mgr.tagsMap["pindex"] {
+	if mgr == nil || mgr.TagsMap() == nil || mgr.TagsMap()["pindex"] {
 		handle("/api/pindex", "GET",
 			NewListPIndexHandler(mgr),
 			map[string]string{
@@ -218,18 +202,6 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 			"_category": "Node|Node configuration",
 			"_about": `Requests the node to refresh its configuration
                        from the configuration provider.`,
-			"version introduced": "0.0.1",
-		})
-
-	handle("/api/diag", "GET", NewDiagGetHandler(versionMain, mgr, mr),
-		map[string]string{
-			"_category": "Node|Node diagnostics",
-			"_about": `Returns full set of diagnostic information
-                       from the node in one shot as JSON.  That is, the
-                       /api/diag response will be the union of the responses
-                       from the other REST API diagnostic and monitoring
-                       endpoints from the node, and is intended to make
-                       production support easier.`,
 			"version introduced": "0.0.1",
 		})
 
@@ -346,15 +318,11 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 // PIndexTypesInitRouter initializes a mux.Router with the REST API
 // routes provided by registered pindex types.
 func PIndexTypesInitRouter(r *mux.Router, phase string) {
-	for _, t := range PIndexImplTypes {
+	for _, t := range cbgt.PIndexImplTypes {
 		if t.InitRouter != nil {
 			t.InitRouter(r, phase)
 		}
 	}
-}
-
-func muxVariableLookup(req *http.Request, name string) string {
-	return mux.Vars(req)[name]
 }
 
 // --------------------------------------------------------
@@ -362,17 +330,19 @@ func muxVariableLookup(req *http.Request, name string) string {
 // RuntimeGetHandler is a REST handler for runtime GET endpoint.
 type RuntimeGetHandler struct {
 	versionMain string
-	mgr         *Manager
+	mgr         *cbgt.Manager
 }
 
-func NewRuntimeGetHandler(versionMain string, mgr *Manager) *RuntimeGetHandler {
+func NewRuntimeGetHandler(
+	versionMain string, mgr *cbgt.Manager) *RuntimeGetHandler {
 	return &RuntimeGetHandler{versionMain: versionMain, mgr: mgr}
 }
 
-func (h *RuntimeGetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	mustEncode(w, map[string]interface{}{
+func (h *RuntimeGetHandler) ServeHTTP(
+	w http.ResponseWriter, r *http.Request) {
+	cbgt.MustEncode(w, map[string]interface{}{
 		"versionMain": h.versionMain,
-		"versionData": h.mgr.version,
+		"versionData": h.mgr.Version(),
 		"arch":        runtime.GOARCH,
 		"os":          runtime.GOOS,
 		"numCPU":      runtime.NumCPU(),
@@ -405,7 +375,7 @@ func restGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 	user, userErr := user.Current()
 	wd, wdErr := os.Getwd()
 
-	mustEncode(w, map[string]interface{}{
+	cbgt.MustEncode(w, map[string]interface{}{
 		"args":  os.Args,
 		"env":   env,
 		"flags": flags,
@@ -413,16 +383,16 @@ func restGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 			"euid":        os.Geteuid(),
 			"gid":         os.Getgid(),
 			"groups":      groups,
-			"groupsErr":   ErrorToString(groupsErr),
+			"groupsErr":   cbgt.ErrorToString(groupsErr),
 			"hostname":    hostname,
-			"hostnameErr": ErrorToString(hostnameErr),
+			"hostnameErr": cbgt.ErrorToString(hostnameErr),
 			"pageSize":    os.Getpagesize(),
 			"pid":         os.Getpid(),
 			"ppid":        os.Getppid(),
 			"user":        user,
-			"userErr":     ErrorToString(userErr),
+			"userErr":     cbgt.ErrorToString(userErr),
 			"wd":          wd,
-			"wdErr":       ErrorToString(wdErr),
+			"wdErr":       cbgt.ErrorToString(wdErr),
 		},
 	})
 }
@@ -488,11 +458,11 @@ func restProfileMemory(w http.ResponseWriter, r *http.Request) {
 func restGetRuntimeStatsMem(w http.ResponseWriter, r *http.Request) {
 	memStats := &runtime.MemStats{}
 	runtime.ReadMemStats(memStats)
-	mustEncode(w, memStats)
+	cbgt.MustEncode(w, memStats)
 }
 
 func restGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
-	mustEncode(w, map[string]interface{}{
+	cbgt.MustEncode(w, map[string]interface{}{
 		"currTime":  time.Now(),
 		"startTime": startTime,
 		"go": map[string]interface{}{
