@@ -85,6 +85,13 @@ type RESTOpts interface {
 	RESTOpts(map[string]string)
 }
 
+var RESTMethodOrds = map[string]string{
+	"GET":    "0",
+	"POST":   "1",
+	"PUT":    "2",
+	"DELETE": "3",
+}
+
 // -------------------------------------------------------
 
 // InitManagerRESTRouter initializes a mux.Router with REST API
@@ -95,26 +102,19 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 	*mux.Router, map[string]RESTMeta, error) {
 	PIndexTypesInitRouter(r, "manager.before")
 
-	methodOrds := map[string]string{
-		"GET":    "0",
-		"POST":   "1",
-		"PUT":    "2",
-		"DELETE": "3",
-	}
-
 	meta := map[string]RESTMeta{}
 	handle := func(path string, method string, h http.Handler,
 		opts map[string]string) {
 		if a, ok := h.(RESTOpts); ok {
 			a.RESTOpts(opts)
 		}
-		meta[path+" "+methodOrds[method]+method] =
+		meta[path+" "+RESTMethodOrds[method]+method] =
 			RESTMeta{path, method, opts}
 		r.Handle(path, h).Methods(method)
 	}
 	handleFunc := func(path string, method string, h http.HandlerFunc,
 		opts map[string]string) {
-		meta[path+" "+methodOrds[method]+method] =
+		meta[path+" "+RESTMethodOrds[method]+method] =
 			RESTMeta{path, method, opts}
 		r.HandleFunc(path, h).Methods(method)
 	}
