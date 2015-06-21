@@ -281,7 +281,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 		})
 
 	handleFunc("/api/runtime/args", "GET",
-		restGetRuntimeArgs, map[string]string{
+		RESTGetRuntimeArgs, map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Returns information on the node's command-line,
                        parameters, environment variables and
@@ -290,14 +290,14 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 		})
 
 	handleFunc("/api/runtime/gc", "POST",
-		restPostRuntimeGC, map[string]string{
+		RESTPostRuntimeGC, map[string]string{
 			"_category":          "Node|Node management",
 			"_about":             `Requests the node to perform a GC.`,
 			"version introduced": "0.0.1",
 		})
 
 	handleFunc("/api/runtime/profile/cpu", "POST",
-		restProfileCPU, map[string]string{
+		RESTProfileCPU, map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Requests the node to capture local
                        cpu usage profiling information.`,
@@ -305,7 +305,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 		})
 
 	handleFunc("/api/runtime/profile/memory", "POST",
-		restProfileMemory, map[string]string{
+		RESTProfileMemory, map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Requests the node to capture lcoal
                        memory usage profiling information.`,
@@ -313,7 +313,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 		})
 
 	handleFunc("/api/runtime/stats", "GET",
-		restGetRuntimeStats, map[string]string{
+		RESTGetRuntimeStats, map[string]string{
 			"_category": "Node|Node monitoring",
 			"_about": `Returns information on the node's
                        low-level runtime stats as JSON.`,
@@ -321,7 +321,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 		})
 
 	handleFunc("/api/runtime/statsMem", "GET",
-		restGetRuntimeStatsMem, map[string]string{
+		RESTGetRuntimeStatsMem, map[string]string{
 			"_category": "Node|Node monitoring",
 			"_about": `Returns information on the node's
                        low-level GC and memory related runtime stats as JSON.`,
@@ -392,7 +392,7 @@ func (h *RuntimeGetHandler) ServeHTTP(
 	})
 }
 
-func restGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
+func RESTGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 	flags := map[string]interface{}{}
 	flag.VisitAll(func(f *flag.Flag) {
 		flags[f.Name] = f.Value
@@ -434,7 +434,7 @@ func restGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func restPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
+func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 	runtime.GC()
 }
 
@@ -442,7 +442,7 @@ func restPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 //    curl -X POST http://127.0.0.1:9090/api/runtime/profile/cpu -d secs=5
 // To analyze a profiling...
 //    go tool pprof ./cbft run-cpu.pprof
-func restProfileCPU(w http.ResponseWriter, r *http.Request) {
+func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
 		http.Error(w, "incorrect or missing secs parameter", 400)
@@ -478,7 +478,7 @@ func restProfileCPU(w http.ResponseWriter, r *http.Request) {
 //    curl -X POST http://127.0.0.1:9090/api/runtime/profile/memory
 // To analyze a profiling...
 //    go tool pprof ./cbft run-memory.pprof
-func restProfileMemory(w http.ResponseWriter, r *http.Request) {
+func RESTProfileMemory(w http.ResponseWriter, r *http.Request) {
 	fname := "./run-memory.pprof"
 	os.Remove(fname)
 	f, err := os.Create(fname)
@@ -492,13 +492,13 @@ func restProfileMemory(w http.ResponseWriter, r *http.Request) {
 	pprof.WriteHeapProfile(f)
 }
 
-func restGetRuntimeStatsMem(w http.ResponseWriter, r *http.Request) {
+func RESTGetRuntimeStatsMem(w http.ResponseWriter, r *http.Request) {
 	memStats := &runtime.MemStats{}
 	runtime.ReadMemStats(memStats)
 	MustEncode(w, memStats)
 }
 
-func restGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
+func RESTGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
 	MustEncode(w, map[string]interface{}{
 		"currTime":  time.Now(),
 		"startTime": StartTime,
