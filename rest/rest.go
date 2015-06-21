@@ -27,12 +27,28 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
-var startTime = time.Now()
+var StartTime = time.Now()
 
-func showError(w http.ResponseWriter, r *http.Request,
+func ShowError(w http.ResponseWriter, r *http.Request,
 	msg string, code int) {
 	log.Printf("rest: error code: %d, msg: %s", code, msg)
 	http.Error(w, msg, code)
+}
+
+func MuxVariableLookup(req *http.Request, name string) string {
+	return mux.Vars(req)[name]
+}
+
+func DocIDLookup(req *http.Request) string {
+	return MuxVariableLookup(req, "docID")
+}
+
+func IndexNameLookup(req *http.Request) string {
+	return MuxVariableLookup(req, "indexName")
+}
+
+func PIndexNameLookup(req *http.Request) string {
+	return MuxVariableLookup(req, "pindexName")
 }
 
 // RESTMeta represents the metadata of a REST API endpoint and is used
@@ -464,7 +480,7 @@ func restGetRuntimeStatsMem(w http.ResponseWriter, r *http.Request) {
 func restGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
 	cbgt.MustEncode(w, map[string]interface{}{
 		"currTime":  time.Now(),
-		"startTime": startTime,
+		"startTime": StartTime,
 		"go": map[string]interface{}{
 			"numGoroutine":   runtime.NumGoroutine(),
 			"numCgoCall":     runtime.NumCgoCall(),

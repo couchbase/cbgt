@@ -127,13 +127,13 @@ func (h *CreateIndexHandler) ServeHTTP(
 	// TODO: Need more input validation (check source UUID's, etc).
 	indexName := mux.Vars(req)["indexName"]
 	if indexName == "" {
-		showError(w, req, "rest_create_index: index name is required", 400)
+		ShowError(w, req, "rest_create_index: index name is required", 400)
 		return
 	}
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		showError(w, req, fmt.Sprintf("rest_create_index:"+
+		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 			" could not read request body, indexName: %s, err: %v",
 			indexName, err), 400)
 		return
@@ -143,7 +143,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if len(requestBody) > 0 {
 		err := json.Unmarshal(requestBody, &indexDef)
 		if err != nil {
-			showError(w, req, fmt.Sprintf("rest_create_index:"+
+			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" could not unmarshal json, indexName: %s, err: %v",
 				indexName, err), 400)
 			return
@@ -155,7 +155,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType = indexDef.Type
 	}
 	if indexType == "" {
-		showError(w, req, "rest_create_index: indexType is required", 400)
+		ShowError(w, req, "rest_create_index: indexType is required", 400)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		sourceType = indexDef.SourceType
 	}
 	if sourceType == "" {
-		showError(w, req, "rest_create_index: sourceType is required", 400)
+		ShowError(w, req, "rest_create_index: sourceType is required", 400)
 		return
 	}
 
@@ -200,7 +200,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if planParamsStr != "" {
 		err := json.Unmarshal([]byte(planParamsStr), planParams)
 		if err != nil {
-			showError(w, req, fmt.Sprintf("rest_create_index:"+
+			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, err: %v",
 				planParamsStr, err), 400)
 			return
@@ -216,7 +216,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType, indexName, string(indexParams),
 		*planParams, prevIndexUUID)
 	if err != nil {
-		showError(w, req, fmt.Sprintf("rest_create_index:"+
+		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",
 			indexName, err), 400)
 		return
