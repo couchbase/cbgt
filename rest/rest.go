@@ -10,8 +10,10 @@
 package rest
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/user"
@@ -35,6 +37,21 @@ func ShowError(w http.ResponseWriter, r *http.Request,
 	http.Error(w, msg, code)
 }
 
+func MustEncode(w io.Writer, i interface{}) {
+	if headered, ok := w.(http.ResponseWriter); ok {
+		headered.Header().Set("Cache-Control", "no-cache")
+		headered.Header().Set("Content-type", "application/json")
+	}
+
+	e := json.NewEncoder(w)
+	err := e.Encode(i)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// -------------------------------------------------------
+
 func MuxVariableLookup(req *http.Request, name string) string {
 	return mux.Vars(req)[name]
 }
@@ -51,6 +68,8 @@ func PIndexNameLookup(req *http.Request) string {
 	return MuxVariableLookup(req, "pindexName")
 }
 
+// -------------------------------------------------------
+
 // RESTMeta represents the metadata of a REST API endpoint and is used
 // for auto-generated REST API documentation.
 type RESTMeta struct {
@@ -65,6 +84,8 @@ type RESTMeta struct {
 type RESTOpts interface {
 	RESTOpts(map[string]string)
 }
+
+// -------------------------------------------------------
 
 // InitManagerRESTRouter initializes a mux.Router with REST API
 // routes.
@@ -356,7 +377,7 @@ func NewRuntimeGetHandler(
 
 func (h *RuntimeGetHandler) ServeHTTP(
 	w http.ResponseWriter, r *http.Request) {
-	cbgt.MustEncode(w, map[string]interface{}{
+	MustEncode(w, map[string]interface{}{
 		"versionMain": h.versionMain,
 		"versionData": h.mgr.Version(),
 		"arch":        runtime.GOARCH,
@@ -391,7 +412,7 @@ func restGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 	user, userErr := user.Current()
 	wd, wdErr := os.Getwd()
 
-	cbgt.MustEncode(w, map[string]interface{}{
+	MustEncode(w, map[string]interface{}{
 		"args":  os.Args,
 		"env":   env,
 		"flags": flags,
@@ -474,11 +495,11 @@ func restProfileMemory(w http.ResponseWriter, r *http.Request) {
 func restGetRuntimeStatsMem(w http.ResponseWriter, r *http.Request) {
 	memStats := &runtime.MemStats{}
 	runtime.ReadMemStats(memStats)
-	cbgt.MustEncode(w, memStats)
+	MustEncode(w, memStats)
 }
 
 func restGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
-	cbgt.MustEncode(w, map[string]interface{}{
+	MustEncode(w, map[string]interface{}{
 		"currTime":  time.Now(),
 		"startTime": StartTime,
 		"go": map[string]interface{}{

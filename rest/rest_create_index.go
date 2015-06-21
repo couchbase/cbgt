@@ -222,7 +222,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		return
 	}
 
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		// TODO: Should return created vs 200 HTTP code?
 		Status string `json:"status"`
 	}{Status: "ok"})

@@ -26,6 +26,17 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
+func TestMustEncode(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Errorf("expected must encode panic and recover")
+		}
+	}()
+	MustEncode(&bytes.Buffer{}, func() {})
+	t.Errorf("expected must encode panic")
+}
+
 // NewManagerRESTRouter creates a mux.Router initialized with the REST
 // API and web UI routes.  See also InitStaticFileRouter and
 // InitManagerRESTRouter if you need finer control of the router

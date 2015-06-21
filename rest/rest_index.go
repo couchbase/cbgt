@@ -44,7 +44,7 @@ func (h *ListIndexHandler) ServeHTTP(
 		Status:    "ok",
 		IndexDefs: indexDefs,
 	}
-	cbgt.MustEncode(w, rv)
+	MustEncode(w, rv)
 }
 
 // ---------------------------------------------------
@@ -110,7 +110,7 @@ func (h *GetIndexHandler) ServeHTTP(
 		planPIndexesWarnings = planPIndexes.Warnings[indexName]
 	}
 
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		Status       string             `json:"status"`
 		IndexDef     *cbgt.IndexDef     `json:"indexDef"`
 		PlanPIndexes []*cbgt.PlanPIndex `json:"planPIndexes"`
@@ -176,7 +176,7 @@ func (h *CountHandler) ServeHTTP(
 		Status: "ok",
 		Count:  count,
 	}
-	cbgt.MustEncode(w, rv)
+	MustEncode(w, rv)
 }
 
 // ---------------------------------------------------
@@ -338,7 +338,7 @@ func (h *IndexControlHandler) ServeHTTP(
 	}{
 		Status: "ok",
 	}
-	cbgt.MustEncode(w, rv)
+	MustEncode(w, rv)
 }
 
 // ------------------------------------------------------------------
@@ -363,7 +363,7 @@ func (h *ListPIndexHandler) ServeHTTP(
 		Status:   "ok",
 		PIndexes: pindexes,
 	}
-	cbgt.MustEncode(w, rv)
+	MustEncode(w, rv)
 }
 
 // ---------------------------------------------------
@@ -393,7 +393,7 @@ func (h *GetPIndexHandler) ServeHTTP(
 		return
 	}
 
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		Status string       `json:"status"`
 		PIndex *cbgt.PIndex `json:"pindex"`
 	}{
@@ -467,7 +467,7 @@ func (h *CountPIndexHandler) ServeHTTP(
 		Status: "ok",
 		Count:  count,
 	}
-	cbgt.MustEncode(w, rv)
+	MustEncode(w, rv)
 }
 
 // ---------------------------------------------------

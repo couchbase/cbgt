@@ -50,7 +50,7 @@ func (h *DeleteIndexHandler) ServeHTTP(
 		return
 	}
 
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		Status string `json:"status"`
 	}{
 		Status: "ok",

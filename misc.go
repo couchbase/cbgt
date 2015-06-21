@@ -194,19 +194,6 @@ func TimeoutCancelChan(timeout int64) <-chan bool {
 	return nil
 }
 
-func MustEncode(w io.Writer, i interface{}) {
-	if headered, ok := w.(http.ResponseWriter); ok {
-		headered.Header().Set("Cache-Control", "no-cache")
-		headered.Header().Set("Content-type", "application/json")
-	}
-
-	e := json.NewEncoder(w)
-	err := e.Encode(i)
-	if err != nil {
-		panic(err)
-	}
-}
-
 // Time invokes a func f and updates the totalDuration, totalCount and
 // maxDuration metrics.  See also Timer() for a metrics based
 // alternative.

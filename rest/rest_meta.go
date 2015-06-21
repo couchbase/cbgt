@@ -106,5 +106,5 @@ func (h *ManagerMetaHandler) ServeHTTP(
 		}
 	}
 
-	cbgt.MustEncode(w, r)
+	MustEncode(w, r)
 }

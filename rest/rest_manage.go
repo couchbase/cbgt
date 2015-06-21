@@ -118,7 +118,7 @@ func NewManagerKickHandler(mgr *cbgt.Manager) *ManagerKickHandler {
 func (h *ManagerKickHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	h.mgr.Kick(req.FormValue("msg"))
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		Status string `json:"status"`
 	}{Status: "ok"})
 }
@@ -147,7 +147,7 @@ func (h *CfgGetHandler) ServeHTTP(
 		cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
 	planPIndexes, planPIndexesCAS, planPIndexesErr :=
 		cbgt.CfgGetPlanPIndexes(cfg)
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		Status            string             `json:"status"`
 		IndexDefs         *cbgt.IndexDefs    `json:"indexDefs"`
 		IndexDefsCAS      uint64             `json:"indexDefsCAS"`
@@ -196,7 +196,7 @@ func (h *CfgRefreshHandler) ServeHTTP(
 	h.mgr.Cfg().Refresh()
 	h.mgr.GetIndexDefs(true)
 	h.mgr.GetPlanPIndexes(true)
-	cbgt.MustEncode(w, struct {
+	MustEncode(w, struct {
 		Status string `json:"status"`
 	}{Status: "ok"})
 }
