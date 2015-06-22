@@ -10,13 +10,16 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
@@ -94,6 +97,30 @@ var RESTMethodOrds = map[string]string{
 }
 
 // -------------------------------------------------------
+
+// NewManagerRESTRouter creates a mux.Router initialized with the REST
+// API and web UI routes.  See also InitStaticFileRouter and
+// InitManagerRESTRouter if you need finer control of the router
+// initialization.
+func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
+	staticDir, staticETag string, mr *cbgt.MsgRing) (
+	*mux.Router, map[string]RESTMeta, error) {
+	r := mux.NewRouter()
+	r.StrictSlash(true)
+
+	r = InitStaticFileRouter(r,
+		staticDir, staticETag, []string{
+			"/indexes",
+			"/nodes",
+			"/monitor",
+			"/manage",
+			"/logs",
+			"/debug",
+		})
+
+	return InitManagerRESTRouter(r, versionMain, mgr,
+		staticDir, staticETag, mr)
+}
 
 // InitManagerRESTRouter initializes a mux.Router with REST API
 // routes.
@@ -287,6 +314,18 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 			"_about": `Returns information on the node's command-line,
                        parameters, environment variables and
                        O/S process values as JSON.`,
+			"version introduced": "0.0.1",
+		})
+
+	handle("/api/diag", "GET", NewDiagGetHandler(versionMain, mgr, mr),
+		map[string]string{
+			"_category": "Node|Node diagnostics",
+			"_about": `Returns full set of diagnostic information
+                        from the node in one shot as JSON.  That is, the
+                        /api/diag response will be the union of the responses
+                        from the other REST API diagnostic and monitoring
+                        endpoints from the node, and is intended to make
+                        production support easier.`,
 			"version introduced": "0.0.1",
 		})
 
@@ -509,4 +548,130 @@ func RESTGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
 			"memProfileRate": runtime.MemProfileRate,
 		},
 	})
+}
+
+// ------------------------------------------------------
+
+// DiagGetHandler is a REST handler that retrieves diagnostic
+// information for a node.
+type DiagGetHandler struct {
+	versionMain string
+	mgr         *cbgt.Manager
+	mr          *cbgt.MsgRing
+}
+
+func NewDiagGetHandler(versionMain string,
+	mgr *cbgt.Manager, mr *cbgt.MsgRing) *DiagGetHandler {
+	return &DiagGetHandler{versionMain: versionMain, mgr: mgr, mr: mr}
+}
+
+func (h *DiagGetHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	handlers := []cbgt.DiagHandler{
+		{"/api/cfg", NewCfgGetHandler(h.mgr), nil},
+		{"/api/index", NewListIndexHandler(h.mgr), nil},
+		{"/api/log", NewLogGetHandler(h.mgr, h.mr), nil},
+		{"/api/managerMeta", NewManagerMetaHandler(h.mgr, nil), nil},
+		{"/api/pindex", NewListPIndexHandler(h.mgr), nil},
+		{"/api/runtime", NewRuntimeGetHandler(h.versionMain, h.mgr), nil},
+		{"/api/runtime/args", nil, RESTGetRuntimeArgs},
+		{"/api/runtime/stats", nil, RESTGetRuntimeStats},
+		{"/api/runtime/statsMem", nil, RESTGetRuntimeStatsMem},
+		{"/api/stats", NewStatsHandler(h.mgr), nil},
+		{"/debug/pprof/block?debug=1", nil,
+			func(w http.ResponseWriter, r *http.Request) {
+				DiagGetPProf(w, "block", 2)
+			}},
+		{"/debug/pprof/goroutine?debug=2", nil,
+			func(w http.ResponseWriter, r *http.Request) {
+				DiagGetPProf(w, "goroutine", 2)
+			}},
+		{"/debug/pprof/heap?debug=1", nil,
+			func(w http.ResponseWriter, r *http.Request) {
+				DiagGetPProf(w, "heap", 1)
+			}},
+		{"/debug/pprof/threadcreate?debug=1", nil,
+			func(w http.ResponseWriter, r *http.Request) {
+				DiagGetPProf(w, "threadcreate", 1)
+			}},
+	}
+
+	for _, t := range cbgt.PIndexImplTypes {
+		for _, h := range t.DiagHandlers {
+			handlers = append(handlers, h)
+		}
+	}
+
+	w.Write(cbgt.JsonOpenBrace)
+	for i, handler := range handlers {
+		if i > 0 {
+			w.Write(cbgt.JsonComma)
+		}
+		w.Write([]byte(fmt.Sprintf(`"%s":`, handler.Name)))
+		if handler.Handler != nil {
+			handler.Handler.ServeHTTP(w, req)
+		}
+		if handler.HandlerFunc != nil {
+			handler.HandlerFunc.ServeHTTP(w, req)
+		}
+	}
+
+	var first = true
+	var visit func(path string, f os.FileInfo, err error) error
+	visit = func(path string, f os.FileInfo, err error) error {
+		m := map[string]interface{}{
+			"Path":    path,
+			"Name":    f.Name(),
+			"Size":    f.Size(),
+			"Mode":    f.Mode(),
+			"ModTime": f.ModTime().Format(time.RFC3339Nano),
+			"IsDir":   f.IsDir(),
+		}
+		if strings.HasPrefix(f.Name(), "PINDEX_") || // Matches PINDEX_xxx_META.
+			strings.HasSuffix(f.Name(), "_META") || // Matches PINDEX_META.
+			strings.HasSuffix(f.Name(), ".json") { // Matches index_meta.json.
+			b, err := ioutil.ReadFile(path)
+			if err == nil {
+				m["Contents"] = string(b)
+			}
+		}
+		buf, err := json.Marshal(m)
+		if err == nil {
+			if !first {
+				w.Write(cbgt.JsonComma)
+			}
+			w.Write(buf)
+			first = false
+		}
+		return nil
+	}
+
+	w.Write([]byte(`,"dataDir":[`))
+	filepath.Walk(h.mgr.DataDir(), visit)
+	w.Write([]byte(`]`))
+
+	entries, err := AssetDir("static/dist")
+	if err == nil {
+		for _, name := range entries {
+			// Ex: "static/dist/manifest.txt".
+			a, err := Asset("static/dist/" + name)
+			if err == nil {
+				j, err := json.Marshal(strings.TrimSpace(string(a)))
+				if err == nil {
+					w.Write([]byte(`,"`))
+					w.Write([]byte("/static/dist/" + name))
+					w.Write([]byte(`":`))
+					w.Write(j)
+				}
+			}
+		}
+	}
+
+	w.Write(cbgt.JsonCloseBrace)
+}
+
+func DiagGetPProf(w http.ResponseWriter, profile string, debug int) {
+	var b bytes.Buffer
+	pprof.Lookup(profile).WriteTo(&b, debug)
+	MustEncode(w, b.String())
 }
