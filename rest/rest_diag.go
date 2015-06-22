@@ -12,23 +12,14 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/user"
 	"path/filepath"
-	"runtime"
 	"runtime/pprof"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gorilla/mux"
-
-	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
 )
@@ -39,11 +30,21 @@ type DiagGetHandler struct {
 	versionMain string
 	mgr         *cbgt.Manager
 	mr          *cbgt.MsgRing
+	assetDir    func(name string) ([]string, error)
+	asset       func(name string) ([]byte, error)
 }
 
 func NewDiagGetHandler(versionMain string,
-	mgr *cbgt.Manager, mr *cbgt.MsgRing) *DiagGetHandler {
-	return &DiagGetHandler{versionMain: versionMain, mgr: mgr, mr: mr}
+	mgr *cbgt.Manager, mr *cbgt.MsgRing,
+	assetDir func(name string) ([]string, error),
+	asset func(name string) ([]byte, error)) *DiagGetHandler {
+	return &DiagGetHandler{
+		versionMain: versionMain,
+		mgr:         mgr,
+		mr:          mr,
+		assetDir:    assetDir,
+		asset:       asset,
+	}
 }
 
 func (h *DiagGetHandler) ServeHTTP(
@@ -131,11 +132,11 @@ func (h *DiagGetHandler) ServeHTTP(
 	filepath.Walk(h.mgr.DataDir(), visit)
 	w.Write([]byte(`]`))
 
-	entries, err := AssetDir("static/dist")
+	entries, err := h.assetDir("static/dist")
 	if err == nil {
 		for _, name := range entries {
 			// Ex: "static/dist/manifest.txt".
-			a, err := Asset("static/dist/" + name)
+			a, err := h.asset("static/dist/" + name)
 			if err == nil {
 				j, err := json.Marshal(strings.TrimSpace(string(a)))
 				if err == nil {

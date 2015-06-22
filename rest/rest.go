@@ -10,16 +10,13 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/user"
-	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
@@ -317,7 +314,8 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
-	handle("/api/diag", "GET", NewDiagGetHandler(versionMain, mgr, mr),
+	handle("/api/diag", "GET",
+		NewDiagGetHandler(versionMain, mgr, mr, AssetDir, Asset),
 		map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Returns full set of diagnostic information
