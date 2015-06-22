@@ -26,6 +26,7 @@ import (
 	"github.com/gorilla/mux"
 
 	log "github.com/couchbase/clog"
+
 	"github.com/couchbaselabs/cbgt"
 )
 
