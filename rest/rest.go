@@ -100,7 +100,9 @@ var RESTMethodOrds = map[string]string{
 // InitManagerRESTRouter if you need finer control of the router
 // initialization.
 func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
-	staticDir, staticETag string, mr *cbgt.MsgRing) (
+	staticDir, staticETag string, mr *cbgt.MsgRing,
+	assetDir func(name string) ([]string, error),
+	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
@@ -116,14 +118,16 @@ func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
 		})
 
 	return InitManagerRESTRouter(r, versionMain, mgr,
-		staticDir, staticETag, mr)
+		staticDir, staticETag, mr, assetDir, asset)
 }
 
 // InitManagerRESTRouter initializes a mux.Router with REST API
 // routes.
 func InitManagerRESTRouter(r *mux.Router, versionMain string,
 	mgr *cbgt.Manager, staticDir, staticETag string,
-	mr *cbgt.MsgRing) (
+	mr *cbgt.MsgRing,
+	assetDir func(name string) ([]string, error),
+	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
 	PIndexTypesInitRouter(r, "manager.before")
 
@@ -315,7 +319,7 @@ func InitManagerRESTRouter(r *mux.Router, versionMain string,
 		})
 
 	handle("/api/diag", "GET",
-		NewDiagGetHandler(versionMain, mgr, mr, AssetDir, Asset),
+		NewDiagGetHandler(versionMain, mgr, mr, assetDir, asset),
 		map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Returns full set of diagnostic information

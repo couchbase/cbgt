@@ -37,20 +37,6 @@ func TestMustEncode(t *testing.T) {
 	t.Errorf("expected must encode panic")
 }
 
-// NewManagerRESTRouter creates a mux.Router initialized with the REST
-// API and web UI routes.  See also InitStaticFileRouter and
-// InitManagerRESTRouter if you need finer control of the router
-// initialization.
-func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
-	staticDir, staticETag string, mr *cbgt.MsgRing) (
-	*mux.Router, map[string]RESTMeta, error) {
-	r := mux.NewRouter()
-	r.StrictSlash(true)
-
-	return InitManagerRESTRouter(r, versionMain, mgr,
-		staticDir, staticETag, mr)
-}
-
 // Implements ManagerEventHandlers interface.
 type TestMEH struct {
 	lastPIndex *cbgt.PIndex
@@ -84,7 +70,8 @@ func TestNewManagerRESTRouter(t *testing.T) {
 	mgr := cbgt.NewManager(cbgt.VERSION, cfg, cbgt.NewUUID(),
 		nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
-	r, meta, err := NewManagerRESTRouter("v0", mgr, emptyDir, "", ring)
+	r, meta, err := NewManagerRESTRouter("v0", mgr, emptyDir, "", ring,
+		AssetDir, Asset)
 	if r == nil || meta == nil || err != nil {
 		t.Errorf("expected no errors")
 	}
@@ -92,7 +79,8 @@ func TestNewManagerRESTRouter(t *testing.T) {
 	mgr = cbgt.NewManager(cbgt.VERSION, cfg, cbgt.NewUUID(),
 		[]string{"queryer", "anotherTag"},
 		"", 1, "", ":1000", emptyDir, "some-datasource", nil)
-	r, meta, err = NewManagerRESTRouter("v0", mgr, emptyDir, "", ring)
+	r, meta, err = NewManagerRESTRouter("v0", mgr, emptyDir, "", ring,
+		AssetDir, Asset)
 	if r == nil || meta == nil || err != nil {
 		t.Errorf("expected no errors")
 	}
@@ -185,7 +173,8 @@ func TestHandlersForRuntimeOps(t *testing.T) {
 	mr.Write([]byte("hello"))
 	mr.Write([]byte("world"))
 
-	router, _, err := NewManagerRESTRouter("v0", mgr, "static", "", mr)
+	router, _, err := NewManagerRESTRouter("v0", mgr, "static", "", mr,
+		AssetDir, Asset)
 	if err != nil || router == nil {
 		t.Errorf("no mux router")
 	}
@@ -269,7 +258,8 @@ func TestHandlersForEmptyManager(t *testing.T) {
 	mgr.AddEvent([]byte(`"fizz"`))
 	mgr.AddEvent([]byte(`"buzz"`))
 
-	router, _, err := NewManagerRESTRouter("v0", mgr, "static", "", mr)
+	router, _, err := NewManagerRESTRouter("v0", mgr, "static", "", mr,
+		AssetDir, Asset)
 	if err != nil || router == nil {
 		t.Errorf("no mux router")
 	}
