@@ -34,7 +34,7 @@
       </select>
     </div>
   </div>
-  <div ng-show="newIndexType && newIndexType == 'bleve' && !isEdit && !isClone"
+  <div ng-if="newIndexType && newIndexType == 'bleve' && !isEdit && !isClone"
        class="bleveMapping">
     <div ng-controller="MappingCtrl" ng-include="'/static/partials/mapping/mapping.html'"/>
   </div>
