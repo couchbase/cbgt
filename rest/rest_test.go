@@ -60,7 +60,7 @@ func (meh *TestMEH) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 	}
 }
 
-func TestNewManagerRESTRouter(t *testing.T) {
+func TestNewRESTRouter(t *testing.T) {
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
@@ -70,7 +70,7 @@ func TestNewManagerRESTRouter(t *testing.T) {
 	mgr := cbgt.NewManager(cbgt.VERSION, cfg, cbgt.NewUUID(),
 		nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
-	r, meta, err := NewManagerRESTRouter("v0", mgr, emptyDir, "", ring,
+	r, meta, err := NewRESTRouter("v0", mgr, emptyDir, "", ring,
 		AssetDir, Asset)
 	if r == nil || meta == nil || err != nil {
 		t.Errorf("expected no errors")
@@ -79,7 +79,7 @@ func TestNewManagerRESTRouter(t *testing.T) {
 	mgr = cbgt.NewManager(cbgt.VERSION, cfg, cbgt.NewUUID(),
 		[]string{"queryer", "anotherTag"},
 		"", 1, "", ":1000", emptyDir, "some-datasource", nil)
-	r, meta, err = NewManagerRESTRouter("v0", mgr, emptyDir, "", ring,
+	r, meta, err = NewRESTRouter("v0", mgr, emptyDir, "", ring,
 		AssetDir, Asset)
 	if r == nil || meta == nil || err != nil {
 		t.Errorf("expected no errors")
@@ -173,7 +173,7 @@ func TestHandlersForRuntimeOps(t *testing.T) {
 	mr.Write([]byte("hello"))
 	mr.Write([]byte("world"))
 
-	router, _, err := NewManagerRESTRouter("v0", mgr, "static", "", mr,
+	router, _, err := NewRESTRouter("v0", mgr, "static", "", mr,
 		AssetDir, Asset)
 	if err != nil || router == nil {
 		t.Errorf("no mux router")
@@ -258,7 +258,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 	mgr.AddEvent([]byte(`"fizz"`))
 	mgr.AddEvent([]byte(`"buzz"`))
 
-	router, _, err := NewManagerRESTRouter("v0", mgr, "static", "", mr,
+	router, _, err := NewRESTRouter("v0", mgr, "static", "", mr,
 		AssetDir, Asset)
 	if err != nil || router == nil {
 		t.Errorf("no mux router")

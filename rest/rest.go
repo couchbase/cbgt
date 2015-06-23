@@ -95,11 +95,10 @@ var RESTMethodOrds = map[string]string{
 
 // -------------------------------------------------------
 
-// NewManagerRESTRouter creates a mux.Router initialized with the REST
-// API and web UI routes.  See also InitStaticFileRouter and
-// InitManagerRESTRouter if you need finer control of the router
-// initialization.
-func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
+// NewRESTRouter creates a mux.Router initialized with the REST API
+// and web UI routes.  See also InitStaticRouter and InitRESTRouter if
+// you need finer control of the router initialization.
+func NewRESTRouter(versionMain string, mgr *cbgt.Manager,
 	staticDir, staticETag string, mr *cbgt.MsgRing,
 	assetDir func(name string) ([]string, error),
 	asset func(name string) ([]byte, error)) (
@@ -107,7 +106,7 @@ func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 
-	r = InitStaticFileRouter(r,
+	r = InitStaticRouter(r,
 		staticDir, staticETag, []string{
 			"/indexes",
 			"/nodes",
@@ -117,13 +116,13 @@ func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
 			"/debug",
 		}, nil)
 
-	return InitManagerRESTRouter(r, versionMain, mgr,
+	return InitRESTRouter(r, versionMain, mgr,
 		staticDir, staticETag, mr, assetDir, asset)
 }
 
-// InitManagerRESTRouter initializes a mux.Router with REST API
+// InitRESTRouter initializes a mux.Router with REST API
 // routes.
-func InitManagerRESTRouter(r *mux.Router, versionMain string,
+func InitRESTRouter(r *mux.Router, versionMain string,
 	mgr *cbgt.Manager, staticDir, staticETag string,
 	mr *cbgt.MsgRing,
 	assetDir func(name string) ([]string, error),
