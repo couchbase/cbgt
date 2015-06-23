@@ -115,7 +115,7 @@ func NewManagerRESTRouter(versionMain string, mgr *cbgt.Manager,
 			"/manage",
 			"/logs",
 			"/debug",
-		})
+		}, nil)
 
 	return InitManagerRESTRouter(r, versionMain, mgr,
 		staticDir, staticETag, mr, assetDir, asset)

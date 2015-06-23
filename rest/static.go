@@ -31,7 +31,7 @@ func AssetFS() *assetfs.AssetFS {
 
 // InitStaticFileRouter adds static HTTP resource routes to a router.
 func InitStaticFileRouter(r *mux.Router, staticDir, staticETag string,
-	pages []string) *mux.Router {
+	pages []string, pagesHandler http.Handler) *mux.Router {
 	PIndexTypesInitRouter(r, "static.before")
 
 	var s http.FileSystem
@@ -54,7 +54,11 @@ func InitStaticFileRouter(r *mux.Router, staticDir, staticETag string,
 
 	for _, p := range pages {
 		// If client ask for any of the pages, redirect.
-		r.PathPrefix(p).Handler(RewriteURL("/", http.FileServer(s)))
+		if pagesHandler != nil {
+			r.PathPrefix(p).Handler(pagesHandler)
+		} else {
+			r.PathPrefix(p).Handler(RewriteURL("/", http.FileServer(s)))
+		}
 	}
 
 	r.Handle("/index.html", http.RedirectHandler("/static/index.html", 302))
