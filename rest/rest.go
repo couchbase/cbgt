@@ -482,7 +482,7 @@ func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 // To start a cpu profiling...
 //    curl -X POST http://127.0.0.1:9090/api/runtime/profile/cpu -d secs=5
 // To analyze a profiling...
-//    go tool pprof ./cbft run-cpu.pprof
+//    go tool pprof [program-binary] run-cpu.pprof
 func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
@@ -518,7 +518,7 @@ func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 // To grab a memory profiling...
 //    curl -X POST http://127.0.0.1:9090/api/runtime/profile/memory
 // To analyze a profiling...
-//    go tool pprof ./cbft run-memory.pprof
+//    go tool pprof [program-binary] run-memory.pprof
 func RESTProfileMemory(w http.ResponseWriter, r *http.Request) {
 	fname := "./run-memory.pprof"
 	os.Remove(fname)
