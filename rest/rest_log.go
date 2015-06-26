@@ -18,7 +18,7 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
-// TODO: Need to give the entire cbft codebase a scrub of its log
+// TODO: Need to give the codebase a scrub of its log
 // messages and fmt.Errorf()'s.
 
 // LogGetHandler is a REST handler that retrieves recent log messages.
