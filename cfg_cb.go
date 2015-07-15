@@ -58,6 +58,8 @@ func NewCfgCB(url, bucket string) (*CfgCB, error) {
 		return nil, err
 	}
 
+	// TODO: Just listen to the exact vbucket that the "cfg" key lives
+	// in rather than listening to all vbuckets.
 	bds, err := cbdatasource.NewBucketDataSource(
 		[]string{url},
 		"default", bucket, "", nil, c, c, cfgCBOptions)
@@ -134,6 +136,9 @@ func (c *CfgCB) unlockedLoad() error {
 		return err
 	}
 
+	// TODO: This "cfg" key should be parametrized in case apps want
+	// to reuse the bucket for other reasons and avoid key namespace
+	// collisions.
 	buf, err := bucket.GetRaw("cfg")
 	if err != nil && !gomemcached.IsNotFound(err) {
 		return err
