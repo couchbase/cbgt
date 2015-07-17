@@ -33,6 +33,7 @@ type CfgCB struct {
 	bucket string
 	b      *couchbase.Bucket
 	cfgMem *CfgMem
+	cfgKey string
 
 	bds  cbdatasource.BucketDataSource
 	bdsm sync.Mutex
@@ -51,6 +52,7 @@ func NewCfgCB(url, bucket string) (*CfgCB, error) {
 		url:    url,
 		bucket: bucket,
 		cfgMem: NewCfgMem(),
+		cfgKey: "cfg",
 	}
 
 	_, err := c.getBucket()
@@ -58,7 +60,7 @@ func NewCfgCB(url, bucket string) (*CfgCB, error) {
 		return nil, err
 	}
 
-	// TODO: Just listen to the exact vbucket that the "cfg" key lives
+	// TODO: Just listen to the exact vbucket that the cfgKey lives
 	// in rather than listening to all vbuckets.
 	bds, err := cbdatasource.NewBucketDataSource(
 		[]string{url},
@@ -74,6 +76,15 @@ func NewCfgCB(url, bucket string) (*CfgCB, error) {
 	}
 
 	return c, nil
+}
+
+// SetKeyPrefix changes the key prefix that the CfgCB will use as it
+// reads/writes its documents to the couchbase bucket (default key
+// prefix is "").  Use SetKeyPrefix with care, as you must arrange all
+// nodes in the cluster to use the same key prefix.  The SetKeyPrefix
+// should be used right after NewCfgCB.
+func (c *CfgCB) SetKeyPrefix(keyPrefix string) {
+	c.cfgKey = keyPrefix + "cfg"
 }
 
 func (c *CfgCB) Get(key string, cas uint64) (
@@ -136,10 +147,7 @@ func (c *CfgCB) unlockedLoad() error {
 		return err
 	}
 
-	// TODO: This "cfg" key should be parametrized in case apps want
-	// to reuse the bucket for other reasons and avoid key namespace
-	// collisions.
-	buf, err := bucket.GetRaw("cfg")
+	buf, err := bucket.GetRaw(c.cfgKey)
 	if err != nil && !gomemcached.IsNotFound(err) {
 		return err
 	}
@@ -169,7 +177,7 @@ func (c *CfgCB) unlockedSave() error {
 		return err
 	}
 
-	return bucket.Set("cfg", 0, c.cfgMem)
+	return bucket.Set(c.cfgKey, 0, c.cfgMem)
 }
 
 func (c *CfgCB) Subscribe(key string, ch chan CfgEvent) error {
@@ -213,7 +221,7 @@ func (r *CfgCB) OnError(err error) {
 
 func (r *CfgCB) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if string(key) == "cfg" {
+	if string(key) == r.cfgKey {
 		go func() {
 			r.Load()
 			r.cfgMem.Refresh()
@@ -225,7 +233,7 @@ func (r *CfgCB) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 func (r *CfgCB) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if string(key) == "cfg" {
+	if string(key) == r.cfgKey {
 		go func() {
 			r.Load()
 			r.cfgMem.Refresh()
