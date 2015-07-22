@@ -22,30 +22,33 @@ const INDEX_NAME_REGEXP = `^[A-Za-z][0-9A-Za-z_\-]*$`
 
 // Creates a logical index definition.  A non-"" prevIndexUUID means
 // an update to an existing index.
-func (mgr *Manager) CreateIndex(sourceType, sourceName, sourceUUID, sourceParams,
+func (mgr *Manager) CreateIndex(sourceType,
+	sourceName, sourceUUID, sourceParams,
 	indexType, indexName, indexParams string, planParams PlanParams,
 	prevIndexUUID string) error {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
 	matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(indexName))
 	if err != nil {
-		return fmt.Errorf("manager_api: CreateIndex, indexName parsing problem,"+
+		return fmt.Errorf("manager_api: CreateIndex,"+
+			" indexName parsing problem,"+
 			" indexName: %s, err: %v", indexName, err)
 	}
 	if !matched {
-		return fmt.Errorf("manager_api: CreateIndex, indexName is invalid,"+
-			" indexName: %q", indexName)
+		return fmt.Errorf("manager_api: CreateIndex,"+
+			" indexName is invalid, indexName: %q", indexName)
 	}
 
 	pindexImplType, exists := PIndexImplTypes[indexType]
 	if !exists {
-		return fmt.Errorf("manager_api: CreateIndex, unknown indexType: %s",
-			indexType)
+		return fmt.Errorf("manager_api: CreateIndex,"+
+			" unknown indexType: %s", indexType)
 	}
 	if pindexImplType.Validate != nil {
 		err := pindexImplType.Validate(indexType, indexName, indexParams)
 		if err != nil {
-			return fmt.Errorf("manager_api: CreateIndex, invalid, err: %v", err)
+			return fmt.Errorf("manager_api: CreateIndex, invalid,"+
+				" err: %v", err)
 		}
 	}
 
@@ -85,7 +88,7 @@ func (mgr *Manager) CreateIndex(sourceType, sourceName, sourceUUID, sourceParams
 		}
 		if prevIndex.UUID != prevIndexUUID {
 			return fmt.Errorf("manager_api:"+
-				" perhaps there was a concurrent index definition update"+
+				" perhaps there was concurrent index definition update"+
 				" - mismatched index UUID,"+
 				" indexName: %s, prevIndex.UUID: %s, prevIndexUUID: %s",
 				indexName, prevIndex.UUID, prevIndexUUID)
@@ -115,7 +118,8 @@ func (mgr *Manager) CreateIndex(sourceType, sourceName, sourceUUID, sourceParams
 
 	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 	if err != nil {
-		return fmt.Errorf("manager_api: could not save indexDefs, err: %v", err)
+		return fmt.Errorf("manager_api: could not save indexDefs,"+
+			" err: %v", err)
 	}
 
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
@@ -134,8 +138,8 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 		return err
 	}
 	if indexDefs == nil {
-		return fmt.Errorf("manager_api: no indexes on deletion of indexName: %s",
-			indexName)
+		return fmt.Errorf("manager_api: no indexes on deletion"+
+			" of indexName: %s", indexName)
 	}
 	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
 		return fmt.Errorf("manager_api: could not delete index,"+
@@ -143,8 +147,8 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 			indexDefs.ImplVersion, mgr.version)
 	}
 	if _, exists := indexDefs.IndexDefs[indexName]; !exists {
-		return fmt.Errorf("manager_api: index to delete missing, indexName: %s",
-			indexName)
+		return fmt.Errorf("manager_api: index to delete missing,"+
+			" indexName: %s", indexName)
 	}
 
 	indexDefs.UUID = NewUUID()
@@ -156,7 +160,8 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 
 	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 	if err != nil {
-		return fmt.Errorf("manager_api: could not save indexDefs, err: %v", err)
+		return fmt.Errorf("manager_api: could not save indexDefs,"+
+			" err: %v", err)
 	}
 
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
@@ -180,7 +185,8 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 	}
 	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
 		return fmt.Errorf("manager_api: index read/write control,"+
-			" indexName: %s, indexDefs.ImplVersion: %s > mgr.version: %s",
+			" indexName: %s,"+
+			" indexDefs.ImplVersion: %s > mgr.version: %s",
 			indexName, indexDefs.ImplVersion, mgr.version)
 	}
 	indexDef, exists := indexDefs.IndexDefs[indexName]
@@ -207,6 +213,7 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 		}
 	}
 
+	// TODO: Allow for node UUID and planPIndex.Name inputs.
 	npp := indexDef.PlanParams.NodePlanParams[""][""]
 	if readOp != "" {
 		if readOp == "allow" || readOp == "resume" {
@@ -233,7 +240,8 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 
 	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 	if err != nil {
-		return fmt.Errorf("manager_api: could not save indexDefs, err: %v", err)
+		return fmt.Errorf("manager_api: could not save indexDefs,"+
+			" err: %v", err)
 	}
 
 	atomic.AddUint64(&mgr.stats.TotIndexControlOk, 1)

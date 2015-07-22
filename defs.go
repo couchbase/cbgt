@@ -90,7 +90,7 @@ type PlanParams struct {
 }
 
 // A NodePlanParam defines whether a particular node can service a
-// particular index indefinition.
+// particular index definition.
 type NodePlanParam struct {
 	CanRead  bool `json:"canRead"`
 	CanWrite bool `json:"canWrite"`
