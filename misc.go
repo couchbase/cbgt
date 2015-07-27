@@ -27,6 +27,10 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+}
+
 // DiagHandler allows modules to provide their own additions in
 // response to "diag" or diagnostic information requests.
 type DiagHandler struct {
