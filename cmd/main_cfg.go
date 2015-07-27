@@ -31,14 +31,21 @@ func MainCfg(baseName, connect, bindHttp,
 	register, dataDir string) (cbgt.Cfg, error) {
 	// TODO: One day, the default cfg provider should not be simple.
 	// TODO: One day, cfg provider lookup should be table driven.
-	if connect == "" || connect == "simple" {
-		return MainCfgSimple(baseName, connect, bindHttp, register, dataDir)
-	}
-	if strings.HasPrefix(connect, "couchbase:") {
-		return MainCfgCB(baseName, connect[len("couchbase:"):],
+	var cfg cbgt.Cfg
+	var err error
+	switch {
+	case connect == "", connect == "simple":
+		cfg, err = MainCfgSimple(baseName, connect, bindHttp, register, dataDir)
+	case strings.HasPrefix(connect, "couchbase:"):
+		cfg, err = MainCfgCB(baseName, connect[len("couchbase:"):],
 			bindHttp, register, dataDir)
+	case strings.HasPrefix(connect, "metakv"):
+		cfg, err = MainCfgMetaKv(baseName, connect[len("metakv"):],
+			bindHttp, register, dataDir)
+	default:
+		err = fmt.Errorf("main_cfg1: unsupported cfg connect: %s", connect)
 	}
-	return nil, fmt.Errorf("main_cfg: unsupported cfg connect: %s", connect)
+	return cfg, err
 }
 
 func MainCfgSimple(baseName, connect, bindHttp, register, dataDir string) (
@@ -92,4 +99,17 @@ func MainCfgCB(baseName, urlStr, bindHttp, register, dataDir string) (
 	}
 
 	return cfg, nil
+}
+
+func MainCfgMetaKv(baseName, urlStr, bindHttp, register, dataDir string) (
+	cbgt.Cfg, error) {
+	cfg, err := cbgt.NewCfgMetaKv()
+	if err == nil {
+		// for deleting the old key in internal testing
+		if urlStr == ":delete" {
+			cfg.DelConf()
+		}
+		err = cfg.Load()
+	}
+	return cfg, err
 }
