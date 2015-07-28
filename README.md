@@ -6,3 +6,6 @@ distributed partitions (or data shards) across an elastic cluster of
 servers.
 
 [![GoDoc](https://godoc.org/github.com/couchbaselabs/cbgt?status.svg)](https://godoc.org/github.com/couchbaselabs/cbgt)
+
+NOTE: This library initializes math's random seed
+(rand.Seed(time.Now().UTC().UnixNano())) for unique id generation.
