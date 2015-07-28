@@ -176,6 +176,12 @@ func NewDCPFeed(name, indexName, url, poolName,
 	}
 
 	var auth couchbase.AuthHandler
+
+	// if no auth username was provided, use the bucket name as the username
+	if params.AuthUser == "" {
+		params.AuthUser = bucketName
+	}
+
 	if params.AuthUser != "" {
 		auth = params
 	}
