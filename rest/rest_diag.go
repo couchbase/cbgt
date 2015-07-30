@@ -132,18 +132,20 @@ func (h *DiagGetHandler) ServeHTTP(
 	filepath.Walk(h.mgr.DataDir(), visit)
 	w.Write([]byte(`]`))
 
-	entries, err := h.assetDir("staticx/dist")
-	if err == nil {
-		for _, name := range entries {
-			// Ex: "staticx/dist/manifest.txt".
-			a, err := h.asset("staticx/dist/" + name)
-			if err == nil {
-				j, err := json.Marshal(strings.TrimSpace(string(a)))
+	if h.assetDir != nil {
+		entries, err := h.assetDir("staticx/dist")
+		if err == nil {
+			for _, name := range entries {
+				// Ex: "staticx/dist/manifest.txt".
+				a, err := h.asset("staticx/dist/" + name)
 				if err == nil {
-					w.Write([]byte(`,"`))
-					w.Write([]byte("/staticx/dist/" + name))
-					w.Write([]byte(`":`))
-					w.Write(j)
+					j, err := json.Marshal(strings.TrimSpace(string(a)))
+					if err == nil {
+						w.Write([]byte(`,"`))
+						w.Write([]byte("/staticx/dist/" + name))
+						w.Write([]byte(`":`))
+						w.Write(j)
+					}
 				}
 			}
 		}
