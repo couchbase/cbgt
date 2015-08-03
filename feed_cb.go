@@ -104,6 +104,19 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 		}
 	}
 
+	if params.AuthUser == "" {
+		if auth, err := NewCbAuthHandler(server); err == nil {
+			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
+				" failed in parsing credentials,"+
+				" server: %s, poolName: %s, bucketName: %s,"+
+				" sourceType: %s, sourceParams: %q, err: %v",
+				server, poolName, bucketName, sourceType, sourceParams, err)
+		}
+	}
+
 	var client couchbase.Client
 
 	if params.AuthUser != "" || bucketName != "default" {

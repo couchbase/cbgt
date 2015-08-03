@@ -21,7 +21,6 @@ import (
 	"sync/atomic"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 )
@@ -111,6 +110,9 @@ type DCPFeedParams struct {
 	AuthUser     string `json:"authUser"` // May be "" for no auth.
 	AuthPassword string `json:"authPassword"`
 
+	AuthSaslUser     string `json:"authSaslUser"` // May be "" for no auth.
+	AuthSaslPassword string `json:"authSaslPassword"`
+
 	// Factor (like 1.5) to increase sleep time between retries
 	// in connecting to a cluster manager node.
 	ClusterManagerBackoffFactor float32 `json:"clusterManagerBackoffFactor"`
@@ -148,10 +150,15 @@ func NewDCPFeedParams() *DCPFeedParams {
 	}
 }
 
-// GetCredentials is part of the couchbase.AuthHandler interface.
+// GetCredentials is part of the couchbase.AuthSaslHandler interface.
 func (d *DCPFeedParams) GetCredentials() (string, string, string) {
 	// TODO: bucketName not necessarily userName.
 	return d.AuthUser, d.AuthPassword, d.AuthUser
+}
+
+func (d *DCPFeedParams) GetSaslCredentials() (string, string) {
+	// TODO: bucketName not necessarily userName.
+	return d.AuthSaslUser, d.AuthSaslPassword
 }
 
 // NewDCPFeed creates a new, ready-to-be-started DCP feed.
@@ -175,9 +182,26 @@ func NewDCPFeed(name, indexName, url, poolName,
 		vbucketIds = nil
 	}
 
-	var auth couchbase.AuthHandler
-	if params.AuthUser != "" {
-		auth = params
+	urls := strings.Split(url, ";")
+	if params.AuthUser == "" {
+		// Review:Should we check all the urls or not ??
+		for _, serverUrl := range urls {
+			var err error
+			auth, err := NewCbAuthHandler(serverUrl)
+			if err != nil {
+				continue
+			}
+			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
+			if err != nil {
+				continue
+			}
+			params.AuthSaslUser, params.AuthSaslPassword, err =
+				auth.GetSaslCredentials()
+			if err != nil {
+				continue
+			}
+			break
+		}
 	}
 
 	options := &cbdatasource.BucketDataSourceOptions{
@@ -207,9 +231,8 @@ func NewDCPFeed(name, indexName, url, poolName,
 	}
 
 	feed.bds, err = cbdatasource.NewBucketDataSource(
-		strings.Split(url, ";"),
-		poolName, bucketName, bucketUUID,
-		vbucketIds, auth, feed, options)
+		urls, poolName, bucketName, bucketUUID,
+		vbucketIds, params, feed, options)
 	if err != nil {
 		return nil, err
 	}
