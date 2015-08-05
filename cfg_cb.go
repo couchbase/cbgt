@@ -196,6 +196,8 @@ func (c *CfgCB) Refresh() error {
 		return err
 	}
 
+	c2.cfgKey = c.cfgKey
+
 	err = c2.Load()
 	if err != nil {
 		return err
