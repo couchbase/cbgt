@@ -29,6 +29,7 @@ type CfgMem struct {
 type CfgMemEntry struct {
 	CAS uint64
 	Val []byte
+	rev interface{}
 }
 
 // NewCfgMem returns an empty CfgMem instance.
@@ -57,17 +58,46 @@ func (c *CfgMem) Get(key string, cas uint64) (
 	return val, entry.CAS, nil
 }
 
+func (c *CfgMem) GetRev(key string, cas uint64) (
+	interface{}, error) {
+	c.m.Lock()
+	defer c.m.Unlock()
+	entry, exists := c.Entries[key]
+	if exists {
+		if cas == 0 || cas == entry.CAS {
+			return entry.rev, nil
+		}
+		return nil, &CfgCASError{}
+	}
+	return nil, nil
+}
+
+func (c *CfgMem) SetRev(key string, cas uint64, rev interface{}) error {
+	c.m.Lock()
+	defer c.m.Unlock()
+	entry, exists := c.Entries[key]
+	if cas == 0 || (exists && cas == entry.CAS) {
+		entry.rev = rev
+		c.Entries[key] = entry
+		return nil
+	}
+	return &CfgCASError{}
+}
+
 func (c *CfgMem) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
 	prevEntry, exists := c.Entries[key]
-	if cas == 0 {
+	switch {
+	case cas == 0:
 		if exists {
 			return 0, fmt.Errorf("cfg_mem: entry already exists, key: %s", key)
 		}
-	} else { // cas != 0
+	case cas == CAS_FORCE:
+		break
+	default: // cas != 0
 		if !exists || cas != prevEntry.CAS {
 			return 0, &CfgCASError{}
 		}

@@ -12,21 +12,23 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"github.com/couchbase/cbauth/metakv"
 	log "github.com/couchbase/clog"
+	"math"
 	"sync"
 )
 
 const (
-	BASE_CFG_PATH = "/cbft/cfg"
+	BASE_CFG_PATH = "/cbgt/cfg/"
+	CAS_FORCE     = math.MaxUint64
 )
 
 type CfgMetaKv struct {
 	m        sync.Mutex
-	cfgMem   *CfgMem
 	path     string
 	cancelCh chan struct{}
+	rev      interface{}
+	cfgMem   *CfgMem
 }
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
@@ -39,7 +41,8 @@ func NewCfgMetaKv() (*CfgMetaKv, error) {
 	}
 	go func() {
 		for {
-			err := metakv.RunObserveChildren("/", cfg.metaKVCallback, cfg.cancelCh)
+			err := metakv.RunObserveChildren(cfg.path, cfg.metaKVCallback,
+				cfg.cancelCh)
 			if err == nil {
 				return
 			} else {
@@ -54,7 +57,6 @@ func (c *CfgMetaKv) Get(key string, cas uint64) (
 	[]byte, uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
-
 	return c.cfgMem.Get(key, cas)
 }
 
@@ -62,15 +64,20 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
-
-	cas, err := c.cfgMem.Set(key, val, cas)
+	rev, err := c.cfgMem.GetRev(key, cas)
 	if err != nil {
 		return 0, err
 	}
-
-	err = c.unlockedSave()
-	if err != nil {
-		return 0, err
+	if rev == nil {
+		err = metakv.Add(c.makeKey(key), val)
+	} else {
+		err = metakv.Set(c.makeKey(key), val, rev)
+	}
+	if err == nil {
+		cas, err = c.cfgMem.Set(key, val, CAS_FORCE)
+		if err != nil {
+			return 0, err
+		}
 	}
 	return cas, err
 }
@@ -78,48 +85,39 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
 	c.m.Lock()
 	defer c.m.Unlock()
+	return c.delUnlocked(key, cas)
+}
 
-	err := c.cfgMem.Del(key, cas)
+func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
+	rev, err := c.cfgMem.GetRev(key, cas)
 	if err != nil {
 		return err
 	}
-	return c.unlockedSave()
+	err = metakv.Delete(c.makeKey(key), rev)
+	if err == nil {
+		return c.cfgMem.Del(key, 0)
+	}
+	return err
 }
 
 func (c *CfgMetaKv) Load() error {
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	return c.unlockedLoad()
-}
-
-func (c *CfgMetaKv) unlockedLoad() error {
-	value, _, err := metakv.Get(c.getCfgKey())
-	if err != nil {
-		return err
-	}
-	cfgMem := NewCfgMem()
-	if value != nil {
-		err = json.Unmarshal(value, cfgMem)
-		if err != nil {
-			return err
-		}
-	}
-	cfgMemPrev := c.cfgMem
-	cfgMemPrev.m.Lock()
-	defer cfgMemPrev.m.Unlock()
-	cfgMem.subscriptions = cfgMemPrev.subscriptions
-	c.cfgMem = cfgMem
+	metakv.IterateChildren(c.path, c.metaKVCallback)
 	return nil
 }
 
-func (c *CfgMetaKv) unlockedSave() error {
-	var err error
-	var value []byte
-	if value, err = json.Marshal(c.cfgMem); err != nil {
-		return err
+func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) error {
+	c.m.Lock()
+	defer c.m.Unlock()
+	key := c.getMetaKey(path)
+	if value == nil {
+		// key got deleted
+		return c.delUnlocked(key, 0)
 	}
-	return metakv.Set(c.getCfgKey(), value, nil)
+	cas, err := c.cfgMem.Set(key, value, CAS_FORCE)
+	if err == nil {
+		c.cfgMem.SetRev(key, cas, rev)
+	}
+	return err
 }
 
 func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
@@ -129,42 +127,22 @@ func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
 	return c.cfgMem.Subscribe(key, ch)
 }
 
-func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) error {
-	if path == c.path {
-		c.Load()
-		c.cfgMem.Refresh()
-	}
-	return nil
-}
-
 func (c *CfgMetaKv) Refresh() error {
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	c2, err := NewCfgMetaKv()
-	if err != nil {
-		return err
-	}
-
-	err = c2.Load()
-	if err != nil {
-		return err
-	}
-
-	c.cfgMem.CASNext = c2.cfgMem.CASNext
-	c.cfgMem.Entries = c2.cfgMem.Entries
-
-	return c.cfgMem.Refresh()
+	return nil
 }
 
 func (c *CfgMetaKv) OnError(err error) {
 	log.Printf("cfg_metakv: OnError, err: %v", err)
 }
 
-func (c *CfgMetaKv) getCfgKey() string {
-	return c.path
+func (c *CfgMetaKv) DelConf() {
+	metakv.RecursiveDelete(c.path)
 }
 
-func (c *CfgMetaKv) DelConf() {
-	metakv.Delete(c.path, nil)
+func (c *CfgMetaKv) makeKey(k string) string {
+	return c.path + k
+}
+
+func (c *CfgMetaKv) getMetaKey(k string) string {
+	return k[len(c.path):]
 }
