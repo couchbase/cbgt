@@ -153,9 +153,9 @@ func NewManager(version string, cfg Cfg, uuid string, tags []string,
 
 // Start will start and register a Manager instance with its
 // configured Cfg system, based on the register parameter.  See
-// Manager.StartRegister().
+// Manager.Register().
 func (mgr *Manager) Start(register string) error {
-	err := mgr.StartRegister(register)
+	err := mgr.Register(register)
 	if err != nil {
 		return err
 	}
@@ -197,9 +197,14 @@ func (mgr *Manager) Start(register string) error {
 	return nil
 }
 
-// StartRegister will register or unregister a Manager with its
-// configured Cfg system, based on the register parameter, which can
-// have these values:
+// StartRegister is deprecated and has been renamed to Register().
+func (mgr *Manager) StartRegister(register string) error {
+	return mgr.Register(register)
+}
+
+// Register will register or unregister a Manager with its configured
+// Cfg system, based on the register parameter, which can have these
+// values:
 // * wanted - register this node as wanted
 // * wantedForce - same as wanted, but force a Cfg update
 // * known - register this node as known
@@ -207,7 +212,7 @@ func (mgr *Manager) Start(register string) error {
 // * unwanted - unregister this node no longer wanted
 // * unknown - unregister this node no longer wanted and no longer known
 // * unchanged - don't change any Cfg registrations for this node
-func (mgr *Manager) StartRegister(register string) error {
+func (mgr *Manager) Register(register string) error {
 	if register == "unchanged" {
 		return nil
 	}
