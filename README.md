@@ -5,6 +5,8 @@ The cbgt project provides a golang library that helps manage
 distributed partitions (or data shards) across an elastic cluster of
 servers.
 
+[![Build Status](https://travis-ci.org/couchbaselabs/cbgt.svg)](https://travis-ci.org/couchbaselabs/cbgt)
+
 #### Documentation
 
 * [![GoDoc](https://godoc.org/github.com/couchbaselabs/cbgt?status.svg)](https://godoc.org/github.com/couchbaselabs/cbgt)
