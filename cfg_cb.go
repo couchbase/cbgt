@@ -13,6 +13,7 @@ package cbgt
 
 import (
 	"encoding/json"
+	"net/url"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -29,7 +30,8 @@ import (
 // individual key/value's on every get/set/del operation.
 type CfgCB struct {
 	m      sync.Mutex
-	url    string
+	urlStr string
+	url    *url.URL
 	bucket string
 	b      *couchbase.Bucket
 	cfgMem *CfgMem
@@ -47,15 +49,21 @@ var cfgCBOptions = &cbdatasource.BucketDataSourceOptions{
 	DataManagerSleepMaxMS:    20000,
 }
 
-func NewCfgCB(url, bucket string) (*CfgCB, error) {
+func NewCfgCB(urlStr, bucket string) (*CfgCB, error) {
+	url, err := couchbase.ParseURL(urlStr)
+	if err != nil {
+		return nil, err
+	}
+
 	c := &CfgCB{
+		urlStr: urlStr,
 		url:    url,
 		bucket: bucket,
 		cfgMem: NewCfgMem(),
 		cfgKey: "cfg",
 	}
 
-	_, err := c.getBucket()
+	_, err = c.getBucket()
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +71,7 @@ func NewCfgCB(url, bucket string) (*CfgCB, error) {
 	// TODO: Just listen to the exact vbucket that the cfgKey lives
 	// in rather than listening to all vbuckets.
 	bds, err := cbdatasource.NewBucketDataSource(
-		[]string{url},
+		[]string{urlStr},
 		"default", bucket, "", nil, c, c, cfgCBOptions)
 	if err != nil {
 		return nil, err
@@ -132,7 +140,7 @@ func (c *CfgCB) Load() error {
 
 func (c *CfgCB) getBucket() (*couchbase.Bucket, error) {
 	if c.b == nil {
-		b, err := couchbase.GetBucket(c.url, "default", c.bucket)
+		b, err := couchbase.GetBucket(c.urlStr, "default", c.bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +199,7 @@ func (c *CfgCB) Refresh() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	c2, err := NewCfgCB(c.url, c.bucket)
+	c2, err := NewCfgCB(c.urlStr, c.bucket)
 	if err != nil {
 		return err
 	}
@@ -212,7 +220,14 @@ func (c *CfgCB) Refresh() error {
 // ----------------------------------------------------------------
 
 func (a *CfgCB) GetCredentials() (string, string, string) {
-	return a.bucket, "", a.bucket
+	user := a.bucket
+	pswd := ""
+
+	if a.url != nil && a.url.User != nil {
+		pswd, _ = a.url.User.Password()
+	}
+
+	return user, pswd, a.bucket
 }
 
 // ----------------------------------------------------------------
