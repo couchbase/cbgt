@@ -44,6 +44,10 @@ func TestVersionGTE(t *testing.T) {
 		{"0.0", "hello", false},
 		{"hello", "0", false},
 		{"hello", "0.0", false},
+		{"3.1.0", "4.0.0", false},
+		{"3.1.0", "3.2.0", false},
+		{"3.2.0", "3.1.0", true},
+		{"4.0.0", "3.1.0", true},
 	}
 
 	for i, test := range tests {

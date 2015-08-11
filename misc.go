@@ -96,6 +96,9 @@ func VersionGTE(x, y string) bool {
 		if err != nil {
 			return false
 		}
+		if xv > yv {
+			return true
+		}
 		if xv < yv {
 			return false
 		}
