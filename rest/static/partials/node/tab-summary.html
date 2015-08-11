@@ -8,8 +8,8 @@
        ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeAddr]"></i>
     <a href="/nodes/{{nodeAddr}}">{{nodeAddr}}</a>
     &nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;
-    <a href="http://{{nodeAddr}}">
-      <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{nodeAddr}}
+    <a href="http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].hostPort}}">
+      <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].hostPort}}
     </a>
   </dd>
   <br/>

@@ -104,18 +104,18 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	nodeDefs, err := PlannerGetNodeDefs(mgr.cfg, mgr.version,
-		mgr.uuid, mgr.bindHttp)
+	nodeDefs, err := PlannerGetNodeDefs(mgr.cfg, mgr.version, mgr.uuid)
 	if err != nil {
 		return false, err
 	}
-	planPIndexesPrev, cas, err := PlannerGetPlanPIndexes(mgr.cfg, mgr.version)
+	planPIndexesPrev, cas, err :=
+		PlannerGetPlanPIndexes(mgr.cfg, mgr.version)
 	if err != nil {
 		return false, err
 	}
 
-	planPIndexes, err :=
-		CalcPlan(indexDefs, nodeDefs, planPIndexesPrev, mgr.version, mgr.server)
+	planPIndexes, err := CalcPlan(indexDefs, nodeDefs,
+		planPIndexesPrev, mgr.version, mgr.server)
 	if err != nil {
 		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
 	}
@@ -159,8 +159,8 @@ func PlannerGetIndexDefs(cfg Cfg, version string) (*IndexDefs, error) {
 	return indexDefs, nil
 }
 
-// PlannerGetNodeDefs retrives node definitions from a Cfg.
-func PlannerGetNodeDefs(cfg Cfg, version, uuid, bindHttp string) (
+// PlannerGetNodeDefs retrieves node definitions from a Cfg.
+func PlannerGetNodeDefs(cfg Cfg, version, uuid string) (
 	*NodeDefs, error) {
 	nodeDefs, _, err := CfgGetNodeDefs(cfg, NODE_DEFS_WANTED)
 	if err != nil {
@@ -173,19 +173,19 @@ func PlannerGetNodeDefs(cfg Cfg, version, uuid, bindHttp string) (
 		return nil, fmt.Errorf("planner: nodeDefs.ImplVersion: %s"+
 			" > version: %s", nodeDefs.ImplVersion, version)
 	}
-	nodeDef, exists := nodeDefs.NodeDefs[bindHttp]
+	nodeDef, exists := nodeDefs.NodeDefs[uuid]
 	if !exists || nodeDef == nil {
-		return nil, fmt.Errorf("planner: no NodeDef, bindHttp: %s", bindHttp)
+		return nil, fmt.Errorf("planner: no NodeDef, uuid: %s", uuid)
 	}
 	if nodeDef.ImplVersion != version {
-		return nil, fmt.Errorf("planner: ended since NodeDef, bindHttp: %s,"+
+		return nil, fmt.Errorf("planner: ended since NodeDef, uuid: %s,"+
 			" NodeDef.ImplVersion: %s != version: %s",
-			bindHttp, nodeDef.ImplVersion, version)
+			uuid, nodeDef.ImplVersion, version)
 	}
 	if nodeDef.UUID != uuid {
-		return nil, fmt.Errorf("planner: ended since NodeDef, bindHttp: %s,"+
+		return nil, fmt.Errorf("planner: ended since NodeDef, uuid: %s,"+
 			" NodeDef.UUID: %s != uuid: %s",
-			bindHttp, nodeDef.UUID, uuid)
+			uuid, nodeDef.UUID, uuid)
 	}
 	isPlanner := true
 	if nodeDef.Tags != nil && len(nodeDef.Tags) > 0 {
@@ -197,8 +197,8 @@ func PlannerGetNodeDefs(cfg Cfg, version, uuid, bindHttp string) (
 		}
 	}
 	if !isPlanner {
-		return nil, fmt.Errorf("planner: ended since node, bindHttp: %s,"+
-			" is not a planner, tags: %#v", bindHttp, nodeDef.Tags)
+		return nil, fmt.Errorf("planner: ended since node, uuid: %s,"+
+			" is not a planner, tags: %#v", uuid, nodeDef.Tags)
 	}
 	return nodeDefs, nil
 }

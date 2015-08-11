@@ -12,14 +12,14 @@
     <th width="90%">Node</th>
     <th></th>
   </tr>
-  <tr ng-repeat="(nodeAddr, nodeDef) in resultCfg.nodeDefsKnown.nodeDefs">
+  <tr ng-repeat="(nodeUUID, nodeDef) in resultCfg.nodeDefsKnown.nodeDefs">
     <td>
       <i class="glyphicon glyphicon-hdd"></i>
       <i class="glyphicon glyphicon-check"
-         ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeAddr]"></i>
+         ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
       <i class="glyphicon glyphicon-unchecked"
-         ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeAddr]"></i>
-      <a href="/nodes/{{nodeAddr}}">{{nodeAddr}}</a>
+         ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
+      <a href="/nodes/{{nodeUUID}}">{{nodeUUID}}</a>
       <ul class="nodeDefContainer">
         <li ng-repeat="nodeDefContainerPart in nodeDef.containerArr"
             class="nodeDefContainerPart">
@@ -30,8 +30,8 @@
       </ul>
     </td>
     <td>
-      <a href="http://{{nodeAddr}}">
-        <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{nodeAddr}}
+      <a href="http://{{nodeDef.hostPort}}">
+        <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{nodeDef.hostPort}}
       </a>
     </td>
   </tr>

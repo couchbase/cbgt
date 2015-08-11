@@ -25,7 +25,7 @@ import (
 // An IndexDefs is zero or more index definitions.
 type IndexDefs struct {
 	// IndexDefs.UUID changes whenever any child IndexDef changes.
-	UUID        string               `json:"uuid"`
+	UUID        string               `json:"uuid"`        // Like a revision id.
 	IndexDefs   map[string]*IndexDef `json:"indexDefs"`   // Key is IndexDef.Name.
 	ImplVersion string               `json:"implVersion"` // See VERSION.
 }
@@ -34,7 +34,7 @@ type IndexDefs struct {
 type IndexDef struct {
 	Type         string     `json:"type"` // Ex: "blackhole", etc.
 	Name         string     `json:"name"`
-	UUID         string     `json:"uuid"`
+	UUID         string     `json:"uuid"` // Like a revision id.
 	Params       string     `json:"params"`
 	SourceType   string     `json:"sourceType"`
 	SourceName   string     `json:"sourceName"`
@@ -101,8 +101,8 @@ type NodePlanParam struct {
 // A NodeDefs is comprised of zero or more node definitions.
 type NodeDefs struct {
 	// NodeDefs.UUID changes whenever any child NodeDef changes.
-	UUID        string              `json:"uuid"`
-	NodeDefs    map[string]*NodeDef `json:"nodeDefs"`    // Key is NodeDef.HostPort.
+	UUID        string              `json:"uuid"`        // Like a revision id.
+	NodeDefs    map[string]*NodeDef `json:"nodeDefs"`    // Key is NodeDef.UUID.
 	ImplVersion string              `json:"implVersion"` // See VERSION.
 }
 
@@ -122,7 +122,7 @@ type NodeDef struct {
 // A PlanPIndexes is comprised of zero or more planPIndexes.
 type PlanPIndexes struct {
 	// PlanPIndexes.UUID changes whenever any child PlanPIndex changes.
-	UUID         string                 `json:"uuid"`
+	UUID         string                 `json:"uuid"`         // Like a revision id.
 	PlanPIndexes map[string]*PlanPIndex `json:"planPIndexes"` // Key is PlanPIndex.Name.
 	ImplVersion  string                 `json:"implVersion"`  // See VERSION.
 	Warnings     map[string][]string    `json:"warnings"`     // Key is IndexDef.Name.

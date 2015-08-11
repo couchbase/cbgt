@@ -230,15 +230,14 @@ func (mgr *Manager) CoveringPIndexes(indexName, indexUUID string,
 
 	// Returns true if the node has the "pindex" tag.
 	nodeDoesPIndexes := func(nodeUUID string) (*NodeDef, bool) {
-		for _, nodeDef := range nodeDefs.NodeDefs {
-			if nodeDef.UUID == nodeUUID {
-				if len(nodeDef.Tags) <= 0 {
+		nodeDef, ok := nodeDefs.NodeDefs[nodeUUID]
+		if ok && nodeDef.UUID == nodeUUID {
+			if len(nodeDef.Tags) <= 0 {
+				return nodeDef, true
+			}
+			for _, tag := range nodeDef.Tags {
+				if tag == "pindex" {
 					return nodeDef, true
-				}
-				for _, tag := range nodeDef.Tags {
-					if tag == "pindex" {
-						return nodeDef, true
-					}
 				}
 			}
 		}
