@@ -9,17 +9,19 @@
 
 <table class="table table-striped nodes">
   <tr>
-    <th width="90%">Node</th>
+    <th width="90%" colspan="2">Node</th>
     <th></th>
   </tr>
-  <tr ng-repeat="(nodeUUID, nodeDef) in resultCfg.nodeDefsKnown.nodeDefs">
+  <tr ng-repeat="(nodeUUID, nodeDef) in resultCfg.nodeDefsKnown.nodeDefs | orderBy:'hostPort'">
     <td>
       <i class="glyphicon glyphicon-hdd"></i>
       <i class="glyphicon glyphicon-check"
          ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
       <i class="glyphicon glyphicon-unchecked"
          ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
-      <a href="/nodes/{{nodeUUID}}">{{nodeUUID}}</a>
+      <a href="/nodes/{{nodeUUID}}">{{nodeDef.hostPort}}</a> ({{nodeUUID}})
+    </td>
+    <td>
       <ul class="nodeDefContainer">
         <li ng-repeat="nodeDefContainerPart in nodeDef.containerArr"
             class="nodeDefContainerPart">
@@ -43,7 +45,6 @@ table.nodes td {
 }
 ul.nodeDefContainer {
   display: inline-block;
-  margin-left: 1.5em;
 }
 ul.nodeDefContainer li {
   display: inline-block;

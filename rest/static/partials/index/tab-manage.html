@@ -75,7 +75,7 @@
     <th>Index Partition</th>
     <th>Source Partitions</th>
     <th ng-repeat="nodeAddr in nodeAddrsArr" class="nodeAddr">
-      <a href="/nodes/{{nodeAddr}}">{{nodeAddr}}</a>
+      <a href="/nodes/{{nodeDefsByAddr[nodeAddr].uuid}}">{{nodeAddr}}</a>
       <div>&nbsp;&nbsp;</div>
     </th>
   </tr>

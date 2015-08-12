@@ -3,28 +3,30 @@
   <dd>
     <i class="glyphicon glyphicon-hdd"></i>
     <i class="glyphicon glyphicon-check"
-       ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeAddr]"></i>
+       ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
     <i class="glyphicon glyphicon-unchecked"
-       ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeAddr]"></i>
-    <a href="/nodes/{{nodeAddr}}">{{nodeAddr}}</a>
+       ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
+    <a href="/nodes/{{nodeUUID}}">{{nodeUUID}}</a>
     &nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;
-    <a href="http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].hostPort}}">
-      <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].hostPort}}
+    <a href="http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}">
+      <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}
     </a>
   </dd>
   <br/>
 
   <dt>Version:</dt>
-  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].implVersion}}</dd>
+  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].implVersion}}</dd>
   <dt>UUID:</dt>
-  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].uuid}}</dd>
+  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].uuid}}</dd>
+  <dt>Host / Port:</dt>
+  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}</dd>
   <dt>Tags:</dt>
-  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].tags}}</dd>
+  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].tags}}</dd>
   <dt>Container:</dt>
   <dd>
     <ul class="nodeDefContainer"
-        ng-show="resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].container">
-      <li ng-repeat="nodeDefContainerPart in resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].containerArr"
+        ng-show="resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].container">
+      <li ng-repeat="nodeDefContainerPart in resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].containerArr"
           class="nodeDefContainerPart">
         <div ng-attr-style="border-left: 8px solid {{containerPartColor(nodeDefContainerPart)}}">
             {{nodeDefContainerPart}}
@@ -33,7 +35,7 @@
     </ul>
   </dd>
   <dt>Weight:</dt>
-  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeAddr].weight}}</dd>
+  <dd>{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].weight}}</dd>
 </dl>
 
 <style>

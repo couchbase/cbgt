@@ -37,10 +37,10 @@ config(['$routeProvider', '$locationProvider', function($routeProvider, $locatio
   $routeProvider.when('/nodes/',
                       {templateUrl: '/static/partials/node/list.html',
                        controller: 'NodeCtrl'});
-  $routeProvider.when('/nodes/:nodeAddr',
+  $routeProvider.when('/nodes/:nodeUUID',
                       {templateUrl: '/static/partials/node/node.html',
                        controller: 'NodeCtrl'});
-  $routeProvider.when('/nodes/:nodeAddr/:tabName',
+  $routeProvider.when('/nodes/:nodeUUID/:tabName',
                       {templateUrl: '/static/partials/node/node.html',
                        controller: 'NodeCtrl'});
 

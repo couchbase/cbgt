@@ -3,7 +3,7 @@ function NodeCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.resultCfg = null;
     $scope.resultCfgJSON = null;
 
-    $scope.nodeAddr = $routeParams.nodeAddr;
+    $scope.nodeUUID = $routeParams.nodeUUID;
     $scope.tab = $routeParams.tabName;
     if($scope.tab === undefined || $scope.tab === "") {
         $scope.tab = "summary";
@@ -25,8 +25,8 @@ function NodeCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.resultCfg = null;
         $scope.resultCfgJSON = null;
         $http.get('/api/cfg').success(function(data) {
-            for (var nodeAddr in data.nodeDefsKnown.nodeDefs) {
-                var nodeDef = data.nodeDefsKnown.nodeDefs[nodeAddr];
+            for (var nodeUUID in data.nodeDefsKnown.nodeDefs) {
+                var nodeDef = data.nodeDefsKnown.nodeDefs[nodeUUID];
                 nodeDef.containerArr = (nodeDef.container || "").split('/');
             }
             $scope.resultCfg = data;
