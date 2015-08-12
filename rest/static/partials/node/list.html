@@ -12,14 +12,14 @@
     <th width="90%" colspan="2">Node</th>
     <th></th>
   </tr>
-  <tr ng-repeat="(nodeUUID, nodeDef) in resultCfg.nodeDefsKnown.nodeDefs | orderBy:'hostPort'">
+  <tr ng-repeat="nodeDef in nodeDefsKnownArrOrderByHostPort">
     <td>
       <i class="glyphicon glyphicon-hdd"></i>
       <i class="glyphicon glyphicon-check"
-         ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
+         ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeDef.uuid]"></i>
       <i class="glyphicon glyphicon-unchecked"
-         ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
-      <a href="/nodes/{{nodeUUID}}">{{nodeDef.hostPort}}</a> ({{nodeUUID}})
+         ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeDef.uuid]"></i>
+      <a href="/nodes/{{nodeDef.uuid}}">{{nodeDef.hostPort}}</a> ({{nodeDef.uuid}})
     </td>
     <td>
       <ul class="nodeDefContainer">

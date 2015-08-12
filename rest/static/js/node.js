@@ -2,6 +2,7 @@ function NodeCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     $scope.resultCfg = null;
     $scope.resultCfgJSON = null;
+    $scope.nodeDefsKnownArrOrderByHostPort = null;
 
     $scope.nodeUUID = $routeParams.nodeUUID;
     $scope.tab = $routeParams.tabName;
@@ -24,11 +25,22 @@ function NodeCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.cfgGet = function(name, mapping) {
         $scope.resultCfg = null;
         $scope.resultCfgJSON = null;
+        $scope.nodeDefsKnownArrOrderByHostPort = [];
         $http.get('/api/cfg').success(function(data) {
             for (var nodeUUID in data.nodeDefsKnown.nodeDefs) {
                 var nodeDef = data.nodeDefsKnown.nodeDefs[nodeUUID];
                 nodeDef.containerArr = (nodeDef.container || "").split('/');
+                $scope.nodeDefsKnownArrOrderByHostPort.push(nodeDef);
             }
+            $scope.nodeDefsKnownArrOrderByHostPort.sort(function(a, b) {
+                if (a.hostPort < b.hostPort) {
+                    return -1;
+                }
+                if (a.hostPort > b.hostPort) {
+                    return 1;
+                }
+                return 0;
+            });
             $scope.resultCfg = data;
             $scope.resultCfgJSON = JSON.stringify(data, undefined, 2);
         }).
