@@ -135,7 +135,13 @@ func main() {
 		tags, container, weight, extras, bindHttp,
 		flags.DataDir, server, nil)
 
-	mgr.Start(register)
+	err = mgr.StartCfg()
+	if err != nil {
+		log.Fatalf("%v", err)
+		return
+	}
+
+	runMCP(mgr)
 }
 
 func MainWelcome(flagAliases map[string][]string) {

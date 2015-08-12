@@ -171,11 +171,17 @@ func (mgr *Manager) Start(register string) error {
 		go mgr.PlannerKick("start")
 	}
 
-	if mgr.tagsMap == nil || (mgr.tagsMap["pindex"] && mgr.tagsMap["janitor"]) {
+	if mgr.tagsMap == nil ||
+		(mgr.tagsMap["pindex"] && mgr.tagsMap["janitor"]) {
 		go mgr.JanitorLoop()
 		go mgr.JanitorKick("start")
 	}
 
+	return mgr.StartCfg()
+}
+
+// StartCfg will start Cfg subscriptions.
+func (mgr *Manager) StartCfg() error {
 	if mgr.cfg != nil { // TODO: Need err handling for Cfg subscriptions.
 		go func() {
 			ei := make(chan CfgEvent)
@@ -184,6 +190,7 @@ func (mgr *Manager) Start(register string) error {
 				mgr.GetIndexDefs(true)
 			}
 		}()
+
 		go func() {
 			ep := make(chan CfgEvent)
 			mgr.cfg.Subscribe(PLAN_PINDEXES_KEY, ep)
