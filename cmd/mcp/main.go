@@ -33,16 +33,16 @@ var VERSION = "v0.0.0"
 
 var expvars = expvar.NewMap("stats")
 
-func main() {
-	tags := []string{""}
-	container := ""
-	weight := 0
-	extras := ""
-	bindHttp := "mcp"       // Don't listen on ADDR:PORT.
-	register := "unchanged" // Don't list mcp in Cfg.
-	uuid := "mcp-uuid"
-	server := "."
+func clearRegistrations() {
+	for k := range cbgt.FeedTypes {
+		delete(cbgt.FeedTypes, k)
+	}
+	for k := range cbgt.PIndexImplTypes {
+		delete(cbgt.PIndexImplTypes, k)
+	}
+}
 
+func main() {
 	flag.Parse()
 
 	if flags.Help {
@@ -55,6 +55,17 @@ func main() {
 			VERSION, cbgt.VERSION)
 		os.Exit(0)
 	}
+
+	clearRegistrations()
+
+	tags := []string{""}
+	container := ""
+	weight := 0
+	extras := ""
+	bindHttp := "mcp"       // Don't listen on ADDR:PORT.
+	register := "unchanged" // Don't list mcp in Cfg.
+	uuid := "mcp-uuid"      // Fake UUID that identifies us as mcp.
+	server := "."
 
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
