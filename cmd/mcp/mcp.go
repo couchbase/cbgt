@@ -90,6 +90,9 @@ func runRebalancer(mgr *cbgt.Manager, server string) (bool, error) {
 		currStates:      map[string]map[string]map[string]string{},
 	}
 
+	// TODO: Prepopulate currStates so that we can double-check that
+	// our state transitions(assignPartition) are valid.
+
 	return r.run()
 }
 
@@ -310,6 +313,9 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 	r.m.Lock()
 
+	// TODO: validate that we're making a valid state transition.
+	//
+	// Update currStates to the assigned index/partition/node/state.
 	partitions, exists := r.currStates[index]
 	if !exists || partitions == nil {
 		partitions = map[string]map[string]string{}
@@ -326,6 +332,8 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 	r.m.Unlock()
 
+	// TODO: stopCh handling.
+
 	return nil
 }
 
@@ -335,9 +343,16 @@ func (r *rebalancer) partitionState(stopCh chan struct{},
 	log.Printf("partitionStateFunc: index: %s,"+
 		" partition: %s, node: %s", index, partition, node)
 
+	currState := ""
+
 	r.m.Lock()
-	currState := r.currStates[index][partition][node]
+	if r.currStates[index] != nil &&
+		r.currStates[index][partition] != nil {
+		currState = r.currStates[index][partition][node]
+	}
 	r.m.Unlock()
+
+	// TODO: real state & pct, with stopCh handling.
 
 	return currState, 1.0, nil
 }
