@@ -155,11 +155,13 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 		return false, err
 	}
 
+	r.m.Lock()
 	r.o = o
+	r.m.Unlock()
 
 	numProgress := 0
 
-	for progress := range r.o.ProgressCh() {
+	for progress := range o.ProgressCh() {
 		numProgress++
 
 		log.Printf("run: indexDef.Name: %s,"+
@@ -167,7 +169,7 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 			indexDef.Name, numProgress, progress)
 	}
 
-	r.o.Stop()
+	o.Stop()
 
 	// TDOO: Check that the plan in the cfg should match our endMap...
 	//
