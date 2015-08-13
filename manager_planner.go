@@ -420,25 +420,7 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 	return planPIndexesForIndex, nil
 }
 
-// BlancePartitionModel returns a blance library PartitionModel and
-// model constraints based on an input index definition.
-func BlancePartitionModel(indexDef *IndexDef) (
-	model blance.PartitionModel,
-	modelConstraints map[string]int,
-) {
-	// We're using multiple model states to better utilize blance's
-	// node hierarchy features (shelf/rack/zone/row awareness).
-	return blance.PartitionModel{
-		"primary": &blance.PartitionModelState{
-			Priority:    0,
-			Constraints: 1,
-		},
-		"replica": &blance.PartitionModelState{
-			Priority:    1,
-			Constraints: indexDef.PlanParams.NumReplicas,
-		},
-	}, map[string]int(nil)
-}
+// --------------------------------------------------------
 
 // BlancePlanPIndexes invokes the blance library's generic
 // PlanNextMap() algorithm to create a new pindex layout plan.
@@ -453,40 +435,7 @@ func BlancePlanPIndexes(indexDef *IndexDef,
 	model, modelConstraints := BlancePartitionModel(indexDef)
 
 	// First, reconstruct previous blance map from planPIndexesPrev.
-	blancePrevMap := blance.PartitionMap{}
-	for _, planPIndex := range planPIndexesForIndex {
-		blancePartition := &blance.Partition{
-			Name:         planPIndex.Name,
-			NodesByState: map[string][]string{},
-		}
-		blancePrevMap[planPIndex.Name] = blancePartition
-		if planPIndexesPrev != nil {
-			planPIndexPrev, exists :=
-				planPIndexesPrev.PlanPIndexes[planPIndex.Name]
-			if exists && planPIndexPrev != nil {
-				// Sort by planPIndexNode.Priority for stability.
-				planPIndexNodeRefs := PlanPIndexNodeRefs{}
-				for nodeUUIDPrev, planPIndexNode := range planPIndexPrev.Nodes {
-					planPIndexNodeRefs =
-						append(planPIndexNodeRefs, &PlanPIndexNodeRef{
-							UUID: nodeUUIDPrev,
-							Node: planPIndexNode,
-						})
-				}
-				sort.Sort(planPIndexNodeRefs)
-
-				for _, planPIndexNodeRef := range planPIndexNodeRefs {
-					state := "replica"
-					if planPIndexNodeRef.Node.Priority <= 0 {
-						state = "primary"
-					}
-					blancePartition.NodesByState[state] =
-						append(blancePartition.NodesByState[state],
-							planPIndexNodeRef.UUID)
-				}
-			}
-		}
-	}
+	blancePrevMap := BlanceMap(planPIndexesForIndex, planPIndexesPrev)
 
 	// TODO: Leverage blance's partition weight & state stickiness features.
 	partitionWeights := map[string]int(nil)
@@ -542,6 +491,72 @@ func BlancePlanPIndexes(indexDef *IndexDef,
 
 	return warnings
 }
+
+// BlancePartitionModel returns a blance library PartitionModel and
+// model constraints based on an input index definition.
+func BlancePartitionModel(indexDef *IndexDef) (
+	model blance.PartitionModel,
+	modelConstraints map[string]int,
+) {
+	// We're using multiple model states to better utilize blance's
+	// node hierarchy features (shelf/rack/zone/row awareness).
+	return blance.PartitionModel{
+		"primary": &blance.PartitionModelState{
+			Priority:    0,
+			Constraints: 1,
+		},
+		"replica": &blance.PartitionModelState{
+			Priority:    1,
+			Constraints: indexDef.PlanParams.NumReplicas,
+		},
+	}, map[string]int(nil)
+}
+
+// BlanceMap reconstructs a blance map from an existing plan.
+func BlanceMap(
+	planPIndexesForIndex map[string]*PlanPIndex,
+	planPIndexes *PlanPIndexes,
+) blance.PartitionMap {
+	m := blance.PartitionMap{}
+
+	for _, planPIndex := range planPIndexesForIndex {
+		blancePartition := &blance.Partition{
+			Name:         planPIndex.Name,
+			NodesByState: map[string][]string{},
+		}
+		m[planPIndex.Name] = blancePartition
+
+		if planPIndexes != nil {
+			p, exists := planPIndexes.PlanPIndexes[planPIndex.Name]
+			if exists && p != nil {
+				// Sort by planPIndexNode.Priority for stability.
+				planPIndexNodeRefs := PlanPIndexNodeRefs{}
+				for nodeUUIDPrev, planPIndexNode := range p.Nodes {
+					planPIndexNodeRefs =
+						append(planPIndexNodeRefs, &PlanPIndexNodeRef{
+							UUID: nodeUUIDPrev,
+							Node: planPIndexNode,
+						})
+				}
+				sort.Sort(planPIndexNodeRefs)
+
+				for _, planPIndexNodeRef := range planPIndexNodeRefs {
+					state := "replica"
+					if planPIndexNodeRef.Node.Priority <= 0 {
+						state = "primary"
+					}
+					blancePartition.NodesByState[state] =
+						append(blancePartition.NodesByState[state],
+							planPIndexNodeRef.UUID)
+				}
+			}
+		}
+	}
+
+	return m
+}
+
+// --------------------------------------------------------
 
 // NOTE: PlanPIndex.Name must be unique across the cluster and ideally
 // functionally based off of the indexDef so that the SamePlanPIndex()
