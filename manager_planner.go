@@ -233,7 +233,7 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 
 	nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
 		nodeWeights, nodeHierarchy :=
-		getNodesLayout(indexDefs, nodeDefs, planPIndexesPrev)
+		CalcNodesLayout(indexDefs, nodeDefs, planPIndexesPrev)
 
 	planPIndexes := NewPlanPIndexes(version)
 
@@ -266,9 +266,9 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		}
 
 		planPIndexesForIndex, err :=
-			splitIndexDefIntoPlanPIndexes(indexDef, server, planPIndexes)
+			SplitIndexDefIntoPlanPIndexes(indexDef, server, planPIndexes)
 		if err != nil {
-			log.Printf("planner: could not splitIndexDefIntoPlanPIndexes,"+
+			log.Printf("planner: could not SplitIndexDefIntoPlanPIndexes,"+
 				" indexDef: %#v, server: %s, err: %v", indexDef, server, err)
 			continue // Keep planning the other IndexDefs.
 		}
@@ -276,7 +276,7 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes, depending on
 		// the numReplicas setting.
-		warnings := blancePlanPIndexes(indexDef,
+		warnings := BlancePlanPIndexes(indexDef,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
 			nodeWeights, nodeHierarchy)
@@ -292,7 +292,9 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	return planPIndexes, nil
 }
 
-func getNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
+// CalcNodesLayout computes information about the nodes based on the
+// index definitions, node definitions, and the current plan.
+func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	planPIndexesPrev *PlanPIndexes) (
 	nodeUUIDsAll []string,
 	nodeUUIDsToAdd []string,
@@ -362,13 +364,14 @@ func getNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 // 10), then one PIndex assigned to the remainder will be smaller than
 // the other PIndexes (such as having only a remainder of 4 partitions
 // rather than the usual 10 partitions per PIndex).
-func splitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
+func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 	planPIndexesOut *PlanPIndexes) (
 	map[string]*PlanPIndex, error) {
 	maxPartitionsPerPIndex := indexDef.PlanParams.MaxPartitionsPerPIndex
 
 	sourcePartitionsArr, err := DataSourcePartitions(indexDef.SourceType,
-		indexDef.SourceName, indexDef.SourceUUID, indexDef.SourceParams, server)
+		indexDef.SourceName, indexDef.SourceUUID, indexDef.SourceParams,
+		server)
 	if err != nil {
 		return nil, fmt.Errorf("planner: could not get partitions,"+
 			" indexDef: %#v, server: %s, err: %v", indexDef, server, err)
@@ -417,7 +420,9 @@ func splitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 	return planPIndexesForIndex, nil
 }
 
-func blancePlanPIndexes(indexDef *IndexDef,
+// BlancePlanPIndexes invokes the blance library's generic
+// PlanNextMap() algorithm to create a new pindex layout plan.
+func BlancePlanPIndexes(indexDef *IndexDef,
 	planPIndexesForIndex map[string]*PlanPIndex,
 	planPIndexesPrev *PlanPIndexes,
 	nodeUUIDsAll []string,
