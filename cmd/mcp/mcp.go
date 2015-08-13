@@ -20,7 +20,7 @@ import (
 )
 
 func runMCP(mgr *cbgt.Manager, server string) (bool, error) {
-	cfg, version, uuid := mgr.Cfg(), mgr.Version(), mgr.UUID()
+	cfg, version := mgr.Cfg(), mgr.Version()
 	if cfg == nil { // Can occur during testing.
 		return false, nil
 	}
@@ -29,14 +29,24 @@ func runMCP(mgr *cbgt.Manager, server string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	indexDefs, err := cbgt.PlannerGetIndexDefs(cfg, version)
 	if err != nil {
 		return false, err
 	}
-	nodeDefs, err := cbgt.PlannerGetNodeDefs(cfg, version, uuid)
+
+	nodeDefs, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("mcp: CfgGetNodeDefs err: %v", err)
 	}
+	if nodeDefs == nil {
+		return false, fmt.Errorf("mcp: ended since no NodeDefs")
+	}
+	if cbgt.VersionGTE(version, nodeDefs.ImplVersion) == false {
+		return false, fmt.Errorf("mcp: nodeDefs.ImplVersion: %s"+
+			" > version: %s", nodeDefs.ImplVersion, version)
+	}
+
 	planPIndexesPrev, cas, err := cbgt.PlannerGetPlanPIndexes(cfg, version)
 	if err != nil {
 		return false, err
@@ -52,7 +62,7 @@ func runMCP(mgr *cbgt.Manager, server string) (bool, error) {
 
 	// TODO.
 
-	planPIndexes, err := cbgt.CalcPlan(indexDefs, nodeDefs,
+	planPIndexesFFwd, err := cbgt.CalcPlan(indexDefs, nodeDefs,
 		planPIndexesPrev, version, server)
 	if err != nil {
 		return false, fmt.Errorf("mcp: CalcPlan, err: %v", err)
@@ -62,23 +72,25 @@ func runMCP(mgr *cbgt.Manager, server string) (bool, error) {
 	log.Printf("mcp, nodeDefs: %#v", nodeDefs)
 	log.Printf("mcp, planPIndexesPrev: %#v, cas: %v",
 		planPIndexesPrev, cas)
-	log.Printf("mcp, planPIndexes: %#v",
-		planPIndexes, cas)
+	log.Printf("mcp, planPIndexesFFwd: %#v",
+		planPIndexesFFwd, cas)
 	log.Printf("mcp, nodeUUIDsAll: %#v", nodeUUIDsAll)
 	log.Printf("mcp, nodeUUIDsToAdd: %#v", nodeUUIDsToAdd)
 	log.Printf("mcp, nodeUUIDsToRemove: %#v", nodeUUIDsToRemove)
 	log.Printf("mcp, nodeWeights: %#v", nodeWeights)
 	log.Printf("mcp, nodeHierarchy: %#v", nodeHierarchy)
 
-	if cbgt.SamePlanPIndexes(planPIndexes, planPIndexesPrev) {
+	if cbgt.SamePlanPIndexes(planPIndexesFFwd, planPIndexesPrev) {
 		return false, nil
 	}
 
-	_, err = cbgt.CfgSetPlanPIndexes(cfg, planPIndexes, cas)
-	if err != nil {
-		return false, fmt.Errorf("mcp: could not save new plan,"+
-			" perhaps a concurrent planner won, cas: %d, err: %v",
-			cas, err)
+	if false {
+		_, err = cbgt.CfgSetPlanPIndexes(cfg, planPIndexesFFwd, cas)
+		if err != nil {
+			return false, fmt.Errorf("mcp: could not save new plan,"+
+				" perhaps a concurrent planner won, cas: %d, err: %v",
+				cas, err)
+		}
 	}
 
 	return true, nil
