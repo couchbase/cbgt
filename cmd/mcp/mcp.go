@@ -40,11 +40,14 @@ type rebalancer struct {
 
 	endPlanPIndexes *cbgt.PlanPIndexes
 
+	o *blance.Orchestrator
+
 	// Map of index -> partition -> node -> state.
 	currStates map[string]map[string]map[string]string
 }
 
-// runRebalancer implements the central MCP rebalance workflow.
+// runRebalancer implements the "master, central planner (MCP)"
+// rebalance workflow.
 func runRebalancer(mgr *cbgt.Manager, server string) (bool, error) {
 	cfg := mgr.Cfg()
 	if cfg == nil { // Can occur during testing.
@@ -90,10 +93,10 @@ func runRebalancer(mgr *cbgt.Manager, server string) (bool, error) {
 	return r.run()
 }
 
+// The run method rebalances each index, one at a time.
 func (r *rebalancer) run() (bool, error) {
 	changedAny := false
 
-	// Populate r.endPlanPIndexes as we process each indexDef.
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
 		changed, err := r.runIndex(indexDef)
 		if err != nil {
@@ -107,7 +110,11 @@ func (r *rebalancer) run() (bool, error) {
 	return changedAny, nil
 }
 
-func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (bool, error) {
+// The runIndex method rebalances a single index.
+func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
+	changed bool,
+	err error,
+) {
 	log.Printf("runIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
@@ -116,6 +123,11 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (bool, error) {
 		return false, nil
 	}
 	r.m.Unlock()
+
+	partitionModel, begMap, endMap, err := r.calcBegEndMaps(indexDef)
+	if err != nil {
+		return false, err
+	}
 
 	assignPartitionFunc := func(stopCh chan struct{},
 		partition, node, state, op string) error {
@@ -128,11 +140,6 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (bool, error) {
 		state string, pct float32, err error) {
 		return r.partitionStateFunc(stopCh,
 			indexDef.Name, partition, node)
-	}
-
-	partitionModel, begMap, endMap, err := r.calcBegEndMaps(indexDef)
-	if err != nil {
-		return false, err
 	}
 
 	o, err := blance.OrchestrateMoves(
@@ -148,9 +155,11 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (bool, error) {
 		return false, err
 	}
 
+	r.o = o
+
 	numProgress := 0
 
-	for progress := range o.ProgressCh() {
+	for progress := range r.o.ProgressCh() {
 		numProgress++
 
 		log.Printf("run: indexDef.Name: %s,"+
@@ -158,7 +167,7 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (bool, error) {
 			indexDef.Name, numProgress, progress)
 	}
 
-	o.Stop()
+	r.o.Stop()
 
 	// TDOO: Check that the plan in the cfg should match our endMap...
 	//
