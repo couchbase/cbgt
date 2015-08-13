@@ -131,14 +131,14 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 
 	assignPartitionFunc := func(stopCh chan struct{},
 		partition, node, state, op string) error {
-		return r.assignPartitionFunc(stopCh,
+		return r.assignPartition(stopCh,
 			indexDef.Name, partition, node, state, op)
 	}
 
 	partitionStateFunc := func(stopCh chan struct{},
 		partition string, node string) (
 		state string, pct float32, err error) {
-		return r.partitionStateFunc(stopCh,
+		return r.partitionState(stopCh,
 			indexDef.Name, partition, node)
 	}
 
@@ -302,7 +302,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 // --------------------------------------------------------
 
-func (r *rebalancer) assignPartitionFunc(stopCh chan struct{},
+func (r *rebalancer) assignPartition(stopCh chan struct{},
 	index, partition, node, state, op string) error {
 	log.Printf("assignPartitionFunc: index: %s,"+
 		" partition: %s, node: %s, state: %s, op: %s",
@@ -329,7 +329,7 @@ func (r *rebalancer) assignPartitionFunc(stopCh chan struct{},
 	return nil
 }
 
-func (r *rebalancer) partitionStateFunc(stopCh chan struct{},
+func (r *rebalancer) partitionState(stopCh chan struct{},
 	index, partition, node string) (
 	state string, pct float32, err error) {
 	log.Printf("partitionStateFunc: index: %s,"+
