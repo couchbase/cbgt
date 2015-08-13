@@ -420,6 +420,26 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 	return planPIndexesForIndex, nil
 }
 
+// BlancePartitionModel returns a blance library PartitionModel and
+// model constraints based on an input index definition.
+func BlancePartitionModel(indexDef *IndexDef) (
+	model blance.PartitionModel,
+	modelConstraints map[string]int,
+) {
+	// We're using multiple model states to better utilize blance's
+	// node hierarchy features (shelf/rack/zone/row awareness).
+	return blance.PartitionModel{
+		"primary": &blance.PartitionModelState{
+			Priority:    0,
+			Constraints: 1,
+		},
+		"replica": &blance.PartitionModelState{
+			Priority:    1,
+			Constraints: indexDef.PlanParams.NumReplicas,
+		},
+	}, map[string]int(nil)
+}
+
 // BlancePlanPIndexes invokes the blance library's generic
 // PlanNextMap() algorithm to create a new pindex layout plan.
 func BlancePlanPIndexes(indexDef *IndexDef,
@@ -430,19 +450,7 @@ func BlancePlanPIndexes(indexDef *IndexDef,
 	nodeUUIDsToRemove []string,
 	nodeWeights map[string]int,
 	nodeHierarchy map[string]string) []string {
-	// We're using multiple model states to better utilize blance's
-	// node hierarchy features (shelf/rack/zone/row awareness).
-	model := blance.PartitionModel{
-		"primary": &blance.PartitionModelState{
-			Priority:    0,
-			Constraints: 1,
-		},
-		"replica": &blance.PartitionModelState{
-			Priority:    1,
-			Constraints: indexDef.PlanParams.NumReplicas,
-		},
-	}
-	modelConstraints := map[string]int(nil)
+	model, modelConstraints := BlancePartitionModel(indexDef)
 
 	// First, reconstruct previous blance map from planPIndexesPrev.
 	blancePrevMap := blance.PartitionMap{}
