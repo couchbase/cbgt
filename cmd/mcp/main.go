@@ -33,15 +33,6 @@ var VERSION = "v0.0.0"
 
 var expvars = expvar.NewMap("stats")
 
-func clearRegistrations() {
-	for k := range cbgt.FeedTypes {
-		delete(cbgt.FeedTypes, k)
-	}
-	for k := range cbgt.PIndexImplTypes {
-		delete(cbgt.PIndexImplTypes, k)
-	}
-}
-
 func main() {
 	flag.Parse()
 
@@ -55,8 +46,6 @@ func main() {
 			VERSION, cbgt.VERSION)
 		os.Exit(0)
 	}
-
-	clearRegistrations()
 
 	tags := []string{""}
 	container := ""
