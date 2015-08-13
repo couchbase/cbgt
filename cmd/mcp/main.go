@@ -125,7 +125,7 @@ func main() {
 
 	// TODO: Need to mgr.Cfg().Subscribe(...) to cfg changes?
 
-	changed, err := runMCP(mgr, flags.Server)
+	changed, err := runRebalancer(mgr, flags.Server)
 	if err != nil {
 		log.Fatalf("main: runMCP err: %v", err)
 		return
