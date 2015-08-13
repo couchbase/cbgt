@@ -240,17 +240,17 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	// Examine every indexDef...
 	for _, indexDef := range indexDefs.IndexDefs {
 		if indexDef.PlanParams.PlanFrozen {
-			// If the planner is frozen, just copy over
-			// the previous plan for this index.
+			// If the plan is frozen, just copy over the previous plan
+			// for this index.
 			if planPIndexesPrev != nil {
-				for planPIndexNamePrev, planPIndexPrev := range planPIndexesPrev.PlanPIndexes {
-					if planPIndexPrev.IndexName == indexDef.Name &&
-						planPIndexPrev.IndexUUID == indexDef.UUID {
-						planPIndexes.PlanPIndexes[planPIndexNamePrev] =
-							planPIndexPrev
+				for n, p := range planPIndexesPrev.PlanPIndexes {
+					if p.IndexName == indexDef.Name &&
+						p.IndexUUID == indexDef.UUID {
+						planPIndexes.PlanPIndexes[n] = p
 					}
 				}
 			}
+
 			continue
 		}
 
@@ -455,6 +455,7 @@ func BlancePlanPIndexes(indexDef *IndexDef,
 	for planPIndexName, blancePartition := range blanceNextMap {
 		planPIndex := planPIndexesForIndex[planPIndexName]
 		planPIndex.Nodes = map[string]*PlanPIndexNode{}
+
 		for _, nodeUUID := range blancePartition.NodesByState["primary"] {
 			canRead := true
 			canWrite := true
@@ -472,6 +473,7 @@ func BlancePlanPIndexes(indexDef *IndexDef,
 				Priority: 0,
 			}
 		}
+
 		for i, nodeUUID := range blancePartition.NodesByState["replica"] {
 			canRead := true
 			canWrite := true
