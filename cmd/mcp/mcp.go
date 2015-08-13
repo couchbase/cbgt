@@ -12,13 +12,39 @@
 package main
 
 import (
-	"fmt"
-
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
 )
 
-func runMCP() {
+func runMCP(mgr *cbgt.Manager) (bool, error) {
+	cfg, version, uuid := mgr.Cfg(), mgr.Version(), mgr.UUID()
+	if cfg == nil { // Can occur during testing.
+		return false, nil
+	}
+
+	err := cbgt.PlannerCheckVersion(cfg, version)
+	if err != nil {
+		return false, err
+	}
+	indexDefs, err := cbgt.PlannerGetIndexDefs(cfg, version)
+	if err != nil {
+		return false, err
+	}
+	nodeDefs, err := cbgt.PlannerGetNodeDefs(cfg, version, uuid)
+	if err != nil {
+		return false, err
+	}
+	planPIndexesPrev, cas, err := cbgt.PlannerGetPlanPIndexes(cfg, version)
+	if err != nil {
+		return false, err
+	}
+
+	log.Printf("runMCP, indexDefs: %#v", indexDefs)
+	log.Printf("runMCP, nodeDefs: %#v", nodeDefs)
+	log.Printf("runMCP, planPIndexesPrev: %#v, cas: %v", planPIndexesPrev, cas)
+
 	// TODO.
+
+	return true, nil
 }

@@ -135,11 +135,7 @@ func main() {
 		tags, container, weight, extras, bindHttp,
 		flags.DataDir, server, nil)
 
-	err = mgr.StartCfg()
-	if err != nil {
-		log.Fatalf("%v", err)
-		return
-	}
+	// TODO: Need to mgr.Cfg().Subscribe(...) to cfg changes?
 
 	runMCP(mgr)
 }
