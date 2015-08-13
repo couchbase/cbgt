@@ -26,6 +26,7 @@ type Flags struct {
 	CfgConnect string
 	DataDir    string
 	Help       bool
+	Server     string
 	Version    bool
 }
 
@@ -84,6 +85,11 @@ func initFlags(flags *Flags) map[string][]string {
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")
+	s(&flags.Server,
+		[]string{"server", "s"}, "URL", "",
+		"URL to datasource server; example when using couchbase 3.x as"+
+			"\nyour datasource server: 'http://localhost:8091';"+
+			"\nuse '.' when there is no datasource server.")
 	b(&flags.Version,
 		[]string{"version", "v"}, "", false,
 		"print version string and exit.")

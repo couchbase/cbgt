@@ -65,7 +65,6 @@ func main() {
 	bindHttp := "mcp"       // Don't listen on ADDR:PORT.
 	register := "unchanged" // Don't list mcp in Cfg.
 	uuid := "mcp-uuid"      // Fake UUID that identifies us as mcp.
-	server := "."
 
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
@@ -133,11 +132,17 @@ func main() {
 
 	mgr := cbgt.NewManager(cbgt.VERSION, cfg, uuid,
 		tags, container, weight, extras, bindHttp,
-		flags.DataDir, server, nil)
+		flags.DataDir, flags.Server, nil)
 
 	// TODO: Need to mgr.Cfg().Subscribe(...) to cfg changes?
 
-	runMCP(mgr)
+	changed, err := runMCP(mgr, flags.Server)
+	if err != nil {
+		log.Fatalf("main: runMCP err: %v", err)
+		return
+	}
+
+	log.Printf("main: runMCP changed plan: %v", changed)
 }
 
 func MainWelcome(flagAliases map[string][]string) {

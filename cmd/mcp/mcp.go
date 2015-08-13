@@ -12,12 +12,14 @@
 package main
 
 import (
+	"fmt"
+
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
 )
 
-func runMCP(mgr *cbgt.Manager) (bool, error) {
+func runMCP(mgr *cbgt.Manager, server string) (bool, error) {
 	cfg, version, uuid := mgr.Cfg(), mgr.Version(), mgr.UUID()
 	if cfg == nil { // Can occur during testing.
 		return false, nil
@@ -40,11 +42,44 @@ func runMCP(mgr *cbgt.Manager) (bool, error) {
 		return false, err
 	}
 
-	log.Printf("runMCP, indexDefs: %#v", indexDefs)
-	log.Printf("runMCP, nodeDefs: %#v", nodeDefs)
-	log.Printf("runMCP, planPIndexesPrev: %#v, cas: %v", planPIndexesPrev, cas)
+	if indexDefs == nil || nodeDefs == nil {
+		return false, nil
+	}
+
+	nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
+		nodeWeights, nodeHierarchy :=
+		cbgt.CalcNodesLayout(indexDefs, nodeDefs, planPIndexesPrev)
 
 	// TODO.
+
+	planPIndexes, err := cbgt.CalcPlan(indexDefs, nodeDefs,
+		planPIndexesPrev, version, server)
+	if err != nil {
+		return false, fmt.Errorf("mcp: CalcPlan, err: %v", err)
+	}
+
+	log.Printf("mcp, indexDefs: %#v", indexDefs)
+	log.Printf("mcp, nodeDefs: %#v", nodeDefs)
+	log.Printf("mcp, planPIndexesPrev: %#v, cas: %v",
+		planPIndexesPrev, cas)
+	log.Printf("mcp, planPIndexes: %#v",
+		planPIndexes, cas)
+	log.Printf("mcp, nodeUUIDsAll: %#v", nodeUUIDsAll)
+	log.Printf("mcp, nodeUUIDsToAdd: %#v", nodeUUIDsToAdd)
+	log.Printf("mcp, nodeUUIDsToRemove: %#v", nodeUUIDsToRemove)
+	log.Printf("mcp, nodeWeights: %#v", nodeWeights)
+	log.Printf("mcp, nodeHierarchy: %#v", nodeHierarchy)
+
+	if cbgt.SamePlanPIndexes(planPIndexes, planPIndexesPrev) {
+		return false, nil
+	}
+
+	_, err = cbgt.CfgSetPlanPIndexes(cfg, planPIndexes, cas)
+	if err != nil {
+		return false, fmt.Errorf("mcp: could not save new plan,"+
+			" perhaps a concurrent planner won, cas: %d, err: %v",
+			cas, err)
+	}
 
 	return true, nil
 }
