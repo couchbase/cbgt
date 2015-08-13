@@ -397,7 +397,9 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 			Nodes:            make(map[string]*PlanPIndexNode),
 		}
 
-		planPIndexesOut.PlanPIndexes[planPIndex.Name] = planPIndex
+		if planPIndexesOut != nil {
+			planPIndexesOut.PlanPIndexes[planPIndex.Name] = planPIndex
+		}
 
 		planPIndexesForIndex[planPIndex.Name] = planPIndex
 	}
