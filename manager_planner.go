@@ -106,20 +106,9 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 	if mgr.cfg == nil { // Can occur during testing.
 		return false, fmt.Errorf("planner: skipped due to nil cfg")
 	}
-	err := PlannerCheckVersion(mgr.cfg, mgr.version)
-	if err != nil {
-		return false, err
-	}
-	indexDefs, err := PlannerGetIndexDefs(mgr.cfg, mgr.version)
-	if err != nil {
-		return false, err
-	}
-	nodeDefs, err := PlannerGetNodeDefs(mgr.cfg, mgr.version, mgr.uuid)
-	if err != nil {
-		return false, err
-	}
-	planPIndexesPrev, cas, err :=
-		PlannerGetPlanPIndexes(mgr.cfg, mgr.version)
+
+	indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
+		PlannerGetPlan(mgr.cfg, mgr.version, mgr.uuid)
 	if err != nil {
 		return false, err
 	}
@@ -129,16 +118,49 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
 	}
+
 	if SamePlanPIndexes(planPIndexes, planPIndexesPrev) {
 		return false, nil
 	}
+
 	_, err = CfgSetPlanPIndexes(mgr.cfg, planPIndexes, cas)
 	if err != nil {
 		return false, fmt.Errorf("planner: could not save new plan,"+
 			" perhaps a concurrent planner won, cas: %d, err: %v",
 			cas, err)
 	}
+
 	return true, nil
+}
+
+// PlannerGetPlan retrieves plan related info from the Cfg.
+func PlannerGetPlan(cfg Cfg, version string, uuid string) (
+	indexDefs *IndexDefs,
+	nodeDefs *NodeDefs,
+	planPIndexes *PlanPIndexes,
+	cas uint64,
+	err error) {
+	err = PlannerCheckVersion(cfg, version)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	indexDefs, err = PlannerGetIndexDefs(cfg, version)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	nodeDefs, err = PlannerGetNodeDefs(cfg, version, uuid)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	planPIndexes, cas, err = PlannerGetPlanPIndexes(cfg, version)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	return indexDefs, nodeDefs, planPIndexes, cas, nil
 }
 
 // PlannerCheckVersion errors if a version string is too low.

@@ -55,8 +55,10 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 		return false, nil
 	}
 
+	uuid := "" // We don't have a uuid, as we're not a node.
+
 	begIndexDefs, begNodeDefs, begPlanPIndexes, cas, err :=
-		getPlan(cfg, version)
+		cbgt.PlannerGetPlan(cfg, version, uuid)
 	if err != nil {
 		return false, err
 	}
@@ -184,46 +186,6 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	// }
 
 	return true, err // TODO: compute proper change response.
-}
-
-// Returns the current plan related info from the Cfg.
-func getPlan(cfg cbgt.Cfg, version string) (
-	indexDefs *cbgt.IndexDefs,
-	nodeDefs *cbgt.NodeDefs,
-	planPIndexes *cbgt.PlanPIndexes,
-	cas uint64,
-	err error) {
-	err = cbgt.PlannerCheckVersion(cfg, version)
-	if err != nil {
-		return nil, nil, nil, 0, err
-	}
-
-	indexDefs, err = cbgt.PlannerGetIndexDefs(cfg, version)
-	if err != nil {
-		return nil, nil, nil, 0, err
-	}
-
-	nodeDefs, _, err = cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
-	if err != nil {
-		return nil, nil, nil, 0,
-			fmt.Errorf("mcp: CfgGetNodeDefs err: %v", err)
-	}
-	if nodeDefs == nil {
-		return nil, nil, nil, 0,
-			fmt.Errorf("mcp: ended since no NodeDefs")
-	}
-	if cbgt.VersionGTE(version, nodeDefs.ImplVersion) == false {
-		return nil, nil, nil, 0,
-			fmt.Errorf("mcp: nodeDefs.ImplVersion: %s"+
-				" > version: %s", nodeDefs.ImplVersion, version)
-	}
-
-	planPIndexes, cas, err = cbgt.PlannerGetPlanPIndexes(cfg, version)
-	if err != nil {
-		return nil, nil, nil, 0, err
-	}
-
-	return indexDefs, nodeDefs, planPIndexes, cas, nil
 }
 
 // casePlanFrozen returns true if the plan for the indexDef is frozen,
