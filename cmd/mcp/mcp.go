@@ -118,7 +118,7 @@ func (r *rebalancer) run() (bool, error) {
 // The runIndex method rebalances a single index.
 func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
-	log.Printf("runIndex: indexDef.Name: %s", indexDef.Name)
+	log.Printf(" runIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
 	if casePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
@@ -167,9 +167,9 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	for progress := range o.ProgressCh() {
 		numProgress++
 
-		log.Printf("run: indexDef.Name: %s,"+
-			" gotProgress: %d, progress: %#v",
-			indexDef.Name, numProgress, progress)
+		log.Printf("   numProgress: %d,"+
+			" indexDef.Name: %s, progress: %#v",
+			numProgress, indexDef.Name, progress)
 	}
 
 	o.Stop()
@@ -235,12 +235,12 @@ func casePlanFrozen(indexDef *cbgt.IndexDef,
 		return false
 	}
 
-	log.Printf("casePlanFrozen: indexDef.Name: %s, plan frozen",
+	log.Printf("  casePlanFrozen: indexDef.Name: %s, plan frozen",
 		indexDef.Name)
 
 	// Copy over the previous plan, if any, for the index.
 	if begPlanPIndexes != nil {
-		log.Printf("casePlanFrozen: indexDef.Name: %s, plan frozen,"+
+		log.Printf("  casePlanFrozen: indexDef.Name: %s, plan frozen,"+
 			" cloning previous plan", indexDef.Name)
 
 		for n, p := range begPlanPIndexes.PlanPIndexes {
@@ -267,7 +267,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	endPlanPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
 		indexDef, r.server, r.endPlanPIndexes)
 	if err != nil {
-		log.Printf("calcBegEndMaps: indexDef.Name: %s,"+
+		log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
 			" indexDef: %#v, server: %s, err: %v",
 			indexDef.Name, indexDef, r.server, err)
@@ -286,12 +286,12 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	// TODO: handle blance ffwd plan warnings.
 
 	for _, warning := range warnings {
-		log.Printf("calcBegEndMaps: indexDef.Name: %s,"+
+		log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q, indexDef: %#v",
 			indexDef.Name, warning, indexDef)
 	}
 
-	log.Printf("calcBegEndMaps: indexDef.Name: %s,"+
+	log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
 		" endPlanPIndexes: %#v", indexDef.Name, r.endPlanPIndexes)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
@@ -306,7 +306,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 func (r *rebalancer) assignPartition(stopCh chan struct{},
 	index, partition, node, state, op string) error {
-	log.Printf("assignPartitionFunc: index: %s,"+
+	log.Printf("  assignPartitionFunc: index: %s,"+
 		" partition: %s, node: %s, state: %s, op: %s",
 		index, partition, node, state, op)
 
@@ -339,7 +339,7 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 func (r *rebalancer) partitionState(stopCh chan struct{},
 	index, partition, node string) (
 	state string, pct float32, err error) {
-	log.Printf("partitionStateFunc: index: %s,"+
+	log.Printf("  partitionStateFunc: index: %s,"+
 		" partition: %s, node: %s", index, partition, node)
 
 	currState := ""
