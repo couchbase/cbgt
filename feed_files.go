@@ -215,8 +215,12 @@ func (t *FilesFeed) Start() error {
 
 		ExponentialBackoffLoop(t.Name(),
 			func() int {
+				t.m.Lock()
+				closeCh := t.closeCh
+				t.m.Unlock()
+
 				select {
-				case <-t.closeCh:
+				case <-closeCh:
 					return -1
 				default:
 				}
@@ -265,7 +269,7 @@ func (t *FilesFeed) Start() error {
 
 				for _, path := range paths {
 					select {
-					case <-t.closeCh:
+					case <-closeCh:
 						return -1
 					default:
 					}
