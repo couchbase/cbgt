@@ -35,26 +35,36 @@ func TestRunRebalancer(t *testing.T) {
 		params     map[string]string
 		expNodes   string // Space separated list of nodes ("a"..."v").
 		expIndexes string // Space separated list of indxes ("x"..."z").
+		expChanged bool
+		expErr     bool
 	}{
 		{"1st node",
 			"+a", nil,
 			"a",
 			"",
+			false, true,
 		},
 		{"add 1st index x",
 			"+x", nil,
 			"a",
 			"x",
+			true, false,
 		},
 		{"add 2nd node b",
 			"+b", nil,
 			"a b",
 			"x",
+			true, false,
 		},
 	}
 
 	cfg := cbgt.NewCfgMem()
+
 	mgrs := map[string]*cbgt.Manager{}
+
+	var mgr0 *cbgt.Manager
+
+	server := "."
 
 	waitUntilEmptyCfgEvents := func(ch chan cbgt.CfgEvent) {
 		for {
@@ -73,16 +83,15 @@ func TestRunRebalancer(t *testing.T) {
 		waitUntilEmptyCfgEvents(cfgEventsNodeDefsWanted)
 	}
 
-	// cfgEventsIndexDefs := make(chan cbgt.CfgEvent, 100)
-	// cfg.Subscribe(cbgt.INDEX_DEFS_KEY, cfgEventsIndexDefs)
-	//
-	// waitUntilEmptyCfgEventsIndexDefs := func() {
-	//	waitUntilEmptyCfgEvents(cfgEventsIndexDefs)
-	// }
+	cfgEventsIndexDefs := make(chan cbgt.CfgEvent, 100)
+	cfg.Subscribe(cbgt.INDEX_DEFS_KEY, cfgEventsIndexDefs)
+
+	waitUntilEmptyCfgEventsIndexDefs := func() {
+		waitUntilEmptyCfgEvents(cfgEventsIndexDefs)
+	}
 
 	for testi, test := range tests {
-		log.Printf("testi: %d, label: %s, ops: %q",
-			testi, test.label, test.ops)
+		log.Printf("testi: %d, label: %q", testi, test.label)
 
 		for opi, op := range strings.Split(test.ops, " ") {
 			log.Printf(" opi: %d, op: %s", opi, op)
@@ -91,11 +100,82 @@ func TestRunRebalancer(t *testing.T) {
 
 			isIndexOp := name >= "x"
 			if isIndexOp {
-				index := name
-				log.Printf(" indexOp: %s, index: %s", op[0:1], index)
+				indexName := name
+				log.Printf(" indexOp: %s, indexName: %s", op[0:1], indexName)
+
+				sourceType := "primary"
+				if test.params["sourceType"] != "" {
+					sourceType = test.params["sourceType"]
+				}
+				if test.params[indexName+".sourceType"] != "" {
+					sourceType = test.params[indexName+".sourceType"]
+				}
+
+				sourceName := "default"
+				if test.params["sourceName"] != "" {
+					sourceName = test.params["sourceName"]
+				}
+				if test.params[indexName+".sourceName"] != "" {
+					sourceName = test.params[indexName+".sourceName"]
+				}
+
+				sourceUUID := ""
+				if test.params["sourceUUID"] != "" {
+					sourceUUID = test.params["sourceUUID"]
+				}
+				if test.params[indexName+".sourceUUID"] != "" {
+					sourceUUID = test.params[indexName+".sourceUUID"]
+				}
+
+				sourceParams := ""
+				if test.params["sourceParams"] != "" {
+					sourceParams = test.params["sourceParams"]
+				}
+				if test.params[indexName+".sourceParams"] != "" {
+					sourceParams = test.params[indexName+".sourceParams"]
+				}
+
+				indexType := "blackhole"
+				if test.params["indexType"] != "" {
+					indexType = test.params["indexType"]
+				}
+				if test.params[indexName+".indexType"] != "" {
+					indexType = test.params[indexName+".indexType"]
+				}
+
+				indexParams := ""
+				if test.params["indexParams"] != "" {
+					indexParams = test.params["indexParams"]
+				}
+				if test.params[indexName+".indexParams"] != "" {
+					indexParams = test.params[indexName+".indexParams"]
+				}
+
+				prevIndexUUID := ""
+				if test.params["prevIndexUUID"] != "" {
+					prevIndexUUID = test.params["prevIndexUUID"]
+				}
+				if test.params[indexName+".prevIndexUUID"] != "" {
+					prevIndexUUID = test.params[indexName+".prevIndexUUID"]
+				}
+
+				planParams := cbgt.PlanParams{}
+
+				waitUntilEmptyCfgEventsIndexDefs()
+
+				err := mgr0.CreateIndex(
+					sourceType, sourceName, sourceUUID, sourceParams,
+					indexType, indexName, indexParams,
+					planParams,
+					prevIndexUUID)
+				if err != nil {
+					t.Errorf("expected no err, got: %#v", err)
+				}
+
+				waitUntilEmptyCfgEventsIndexDefs()
 			} else { // It's a node op.
-				node := name
-				log.Printf(" nodeOp: %s, node: %s", op[0:1], node)
+				nodeName := name
+				log.Printf(" nodeOp: %s, nodeName: %s", op[0:1], nodeName)
 
 				register := "wanted"
 				if op[0:1] == "-" {
@@ -104,25 +184,28 @@ func TestRunRebalancer(t *testing.T) {
 				if test.params["register"] != "" {
 					register = test.params["register"]
 				}
-				if test.params[node+".register"] != "" {
-					register = test.params[node+".register"]
+				if test.params[nodeName+".register"] != "" {
+					register = test.params[nodeName+".register"]
 				}
 
-				if mgrs[node] != nil {
-					mgrs[node].Stop()
-					delete(mgrs, node)
+				if mgrs[nodeName] != nil {
+					mgrs[nodeName].Stop()
+					delete(mgrs, nodeName)
 				}
 
 				waitUntilEmptyCfgEventsNodeDefsWanted()
 
 				mgr, err := startNodeManager(testDir, cfg,
-					name, register, test.params)
+					name, register, test.params, server)
 				if err != nil || mgr == nil {
 					t.Errorf("expected no err, got: %#v", err)
 				}
+				if mgr0 == nil {
+					mgr0 = mgr
+				}
 
 				if register != "unknown" {
-					mgrs[node] = mgr
+					mgrs[nodeName] = mgr
 				}
 
 				mgr.Kick("kick")
@@ -130,11 +213,27 @@ func TestRunRebalancer(t *testing.T) {
 				waitUntilEmptyCfgEventsNodeDefsWanted()
 			}
 		}
+
+		changed, err := runRebalancer(cbgt.VERSION, cfg, ".")
+		if changed != test.expChanged {
+			t.Errorf("testi: %d, label: %q,"+
+				" expChanged: %v, but got: %v",
+				testi, test.label,
+				test.expChanged, changed)
+		}
+		if (test.expErr && err == nil) ||
+			(!test.expErr && err != nil) {
+			t.Errorf("testi: %d, label: %q,"+
+				" expErr: %v, but got: %v",
+				testi, test.label,
+				test.expErr, err)
+		}
 	}
 }
 
 func startNodeManager(testDir string, cfg cbgt.Cfg, node, register string,
-	params map[string]string) (mgr *cbgt.Manager, err error) {
+	params map[string]string, server string) (
+	mgr *cbgt.Manager, err error) {
 	uuid := node
 	if params["uuid"] != "" {
 		uuid = params["uuid"]
@@ -178,8 +277,6 @@ func startNodeManager(testDir string, cfg cbgt.Cfg, node, register string,
 	dataDir := testDir + string(os.PathSeparator) + node
 
 	os.MkdirAll(dataDir, 0700)
-
-	server := "."
 
 	meh := cbgt.ManagerEventHandlers(nil)
 

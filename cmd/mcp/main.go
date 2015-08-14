@@ -60,12 +60,12 @@ func main() {
 
 	MainWelcome(flagAliases)
 
-	// If cfg is down, we error, leaving it to some user-supplied
-	// outside watchdog to backoff and restart/retry.
 	bindHttp := "NOT-USED"
 	register := "unchanged"
 	dataDir := "NOT-USED"
 
+	// If cfg is down, we error, leaving it to some user-supplied
+	// outside watchdog to backoff and restart/retry.
 	cfg, err := cmd.MainCfg("mcp", flags.CfgConnect,
 		bindHttp, register, dataDir)
 	if err != nil {
