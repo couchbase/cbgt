@@ -274,18 +274,9 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 
 	// Examine every indexDef...
 	for _, indexDef := range indexDefs.IndexDefs {
-		if indexDef.PlanParams.PlanFrozen {
-			// If the plan is frozen, just copy over the previous plan
-			// for this index.
-			if planPIndexesPrev != nil {
-				for n, p := range planPIndexesPrev.PlanPIndexes {
-					if p.IndexName == indexDef.Name &&
-						p.IndexUUID == indexDef.UUID {
-						planPIndexes.PlanPIndexes[n] = p
-					}
-				}
-			}
-
+		// If the plan is frozen, CasePlanFrozen clones the previous
+		// plan for this index.
+		if CasePlanFrozen(indexDef, planPIndexesPrev, planPIndexes) {
 			continue
 		}
 
@@ -592,6 +583,30 @@ func BlanceMap(
 	}
 
 	return m
+}
+
+// --------------------------------------------------------
+
+// CasePlanFrozen returns true if the plan for the indexDef is frozen,
+// in which case it also populates endPlanPIndexes with a clone of the
+// indexDef's plans from begPlanPIndexes.
+func CasePlanFrozen(indexDef *IndexDef,
+	begPlanPIndexes, endPlanPIndexes *PlanPIndexes) bool {
+	if !indexDef.PlanParams.PlanFrozen {
+		return false
+	}
+
+	// Copy over the previous plan, if any, for the index.
+	if begPlanPIndexes != nil && endPlanPIndexes != nil {
+		for n, p := range begPlanPIndexes.PlanPIndexes {
+			if p.IndexName == indexDef.Name &&
+				p.IndexUUID == indexDef.UUID {
+				endPlanPIndexes.PlanPIndexes[n] = p
+			}
+		}
+	}
+
+	return true
 }
 
 // --------------------------------------------------------

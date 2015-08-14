@@ -123,8 +123,12 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	log.Printf(" runIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
-	if casePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
+	if cbgt.CasePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
 		r.m.Unlock()
+
+		log.Printf("  plan frozen: indexDef.Name: %s,"+
+			" cloned previous plan", indexDef.Name)
+
 		return false, nil
 	}
 	r.m.Unlock()
@@ -186,34 +190,6 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	// }
 
 	return true, err // TODO: compute proper change response.
-}
-
-// casePlanFrozen returns true if the plan for the indexDef is frozen,
-// in which case we also populate endPlanPIndexes with a clone of
-// the indexDef's plans from begPlanPIndexes.
-func casePlanFrozen(indexDef *cbgt.IndexDef,
-	begPlanPIndexes, endPlanPIndexes *cbgt.PlanPIndexes) bool {
-	if !indexDef.PlanParams.PlanFrozen {
-		return false
-	}
-
-	log.Printf("  casePlanFrozen: indexDef.Name: %s, plan frozen",
-		indexDef.Name)
-
-	// Copy over the previous plan, if any, for the index.
-	if begPlanPIndexes != nil {
-		log.Printf("  casePlanFrozen: indexDef.Name: %s, plan frozen,"+
-			" cloning previous plan", indexDef.Name)
-
-		for n, p := range begPlanPIndexes.PlanPIndexes {
-			if p.IndexName == indexDef.Name &&
-				p.IndexUUID == indexDef.UUID {
-				endPlanPIndexes.PlanPIndexes[n] = p
-			}
-		}
-	}
-
-	return true
 }
 
 func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
