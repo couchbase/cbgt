@@ -56,9 +56,6 @@ func TestRunRebalancer(t *testing.T) {
 	cfg := cbgt.NewCfgMem()
 	mgrs := map[string]*cbgt.Manager{}
 
-	cfgEventsNodeDefsWanted := make(chan cbgt.CfgEvent)
-	cfg.Subscribe(cbgt.NODE_DEFS_WANTED, cfgEventsNodeDefsWanted)
-
 	waitUntilEmptyCfgEvents := func(ch chan cbgt.CfgEvent) {
 		for {
 			select {
@@ -69,9 +66,19 @@ func TestRunRebalancer(t *testing.T) {
 		}
 	}
 
+	cfgEventsNodeDefsWanted := make(chan cbgt.CfgEvent, 100)
+	cfg.Subscribe(cbgt.NODE_DEFS_WANTED, cfgEventsNodeDefsWanted)
+
 	waitUntilEmptyCfgEventsNodeDefsWanted := func() {
 		waitUntilEmptyCfgEvents(cfgEventsNodeDefsWanted)
 	}
+
+	// cfgEventsIndexDefs := make(chan cbgt.CfgEvent, 100)
+	// cfg.Subscribe(cbgt.INDEX_DEFS_KEY, cfgEventsIndexDefs)
+	//
+	// waitUntilEmptyCfgEventsIndexDefs := func() {
+	//	waitUntilEmptyCfgEvents(cfgEventsIndexDefs)
+	// }
 
 	for testi, test := range tests {
 		log.Printf("testi: %d, label: %s, ops: %q",

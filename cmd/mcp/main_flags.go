@@ -78,10 +78,6 @@ func initFlags(flags *Flags) map[string][]string {
 			"\n       for metakv; for example:"+
 			"\n       'export CBAUTH_REVRPC_URL=http://user:password@localhost:9000/mcp';"+
 			"\ndefault is 'simple'.")
-	s(&flags.DataDir,
-		[]string{"dataDir", "data"}, "DIR", DEFAULT_DATA_DIR,
-		"optional directory path for local data storage;"+
-			"\ndefault is '"+DEFAULT_DATA_DIR+"'.")
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")

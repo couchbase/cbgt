@@ -22,7 +22,8 @@ import (
 )
 
 type rebalancer struct {
-	mgr           *cbgt.Manager
+	version       string
+	cfg           cbgt.Cfg
 	server        string
 	nodesAll      []string          // Array of node UUID's.
 	nodesToAdd    []string          // Array of node UUID's.
@@ -48,14 +49,14 @@ type rebalancer struct {
 
 // runRebalancer implements the "master, central planner (MCP)"
 // rebalance workflow.
-func runRebalancer(mgr *cbgt.Manager, server string) (bool, error) {
-	cfg := mgr.Cfg()
+func runRebalancer(version string, cfg cbgt.Cfg, server string) (
+	bool, error) {
 	if cfg == nil { // Can occur during testing.
 		return false, nil
 	}
 
 	begIndexDefs, begNodeDefs, begPlanPIndexes, cas, err :=
-		getPlan(cfg, mgr.Version())
+		getPlan(cfg, version)
 	if err != nil {
 		return false, err
 	}
@@ -75,7 +76,8 @@ func runRebalancer(mgr *cbgt.Manager, server string) (bool, error) {
 		begPlanPIndexes, cas)
 
 	r := &rebalancer{
-		mgr:             mgr,
+		version:         version,
+		cfg:             cfg,
 		server:          server,
 		nodesAll:        nodesAll,
 		nodesToAdd:      nodesToAdd,
@@ -85,7 +87,7 @@ func runRebalancer(mgr *cbgt.Manager, server string) (bool, error) {
 		begIndexDefs:    begIndexDefs,
 		begNodeDefs:     begNodeDefs,
 		begPlanPIndexes: begPlanPIndexes,
-		endPlanPIndexes: cbgt.NewPlanPIndexes(mgr.Version()),
+		endPlanPIndexes: cbgt.NewPlanPIndexes(version),
 		cas:             cas,
 		currStates:      map[string]map[string]map[string]string{},
 	}

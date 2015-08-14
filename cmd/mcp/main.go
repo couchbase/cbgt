@@ -42,28 +42,14 @@ func main() {
 	}
 
 	if flags.Version {
-		fmt.Printf("%s main: %s, data: %s\n", path.Base(os.Args[0]),
-			VERSION, cbgt.VERSION)
+		fmt.Printf("%s main: %s, data: %s\n",
+			path.Base(os.Args[0]), VERSION, cbgt.VERSION)
 		os.Exit(0)
 	}
-
-	tags := []string{""}
-	container := ""
-	weight := 0
-	extras := ""
-	bindHttp := "mcp"       // Don't listen on ADDR:PORT.
-	register := "unchanged" // Don't list mcp in Cfg.
-	uuid := "mcp-uuid"      // Fake UUID that identifies us as mcp.
 
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
-
-	mr, err := cbgt.NewMsgRing(os.Stderr, 1000)
-	if err != nil {
-		log.Fatalf("main: could not create MsgRing, err: %v", err)
-	}
-	log.SetOutput(mr)
 
 	log.Printf("main: %s started (%s/%s)",
 		os.Args[0], VERSION, cbgt.VERSION)
@@ -74,38 +60,14 @@ func main() {
 
 	MainWelcome(flagAliases)
 
-	s, err := os.Stat(flags.DataDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if flags.DataDir == DEFAULT_DATA_DIR {
-				log.Printf("main: creating data directory, dataDir: %s",
-					flags.DataDir)
-				err = os.Mkdir(flags.DataDir, 0700)
-				if err != nil {
-					log.Fatalf("main: could not create data directory,"+
-						" dataDir: %s, err: %v", flags.DataDir, err)
-				}
-			} else {
-				log.Fatalf("main: data directory does not exist,"+
-					" dataDir: %s", flags.DataDir)
-				return
-			}
-		} else {
-			log.Fatalf("main: could not access data directory,"+
-				" dataDir: %s, err: %v", flags.DataDir, err)
-			return
-		}
-	} else {
-		if !s.IsDir() {
-			log.Fatalf("main: not a directory, dataDir: %s", flags.DataDir)
-			return
-		}
-	}
-
 	// If cfg is down, we error, leaving it to some user-supplied
 	// outside watchdog to backoff and restart/retry.
-	cfg, err := cmd.MainCfg("mcp", flags.CfgConnect, bindHttp,
-		register, flags.DataDir)
+	bindHttp := "NOT-USED"
+	register := "unchanged"
+	dataDir := "NOT-USED"
+
+	cfg, err := cmd.MainCfg("mcp", flags.CfgConnect,
+		bindHttp, register, dataDir)
 	if err != nil {
 		if err == cmd.ErrorBindHttp {
 			log.Fatalf("%v", err)
@@ -119,13 +81,7 @@ func main() {
 		return
 	}
 
-	mgr := cbgt.NewManager(cbgt.VERSION, cfg, uuid,
-		tags, container, weight, extras, bindHttp,
-		flags.DataDir, flags.Server, nil)
-
-	// TODO: Need to mgr.Cfg().Subscribe(...) to cfg changes?
-
-	changed, err := runRebalancer(mgr, flags.Server)
+	changed, err := runRebalancer(cbgt.VERSION, cfg, flags.Server)
 	if err != nil {
 		log.Fatalf("main: runMCP err: %v", err)
 		return
