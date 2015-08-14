@@ -267,17 +267,17 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			continue
 		}
 
-		// Split each indexDef into 1 or more PlanPIndexes.
+		// Skip indexDef's with no instantiatable pindexImplType, such
+		// as index aliases.
 		pindexImplType, exists := PIndexImplTypes[indexDef.Type]
 		if !exists ||
 			pindexImplType == nil ||
 			pindexImplType.New == nil ||
 			pindexImplType.Open == nil {
-			// Skip indexDef's with no instantiatable pindexImplType,
-			// such as index aliases.
 			continue
 		}
 
+		// Split each indexDef into 1 or more PlanPIndexes.
 		planPIndexesForIndex, err :=
 			SplitIndexDefIntoPlanPIndexes(indexDef, server, planPIndexes)
 		if err != nil {
@@ -287,8 +287,7 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		}
 
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
-		// blance to assign the PlanPIndexes to nodes, depending on
-		// the numReplicas setting.
+		// blance to assign the PlanPIndexes to nodes.
 		warnings := BlancePlanPIndexes(indexDef,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
