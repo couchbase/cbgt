@@ -56,6 +56,7 @@ type Manager struct {
 	bindHttp  string
 	dataDir   string
 	server    string // The default datasource that will be indexed.
+	stopCh    chan struct{}
 
 	m         sync.Mutex
 	feeds     map[string]Feed    // Key is Feed.Name().
@@ -141,6 +142,7 @@ func NewManager(version string, cfg Cfg, uuid string, tags []string,
 		bindHttp:  bindHttp, // TODO: Need FQDN:port instead of ":8095".
 		dataDir:   dataDir,
 		server:    server,
+		stopCh:    make(chan struct{}),
 		feeds:     make(map[string]Feed),
 		pindexes:  make(map[string]*PIndex),
 		plannerCh: make(chan *workReq),
@@ -148,6 +150,10 @@ func NewManager(version string, cfg Cfg, uuid string, tags []string,
 		meh:       meh,
 		events:    list.New(),
 	}
+}
+
+func (mgr *Manager) Stop() {
+	close(mgr.stopCh)
 }
 
 // Start will start and register a Manager instance with its
@@ -186,16 +192,26 @@ func (mgr *Manager) StartCfg() error {
 		go func() {
 			ei := make(chan CfgEvent)
 			mgr.cfg.Subscribe(INDEX_DEFS_KEY, ei)
-			for _ = range ei {
-				mgr.GetIndexDefs(true)
+			for {
+				select {
+				case <-mgr.stopCh:
+					return
+				case <-ei:
+					mgr.GetIndexDefs(true)
+				}
 			}
 		}()
 
 		go func() {
 			ep := make(chan CfgEvent)
 			mgr.cfg.Subscribe(PLAN_PINDEXES_KEY, ep)
-			for _ = range ep {
-				mgr.GetPlanPIndexes(true)
+			for {
+				select {
+				case <-mgr.stopCh:
+					return
+				case <-ep:
+					mgr.GetPlanPIndexes(true)
+				}
 			}
 		}()
 	}

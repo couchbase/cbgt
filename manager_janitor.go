@@ -50,45 +50,55 @@ func (mgr *Manager) JanitorLoop() {
 			ec := make(chan CfgEvent)
 			mgr.cfg.Subscribe(PLAN_PINDEXES_KEY, ec)
 			mgr.cfg.Subscribe(CfgNodeDefsKey(NODE_DEFS_WANTED), ec)
-			for e := range ec {
-				atomic.AddUint64(&mgr.stats.TotJanitorSubscriptionEvent, 1)
-				mgr.JanitorKick("cfg changed, key: " + e.Key)
+			for {
+				select {
+				case <-mgr.stopCh:
+					return
+				case e := <-ec:
+					atomic.AddUint64(&mgr.stats.TotJanitorSubscriptionEvent, 1)
+					mgr.JanitorKick("cfg changed, key: " + e.Key)
+				}
 			}
 		}()
 	}
 
-	for m := range mgr.janitorCh {
-		log.Printf("janitor: awakes, reason: %s", m.msg)
+	for {
+		select {
+		case <-mgr.stopCh:
+			return
+		case m := <-mgr.janitorCh:
+			log.Printf("janitor: awakes, reason: %s", m.msg)
 
-		var err error
-		if m.op == WORK_KICK {
-			atomic.AddUint64(&mgr.stats.TotJanitorKickStart, 1)
-			err = mgr.JanitorOnce(m.msg)
-			if err != nil {
-				// Keep looping as perhaps it's a transient issue.
-				// TODO: Perhaps need a rescheduled janitor kick.
-				log.Printf("janitor: JanitorOnce, err: %v", err)
-				atomic.AddUint64(&mgr.stats.TotJanitorKickErr, 1)
+			var err error
+			if m.op == WORK_KICK {
+				atomic.AddUint64(&mgr.stats.TotJanitorKickStart, 1)
+				err = mgr.JanitorOnce(m.msg)
+				if err != nil {
+					// Keep looping as perhaps it's a transient issue.
+					// TODO: Perhaps need a rescheduled janitor kick.
+					log.Printf("janitor: JanitorOnce, err: %v", err)
+					atomic.AddUint64(&mgr.stats.TotJanitorKickErr, 1)
+				} else {
+					atomic.AddUint64(&mgr.stats.TotJanitorKickOk, 1)
+				}
+			} else if m.op == WORK_NOOP {
+				atomic.AddUint64(&mgr.stats.TotJanitorNOOPOk, 1)
+			} else if m.op == JANITOR_CLOSE_PINDEX {
+				mgr.stopPIndex(m.obj.(*PIndex), false)
+				atomic.AddUint64(&mgr.stats.TotJanitorClosePIndex, 1)
+			} else if m.op == JANITOR_REMOVE_PINDEX {
+				mgr.stopPIndex(m.obj.(*PIndex), true)
+				atomic.AddUint64(&mgr.stats.TotJanitorRemovePIndex, 1)
 			} else {
-				atomic.AddUint64(&mgr.stats.TotJanitorKickOk, 1)
+				err = fmt.Errorf("janitor: unknown op: %s, m: %#v", m.op, m)
+				atomic.AddUint64(&mgr.stats.TotJanitorUnknownErr, 1)
 			}
-		} else if m.op == WORK_NOOP {
-			atomic.AddUint64(&mgr.stats.TotJanitorNOOPOk, 1)
-		} else if m.op == JANITOR_CLOSE_PINDEX {
-			mgr.stopPIndex(m.obj.(*PIndex), false)
-			atomic.AddUint64(&mgr.stats.TotJanitorClosePIndex, 1)
-		} else if m.op == JANITOR_REMOVE_PINDEX {
-			mgr.stopPIndex(m.obj.(*PIndex), true)
-			atomic.AddUint64(&mgr.stats.TotJanitorRemovePIndex, 1)
-		} else {
-			err = fmt.Errorf("janitor: unknown op: %s, m: %#v", m.op, m)
-			atomic.AddUint64(&mgr.stats.TotJanitorUnknownErr, 1)
-		}
-		if m.resCh != nil {
-			if err != nil {
-				m.resCh <- err
+			if m.resCh != nil {
+				if err != nil {
+					m.resCh <- err
+				}
+				close(m.resCh)
 			}
-			close(m.resCh)
 		}
 	}
 }
@@ -410,8 +420,8 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 
 		addSourcePartition := func(sourcePartition string) {
 			if _, exists := dests[sourcePartition]; exists {
-				panic(fmt.Sprintf("janitor: startFeed sourcePartition collision: %s",
-					sourcePartition))
+				panic(fmt.Sprintf("janitor: startFeed collision,"+
+					" sourcePartition: %s", sourcePartition))
 			}
 			dests[sourcePartition] = pindex.Dest
 		}

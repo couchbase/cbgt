@@ -51,40 +51,50 @@ func (mgr *Manager) PlannerLoop() {
 			ec := make(chan CfgEvent)
 			mgr.cfg.Subscribe(INDEX_DEFS_KEY, ec)
 			mgr.cfg.Subscribe(CfgNodeDefsKey(NODE_DEFS_WANTED), ec)
-			for e := range ec {
-				atomic.AddUint64(&mgr.stats.TotPlannerSubscriptionEvent, 1)
-				mgr.PlannerKick("cfg changed, key: " + e.Key)
+			for {
+				select {
+				case <-mgr.stopCh:
+					return
+				case e := <-ec:
+					atomic.AddUint64(&mgr.stats.TotPlannerSubscriptionEvent, 1)
+					mgr.PlannerKick("cfg changed, key: " + e.Key)
+				}
 			}
 		}()
 	}
 
-	for m := range mgr.plannerCh {
-		var err error
-		if m.op == WORK_KICK {
-			atomic.AddUint64(&mgr.stats.TotPlannerKickStart, 1)
-			changed, err := mgr.PlannerOnce(m.msg)
-			if err != nil {
-				log.Printf("planner: PlannerOnce, err: %v", err)
-				atomic.AddUint64(&mgr.stats.TotPlannerKickErr, 1)
-				// Keep looping as perhaps it's a transient issue.
-			} else {
-				if changed {
-					atomic.AddUint64(&mgr.stats.TotPlannerKickChanged, 1)
-					mgr.JanitorKick("the plans have changed")
+	for {
+		select {
+		case <-mgr.stopCh:
+			return
+		case m := <-mgr.plannerCh:
+			var err error
+			if m.op == WORK_KICK {
+				atomic.AddUint64(&mgr.stats.TotPlannerKickStart, 1)
+				changed, err := mgr.PlannerOnce(m.msg)
+				if err != nil {
+					log.Printf("planner: PlannerOnce, err: %v", err)
+					atomic.AddUint64(&mgr.stats.TotPlannerKickErr, 1)
+					// Keep looping as perhaps it's a transient issue.
+				} else {
+					if changed {
+						atomic.AddUint64(&mgr.stats.TotPlannerKickChanged, 1)
+						mgr.JanitorKick("the plans have changed")
+					}
+					atomic.AddUint64(&mgr.stats.TotPlannerKickOk, 1)
 				}
-				atomic.AddUint64(&mgr.stats.TotPlannerKickOk, 1)
+			} else if m.op == WORK_NOOP {
+				atomic.AddUint64(&mgr.stats.TotPlannerNOOPOk, 1)
+			} else {
+				err = fmt.Errorf("planner: unknown op: %s, m: %#v", m.op, m)
+				atomic.AddUint64(&mgr.stats.TotPlannerUnknownErr, 1)
 			}
-		} else if m.op == WORK_NOOP {
-			atomic.AddUint64(&mgr.stats.TotPlannerNOOPOk, 1)
-		} else {
-			err = fmt.Errorf("planner: unknown op: %s, m: %#v", m.op, m)
-			atomic.AddUint64(&mgr.stats.TotPlannerUnknownErr, 1)
-		}
-		if m.resCh != nil {
-			if err != nil {
-				m.resCh <- err
+			if m.resCh != nil {
+				if err != nil {
+					m.resCh <- err
+				}
+				close(m.resCh)
 			}
-			close(m.resCh)
 		}
 	}
 }

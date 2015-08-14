@@ -75,6 +75,7 @@ func TestManagerStart(t *testing.T) {
 	if m.DataDir() != "dir" {
 		t.Errorf("wrong data dir")
 	}
+	m.Stop()
 
 	m = NewManager(VERSION, nil, NewUUID(), nil,
 		"", 1, "", "", "not-a-real-dir", "", nil)
@@ -84,6 +85,7 @@ func TestManagerStart(t *testing.T) {
 	if m.DataDir() != "not-a-real-dir" {
 		t.Errorf("wrong data dir")
 	}
+	m.Stop()
 
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
@@ -109,6 +111,7 @@ func TestManagerStart(t *testing.T) {
 	if err != nil || cas != 0 || nd != nil {
 		t.Errorf("expected no node defs wanted")
 	}
+	m.Stop()
 
 	cfg = NewCfgMem()
 	m = NewManager(VERSION, cfg, NewUUID(),
@@ -124,6 +127,7 @@ func TestManagerStart(t *testing.T) {
 	if err != nil || cas == 0 || nd == nil {
 		t.Errorf("expected node defs wanted")
 	}
+	m.Stop()
 }
 
 func TestManagerRestart(t *testing.T) {
