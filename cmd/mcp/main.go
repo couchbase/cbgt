@@ -60,9 +60,9 @@ func main() {
 
 	MainWelcome(flagAliases)
 
-	bindHttp := "NOT-USED"
+	bindHttp := "NO-BIND-HTTP"
 	register := "unchanged"
-	dataDir := "NOT-USED"
+	dataDir := "NO-DATA-DIR"
 
 	// If cfg is down, we error, leaving it to some user-supplied
 	// outside watchdog to backoff and restart/retry.

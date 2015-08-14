@@ -50,7 +50,7 @@ type rebalancer struct {
 // runRebalancer implements the "master, central planner (MCP)"
 // rebalance workflow.
 func runRebalancer(version string, cfg cbgt.Cfg, server string) (
-	bool, error) {
+	changed bool, err error) {
 	if cfg == nil { // Can occur during testing.
 		return false, nil
 	}
@@ -117,9 +117,7 @@ func (r *rebalancer) run() (bool, error) {
 
 // The runIndex method rebalances a single index.
 func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
-	changed bool,
-	err error,
-) {
+	changed bool, err error) {
 	log.Printf("runIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
@@ -260,8 +258,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	partitionModel blance.PartitionModel,
 	begMap blance.PartitionMap,
 	endMap blance.PartitionMap,
-	err error,
-) {
+	err error) {
 	r.m.Lock()
 	defer r.m.Unlock()
 
