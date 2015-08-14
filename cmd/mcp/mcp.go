@@ -331,7 +331,45 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 	r.m.Unlock()
 
+	planPIndexes, cas, err :=
+		cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
+	if err != nil {
+		return err
+	}
+
+	planPIndex := planPIndexes.PlanPIndexes[partition]
+	if planPIndex == nil {
+		r.m.Lock()
+		endPlanPIndex := r.endPlanPIndexes.PlanPIndexes[partition]
+		if endPlanPIndex != nil {
+			p := *endPlanPIndex // Copy.
+			planPIndex = &p
+		}
+		r.m.Unlock()
+
+		planPIndex.Nodes = make(map[string]*cbgt.PlanPIndexNode)
+	}
+
+	if planPIndex == nil {
+		return fmt.Errorf("assignPartition: no planPIndex,"+
+			" index: %s, partition: %s, node: %s, state: %s, op: %s",
+			index, partition, node, state, op)
+	}
+
+	planPIndex.UUID = cbgt.NewUUID()
+
+	if op == "add" {
+		planPIndex := &cbgt.PlanPIndex{
+		// TODO.
+		}
+		planPIndexes.PlanPIndexes[partition] = planPIndex
+	} else {
+		return fmt.Errorf("not-exists and op: %s", op)
+	}
+
 	// TODO: stopCh handling.
+
+	log.Printf("   updating planPIndex, cas: %d", cas)
 
 	return nil
 }
