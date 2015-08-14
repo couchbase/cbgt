@@ -183,6 +183,9 @@ func PlannerGetNodeDefs(cfg Cfg, version, uuid string) (
 		return nil, fmt.Errorf("planner: nodeDefs.ImplVersion: %s"+
 			" > version: %s", nodeDefs.ImplVersion, version)
 	}
+	if uuid == "" { // The caller may not be a node, so has empty uuid.
+		return nodeDefs, nil
+	}
 	nodeDef, exists := nodeDefs.NodeDefs[uuid]
 	if !exists || nodeDef == nil {
 		return nil, fmt.Errorf("planner: no NodeDef, uuid: %s", uuid)
