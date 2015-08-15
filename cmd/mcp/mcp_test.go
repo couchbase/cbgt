@@ -127,7 +127,7 @@ func TestRunRebalancer(t *testing.T) {
 					sourceUUID = test.params[indexName+".sourceUUID"]
 				}
 
-				sourceParams := ""
+				sourceParams := `{"numPartitions":4}`
 				if test.params["sourceParams"] != "" {
 					sourceParams = test.params["sourceParams"]
 				}
@@ -159,7 +159,9 @@ func TestRunRebalancer(t *testing.T) {
 					prevIndexUUID = test.params[indexName+".prevIndexUUID"]
 				}
 
-				planParams := cbgt.PlanParams{}
+				planParams := cbgt.PlanParams{
+					MaxPartitionsPerPIndex: 1,
+				}
 
 				waitUntilEmptyCfgEventsIndexDefs()
 
