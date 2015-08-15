@@ -269,6 +269,18 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 	r.m.Unlock()
 
+	indexDefs, err := cbgt.PlannerGetIndexDefs(r.cfg, r.version)
+	if err != nil {
+		return err
+	}
+
+	indexDef := indexDefs.IndexDefs[index]
+	if indexDef == nil {
+		return fmt.Errorf("assignPartition: no indexDef,"+
+			" index: %s, partition: %s, node: %s, state: %s, op: %s",
+			index, partition, node, state, op)
+	}
+
 	planPIndexes, cas, err :=
 		cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
 	if err != nil {
@@ -282,10 +294,10 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		if endPlanPIndex != nil {
 			p := *endPlanPIndex // Copy.
 			planPIndex = &p
+			planPIndex.Nodes = nil
+			planPIndexes.PlanPIndexes[partition] = planPIndex
 		}
 		r.m.Unlock()
-
-		planPIndex.Nodes = make(map[string]*cbgt.PlanPIndexNode)
 	}
 
 	if planPIndex == nil {
@@ -294,20 +306,71 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 			index, partition, node, state, op)
 	}
 
+	if planPIndex.Nodes == nil {
+		planPIndex.Nodes = make(map[string]*cbgt.PlanPIndexNode)
+	}
+
 	planPIndex.UUID = cbgt.NewUUID()
 
+	canRead := true
+	canWrite := true
+	nodePlanParam := cbgt.GetNodePlanParam(
+		indexDef.PlanParams.NodePlanParams, node,
+		indexDef.Name, partition)
+	if nodePlanParam != nil {
+		canRead = nodePlanParam.CanRead
+		canWrite = nodePlanParam.CanWrite
+	}
+
+	priority := 0
+	if state == "replica" {
+		priority = len(planPIndex.Nodes)
+	}
+
 	if op == "add" {
-		planPIndex := &cbgt.PlanPIndex{
-		// TODO.
+		if planPIndex.Nodes[node] != nil {
+			return fmt.Errorf("assignPartition: planPIndex already exists,"+
+				" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
+				" planPIndex: %#v",
+				index, partition, node, state, op, planPIndex)
 		}
-		planPIndexes.PlanPIndexes[partition] = planPIndex
+
+		// TODO: Need to shift the other node priorities around?
+		planPIndex.Nodes[node] = &cbgt.PlanPIndexNode{
+			CanRead:  canRead,
+			CanWrite: canWrite,
+			Priority: priority,
+		}
 	} else {
-		return fmt.Errorf("not-exists and op: %s", op)
+		if planPIndex.Nodes[node] == nil {
+			return fmt.Errorf("assignPartition: planPIndex missing,"+
+				" index: %s, partition: %s, node: %s, state: %s, op: %s"+
+				index, partition, node, state, op)
+		}
+
+		if op == "del" {
+			// TODO: Need to shift the other node priorities around?
+			delete(planPIndex.Nodes, node)
+		} else {
+			// TODO: Need to shift the other node priorities around?
+			planPIndex.Nodes[node] = &cbgt.PlanPIndexNode{
+				CanRead:  canRead,
+				CanWrite: canWrite,
+				Priority: priority,
+			}
+		}
 	}
 
 	// TODO: stopCh handling.
 
-	log.Printf("   updating planPIndex, cas: %d", cas)
+	planPIndexes.UUID = cbgt.NewUUID()
+
+	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
+	if err != nil {
+		return fmt.Errorf("assignPartition: update plan,"+
+			" perhaps a concurrent planner won, cas: %d, err: %v",
+			cas, err)
+	}
 
 	return nil
 }
