@@ -13,7 +13,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -44,8 +43,13 @@ type rebalancer struct {
 
 	o *blance.Orchestrator
 
-	// Map of index -> partition -> node -> state/op.
-	currStates map[string]map[string]map[string]string
+	// Map of index -> partition -> node -> stateOp.
+	currStates map[string]map[string]map[string]stateOp
+}
+
+type stateOp struct {
+	state string
+	op    string // May be "" for unknown or no in-flight op.
 }
 
 // runRebalancer implements the "master, central planner (MCP)"
@@ -92,7 +96,7 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 		begPlanPIndexes: begPlanPIndexes,
 		endPlanPIndexes: cbgt.NewPlanPIndexes(version),
 		cas:             cas,
-		currStates:      map[string]map[string]map[string]string{},
+		currStates:      map[string]map[string]map[string]stateOp{},
 	}
 
 	// TODO: Prepopulate currStates so that we can double-check that
@@ -256,17 +260,17 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 	// Update currStates to the assigned index/partition/node/state.
 	partitions, exists := r.currStates[index]
 	if !exists || partitions == nil {
-		partitions = map[string]map[string]string{}
+		partitions = map[string]map[string]stateOp{}
 		r.currStates[index] = partitions
 	}
 
 	nodes, exists := partitions[partition]
 	if !exists || nodes == nil {
-		nodes = map[string]string{}
+		nodes = map[string]stateOp{}
 		partitions[partition] = nodes
 	}
 
-	nodes[node] = state + "/" + op
+	nodes[node] = stateOp{state, op}
 
 	r.m.Unlock()
 
@@ -382,18 +386,16 @@ func (r *rebalancer) partitionState(stopCh chan struct{},
 	log.Printf("  partitionStateFunc: index: %s,"+
 		" partition: %s, node: %s", index, partition, node)
 
-	currState := ""
+	var stateOp stateOp
 
 	r.m.Lock()
 	if r.currStates[index] != nil &&
 		r.currStates[index][partition] != nil {
-		currState = r.currStates[index][partition][node]
+		stateOp = r.currStates[index][partition][node]
 	}
 	r.m.Unlock()
 
-	currState = strings.Split(currState, "/")[0]
-
 	// TODO: real state & pct, with stopCh handling.
 
-	return currState, 1.0, nil
+	return stateOp.state, 1.0, nil
 }
