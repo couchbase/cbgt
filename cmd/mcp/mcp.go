@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -43,7 +44,7 @@ type rebalancer struct {
 
 	o *blance.Orchestrator
 
-	// Map of index -> partition -> node -> state.
+	// Map of index -> partition -> node -> state/op.
 	currStates map[string]map[string]map[string]string
 }
 
@@ -265,7 +266,7 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		partitions[partition] = nodes
 	}
 
-	nodes[node] = state
+	nodes[node] = state + "/" + op
 
 	r.m.Unlock()
 
@@ -389,6 +390,8 @@ func (r *rebalancer) partitionState(stopCh chan struct{},
 		currState = r.currStates[index][partition][node]
 	}
 	r.m.Unlock()
+
+	currState = strings.Split(currState, "/")[0]
 
 	// TODO: real state & pct, with stopCh handling.
 
