@@ -103,78 +103,8 @@ func TestRunRebalancer(t *testing.T) {
 				indexName := name
 				log.Printf(" indexOp: %s, indexName: %s", op[0:1], indexName)
 
-				sourceType := "primary"
-				if test.params["sourceType"] != "" {
-					sourceType = test.params["sourceType"]
-				}
-				if test.params[indexName+".sourceType"] != "" {
-					sourceType = test.params[indexName+".sourceType"]
-				}
-
-				sourceName := "default"
-				if test.params["sourceName"] != "" {
-					sourceName = test.params["sourceName"]
-				}
-				if test.params[indexName+".sourceName"] != "" {
-					sourceName = test.params[indexName+".sourceName"]
-				}
-
-				sourceUUID := ""
-				if test.params["sourceUUID"] != "" {
-					sourceUUID = test.params["sourceUUID"]
-				}
-				if test.params[indexName+".sourceUUID"] != "" {
-					sourceUUID = test.params[indexName+".sourceUUID"]
-				}
-
-				sourceParams := `{"numPartitions":4}`
-				if test.params["sourceParams"] != "" {
-					sourceParams = test.params["sourceParams"]
-				}
-				if test.params[indexName+".sourceParams"] != "" {
-					sourceParams = test.params[indexName+".sourceParams"]
-				}
-
-				indexType := "blackhole"
-				if test.params["indexType"] != "" {
-					indexType = test.params["indexType"]
-				}
-				if test.params[indexName+".indexType"] != "" {
-					indexType = test.params[indexName+".indexType"]
-				}
-
-				indexParams := ""
-				if test.params["indexParams"] != "" {
-					indexParams = test.params["indexParams"]
-				}
-				if test.params[indexName+".indexParams"] != "" {
-					indexParams = test.params[indexName+".indexParams"]
-				}
-
-				prevIndexUUID := ""
-				if test.params["prevIndexUUID"] != "" {
-					prevIndexUUID = test.params["prevIndexUUID"]
-				}
-				if test.params[indexName+".prevIndexUUID"] != "" {
-					prevIndexUUID = test.params[indexName+".prevIndexUUID"]
-				}
-
-				planParams := cbgt.PlanParams{
-					MaxPartitionsPerPIndex: 1,
-				}
-
-				waitUntilEmptyCfgEventsIndexDefs()
-
-				err := mgr0.CreateIndex(
-					sourceType, sourceName, sourceUUID, sourceParams,
-					indexType, indexName, indexParams,
-					planParams,
-					prevIndexUUID)
-				if err != nil {
-					t.Errorf("expected no err, got: %#v", err)
-				}
-
-				waitUntilEmptyCfgEventsIndexDefs()
+				testCreateIndex(t, mgr0, indexName, test.params,
+					waitUntilEmptyCfgEventsIndexDefs)
 			} else { // It's a node op.
 				nodeName := name
 				log.Printf(" nodeOp: %s, nodeName: %s", op[0:1], nodeName)
@@ -231,6 +161,85 @@ func TestRunRebalancer(t *testing.T) {
 				test.expErr, err)
 		}
 	}
+}
+
+func testCreateIndex(t *testing.T,
+	mgr *cbgt.Manager,
+	indexName string,
+	params map[string]string,
+	waitUntilEmptyCfgEventsIndexDefs func()) {
+	sourceType := "primary"
+	if params["sourceType"] != "" {
+		sourceType = params["sourceType"]
+	}
+	if params[indexName+".sourceType"] != "" {
+		sourceType = params[indexName+".sourceType"]
+	}
+
+	sourceName := "default"
+	if params["sourceName"] != "" {
+		sourceName = params["sourceName"]
+	}
+	if params[indexName+".sourceName"] != "" {
+		sourceName = params[indexName+".sourceName"]
+	}
+
+	sourceUUID := ""
+	if params["sourceUUID"] != "" {
+		sourceUUID = params["sourceUUID"]
+	}
+	if params[indexName+".sourceUUID"] != "" {
+		sourceUUID = params[indexName+".sourceUUID"]
+	}
+
+	sourceParams := `{"numPartitions":4}`
+	if params["sourceParams"] != "" {
+		sourceParams = params["sourceParams"]
+	}
+	if params[indexName+".sourceParams"] != "" {
+		sourceParams = params[indexName+".sourceParams"]
+	}
+
+	indexType := "blackhole"
+	if params["indexType"] != "" {
+		indexType = params["indexType"]
+	}
+	if params[indexName+".indexType"] != "" {
+		indexType = params[indexName+".indexType"]
+	}
+
+	indexParams := ""
+	if params["indexParams"] != "" {
+		indexParams = params["indexParams"]
+	}
+	if params[indexName+".indexParams"] != "" {
+		indexParams = params[indexName+".indexParams"]
+	}
+
+	prevIndexUUID := ""
+	if params["prevIndexUUID"] != "" {
+		prevIndexUUID = params["prevIndexUUID"]
+	}
+	if params[indexName+".prevIndexUUID"] != "" {
+		prevIndexUUID = params[indexName+".prevIndexUUID"]
+	}
+
+	planParams := cbgt.PlanParams{
+		MaxPartitionsPerPIndex: 1,
+	}
+
+	waitUntilEmptyCfgEventsIndexDefs()
+
+	err := mgr.CreateIndex(
+		sourceType, sourceName, sourceUUID, sourceParams,
+		indexType, indexName, indexParams,
+		planParams,
+		prevIndexUUID)
+	if err != nil {
+		t.Errorf("expected no err, got: %#v", err)
+	}
+
+	waitUntilEmptyCfgEventsIndexDefs()
 }
 
 func startNodeManager(testDir string, cfg cbgt.Cfg, node, register string,
