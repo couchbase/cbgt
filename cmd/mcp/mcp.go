@@ -174,6 +174,7 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	r.m.Unlock()
 
 	numProgress := 0
+	errs := []error(nil)
 
 	for progress := range o.ProgressCh() {
 		numProgress++
@@ -181,6 +182,8 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 		log.Printf("   numProgress: %d,"+
 			" indexDef.Name: %s, progress: %#v",
 			numProgress, indexDef.Name, progress)
+
+		errs = append(errs, progress.Errors...)
 	}
 
 	o.Stop()
@@ -193,6 +196,10 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	//     " perhaps a concurrent planner won, cas: %d, err: %v",
 	//     cas, err)
 	// }
+
+	if len(errs) > 0 {
+		return true, errs[0] // TODO: Propogate errs better.
+	}
 
 	return true, err // TODO: compute proper change response.
 }
