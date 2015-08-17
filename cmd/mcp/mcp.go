@@ -291,12 +291,83 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 			index, partition, node, state, op)
 	}
 
-	planPIndexes, cas, err :=
-		cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
+	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
 	if err != nil {
 		return err
 	}
 
+	err = r.updatePlanPIndexes(planPIndexes,
+		indexDef, index, partition, node, state, op)
+	if err != nil {
+		return err
+	}
+
+	// TODO: stopCh handling.
+
+	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
+	if err != nil {
+		return fmt.Errorf("assignPartition: update plan,"+
+			" perhaps a concurrent planner won, cas: %d, err: %v",
+			cas, err)
+	}
+
+	return nil
+}
+
+// assignPartitionCurrStates validates the state transition is proper
+// and then updates currStates to the assigned
+// index/partition/node/state/op.
+func (r *rebalancer) assignPartitionCurrStates(
+	index, partition, node, state, op string) error {
+	r.m.Lock()
+
+	partitions, exists := r.currStates[index]
+	if !exists || partitions == nil {
+		partitions = map[string]map[string]stateOp{}
+		r.currStates[index] = partitions
+	}
+
+	nodes, exists := partitions[partition]
+	if !exists || nodes == nil {
+		nodes = map[string]stateOp{}
+		partitions[partition] = nodes
+	}
+
+	if op == "add" {
+		if stateOp, exists := nodes[node]; exists && stateOp.state != "" {
+			r.m.Unlock()
+
+			return fmt.Errorf("assignPartitionCurrStates:"+
+				" op was add when exists,"+
+				" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
+				" stateOp: %#v",
+				index, partition, node, state, op, stateOp)
+		}
+	} else {
+		// TODO: This validity check will only work after we
+		// pre-populate the currStates with the starting state.
+		// if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
+		// 	r.m.Unlock()
+		//
+		// 	return fmt.Errorf("assignPartitionCurrStates:"+
+		// 		" op was non-add when not exists,"+
+		// 		" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
+		// 		" stateOp: %#v",
+		// 		index, partition, node, state, op, stateOp)
+		// }
+	}
+
+	nodes[node] = stateOp{state, op}
+
+	r.m.Unlock()
+
+	return nil
+}
+
+func (r *rebalancer) updatePlanPIndexes(
+	planPIndexes *cbgt.PlanPIndexes,
+	indexDef *cbgt.IndexDef,
+	index, partition, node, state, op string) error {
 	planPIndex := planPIndexes.PlanPIndexes[partition]
 	if planPIndex == nil {
 		r.m.Lock()
@@ -371,66 +442,7 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		}
 	}
 
-	// TODO: stopCh handling.
-
 	planPIndexes.UUID = cbgt.NewUUID()
-
-	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
-	if err != nil {
-		return fmt.Errorf("assignPartition: update plan,"+
-			" perhaps a concurrent planner won, cas: %d, err: %v",
-			cas, err)
-	}
-
-	return nil
-}
-
-// assignPartitionCurrStates validates the state transition is proper
-// and then updates currStates to the assigned
-// index/partition/node/state/op.
-func (r *rebalancer) assignPartitionCurrStates(
-	index, partition, node, state, op string) error {
-	r.m.Lock()
-
-	partitions, exists := r.currStates[index]
-	if !exists || partitions == nil {
-		partitions = map[string]map[string]stateOp{}
-		r.currStates[index] = partitions
-	}
-
-	nodes, exists := partitions[partition]
-	if !exists || nodes == nil {
-		nodes = map[string]stateOp{}
-		partitions[partition] = nodes
-	}
-
-	if op == "add" {
-		if stateOp, exists := nodes[node]; exists && stateOp.state != "" {
-			r.m.Unlock()
-
-			return fmt.Errorf("assignPartition:"+
-				" op was add when exists,"+
-				" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
-				" stateOp: %#v",
-				index, partition, node, state, op, stateOp)
-		}
-	} else {
-		// TODO: This validity check will only work after we
-		// pre-populate the currStates with the starting state.
-		// if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
-		// 	r.m.Unlock()
-		//
-		// 	return fmt.Errorf("assignPartition:"+
-		// 		" op was non-add when not exists,"+
-		// 		" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
-		// 		" stateOp: %#v",
-		// 		index, partition, node, state, op, stateOp)
-		// }
-	}
-
-	nodes[node] = stateOp{state, op}
-
-	r.m.Unlock()
 
 	return nil
 }
