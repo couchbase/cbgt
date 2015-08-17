@@ -334,9 +334,8 @@ func (r *rebalancer) assignPartitionCurrStates(
 			r.m.Unlock()
 
 			return fmt.Errorf("assignPartitionCurrStates:"+
-				" op was add when exists,"+
-				" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
-				" stateOp: %#v",
+				" op was add when exists, index: %s,"+
+				" partition: %s, node: %s, state: %s, op: %s, stateOp: %#v",
 				index, partition, node, state, op, stateOp)
 		}
 	} else {
@@ -346,9 +345,8 @@ func (r *rebalancer) assignPartitionCurrStates(
 		// 	r.m.Unlock()
 		//
 		// 	return fmt.Errorf("assignPartitionCurrStates:"+
-		// 		" op was non-add when not exists,"+
-		// 		" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
-		// 		" stateOp: %#v",
+		// 		" op was non-add when not exists, index: %s,"+
+		// 		" partition: %s, node: %s, state: %s, op: %s, stateOp: %#v",
 		// 		index, partition, node, state, op, stateOp)
 		// }
 	}
@@ -445,7 +443,7 @@ func (r *rebalancer) getPIndex(
 	}
 
 	if planPIndex == nil {
-		return nil, fmt.Errorf("findPIndex: no planPIndex,"+
+		return nil, fmt.Errorf("getPIndex: no planPIndex,"+
 			" partition: %s", partition)
 	}
 
