@@ -158,18 +158,6 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 		return err
 	}
 
-	partitionStateFunc := func(stopCh chan struct{},
-		partition string, node string) (
-		state string, pct float32, err error) {
-		state, pct, err = r.partitionState(stopCh,
-			indexDef.Name, partition, node)
-		if err != nil {
-			log.Printf("partitionStateFunc, err: %v", err)
-		}
-
-		return state, pct, err
-	}
-
 	o, err := blance.OrchestrateMoves(
 		partitionModel,
 		blance.OrchestratorOptions{}, // TODO.
@@ -177,7 +165,6 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 		begMap,
 		endMap,
 		assignPartitionFunc,
-		partitionStateFunc,
 		blance.LowestWeightPartitionMoveForNode) // TODO: concurrency.
 	if err != nil {
 		return false, err
@@ -445,24 +432,4 @@ func (r *rebalancer) updatePlanPIndexes(
 	planPIndexes.UUID = cbgt.NewUUID()
 
 	return nil
-}
-
-func (r *rebalancer) partitionState(stopCh chan struct{},
-	index, partition, node string) (
-	state string, pct float32, err error) {
-	log.Printf("  partitionStateFunc: index: %s,"+
-		" partition: %s, node: %s", index, partition, node)
-
-	var stateOp stateOp
-
-	r.m.Lock()
-	if r.currStates[index] != nil &&
-		r.currStates[index][partition] != nil {
-		stateOp = r.currStates[index][partition][node]
-	}
-	r.m.Unlock()
-
-	// TODO: real state & pct, with stopCh handling.
-
-	return stateOp.state, 1.0, nil
 }
