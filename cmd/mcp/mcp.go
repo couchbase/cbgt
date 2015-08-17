@@ -261,9 +261,8 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 // --------------------------------------------------------
 
-// assignPartition is the callback invoked by
-// blance.OrchestrateMoves() when it wants to synchronously change a
-// the partition/node/state/op for an index.
+// assignPartition is invoked when blance.OrchestrateMoves() wants to
+// synchronously change the partition/node/state/op for an index.
 func (r *rebalancer) assignPartition(stopCh chan struct{},
 	index, partition, node, state, op string) error {
 	log.Printf("  assignPartitionFunc: index: %s,"+
@@ -298,14 +297,15 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		return err
 	}
 
-	// TODO: stopCh handling.
-
 	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
 	if err != nil {
 		return fmt.Errorf("assignPartition: update plan,"+
 			" perhaps a concurrent planner won, cas: %d, err: %v",
 			cas, err)
 	}
+
+	// TODO: await state change to take effect and reach "enough" progress.
+	// TODO: stopCh handling.
 
 	return nil
 }
