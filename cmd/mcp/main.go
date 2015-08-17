@@ -27,6 +27,7 @@ import (
 
 	"github.com/couchbaselabs/cbgt"
 	"github.com/couchbaselabs/cbgt/cmd"
+	"github.com/couchbaselabs/cbgt/rebalance"
 )
 
 var VERSION = "v0.0.0"
@@ -81,7 +82,7 @@ func main() {
 		return
 	}
 
-	changed, err := runRebalancer(cbgt.VERSION, cfg, flags.Server)
+	changed, err := rebalance.Rebalance(cbgt.VERSION, cfg, flags.Server)
 	if err != nil {
 		log.Fatalf("main: runMCP err: %v", err)
 		return

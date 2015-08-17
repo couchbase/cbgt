@@ -9,7 +9,7 @@
 //  express or implied. See the License for the specific language
 //  governing permissions and limitations under the License.
 
-package main
+package rebalance
 
 import (
 	"io/ioutil"
@@ -23,7 +23,7 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
-func TestRunRebalancer(t *testing.T) {
+func TestRebalance(t *testing.T) {
 	testDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(testDir)
 
@@ -146,7 +146,7 @@ func TestRunRebalancer(t *testing.T) {
 			}
 		}
 
-		changed, err := runRebalancer(cbgt.VERSION, cfg, ".")
+		changed, err := Rebalance(cbgt.VERSION, cfg, ".")
 		if changed != test.expChanged {
 			t.Errorf("testi: %d, label: %q,"+
 				" expChanged: %v, but got: %v",

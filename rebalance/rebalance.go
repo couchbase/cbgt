@@ -9,7 +9,7 @@
 //  express or implied. See the License for the specific language
 //  governing permissions and limitations under the License.
 
-package main
+package rebalance
 
 import (
 	"fmt"
@@ -21,8 +21,8 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
-// A rebalancer struct holds all the tracking information for a
-// cluster-wide, multi-index rebalancing operation.
+// A rebalancer struct holds all the tracking information for the
+// Rebalance operation.
 type rebalancer struct {
 	version       string            // See cbgt.Manager's version.
 	cfg           cbgt.Cfg          // See cbgt.Manager's cfg.
@@ -55,9 +55,11 @@ type stateOp struct {
 	op    string // May be "" for unknown or no in-flight op.
 }
 
-// runRebalancer implements the "master, central planner (MCP)"
-// rebalance workflow.
-func runRebalancer(version string, cfg cbgt.Cfg, server string) (
+// --------------------------------------------------------
+
+// Rebalance provides a cluster-wide, multi-index rebalancing
+// operation.
+func Rebalance(version string, cfg cbgt.Cfg, server string) (
 	// TODO: Need to ensure that all nodes are up, especially those
 	// that haven't been removed yet.
 	//
@@ -79,14 +81,14 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 		nodeWeights, nodeHierarchy :=
 		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
 
-	log.Printf("runRebalancer: nodesAll: %#v", nodesAll)
-	log.Printf("runRebalancer: nodesToAdd: %#v", nodesToAdd)
-	log.Printf("runRebalancer: nodesToRemove: %#v", nodesToRemove)
-	log.Printf("runRebalancer: nodeWeights: %#v", nodeWeights)
-	log.Printf("runRebalancer: nodeHierarchy: %#v", nodeHierarchy)
-	log.Printf("runRebalancer: begIndexDefs: %#v", begIndexDefs)
-	log.Printf("runRebalancer: begNodeDefs: %#v", begNodeDefs)
-	log.Printf("runRebalancer: begPlanPIndexes: %#v, cas: %v",
+	log.Printf("rebalance: nodesAll: %#v", nodesAll)
+	log.Printf("rebalance: nodesToAdd: %#v", nodesToAdd)
+	log.Printf("rebalance: nodesToRemove: %#v", nodesToRemove)
+	log.Printf("rebalance: nodeWeights: %#v", nodeWeights)
+	log.Printf("rebalance: nodeHierarchy: %#v", nodeHierarchy)
+	log.Printf("rebalance: begIndexDefs: %#v", begIndexDefs)
+	log.Printf("rebalance: begNodeDefs: %#v", begNodeDefs)
+	log.Printf("rebalance: begPlanPIndexes: %#v, cas: %v",
 		begPlanPIndexes, begPlanPIndexesCAS)
 
 	r := &rebalancer{
@@ -112,6 +114,8 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 	return r.rebalanceIndexes()
 }
 
+// --------------------------------------------------------
+
 // rebalanceIndexes rebalances each index, one at a time.
 func (r *rebalancer) rebalanceIndexes() (bool, error) {
 	changedAny := false
@@ -128,6 +132,8 @@ func (r *rebalancer) rebalanceIndexes() (bool, error) {
 
 	return changedAny, nil
 }
+
+// --------------------------------------------------------
 
 // rebalanceIndex rebalances a single index.
 func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
