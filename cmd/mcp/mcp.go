@@ -178,16 +178,15 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	r.m.Unlock()
 
 	numProgress := 0
-	errs := []error(nil)
+	var lastProgress blance.OrchestratorProgress
 
 	for progress := range o.ProgressCh() {
 		numProgress++
+		lastProgress = progress
 
 		log.Printf("   numProgress: %d,"+
 			" indexDef.Name: %s, progress: %#v",
 			numProgress, indexDef.Name, progress)
-
-		errs = append(errs, progress.Errors...)
 	}
 
 	o.Stop()
@@ -201,11 +200,12 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	//     cas, err)
 	// }
 
-	if len(errs) > 0 {
-		return true, errs[0] // TODO: Propogate errs better.
+	if len(lastProgress.Errors) > 0 {
+		// TODO: Propogate errors better.
+		return true, lastProgress.Errors[0]
 	}
 
-	return true, err // TODO: compute proper change response.
+	return true, nil // TODO: compute proper change response.
 }
 
 func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
