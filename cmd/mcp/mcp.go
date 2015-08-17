@@ -198,7 +198,7 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	// }
 
 	if len(lastProgress.Errors) > 0 {
-		// TODO: Propogate errors better.
+		// TODO: Propagate errors better.
 		return true, lastProgress.Errors[0]
 	}
 
@@ -283,8 +283,8 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		return err
 	}
 
-	err = r.updatePlanPIndexes(planPIndexes,
-		indexDef, index, partition, node, state, op)
+	err = r.updatePlanPIndexes(planPIndexes, indexDef,
+		partition, node, state, op)
 	if err != nil {
 		return err
 	}
@@ -352,9 +352,8 @@ func (r *rebalancer) assignPartitionCurrStates(
 }
 
 func (r *rebalancer) updatePlanPIndexes(
-	planPIndexes *cbgt.PlanPIndexes,
-	indexDef *cbgt.IndexDef,
-	index, partition, node, state, op string) error {
+	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
+	partition, node, state, op string) error {
 	planPIndex := planPIndexes.PlanPIndexes[partition]
 	if planPIndex == nil {
 		r.m.Lock()
@@ -370,8 +369,8 @@ func (r *rebalancer) updatePlanPIndexes(
 
 	if planPIndex == nil {
 		return fmt.Errorf("assignPartition: no planPIndex,"+
-			" index: %s, partition: %s, node: %s, state: %s, op: %s",
-			index, partition, node, state, op)
+			" indexDef.Name: %s, partition: %s, node: %s, state: %s, op: %s",
+			indexDef.Name, partition, node, state, op)
 	}
 
 	if planPIndex.Nodes == nil {
@@ -398,9 +397,9 @@ func (r *rebalancer) updatePlanPIndexes(
 	if op == "add" {
 		if planPIndex.Nodes[node] != nil {
 			return fmt.Errorf("assignPartition: planPIndex already exists,"+
-				" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
-				" planPIndex: %#v",
-				index, partition, node, state, op, planPIndex)
+				" indexDef.Name: %s, partition: %s,"+
+				" node: %s, state: %s, op: %s, planPIndex: %#v",
+				indexDef.Name, partition, node, state, op, planPIndex)
 		}
 
 		// TODO: Need to shift the other node priorities around?
@@ -412,8 +411,9 @@ func (r *rebalancer) updatePlanPIndexes(
 	} else {
 		if planPIndex.Nodes[node] == nil {
 			return fmt.Errorf("assignPartition: planPIndex missing,"+
-				" index: %s, partition: %s, node: %s, state: %s, op: %s"+
-				index, partition, node, state, op)
+				" indexDef.Name: %s, partition: %s,"+
+				" node: %s, state: %s, op: %s"+
+				indexDef.Name, partition, node, state, op)
 		}
 
 		if op == "del" {
