@@ -149,15 +149,25 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 
 	assignPartitionFunc := func(stopCh chan struct{},
 		partition, node, state, op string) error {
-		return r.assignPartition(stopCh,
+		err := r.assignPartition(stopCh,
 			indexDef.Name, partition, node, state, op)
+		if err != nil {
+			log.Printf("assignPartitionFunc, err: %v", err)
+		}
+
+		return err
 	}
 
 	partitionStateFunc := func(stopCh chan struct{},
 		partition string, node string) (
 		state string, pct float32, err error) {
-		return r.partitionState(stopCh,
+		state, pct, err = r.partitionState(stopCh,
 			indexDef.Name, partition, node)
+		if err != nil {
+			log.Printf("partitionStateFunc, err: %v", err)
+		}
+
+		return state, pct, err
 	}
 
 	o, err := blance.OrchestrateMoves(
@@ -287,20 +297,22 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 			return fmt.Errorf("assignPartition:"+
 				" op was add when exists,"+
-				" index: %s, partition: %s, node: %s, state: %s, op: %s"+
-				" stateOp: %#v,"+
+				" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
+				" stateOp: %#v",
 				index, partition, node, state, op, stateOp)
 		}
 	} else {
-		if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
-			r.m.Unlock()
-
-			return fmt.Errorf("assignPartition:"+
-				" op was non-add when not exists,"+
-				" index: %s, partition: %s, node: %s, state: %s, op: %s"+
-				" stateOp: %#v,"+
-				index, partition, node, state, op, stateOp)
-		}
+		// TODO: This validity check will only work after we
+		// pre-populate the currStates with the starting state.
+		// if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
+		// 	r.m.Unlock()
+		//
+		// 	return fmt.Errorf("assignPartition:"+
+		// 		" op was non-add when not exists,"+
+		// 		" index: %s, partition: %s, node: %s, state: %s, op: %s,"+
+		// 		" stateOp: %#v",
+		// 		index, partition, node, state, op, stateOp)
+		// }
 	}
 
 	nodes[node] = stateOp{state, op}
