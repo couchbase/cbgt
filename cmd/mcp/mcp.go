@@ -55,6 +55,10 @@ type stateOp struct {
 // runRebalancer implements the "master, central planner (MCP)"
 // rebalance workflow.
 func runRebalancer(version string, cfg cbgt.Cfg, server string) (
+	// TODO: Need to ensure that all nodes are up, especially those
+	// that haven't been removed yet.
+	//
+	// TODO: Need timeouts on moves.
 	changed bool, err error) {
 	if cfg == nil { // Can occur during testing.
 		return false, nil
