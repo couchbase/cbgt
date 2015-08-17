@@ -366,39 +366,16 @@ func (r *rebalancer) assignPartitionCurrStates(
 func (r *rebalancer) updatePlanPIndexes(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
 	partition, node, state, op string) error {
-	planPIndex := planPIndexes.PlanPIndexes[partition]
-	if planPIndex == nil {
-		r.m.Lock()
-		endPlanPIndex := r.endPlanPIndexes.PlanPIndexes[partition]
-		if endPlanPIndex != nil {
-			p := *endPlanPIndex // Copy.
-			planPIndex = &p
-			planPIndex.Nodes = nil
-			planPIndexes.PlanPIndexes[partition] = planPIndex
-		}
-		r.m.Unlock()
+	planPIndex, err := r.getPIndex(planPIndexes, partition)
+	if err != nil {
+		return err
 	}
 
-	if planPIndex == nil {
-		return fmt.Errorf("assignPartition: no planPIndex,"+
-			" indexDef.Name: %s, partition: %s, node: %s, state: %s, op: %s",
-			indexDef.Name, partition, node, state, op)
-	}
+	canRead, canWrite :=
+		r.getNodePlanParamsReadWrite(indexDef, partition, node)
 
 	if planPIndex.Nodes == nil {
 		planPIndex.Nodes = make(map[string]*cbgt.PlanPIndexNode)
-	}
-
-	planPIndex.UUID = cbgt.NewUUID()
-
-	canRead := true
-	canWrite := true
-	nodePlanParam := cbgt.GetNodePlanParam(
-		indexDef.PlanParams.NodePlanParams, node,
-		indexDef.Name, partition)
-	if nodePlanParam != nil {
-		canRead = nodePlanParam.CanRead
-		canWrite = nodePlanParam.CanWrite
 	}
 
 	priority := 0
@@ -441,7 +418,48 @@ func (r *rebalancer) updatePlanPIndexes(
 		}
 	}
 
+	planPIndex.UUID = cbgt.NewUUID()
 	planPIndexes.UUID = cbgt.NewUUID()
 
 	return nil
+}
+
+func (r *rebalancer) getPIndex(
+	planPIndexes *cbgt.PlanPIndexes, partition string) (
+	*cbgt.PlanPIndex, error) {
+	planPIndex := planPIndexes.PlanPIndexes[partition]
+	if planPIndex == nil {
+		r.m.Lock()
+		endPlanPIndex := r.endPlanPIndexes.PlanPIndexes[partition]
+		if endPlanPIndex != nil {
+			p := *endPlanPIndex // Copy.
+			planPIndex = &p
+			planPIndex.Nodes = nil
+			planPIndexes.PlanPIndexes[partition] = planPIndex
+		}
+		r.m.Unlock()
+	}
+
+	if planPIndex == nil {
+		return nil, fmt.Errorf("findPIndex: no planPIndex,"+
+			" partition: %s", partition)
+	}
+
+	return planPIndex, nil
+}
+
+func (r *rebalancer) getNodePlanParamsReadWrite(
+	indexDef *cbgt.IndexDef, partition string, node string) (
+	canRead, canWrite bool) {
+	canRead, canWrite = true, true
+
+	nodePlanParam := cbgt.GetNodePlanParam(
+		indexDef.PlanParams.NodePlanParams, node,
+		indexDef.Name, partition)
+	if nodePlanParam != nil {
+		canRead = nodePlanParam.CanRead
+		canWrite = nodePlanParam.CanWrite
+	}
+
+	return canRead, canWrite
 }
