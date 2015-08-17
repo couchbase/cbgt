@@ -208,6 +208,9 @@ func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
 	return true, nil // TODO: compute proper change response.
 }
 
+// --------------------------------------------------------
+
+// calcBegEndMaps calculates the before and after maps for an index.
 func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	partitionModel blance.PartitionModel,
 	begMap blance.PartitionMap,
@@ -258,6 +261,9 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 // --------------------------------------------------------
 
+// assignPartition is the callback invoked by
+// blance.OrchestrateMoves() when it wants to synchronously change a
+// the partition/node/state/op for an index.
 func (r *rebalancer) assignPartition(stopCh chan struct{},
 	index, partition, node, state, op string) error {
 	log.Printf("  assignPartitionFunc: index: %s,"+
@@ -354,6 +360,9 @@ func (r *rebalancer) assignPartitionCurrStates(
 	return nil
 }
 
+// updatePlanPIndexes modifies the planPIndexes in/out param based on
+// the indexDef/node/state/op params, and may return an error if the
+// state transition is invalid.
 func (r *rebalancer) updatePlanPIndexes(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
 	partition, node, state, op string) error {
