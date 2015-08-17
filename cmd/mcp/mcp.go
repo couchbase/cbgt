@@ -21,23 +21,24 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
+// A rebalancer struct holds all the tracking information for a
+// cluster-wide, multi-index rebalancing operation.
 type rebalancer struct {
-	version       string
-	cfg           cbgt.Cfg
-	server        string
+	version       string            // See cbgt.Manager's version.
+	cfg           cbgt.Cfg          // See cbgt.Manager's cfg.
+	server        string            // See cbgt.Manager's server.
 	nodesAll      []string          // Array of node UUID's.
 	nodesToAdd    []string          // Array of node UUID's.
 	nodesToRemove []string          // Array of node UUID's.
 	nodeWeights   map[string]int    // Keyed by node UUID.
 	nodeHierarchy map[string]string // Keyed by node UUID.
 
-	begIndexDefs    *cbgt.IndexDefs
-	begNodeDefs     *cbgt.NodeDefs
-	begPlanPIndexes *cbgt.PlanPIndexes
+	begIndexDefs       *cbgt.IndexDefs
+	begNodeDefs        *cbgt.NodeDefs
+	begPlanPIndexes    *cbgt.PlanPIndexes
+	begPlanPIndexesCAS uint64
 
-	m sync.Mutex // Protects the mutatable fields that follow.
-
-	cas uint64
+	m sync.Mutex // Protects the mutable fields that follow.
 
 	endPlanPIndexes *cbgt.PlanPIndexes
 
@@ -47,6 +48,8 @@ type rebalancer struct {
 	currStates map[string]map[string]map[string]stateOp
 }
 
+// A stateOp is used to track state transitions and associates a state
+// (i.e., "master") with an op (e.g., "add", "del").
 type stateOp struct {
 	state string
 	op    string // May be "" for unknown or no in-flight op.
@@ -66,7 +69,7 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 
 	uuid := "" // We don't have a uuid, as we're not a node.
 
-	begIndexDefs, begNodeDefs, begPlanPIndexes, cas, err :=
+	begIndexDefs, begNodeDefs, begPlanPIndexes, begPlanPIndexesCAS, err :=
 		cbgt.PlannerGetPlan(cfg, version, uuid)
 	if err != nil {
 		return false, err
@@ -84,23 +87,23 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 	log.Printf("runRebalancer: begIndexDefs: %#v", begIndexDefs)
 	log.Printf("runRebalancer: begNodeDefs: %#v", begNodeDefs)
 	log.Printf("runRebalancer: begPlanPIndexes: %#v, cas: %v",
-		begPlanPIndexes, cas)
+		begPlanPIndexes, begPlanPIndexesCAS)
 
 	r := &rebalancer{
-		version:         version,
-		cfg:             cfg,
-		server:          server,
-		nodesAll:        nodesAll,
-		nodesToAdd:      nodesToAdd,
-		nodesToRemove:   nodesToRemove,
-		nodeWeights:     nodeWeights,
-		nodeHierarchy:   nodeHierarchy,
-		begIndexDefs:    begIndexDefs,
-		begNodeDefs:     begNodeDefs,
-		begPlanPIndexes: begPlanPIndexes,
-		endPlanPIndexes: cbgt.NewPlanPIndexes(version),
-		cas:             cas,
-		currStates:      map[string]map[string]map[string]stateOp{},
+		version:            version,
+		cfg:                cfg,
+		server:             server,
+		nodesAll:           nodesAll,
+		nodesToAdd:         nodesToAdd,
+		nodesToRemove:      nodesToRemove,
+		nodeWeights:        nodeWeights,
+		nodeHierarchy:      nodeHierarchy,
+		begIndexDefs:       begIndexDefs,
+		begNodeDefs:        begNodeDefs,
+		begPlanPIndexes:    begPlanPIndexes,
+		begPlanPIndexesCAS: begPlanPIndexesCAS,
+		endPlanPIndexes:    cbgt.NewPlanPIndexes(version),
+		currStates:         map[string]map[string]map[string]stateOp{},
 	}
 
 	// TODO: Prepopulate currStates so that we can double-check that

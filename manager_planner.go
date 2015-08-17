@@ -138,7 +138,7 @@ func PlannerGetPlan(cfg Cfg, version string, uuid string) (
 	indexDefs *IndexDefs,
 	nodeDefs *NodeDefs,
 	planPIndexes *PlanPIndexes,
-	cas uint64,
+	planPIndexesCAS uint64,
 	err error) {
 	err = PlannerCheckVersion(cfg, version)
 	if err != nil {
@@ -155,12 +155,12 @@ func PlannerGetPlan(cfg Cfg, version string, uuid string) (
 		return nil, nil, nil, 0, err
 	}
 
-	planPIndexes, cas, err = PlannerGetPlanPIndexes(cfg, version)
+	planPIndexes, planPIndexesCAS, err = PlannerGetPlanPIndexes(cfg, version)
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}
 
-	return indexDefs, nodeDefs, planPIndexes, cas, nil
+	return indexDefs, nodeDefs, planPIndexes, planPIndexesCAS, nil
 }
 
 // PlannerCheckVersion errors if a version string is too low.
