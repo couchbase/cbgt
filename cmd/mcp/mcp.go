@@ -264,10 +264,10 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		" partition: %s, node: %s, state: %s, op: %s",
 		index, partition, node, state, op)
 
+	var err error
+
 	r.m.Lock()
 
-	// TODO: validate that we're making a valid state transition.
-	//
 	// Update currStates to the assigned index/partition/node/state.
 	partitions, exists := r.currStates[index]
 	if !exists || partitions == nil {
@@ -279,6 +279,28 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 	if !exists || nodes == nil {
 		nodes = map[string]stateOp{}
 		partitions[partition] = nodes
+	}
+
+	if op == "add" {
+		if stateOp, exists := nodes[node]; exists && stateOp.state != "" {
+			r.m.Unlock()
+
+			return fmt.Errorf("assignPartition:"+
+				" op was add when exists,"+
+				" index: %s, partition: %s, node: %s, state: %s, op: %s"+
+				" stateOp: %#v,"+
+				index, partition, node, state, op, stateOp)
+		}
+	} else {
+		if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
+			r.m.Unlock()
+
+			return fmt.Errorf("assignPartition:"+
+				" op was non-add when not exists,"+
+				" index: %s, partition: %s, node: %s, state: %s, op: %s"+
+				" stateOp: %#v,"+
+				index, partition, node, state, op, stateOp)
+		}
 	}
 
 	nodes[node] = stateOp{state, op}
