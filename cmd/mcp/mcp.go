@@ -109,15 +109,15 @@ func runRebalancer(version string, cfg cbgt.Cfg, server string) (
 	// TODO: Prepopulate currStates so that we can double-check that
 	// our state transitions(assignPartition) are valid.
 
-	return r.run()
+	return r.rebalanceIndexes()
 }
 
-// The run method rebalances each index, one at a time.
-func (r *rebalancer) run() (bool, error) {
+// rebalanceIndexes rebalances each index, one at a time.
+func (r *rebalancer) rebalanceIndexes() (bool, error) {
 	changedAny := false
 
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
-		changed, err := r.runIndex(indexDef)
+		changed, err := r.rebalanceIndex(indexDef)
 		if err != nil {
 			log.Printf("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
@@ -129,10 +129,10 @@ func (r *rebalancer) run() (bool, error) {
 	return changedAny, nil
 }
 
-// The runIndex method rebalances a single index.
-func (r *rebalancer) runIndex(indexDef *cbgt.IndexDef) (
+// rebalanceIndex rebalances a single index.
+func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
-	log.Printf(" runIndex: indexDef.Name: %s", indexDef.Name)
+	log.Printf(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
 	if cbgt.CasePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
@@ -265,7 +265,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // synchronously change the partition/node/state/op for an index.
 func (r *rebalancer) assignPartition(stopCh chan struct{},
 	index, partition, node, state, op string) error {
-	log.Printf("  assignPartitionFunc: index: %s,"+
+	log.Printf("  assignPartition: index: %s,"+
 		" partition: %s, node: %s, state: %s, op: %s",
 		index, partition, node, state, op)
 
@@ -385,7 +385,8 @@ func (r *rebalancer) updatePlanPIndexes(
 
 	if op == "add" {
 		if planPIndex.Nodes[node] != nil {
-			return fmt.Errorf("assignPartition: planPIndex already exists,"+
+			return fmt.Errorf("updatePlanPIndexes:"+
+				" planPIndex already exists,"+
 				" indexDef.Name: %s, partition: %s,"+
 				" node: %s, state: %s, op: %s, planPIndex: %#v",
 				indexDef.Name, partition, node, state, op, planPIndex)
@@ -399,10 +400,11 @@ func (r *rebalancer) updatePlanPIndexes(
 		}
 	} else {
 		if planPIndex.Nodes[node] == nil {
-			return fmt.Errorf("assignPartition: planPIndex missing,"+
+			return fmt.Errorf("updatePlanPIndexes:"+
+				" planPIndex missing,"+
 				" indexDef.Name: %s, partition: %s,"+
-				" node: %s, state: %s, op: %s"+
-				indexDef.Name, partition, node, state, op)
+				" node: %s, state: %s, op: %s, planPIndex: %#v",
+				indexDef.Name, partition, node, state, op, planPIndex)
 		}
 
 		if op == "del" {
@@ -424,6 +426,8 @@ func (r *rebalancer) updatePlanPIndexes(
 	return nil
 }
 
+// getPIndex returns the planPIndex, defaulting to the endPlanPIndex's
+// definition if necessary.
 func (r *rebalancer) getPIndex(
 	planPIndexes *cbgt.PlanPIndexes, partition string) (
 	*cbgt.PlanPIndex, error) {
@@ -448,6 +452,8 @@ func (r *rebalancer) getPIndex(
 	return planPIndex, nil
 }
 
+// getNodePlanParamsReadWrite returns the read/write config for a
+// partition for a node based on the plan params.
 func (r *rebalancer) getNodePlanParamsReadWrite(
 	indexDef *cbgt.IndexDef, partition string, node string) (
 	canRead, canWrite bool) {
