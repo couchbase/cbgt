@@ -287,6 +287,32 @@ func CfgSetNodeDefs(cfg Cfg, kind string, nodeDefs *NodeDefs,
 	return cfg.Set(CfgNodeDefsKey(kind), buf, cas)
 }
 
+// CfgRemoveNodeDef removes a NodeDef with the given uuid from the Cfg.
+func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
+	nodeDefs, cas, err := CfgGetNodeDefs(cfg, kind)
+	if err != nil {
+		return err
+	}
+
+	if nodeDefs == nil {
+		return nil
+	}
+
+	nodeDefPrev, exists := nodeDefs.NodeDefs[uuid]
+	if !exists || nodeDefPrev == nil {
+		return nil
+	}
+
+	delete(nodeDefs.NodeDefs, uuid)
+
+	nodeDefs.UUID = NewUUID()
+	nodeDefs.ImplVersion = version // TODO: ImplVersion bump?
+
+	_, err = CfgSetNodeDefs(cfg, kind, nodeDefs, cas)
+
+	return err
+}
+
 // ------------------------------------------------------------------------
 
 // PLAN_PINDEXES_KEY is used for Cfg access.
