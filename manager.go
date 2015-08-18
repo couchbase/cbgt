@@ -339,35 +339,46 @@ func (mgr *Manager) RemoveNodeDef(kind string) error {
 	}
 
 	for {
-		nodeDefs, cas, err := CfgGetNodeDefs(mgr.cfg, kind)
-		if err != nil {
-			return err
-		}
-		if nodeDefs == nil {
-			return nil
-		}
-		nodeDefPrev, exists := nodeDefs.NodeDefs[mgr.uuid]
-		if !exists || nodeDefPrev == nil {
-			return nil
-		}
-		delete(nodeDefs.NodeDefs, mgr.uuid)
-
-		nodeDefs.UUID = NewUUID()
-		nodeDefs.ImplVersion = mgr.version // TODO: ImplVersion bump?
-
-		_, err = CfgSetNodeDefs(mgr.cfg, kind, nodeDefs, cas)
+		err := RemoveNodeDef(mgr.cfg, kind, mgr.uuid, mgr.version)
 		if err != nil {
 			if _, ok := err.(*CfgCASError); ok {
-				// Retry if it was a CAS mismatch, as perhaps
-				// multiple nodes are all racing to register themselves,
-				// such as in a full datacenter power restart.
+				// Retry if it was a CAS mismatch, as perhaps multiple
+				// nodes are racing to register/unregister themselves,
+				// such as in a full cluster power restart.
 				continue
 			}
 			return err
 		}
 		break
 	}
+
 	return nil
+}
+
+// RemoveNodeDef removes a NodeDef with the given uuid from the Cfg.
+func RemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
+	nodeDefs, cas, err := CfgGetNodeDefs(cfg, kind)
+	if err != nil {
+		return err
+	}
+
+	if nodeDefs == nil {
+		return nil
+	}
+
+	nodeDefPrev, exists := nodeDefs.NodeDefs[uuid]
+	if !exists || nodeDefPrev == nil {
+		return nil
+	}
+
+	delete(nodeDefs.NodeDefs, uuid)
+
+	nodeDefs.UUID = NewUUID()
+	nodeDefs.ImplVersion = version // TODO: ImplVersion bump?
+
+	_, err = CfgSetNodeDefs(cfg, kind, nodeDefs, cas)
+
+	return err
 }
 
 // ---------------------------------------------------------------
