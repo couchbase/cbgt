@@ -146,7 +146,7 @@ func TestRebalance(t *testing.T) {
 			}
 		}
 
-		changed, err := Rebalance(cbgt.VERSION, cfg, ".")
+		changed, err := Rebalance(cbgt.VERSION, cfg, ".", nil)
 		if changed != test.expChanged {
 			t.Errorf("testi: %d, label: %q,"+
 				" expChanged: %v, but got: %v",

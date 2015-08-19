@@ -21,6 +21,12 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
+// WaitAssignPartitionDone is the signature of the synchronous
+// callback that Rebalance() invokes to wait for an
+// index/partition/node/state/op transition to complete.
+type WaitAssignPartitionDone func(stopCh chan struct{},
+	index, partition, node, state, op string) error
+
 // A rebalancer struct holds all the tracking information for the
 // Rebalance operation.
 type rebalancer struct {
@@ -37,6 +43,8 @@ type rebalancer struct {
 	begNodeDefs        *cbgt.NodeDefs
 	begPlanPIndexes    *cbgt.PlanPIndexes
 	begPlanPIndexesCAS uint64
+
+	waitAssignPartitionDone WaitAssignPartitionDone
 
 	m sync.Mutex // Protects the mutable fields that follow.
 
@@ -59,7 +67,8 @@ type stateOp struct {
 
 // Rebalance provides a cluster-wide, multi-index rebalancing
 // operation.
-func Rebalance(version string, cfg cbgt.Cfg, server string) (
+func Rebalance(version string, cfg cbgt.Cfg, server string,
+	waitAssignPartitionDone WaitAssignPartitionDone) (
 	// TODO: Need to ensure that all nodes are up, especially those
 	// that haven't been removed yet.
 	//
@@ -106,10 +115,12 @@ func Rebalance(version string, cfg cbgt.Cfg, server string) (
 		begPlanPIndexesCAS: begPlanPIndexesCAS,
 		endPlanPIndexes:    cbgt.NewPlanPIndexes(version),
 		currStates:         map[string]map[string]map[string]stateOp{},
+
+		waitAssignPartitionDone: waitAssignPartitionDone,
 	}
 
 	// TODO: Prepopulate currStates so that we can double-check that
-	// our state transitions(assignPartition) are valid.
+	// our state transitions in assignPartition are valid.
 
 	return r.rebalanceIndexes()
 }
@@ -310,10 +321,12 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 			cas, err)
 	}
 
-	// TODO: await state change to take effect and reach "enough" progress.
-	// TODO: stopCh handling.
+	if r.waitAssignPartitionDone == nil {
+		return nil
+	}
 
-	return nil
+	return r.waitAssignPartitionDone(stopCh, index, partition,
+		node, state, op)
 }
 
 // assignPartitionCurrStates validates the state transition is proper

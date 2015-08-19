@@ -82,7 +82,8 @@ func main() {
 		return
 	}
 
-	changed, err := rebalance.Rebalance(cbgt.VERSION, cfg, flags.Server)
+	changed, err :=
+		rebalance.Rebalance(cbgt.VERSION, cfg, flags.Server, nil)
 	if err != nil {
 		log.Fatalf("main: runMCP err: %v", err)
 		return
