@@ -125,6 +125,22 @@ func (h *ManagerKickHandler) ServeHTTP(
 
 // ---------------------------------------------------
 
+type RESTCfg struct {
+	Status            string             `json:"status"`
+	IndexDefs         *cbgt.IndexDefs    `json:"indexDefs"`
+	IndexDefsCAS      uint64             `json:"indexDefsCAS"`
+	IndexDefsErr      error              `json:"indexDefsErr"`
+	NodeDefsWanted    *cbgt.NodeDefs     `json:"nodeDefsWanted"`
+	NodeDefsWantedCAS uint64             `json:"nodeDefsWantedCAS"`
+	NodeDefsWantedErr error              `json:"nodeDefsWantedErr"`
+	NodeDefsKnown     *cbgt.NodeDefs     `json:"nodeDefsKnown"`
+	NodeDefsKnownCAS  uint64             `json:"nodeDefsKnownCAS"`
+	NodeDefsKnownErr  error              `json:"nodeDefsKnownErr"`
+	PlanPIndexes      *cbgt.PlanPIndexes `json:"planPIndexes"`
+	PlanPIndexesCAS   uint64             `json:"planPIndexesCAS"`
+	PlanPIndexesErr   error              `json:"planPIndexesErr"`
+}
+
 // CfgGetHandler is a REST handler that retrieves the contents of the
 // Cfg system.
 type CfgGetHandler struct {
@@ -147,21 +163,7 @@ func (h *CfgGetHandler) ServeHTTP(
 		cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
 	planPIndexes, planPIndexesCAS, planPIndexesErr :=
 		cbgt.CfgGetPlanPIndexes(cfg)
-	MustEncode(w, struct {
-		Status            string             `json:"status"`
-		IndexDefs         *cbgt.IndexDefs    `json:"indexDefs"`
-		IndexDefsCAS      uint64             `json:"indexDefsCAS"`
-		IndexDefsErr      error              `json:"indexDefsErr"`
-		NodeDefsWanted    *cbgt.NodeDefs     `json:"nodeDefsWanted"`
-		NodeDefsWantedCAS uint64             `json:"nodeDefsWantedCAS"`
-		NodeDefsWantedErr error              `json:"nodeDefsWantedErr"`
-		NodeDefsKnown     *cbgt.NodeDefs     `json:"nodeDefsKnown"`
-		NodeDefsKnownCAS  uint64             `json:"nodeDefsKnownCAS"`
-		NodeDefsKnownErr  error              `json:"nodeDefsKnownErr"`
-		PlanPIndexes      *cbgt.PlanPIndexes `json:"planPIndexes"`
-		PlanPIndexesCAS   uint64             `json:"planPIndexesCAS"`
-		PlanPIndexesErr   error              `json:"planPIndexesErr"`
-	}{
+	MustEncode(w, RESTCfg{
 		Status:            "ok",
 		IndexDefs:         indexDefs,
 		IndexDefsCAS:      indexDefsCAS,
