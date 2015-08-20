@@ -103,6 +103,10 @@ func (m *MonitorCluster) run() {
 			continue
 		}
 
+		if seedURL == "" {
+			return
+		}
+
 		m.m.Lock()
 		cfgBytesSame := bytes.Equal(m.lastCfgBytes, cfgBytes)
 		m.m.Unlock()
