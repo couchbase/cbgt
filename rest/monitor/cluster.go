@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"reflect"
-	"sort"
 	"sync"
 	"time"
 
@@ -93,7 +92,8 @@ func (m *MonitorCluster) run() {
 
 			m.sampleCh <- MonitorSample{
 				Kind:     "/api/cfg",
-				Node:     seedURL,
+				Url:      seedURL,
+				UUID:     "",
 				Start:    start,
 				Duration: duration,
 				Error:    errs[0],
@@ -131,7 +131,8 @@ func (m *MonitorCluster) run() {
 
 			m.sampleCh <- MonitorSample{
 				Kind:     "/api/cfg",
-				Node:     seedURL,
+				Url:      seedURL,
+				UUID:     "",
 				Start:    start,
 				Duration: duration,
 				Error:    nil,
@@ -142,7 +143,7 @@ func (m *MonitorCluster) run() {
 		m.m.Lock()
 		if m.monitorNodes == nil {
 			monitorNodes, err := StartMonitorNodes(
-				NodeDefsURLs(m.lastCfg.NodeDefsWanted),
+				NodeDefsUrlUUIDs(m.lastCfg.NodeDefsWanted),
 				m.sampleCh,
 				MonitorNodesOptions{})
 			if err != nil {
@@ -169,14 +170,12 @@ func SameNodeDefs(a, b *cbgt.NodeDefs) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func NodeDefsURLs(nodeDefs *cbgt.NodeDefs) []string {
-	r := []string(nil)
+func NodeDefsUrlUUIDs(nodeDefs *cbgt.NodeDefs) []UrlUUID {
+	r := []UrlUUID(nil)
 
 	for _, nodeDef := range nodeDefs.NodeDefs {
-		r = append(r, "http://"+nodeDef.HostPort)
+		r = append(r, UrlUUID{"http://" + nodeDef.HostPort, nodeDef.UUID})
 	}
-
-	sort.Strings(r)
 
 	return r
 }

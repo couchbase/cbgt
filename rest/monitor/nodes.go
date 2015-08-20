@@ -19,7 +19,7 @@ import (
 // A MonitorNodes struct holds all the tracking information for the
 // StartMonitorNodes operation.
 type MonitorNodes struct {
-	nodes    []string // Array of base REST URL's to monitor.
+	urlUUIDs []UrlUUID // Array of base REST URL's to monitor.
 	sampleCh chan MonitorSample
 	options  MonitorNodesOptions
 	stopCh   chan struct{}
@@ -35,22 +35,22 @@ type MonitorNodesOptions struct {
 // should handle situations of node membership changes by stopping and
 // restarting StartMonitorNodes() as needed.
 //
-// The cbgt REST URL endpoints that are monitored are [node]/api/stats
-// and [node]/api/diag.
+// The cbgt REST URL endpoints that are monitored are [url]/api/stats
+// and [url]/api/diag.
 func StartMonitorNodes(
-	nodes []string,
+	urlUUIDs []UrlUUID,
 	sampleCh chan MonitorSample,
 	options MonitorNodesOptions,
 ) (*MonitorNodes, error) {
 	m := &MonitorNodes{
-		nodes:    nodes,
+		urlUUIDs: urlUUIDs,
 		sampleCh: sampleCh,
 		options:  options,
 		stopCh:   make(chan struct{}),
 	}
 
-	for _, node := range nodes {
-		go m.runNode(node)
+	for _, urlUUID := range urlUUIDs {
+		go m.runNode(urlUUID)
 	}
 
 	return m, nil
@@ -60,7 +60,7 @@ func (m *MonitorNodes) Stop() {
 	close(m.stopCh)
 }
 
-func (m *MonitorNodes) runNode(node string) {
+func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 	statsSampleInterval := m.options.StatsSampleInterval
 	if statsSampleInterval <= 0 {
 		statsSampleInterval =
@@ -89,21 +89,23 @@ func (m *MonitorNodes) runNode(node string) {
 				return
 			}
 
-			m.sample(node, "/api/stats", t)
+			m.sample(urlUUID, "/api/stats", t)
 
 		case t, ok := <-diagTicker.C:
 			if !ok {
 				return
 			}
 
-			m.sample(node, "/api/diag", t)
+			m.sample(urlUUID, "/api/diag", t)
 		}
 	}
 }
 
-func (m *MonitorNodes) sample(node string, kind string,
+func (m *MonitorNodes) sample(
+	urlUUID UrlUUID,
+	kind string,
 	start time.Time) {
-	res, err := HttpGet(node + kind)
+	res, err := HttpGet(urlUUID.Url + kind)
 
 	duration := time.Now().Sub(start)
 
@@ -121,7 +123,8 @@ func (m *MonitorNodes) sample(node string, kind string,
 
 	m.sampleCh <- MonitorSample{
 		Kind:     kind,
-		Node:     node,
+		Url:      urlUUID.Url,
+		UUID:     urlUUID.UUID,
 		Start:    start,
 		Duration: duration,
 		Error:    err,
