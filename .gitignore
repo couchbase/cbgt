@@ -8,5 +8,6 @@
 .project
 .settings
 .DS_Store
-/mcp
 /data
+/mcp
+/monitor
