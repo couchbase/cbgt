@@ -12,6 +12,7 @@
 package monitor
 
 import (
+	"fmt"
 	"io/ioutil"
 	"time"
 )
@@ -113,16 +114,26 @@ func (m *MonitorNodes) sample(
 	duration := time.Now().Sub(start)
 
 	data := []byte(nil)
-	if res.StatusCode == 200 {
-		var dataErr error
+	if err == nil && res != nil {
+		if res.StatusCode == 200 {
+			var dataErr error
 
-		data, dataErr = ioutil.ReadAll(res.Body)
-		if err == nil && dataErr != nil {
-			err = dataErr
+			data, dataErr = ioutil.ReadAll(res.Body)
+			if err == nil && dataErr != nil {
+				err = dataErr
+			}
+		} else {
+			err = fmt.Errorf("nodes: sample res.StatusCode not 200,"+
+				" res: %#v, urlUUID: %#v, kind: %s, err: %v",
+				res, urlUUID, kind, err)
 		}
-	}
 
-	res.Body.Close()
+		res.Body.Close()
+	} else {
+		err = fmt.Errorf("nodes: sample,"+
+			" res: %#v, urlUUID: %#v, kind: %s, err: %v",
+			res, urlUUID, kind, err)
+	}
 
 	m.sampleCh <- MonitorSample{
 		Kind:     kind,
