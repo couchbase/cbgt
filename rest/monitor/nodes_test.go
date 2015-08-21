@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestEmptyStartMonitorNodes(t *testing.T) {
@@ -161,4 +163,64 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 	if httpGets != 2 {
 		t.Errorf("expected 2 http gets")
 	}
+}
+
+func Test1NodeStartMonitorNodesFast(t *testing.T) {
+	var mut sync.Mutex
+	httpGets := 0
+
+	HttpGet = func(url string) (resp *http.Response, err error) {
+		mut.Lock()
+		httpGets++
+		mut.Unlock()
+
+		if url != "url0/api/stats" &&
+			url != "url0/api/diag" {
+			t.Errorf("expected stats or diag, url: %s", url)
+		}
+
+		return &http.Response{
+			StatusCode: 200,
+			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+		}, nil
+	}
+	defer func() {
+		HttpGet = http.Get
+	}()
+
+	sampleCh := make(chan MonitorSample)
+
+	opt := MonitorNodesOptions{
+		StatsSampleInterval: 100,
+		DiagSampleInterval:  100,
+	}
+
+	m, err := StartMonitorNodes([]UrlUUID{
+		UrlUUID{"url0", "uuid0"},
+	}, sampleCh, opt)
+	if err != nil || m == nil {
+		t.Errorf("expected no err")
+	}
+
+	go func() {
+		for s := range sampleCh {
+			if (s.Kind != "/api/stats" && s.Kind != "/api/diag") ||
+				s.Url != "url0" ||
+				s.UUID != "uuid0" ||
+				s.Error != nil ||
+				s.Data == nil {
+				t.Errorf("unexpected sample: %#v", s)
+			}
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	m.Stop()
+
+	mut.Lock()
+	if httpGets <= 20 {
+		t.Errorf("expected many http gets")
+	}
+	mut.Unlock()
 }
