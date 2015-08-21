@@ -200,3 +200,50 @@ func TestIndentJSON(t *testing.T) {
 		t.Errorf("expected err on bad non-json'able IndentJSON()")
 	}
 }
+
+func TestStructChanges(t *testing.T) {
+	if StructChanges(nil, nil) != nil {
+		t.Errorf("expected nil")
+	}
+
+	structs := []struct {
+		s string
+		a int
+		b int
+	}{
+		{"0", 100, 200},
+		{"1", 101, 201},
+		{"2", 201, 101},
+	}
+
+	tests := []struct {
+		x   int
+		y   int
+		exp []string
+	}{
+		{0, 0, nil},
+		{1, 1, nil},
+		{2, 2, nil},
+		{0, 1, []string{"a: 100 -> 101", "b: 200 -> 201"}},
+		{1, 0, []string{"a: 101 -> 100", "b: 201 -> 200"}},
+		{1, 2, []string{"a: 101 -> 201", "b: 201 -> 101"}},
+	}
+
+	for testi, test := range tests {
+		x := structs[test.x]
+		y := structs[test.y]
+		c := StructChanges(x, y)
+		if len(c) != len(test.exp) {
+			t.Errorf("testi: %d, test: %#v, got: %#v",
+				testi, test, c)
+		}
+
+		for entryi, entry := range c {
+			if entry != test.exp[entryi] {
+				t.Errorf("testi: %d, mismatch entryi: %d,"+
+					" test: %#v, got: %#v",
+					entryi, testi, test, c)
+			}
+		}
+	}
+}

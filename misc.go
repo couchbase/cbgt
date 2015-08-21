@@ -264,6 +264,39 @@ func AtomicCopyMetrics(s, r interface{},
 	}
 }
 
+// StructChanges uses reflection compare the fields of two structs,
+// which must the same type, and returns info on the changes of field
+// values.
+func StructChanges(a1, a2 interface{}) (rv []string) {
+	if a1 == nil || a2 == nil {
+		return nil
+	}
+
+	v1 := reflect.ValueOf(a1)
+	v2 := reflect.ValueOf(a2)
+	if v1.Type() != v2.Type() {
+		return nil
+	}
+	if v1.Kind() != v2.Kind() ||
+		v1.Kind() != reflect.Struct {
+		return nil
+	}
+
+	for i := 0; i < v1.NumField(); i++ {
+		v1f := v1.Field(i)
+		v2f := v2.Field(i)
+		if v1f.Kind() == v2f.Kind() &&
+			v1f.Kind() == reflect.Int {
+			if v1f.Int() != v2f.Int() {
+				rv = append(rv, fmt.Sprintf("%s: %d -> %d",
+					v2.Type().Field(i).Name, v1f.Int(), v2f.Int()))
+			}
+		}
+	}
+
+	return rv
+}
+
 var timerPercentiles = []float64{0.5, 0.75, 0.95, 0.99, 0.999}
 
 // WriteTimerJSON writes a metrics.Timer instance as JSON to a
