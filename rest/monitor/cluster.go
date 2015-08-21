@@ -174,8 +174,10 @@ func SameNodeDefs(a, b *cbgt.NodeDefs) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func NodeDefsUrlUUIDs(nodeDefs *cbgt.NodeDefs) []UrlUUID {
-	r := []UrlUUID(nil)
+func NodeDefsUrlUUIDs(nodeDefs *cbgt.NodeDefs) (r []UrlUUID) {
+	if nodeDefs == nil {
+		return nil
+	}
 
 	for _, nodeDef := range nodeDefs.NodeDefs {
 		// TODO: Security/auth.

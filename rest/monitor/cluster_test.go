@@ -12,6 +12,8 @@
 package monitor
 
 import (
+	"bytes"
+	"io/ioutil"
 	"net/http"
 	"testing"
 )
@@ -33,4 +35,55 @@ func TestEmptyStartMonitorCluster(t *testing.T) {
 	}
 
 	m.Stop()
+}
+
+func Test1NodeStartMonitorCluster(t *testing.T) {
+	httpGets := 0
+	HttpGet = func(url string) (resp *http.Response, err error) {
+		httpGets++
+
+		if url != "url0/api/cfg" {
+			t.Errorf("expected http get, url: %s", url)
+		}
+
+		return &http.Response{
+			StatusCode: 200,
+			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+		}, nil
+	}
+	defer func() {
+		HttpGet = http.Get
+	}()
+
+	sampleCh := make(chan MonitorSample)
+
+	opt := MonitorClusterOptions{}
+
+	m, err := StartMonitorCluster([]string{"url0"},
+		sampleCh, opt)
+	if err != nil || m == nil {
+		t.Errorf("expected no err")
+	}
+
+	s, ok := <-sampleCh
+	if !ok ||
+		s.Kind != "/api/cfg" ||
+		s.Url != "url0" ||
+		s.UUID != "" ||
+		s.Error != nil ||
+		string(s.Data) != "{}" {
+		t.Errorf("unexpected sample: %#v, ok: %v", s, ok)
+	}
+
+	m.Stop()
+
+	select {
+	case <-sampleCh:
+		t.Errorf("unexpected sample")
+	default:
+	}
+
+	if httpGets != 1 {
+		t.Errorf("expected 1 http gets")
+	}
 }
