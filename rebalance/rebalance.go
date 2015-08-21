@@ -229,6 +229,10 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 			numProgress, indexDef.Name, progress)
 	}
 
+	r.m.Lock()
+	r.o = nil
+	r.m.Unlock()
+
 	o.Stop()
 
 	// TDOO: Check that the plan in the cfg should match our endMap...
