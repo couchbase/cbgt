@@ -69,6 +69,12 @@ func TestRebalance(t *testing.T) {
 			"x",
 			false,
 		},
+		{"remove node b",
+			"-b", nil,
+			"a",
+			"x",
+			false,
+		},
 	}
 
 	cfg := cbgt.NewCfgMem()
