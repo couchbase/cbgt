@@ -78,6 +78,7 @@ type rebalancer struct {
 	stopCh chan struct{} // Closed by app or when there's an error.
 }
 
+// Map of index -> partition -> node -> StateOp.
 type CurrStates map[string]map[string]map[string]StateOp
 
 // A StateOp is used to track state transitions and associates a state
@@ -387,7 +388,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	}
 
 	log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
-		" endPlanPIndexes: %#v", indexDef.Name, r.endPlanPIndexes)
+		" endPlanPIndexes: %+v", indexDef.Name, r.endPlanPIndexes)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
 

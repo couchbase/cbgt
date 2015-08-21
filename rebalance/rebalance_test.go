@@ -69,10 +69,16 @@ func TestRebalance(t *testing.T) {
 			"x",
 			false,
 		},
+		{"add 2nd index y",
+			"+y", nil,
+			"a b",
+			"x y",
+			false,
+		},
 		{"remove node b",
 			"-b", nil,
 			"a",
-			"x",
+			"x y",
 			false,
 		},
 	}
@@ -112,6 +118,8 @@ func TestRebalance(t *testing.T) {
 	for testi, test := range tests {
 		log.Printf("testi: %d, label: %q", testi, test.label)
 
+		checkCurrStatesIndexes := false
+
 		for opi, op := range strings.Split(test.ops, " ") {
 			log.Printf(" opi: %d, op: %s", opi, op)
 
@@ -124,6 +132,8 @@ func TestRebalance(t *testing.T) {
 
 				testCreateIndex(t, mgr0, indexName, test.params,
 					waitUntilEmptyCfgEventsIndexDefs)
+
+				checkCurrStatesIndexes = false
 			} else { // It's a node op.
 				nodeName := name
 				log.Printf(" nodeOp: %s, nodeName: %s", op[0:1], nodeName)
@@ -162,6 +172,8 @@ func TestRebalance(t *testing.T) {
 				mgr.Kick("kick")
 
 				waitUntilEmptyCfgEventsNodeDefsWanted()
+
+				checkCurrStatesIndexes = true
 			}
 		}
 
@@ -226,10 +238,14 @@ func TestRebalance(t *testing.T) {
 		expIndexes := strings.Split(test.expIndexes, " ")
 
 		r.VisitCurrStates(func(currStates CurrStates) {
+			if !checkCurrStatesIndexes {
+				return
+			}
+
 			if len(currStates) != len(expIndexes) {
-				t.Errorf("len(expIndexes) != len(currStates), "+
-					" expIndexes: %#v, currStates: %#v",
-					expIndexes, currStates)
+				t.Errorf("test.label: %s, len(expIndexes) != len(currStates), "+
+					" expIndexes: %#v, currStates: %#v, endIndexDefs: %#v",
+					test.label, expIndexes, currStates, endIndexDefs)
 			}
 		})
 	}
