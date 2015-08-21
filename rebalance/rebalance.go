@@ -50,6 +50,7 @@ type rebalancer struct {
 	progressCh chan RebalanceProgress
 
 	monitor         *monitor.MonitorNodes
+	monitorDoneCh   chan struct{}
 	monitorSampleCh chan monitor.MonitorSample
 
 	nodesAll      []string          // Array of node UUID's.
@@ -146,6 +147,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		server:             server,
 		progressCh:         make(chan RebalanceProgress),
 		monitor:            monitor,
+		monitorDoneCh:      make(chan struct{}),
 		monitorSampleCh:    monitorSampleCh,
 		nodesAll:           nodesAll,
 		nodesToAdd:         nodesToAdd,
@@ -252,6 +254,16 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 				indexDef.Name, err)
 		}
 	}
+
+	// Completion of rebalance operation, whether naturally or due to
+	// error/Stop(), reaches the cleanup codepath here.  We wait for
+	// runMonitor() to finish as it may have more sends to progressCh.
+	//
+	r.Stop()
+
+	r.monitor.Stop()
+
+	<-r.monitorDoneCh
 
 	close(r.progressCh)
 }
@@ -613,8 +625,10 @@ func (r *rebalancer) getNodePlanParamsReadWrite(
 
 // --------------------------------------------------------
 
+// runMonitor handles any error from the nodes monitoring subsystem by
+// stopping the rebalance.
 func (r *rebalancer) runMonitor(stopCh chan struct{}) {
-	defer r.monitor.Stop()
+	defer close(r.monitorDoneCh)
 
 	for {
 		select {
@@ -627,11 +641,9 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 			}
 
 			if s.Error != nil {
-				r.progressCh <- RebalanceProgress{
-					Error: s.Error,
-				}
+				r.progressCh <- RebalanceProgress{Error: s.Error}
 
-				r.Stop()
+				r.Stop() // Stop the rebalance.
 			}
 		}
 	}
