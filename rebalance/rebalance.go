@@ -86,11 +86,11 @@ type stateOp struct {
 
 // --------------------------------------------------------
 
-// StartRebalance begins a concurrent, phased, cluster-wide
-// rebalancing of all the indexes (and their index partitions) on
-// cluster of cbgt nodes.  StartRebalance utilizes the blance library
-// for calculating and orchestrating partition reassignments and the
-// cbgt/rest/monitor library to watch for progress and errors.
+// StartRebalance begins a concurrent, cluster-wide rebalancing of all
+// the indexes (and their index partitions) on a cluster of cbgt
+// nodes.  StartRebalance utilizes the blance library for calculating
+// and orchestrating partition reassignments and the cbgt/rest/monitor
+// library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	waitAssignPartitionDone WaitAssignPartitionDone) (
 	*rebalancer, error) {
