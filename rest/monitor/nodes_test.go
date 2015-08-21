@@ -12,6 +12,9 @@
 package monitor
 
 import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"testing"
 )
@@ -33,4 +36,69 @@ func TestEmptyStartMonitorNodes(t *testing.T) {
 	}
 
 	m.Stop()
+}
+
+func Test1NodeStartMonitorNodes(t *testing.T) {
+	httpGets := 0
+	HttpGet = func(url string) (resp *http.Response, err error) {
+		fmt.Printf("httpGet %s", url)
+
+		httpGets++
+
+		if url != "url0/api/stats" &&
+			url != "url0/api/diag" {
+			t.Errorf("expected stats or diag, url: %s", url)
+		}
+
+		return &http.Response{
+			StatusCode: 200,
+			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+		}, nil
+	}
+	defer func() {
+		HttpGet = http.Get
+	}()
+
+	sampleCh := make(chan MonitorSample)
+
+	opt := MonitorNodesOptions{}
+
+	m, err := StartMonitorNodes([]UrlUUID{
+		UrlUUID{"url0", "uuid0"},
+	}, sampleCh, opt)
+	if err != nil || m == nil {
+		t.Errorf("expected no err")
+	}
+
+	s, ok := <-sampleCh
+	if !ok ||
+		(s.Kind != "/api/stats" && s.Kind != "/api/diag") ||
+		s.Url != "url0" ||
+		s.UUID != "uuid0" ||
+		s.Error != nil ||
+		string(s.Data) != "{}" {
+		t.Errorf("unexpected sample: %#v, ok: %v", s, ok)
+	}
+
+	s, ok = <-sampleCh
+	if !ok ||
+		(s.Kind != "/api/stats" && s.Kind != "/api/diag") ||
+		s.Url != "url0" ||
+		s.UUID != "uuid0" ||
+		s.Error != nil ||
+		string(s.Data) != "{}" {
+		t.Errorf("unexpected sample: %#v, ok: %v", s, ok)
+	}
+
+	m.Stop()
+
+	select {
+	case <-sampleCh:
+		t.Errorf("unexpected sample")
+	default:
+	}
+
+	if httpGets != 2 {
+		t.Errorf("expected 2 http gets")
+	}
 }

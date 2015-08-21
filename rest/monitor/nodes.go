@@ -79,6 +79,9 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 	diagTicker := time.NewTicker(diagSampleInterval)
 	defer diagTicker.Stop()
 
+	m.sample(urlUUID, "/api/stats", time.Now())
+	m.sample(urlUUID, "/api/diag", time.Now())
+
 	for {
 		select {
 		case <-m.stopCh:
