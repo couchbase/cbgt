@@ -125,6 +125,29 @@ func Rebalance(version string, cfg cbgt.Cfg, server string,
 	return r.rebalanceIndexes()
 }
 
+// PauseNewAssignments pauses any new assignments.  Any inflight
+// assignments, however, will continue to completion or error.
+func (r *rebalancer) PauseNewAssignments() (err error) {
+	r.m.Lock()
+	if r.o != nil {
+		err = r.o.PauseNewAssignments()
+	}
+	r.m.Unlock()
+
+	return err
+}
+
+// ResumeNewAssignments resumes new assignments.
+func (r *rebalancer) ResumeNewAssignments() (err error) {
+	r.m.Lock()
+	if r.o != nil {
+		err = r.o.ResumeNewAssignments()
+	}
+	r.m.Unlock()
+
+	return err
+}
+
 // --------------------------------------------------------
 
 // rebalanceIndexes rebalances each index, one at a time.
