@@ -69,17 +69,20 @@ type rebalancer struct {
 
 	endPlanPIndexes *cbgt.PlanPIndexes
 
+	// We start a new blance.Orchestrator for each index.
 	o *blance.Orchestrator
 
-	// Map of index -> partition -> node -> stateOp.
-	currStates map[string]map[string]map[string]stateOp
+	// Map of index -> partition -> node -> StateOp.
+	currStates CurrStates
 
 	stopCh chan struct{} // Closed by app or when there's an error.
 }
 
-// A stateOp is used to track state transitions and associates a state
+type CurrStates map[string]map[string]map[string]StateOp
+
+// A StateOp is used to track state transitions and associates a state
 // (i.e., "master") with an op (e.g., "add", "del").
-type stateOp struct {
+type StateOp struct {
 	state string
 	op    string // May be "" for unknown or no in-flight op.
 }
@@ -153,7 +156,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		begPlanPIndexes:    begPlanPIndexes,
 		begPlanPIndexesCAS: begPlanPIndexesCAS,
 		endPlanPIndexes:    cbgt.NewPlanPIndexes(version),
-		currStates:         map[string]map[string]map[string]stateOp{},
+		currStates:         map[string]map[string]map[string]StateOp{},
 		stopCh:             stopCh,
 
 		waitAssignPartitionDone: waitAssignPartitionDone,
@@ -221,6 +224,14 @@ func (r *rebalancer) ResumeNewAssignments() (err error) {
 	r.m.Unlock()
 
 	return err
+}
+
+// VisitCurrStates invokes the visitor callback with the current,
+// read-only CurrStates.
+func (r *rebalancer) VisitCurrStates(visitor func(CurrStates)) {
+	r.m.Lock()
+	visitor(r.currStates)
+	r.m.Unlock()
 }
 
 // --------------------------------------------------------
@@ -448,13 +459,13 @@ func (r *rebalancer) assignPartitionCurrStates(
 
 	partitions, exists := r.currStates[index]
 	if !exists || partitions == nil {
-		partitions = map[string]map[string]stateOp{}
+		partitions = map[string]map[string]StateOp{}
 		r.currStates[index] = partitions
 	}
 
 	nodes, exists := partitions[partition]
 	if !exists || nodes == nil {
-		nodes = map[string]stateOp{}
+		nodes = map[string]StateOp{}
 		partitions[partition] = nodes
 	}
 
@@ -480,7 +491,7 @@ func (r *rebalancer) assignPartitionCurrStates(
 		// }
 	}
 
-	nodes[node] = stateOp{state, op}
+	nodes[node] = StateOp{state, op}
 
 	r.m.Unlock()
 
