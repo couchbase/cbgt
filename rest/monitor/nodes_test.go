@@ -123,7 +123,10 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 
 	sampleCh := make(chan MonitorSample)
 
-	opt := MonitorNodesOptions{}
+	opt := MonitorNodesOptions{
+		StatsSampleInterval: 10000 * time.Second,
+		DiagSampleInterval:  10000 * time.Second,
+	}
 
 	m, err := StartMonitorNodes([]UrlUUID{
 		UrlUUID{"url0", "uuid0"},
@@ -161,7 +164,7 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 	}
 
 	if httpGets != 2 {
-		t.Errorf("expected 2 http gets")
+		t.Errorf("expected 2 http gets, got: %d", httpGets)
 	}
 }
 

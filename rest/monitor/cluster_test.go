@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestEmptyStartMonitorCluster(t *testing.T) {
@@ -97,8 +98,11 @@ func TestStartMonitorCluster(t *testing.T) {
 		opt, samplesBeforeStop, expHttpGets, false)
 
 	opt = MonitorClusterOptions{
-		CfgSampleInterval:   1,
-		MonitorNodesOptions: MonitorNodesOptions{},
+		CfgSampleInterval:   100,
+		MonitorNodesOptions: MonitorNodesOptions{
+			StatsSampleInterval: 10000 * time.Second,
+			DiagSampleInterval:  10000 * time.Second,
+		},
 	}
 	samplesBeforeStop = 5
 	expHttpGets = 6
