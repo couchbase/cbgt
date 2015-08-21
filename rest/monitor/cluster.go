@@ -44,7 +44,8 @@ type MonitorCluster struct {
 }
 
 type MonitorClusterOptions struct {
-	CfgSampleInterval time.Duration // Ex: 1 * time.Second.
+	CfgSampleInterval   time.Duration // Ex: 1 * time.Second.
+	MonitorNodesOptions MonitorNodesOptions
 }
 
 // --------------------------------------------------------
@@ -149,7 +150,7 @@ func (m *MonitorCluster) run() {
 			monitorNodes, err := StartMonitorNodes(
 				NodeDefsUrlUUIDs(m.lastCfg.NodeDefsWanted),
 				m.sampleCh,
-				MonitorNodesOptions{})
+				m.options.MonitorNodesOptions)
 			if err != nil {
 				m.monitorNodeDefs = m.lastCfg.NodeDefsWanted
 				m.monitorNodes = monitorNodes

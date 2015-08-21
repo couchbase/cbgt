@@ -13,6 +13,7 @@ package monitor
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -37,7 +38,7 @@ func TestEmptyStartMonitorCluster(t *testing.T) {
 	m.Stop()
 }
 
-func Test1NodeStartMonitorCluster(t *testing.T) {
+func TestStartMonitorClusterEmptyCfg(t *testing.T) {
 	httpGets := 0
 	HttpGet = func(url string) (resp *http.Response, err error) {
 		httpGets++
@@ -85,5 +86,121 @@ func Test1NodeStartMonitorCluster(t *testing.T) {
 
 	if httpGets != 1 {
 		t.Errorf("expected 1 http gets")
+	}
+}
+
+func TestStartMonitorCluster(t *testing.T) {
+	opt := MonitorClusterOptions{}
+	samplesBeforeStop := 2
+	expHttpGets := 3
+	testStartMonitorCluster(t, "2x3",
+		opt, samplesBeforeStop, expHttpGets, false)
+
+	opt = MonitorClusterOptions{
+		CfgSampleInterval:   10,
+		MonitorNodesOptions: MonitorNodesOptions{},
+	}
+	samplesBeforeStop = 5
+	expHttpGets = 6
+	testStartMonitorCluster(t, "more cfgs",
+		opt, samplesBeforeStop, expHttpGets, true)
+}
+
+func testStartMonitorCluster(t *testing.T,
+	label string,
+	opt MonitorClusterOptions,
+	samplesBeforeStop int,
+	expHttpGets int,
+	cfgOk bool) {
+	httpGets := 0
+	HttpGet = func(url string) (resp *http.Response, err error) {
+		httpGets++
+
+		if url == "url0/api/cfg" {
+			return &http.Response{
+				StatusCode: 200,
+				Body: ioutil.NopCloser(bytes.NewBuffer([]byte(`{
+"nodeDefsWanted": {
+  "nodeDefs": {
+    "uuid0": {
+      "hostPort": "url0",
+      "uuid": "uuid0"
+    }
+  }
+}}`,
+				))),
+			}, nil
+		}
+
+		if url == "http://url0/api/stats" ||
+			url == "http://url0/api/diag" {
+			return &http.Response{
+				StatusCode: 200,
+				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+			}, nil
+		}
+
+		t.Errorf("expected http get, url: %s", url)
+
+		return nil, fmt.Errorf("unexpected to reach here")
+	}
+	defer func() {
+		HttpGet = http.Get
+	}()
+
+	sampleCh := make(chan MonitorSample)
+
+	m, err := StartMonitorCluster([]string{"url0"},
+		sampleCh, opt)
+	if err != nil || m == nil {
+		t.Errorf("expected no err")
+	}
+
+	s, ok := <-sampleCh
+	if !ok ||
+		s.Kind != "/api/cfg" ||
+		s.Url != "url0" ||
+		s.UUID != "" ||
+		s.Error != nil ||
+		len(s.Data) <= 0 {
+		t.Errorf("unexpected sample: %#v, ok: %v", s, ok)
+	}
+
+	for i := 0; i < samplesBeforeStop; i++ {
+		s, ok := <-sampleCh
+
+		if !ok {
+			t.Errorf("unexpected sample ok: %#v, ok: %v", s, ok)
+		}
+
+		if cfgOk && s.Kind == "/api/cfg" {
+			if s.Url != "url0" ||
+				s.UUID != "" ||
+				s.Error != nil ||
+				len(s.Data) <= 0 {
+				t.Errorf("unexpected cfg sample: %#v, ok: %v", s, ok)
+			}
+			continue
+		}
+
+		if (s.Kind != "/api/stats" && s.Kind != "/api/diag") ||
+			s.Url != "http://url0" ||
+			s.UUID != "uuid0" ||
+			s.Error != nil ||
+			len(s.Data) == 0 {
+			t.Errorf("unexpected sample: %#v, ok: %v", s, ok)
+		}
+	}
+
+	m.Stop()
+
+	select {
+	case s := <-sampleCh:
+		t.Errorf("unexpected sample, s: %#v", s)
+	default:
+	}
+
+	if httpGets != expHttpGets {
+		t.Errorf("expected %d http gets, got: %d", expHttpGets, httpGets)
 	}
 }
