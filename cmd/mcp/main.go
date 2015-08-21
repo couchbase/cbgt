@@ -89,7 +89,9 @@ func main() {
 	}
 
 	for progress := range r.ProgressCh() {
-		log.Printf("main: progress: %#v", progress)
+		if progress.Index == "" {
+			log.Printf("main: progress: %+v", progress)
+		}
 	}
 
 	r.Stop()
