@@ -12,6 +12,7 @@
 package rebalance
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -120,8 +121,11 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	log.Printf("rebalance: nodeHierarchy: %#v", nodeHierarchy)
 	log.Printf("rebalance: begIndexDefs: %#v", begIndexDefs)
 	log.Printf("rebalance: begNodeDefs: %#v", begNodeDefs)
-	log.Printf("rebalance: begPlanPIndexes: %#v, cas: %v",
-		begPlanPIndexes, begPlanPIndexesCAS)
+
+	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
+
+	log.Printf("rebalance: begPlanPIndexes: %s, cas: %v",
+		begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// --------------------------------------------------------
 
@@ -399,8 +403,9 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 			indexDef.Name, warning, indexDef)
 	}
 
+	j, _ := json.Marshal(r.endPlanPIndexes)
 	log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
-		" endPlanPIndexes: %+v", indexDef.Name, r.endPlanPIndexes)
+		" endPlanPIndexes: %s", indexDef.Name, j)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
 
