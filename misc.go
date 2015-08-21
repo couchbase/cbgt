@@ -264,7 +264,7 @@ func AtomicCopyMetrics(s, r interface{},
 	}
 }
 
-// StructChanges uses reflection compare the fields of two structs,
+// StructChanges uses reflection to compare the fields of two structs,
 // which must the same type, and returns info on the changes of field
 // values.
 func StructChanges(a1, a2 interface{}) (rv []string) {

@@ -326,18 +326,22 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	var lastProgress blance.OrchestratorProgress
 
 	for progress := range o.ProgressCh() {
-		numProgress++
-		lastProgress = progress
+		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
-		log.Printf("   numProgress: %d,"+
-			" indexDef.Name: %s, progress: %#v",
-			numProgress, indexDef.Name, progress)
+		log.Printf("   indexDef.Name: %s, progress: %d, %+v",
+			indexDef.Name, numProgress, progressChanges)
+
+		log.Printf("   indexDef.Name: %s, progress: %d, %+v",
+			indexDef.Name, numProgress, progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
 			Index:                indexDef.Name,
 			OrchestratorProgress: progress,
 		}
+
+		numProgress++
+		lastProgress = progress
 	}
 
 	r.m.Lock()
