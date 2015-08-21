@@ -12,6 +12,7 @@
 package rebalance
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -20,6 +21,9 @@ import (
 	"github.com/couchbaselabs/blance"
 	"github.com/couchbaselabs/cbgt"
 )
+
+var ErrorNotPausable = errors.New("not pausable")
+var ErrorNotResumable = errors.New("not resumable")
 
 // WaitAssignPartitionDone is the signature of the synchronous
 // callback that Rebalance() invokes to wait for an
@@ -65,8 +69,8 @@ type stateOp struct {
 
 // --------------------------------------------------------
 
-// Rebalance provides a cluster-wide, multi-index rebalancing
-// operation.
+// Rebalance provides a cluster-wide, multi-index rebalancing of
+// PIndexes for cbgt.  It integrates in the blance library.
 func Rebalance(version string, cfg cbgt.Cfg, server string,
 	waitAssignPartitionDone WaitAssignPartitionDone) (
 	// TODO: Need to ensure that all nodes are up, especially those
@@ -128,6 +132,8 @@ func Rebalance(version string, cfg cbgt.Cfg, server string,
 // PauseNewAssignments pauses any new assignments.  Any inflight
 // assignments, however, will continue to completion or error.
 func (r *rebalancer) PauseNewAssignments() (err error) {
+	err = ErrorNotPausable
+
 	r.m.Lock()
 	if r.o != nil {
 		err = r.o.PauseNewAssignments()
@@ -139,6 +145,8 @@ func (r *rebalancer) PauseNewAssignments() (err error) {
 
 // ResumeNewAssignments resumes new assignments.
 func (r *rebalancer) ResumeNewAssignments() (err error) {
+	err = ErrorNotResumable
+
 	r.m.Lock()
 	if r.o != nil {
 		err = r.o.ResumeNewAssignments()
