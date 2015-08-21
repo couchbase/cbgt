@@ -222,6 +222,16 @@ func TestRebalance(t *testing.T) {
 					expNode, expNodes, endNodeDefs.NodeDefs)
 			}
 		}
+
+		expIndexes := strings.Split(test.expIndexes, " ")
+
+		r.VisitCurrStates(func(currStates CurrStates) {
+			if len(currStates) != len(expIndexes) {
+				t.Errorf("len(expIndexes) != len(currStates), "+
+					" expIndexes: %#v, currStates: %#v",
+					expIndexes, currStates)
+			}
+		})
 	}
 }
 
