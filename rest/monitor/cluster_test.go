@@ -97,7 +97,7 @@ func TestStartMonitorCluster(t *testing.T) {
 		opt, samplesBeforeStop, expHttpGets, false)
 
 	opt = MonitorClusterOptions{
-		CfgSampleInterval:   10,
+		CfgSampleInterval:   1,
 		MonitorNodesOptions: MonitorNodesOptions{},
 	}
 	samplesBeforeStop = 5
