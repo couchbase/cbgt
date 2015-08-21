@@ -20,6 +20,7 @@ import (
 
 	"github.com/couchbaselabs/blance"
 	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbaselabs/cbgt/rest/monitor"
 )
 
 var ErrorNotPausable = errors.New("not pausable")
@@ -31,12 +32,26 @@ var ErrorNotResumable = errors.New("not resumable")
 type WaitAssignPartitionDone func(stopCh chan struct{},
 	index, partition, node, state, op string) error
 
+// RebalanceProgress represents progress status information as the
+// Rebalance() operation proceeds.
+type RebalanceProgress struct {
+	Error error
+	Index string
+
+	OrchestratorProgress blance.OrchestratorProgress
+}
+
 // A rebalancer struct holds all the tracking information for the
 // Rebalance operation.
 type rebalancer struct {
-	version       string            // See cbgt.Manager's version.
-	cfg           cbgt.Cfg          // See cbgt.Manager's cfg.
-	server        string            // See cbgt.Manager's server.
+	version    string   // See cbgt.Manager's version.
+	cfg        cbgt.Cfg // See cbgt.Manager's cfg.
+	server     string   // See cbgt.Manager's server.
+	progressCh chan RebalanceProgress
+
+	monitor         *monitor.MonitorNodes
+	monitorSampleCh chan monitor.MonitorSample
+
 	nodesAll      []string          // Array of node UUID's.
 	nodesToAdd    []string          // Array of node UUID's.
 	nodesToRemove []string          // Array of node UUID's.
@@ -58,6 +73,8 @@ type rebalancer struct {
 
 	// Map of index -> partition -> node -> stateOp.
 	currStates map[string]map[string]map[string]stateOp
+
+	stopCh chan struct{} // Closed by app or when there's an error.
 }
 
 // A stateOp is used to track state transitions and associates a state
@@ -69,25 +86,22 @@ type stateOp struct {
 
 // --------------------------------------------------------
 
-// Rebalance provides a cluster-wide, multi-index rebalancing of
-// PIndexes for cbgt.  It integrates in the blance library.
-func Rebalance(version string, cfg cbgt.Cfg, server string,
+// StartRebalance begins a concurrent, phased, cluster-wide
+// rebalancing of all the indexes (and their index partitions) on
+// cluster of cbgt nodes.  StartRebalance utilizes the blance library
+// for calculating and orchestrating partition reassignments and the
+// cbgt/rest/monitor library to watch for progress and errors.
+func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	waitAssignPartitionDone WaitAssignPartitionDone) (
-	// TODO: Need to ensure that all nodes are up, especially those
-	// that haven't been removed yet.
-	//
+	*rebalancer, error) {
 	// TODO: Need timeouts on moves.
-	changed bool, err error) {
-	if cfg == nil { // Can occur during testing.
-		return false, nil
-	}
-
+	//
 	uuid := "" // We don't have a uuid, as we're not a node.
 
 	begIndexDefs, begNodeDefs, begPlanPIndexes, begPlanPIndexesCAS, err :=
 		cbgt.PlannerGetPlan(cfg, version, uuid)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	nodesAll, nodesToAdd, nodesToRemove,
@@ -104,10 +118,31 @@ func Rebalance(version string, cfg cbgt.Cfg, server string,
 	log.Printf("rebalance: begPlanPIndexes: %#v, cas: %v",
 		begPlanPIndexes, begPlanPIndexesCAS)
 
+	// --------------------------------------------------------
+
+	urlUUIDs := monitor.NodeDefsUrlUUIDs(begNodeDefs)
+
+	monitorSampleCh := make(chan monitor.MonitorSample)
+
+	monitorOptions := monitor.MonitorNodesOptions{} // TODO.
+
+	monitor, err := monitor.StartMonitorNodes(urlUUIDs,
+		monitorSampleCh, monitorOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// --------------------------------------------------------
+
+	stopCh := make(chan struct{})
+
 	r := &rebalancer{
 		version:            version,
 		cfg:                cfg,
 		server:             server,
+		progressCh:         make(chan RebalanceProgress),
+		monitor:            monitor,
+		monitorSampleCh:    monitorSampleCh,
 		nodesAll:           nodesAll,
 		nodesToAdd:         nodesToAdd,
 		nodesToRemove:      nodesToRemove,
@@ -119,6 +154,7 @@ func Rebalance(version string, cfg cbgt.Cfg, server string,
 		begPlanPIndexesCAS: begPlanPIndexesCAS,
 		endPlanPIndexes:    cbgt.NewPlanPIndexes(version),
 		currStates:         map[string]map[string]map[string]stateOp{},
+		stopCh:             stopCh,
 
 		waitAssignPartitionDone: waitAssignPartitionDone,
 	}
@@ -126,7 +162,38 @@ func Rebalance(version string, cfg cbgt.Cfg, server string,
 	// TODO: Prepopulate currStates so that we can double-check that
 	// our state transitions in assignPartition are valid.
 
-	return r.rebalanceIndexes()
+	go r.runMonitor(stopCh)
+
+	go r.runRebalanceIndexes(stopCh)
+
+	return r, nil
+}
+
+// Stop asynchronously requests a stop to the rebalance operation.
+// Callers can look for the closing of the ProgressCh() to see when
+// the rebalance operation has actually stopped.
+func (r *rebalancer) Stop() {
+	r.m.Lock()
+	if r.stopCh != nil {
+		close(r.stopCh)
+		r.stopCh = nil
+
+		if r.o != nil {
+			r.o.Stop()
+			r.o = nil
+		}
+	}
+	r.m.Unlock()
+}
+
+// ProgressCh() returns a channel that is updated occassionally when
+// the rebalance has made some progress on one or more partition
+// reassignments, or has reached an error.  The channel is closed when
+// the rebalance operation is finished, either naturally, or due to an
+// error, or via a Stop(), and all the rebalance-related resources
+// have been released.
+func (r *rebalancer) ProgressCh() chan RebalanceProgress {
+	return r.progressCh
 }
 
 // PauseNewAssignments pauses any new assignments.  Any inflight
@@ -159,20 +226,22 @@ func (r *rebalancer) ResumeNewAssignments() (err error) {
 // --------------------------------------------------------
 
 // rebalanceIndexes rebalances each index, one at a time.
-func (r *rebalancer) rebalanceIndexes() (bool, error) {
-	changedAny := false
-
+func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
-		changed, err := r.rebalanceIndex(indexDef)
+		select {
+		case <-stopCh:
+			break
+		default:
+		}
+
+		_, err := r.rebalanceIndex(indexDef)
 		if err != nil {
 			log.Printf("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 		}
-
-		changedAny = changedAny || changed
 	}
 
-	return changedAny, nil
+	close(r.progressCh)
 }
 
 // --------------------------------------------------------
@@ -235,6 +304,12 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		log.Printf("   numProgress: %d,"+
 			" indexDef.Name: %s, progress: %#v",
 			numProgress, indexDef.Name, progress)
+
+		r.progressCh <- RebalanceProgress{
+			Error:                nil,
+			Index:                indexDef.Name,
+			OrchestratorProgress: progress,
+		}
 	}
 
 	r.m.Lock()
@@ -253,7 +328,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	// }
 
 	if len(lastProgress.Errors) > 0 {
-		// TODO: Propagate errors better.
+		// TODO: Propagate all errors better.
 		return true, lastProgress.Errors[0]
 	}
 
@@ -290,9 +365,9 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 		r.nodeWeights, r.nodeHierarchy)
 
-	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
+	// TODO: handle blance ffwd plan warnings better?
 
-	// TODO: handle blance ffwd plan warnings.
+	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
 	for _, warning := range warnings {
 		log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
@@ -478,6 +553,8 @@ func (r *rebalancer) updatePlanPIndexes(
 	return nil
 }
 
+// --------------------------------------------------------
+
 // getPIndex returns the planPIndex, defaulting to the endPlanPIndex's
 // definition if necessary.
 func (r *rebalancer) getPIndex(
@@ -520,4 +597,30 @@ func (r *rebalancer) getNodePlanParamsReadWrite(
 	}
 
 	return canRead, canWrite
+}
+
+// --------------------------------------------------------
+
+func (r *rebalancer) runMonitor(stopCh chan struct{}) {
+	defer r.monitor.Stop()
+
+	for {
+		select {
+		case <-stopCh:
+			return
+
+		case s, ok := <-r.monitorSampleCh:
+			if !ok {
+				return
+			}
+
+			if s.Error != nil {
+				r.progressCh <- RebalanceProgress{
+					Error: s.Error,
+				}
+
+				r.Stop()
+			}
+		}
+	}
 }

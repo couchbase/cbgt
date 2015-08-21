@@ -12,7 +12,9 @@
 package rebalance
 
 import (
+	"bytes"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -21,40 +23,51 @@ import (
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbaselabs/cbgt/rest/monitor"
 )
 
 func TestRebalance(t *testing.T) {
 	testDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(testDir)
 
-	log.Printf("testDir: %s", testDir)
+	httpGets := 0
+	monitor.HttpGet = func(url string) (resp *http.Response, err error) {
+		httpGets++
+
+		return &http.Response{
+			StatusCode: 200,
+			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+		}, nil
+	}
+	defer func() {
+		monitor.HttpGet = http.Get
+	}()
 
 	tests := []struct {
-		label      string
-		ops        string // Space separated "+a", "-x".
-		params     map[string]string
-		expNodes   string // Space separated list of nodes ("a"..."v").
-		expIndexes string // Space separated list of indxes ("x"..."z").
-		expChanged bool
-		expErr     bool
+		label       string
+		ops         string // Space separated "+a", "-x".
+		params      map[string]string
+		expNodes    string // Space separated list of nodes ("a"..."v").
+		expIndexes  string // Space separated list of indxes ("x"..."z").
+		expStartErr bool
 	}{
 		{"1st node",
 			"+a", nil,
 			"a",
 			"",
-			false, true,
+			true,
 		},
 		{"add 1st index x",
 			"+x", nil,
 			"a",
 			"x",
-			true, false,
+			false,
 		},
 		{"add 2nd node b",
 			"+b", nil,
 			"a b",
 			"x",
-			true, false,
+			false,
 		},
 	}
 
@@ -146,19 +159,62 @@ func TestRebalance(t *testing.T) {
 			}
 		}
 
-		changed, err := Rebalance(cbgt.VERSION, cfg, ".", nil)
-		if changed != test.expChanged {
+		r, err := StartRebalance(cbgt.VERSION, cfg, ".", nil)
+		if (test.expStartErr && err == nil) ||
+			(!test.expStartErr && err != nil) {
 			t.Errorf("testi: %d, label: %q,"+
-				" expChanged: %v, but got: %v",
+				" expStartErr: %v, but got: %v",
 				testi, test.label,
-				test.expChanged, changed)
+				test.expStartErr, err)
 		}
-		if (test.expErr && err == nil) ||
-			(!test.expErr && err != nil) {
-			t.Errorf("testi: %d, label: %q,"+
-				" expErr: %v, but got: %v",
-				testi, test.label,
-				test.expErr, err)
+
+		if err != nil || r == nil {
+			continue
+		}
+
+		progressCh := r.ProgressCh()
+		if progressCh == nil {
+			t.Errorf("expected progressCh")
+		}
+
+		err = nil
+		for progress := range progressCh {
+			if progress.Error != nil {
+				err = progress.Error
+
+				log.Printf("saw progress error: %#v\n", progress)
+			}
+		}
+
+		r.Stop()
+
+		if err != nil {
+			t.Errorf("expected no end err, got: %v", err)
+		}
+
+		endIndexDefs, endNodeDefs, endPlanPIndexes, endPlanPIndexesCAS, err :=
+			cbgt.PlannerGetPlan(cfg, cbgt.VERSION, "")
+		if err != nil ||
+			endIndexDefs == nil ||
+			endNodeDefs == nil ||
+			endPlanPIndexes == nil ||
+			endPlanPIndexesCAS == 0 {
+			t.Errorf("expected no err, got: %#v", err)
+		}
+
+		expNodes := strings.Split(test.expNodes, " ")
+		if len(expNodes) != len(endNodeDefs.NodeDefs) {
+			t.Errorf("len(expNodes) != len(endNodeDefs.NodeDefs), "+
+				" expNodes: %#v, endNodeDefs.NodeDefs: %#v",
+				expNodes, endNodeDefs.NodeDefs)
+		}
+
+		for _, expNode := range expNodes {
+			if endNodeDefs.NodeDefs[expNode] == nil {
+				t.Errorf("didn't find expNode: %s,"+
+					" expNodes: %#v, endNodeDefs.NodeDefs: %#v",
+					expNode, expNodes, endNodeDefs.NodeDefs)
+			}
 		}
 	}
 }

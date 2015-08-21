@@ -82,14 +82,20 @@ func main() {
 		return
 	}
 
-	changed, err :=
-		rebalance.Rebalance(cbgt.VERSION, cfg, flags.Server, nil)
+	r, err :=
+		rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server, nil)
 	if err != nil {
-		log.Fatalf("main: runMCP err: %v", err)
+		log.Fatalf("main: StartRebalance, err: %v", err)
 		return
 	}
 
-	log.Printf("main: runMCP changed plan: %v", changed)
+	for progress := range r.ProgressCh() {
+		log.Printf("main: progress: %#v", progress)
+	}
+
+	r.Stop()
+
+	log.Printf("main: done")
 }
 
 func MainWelcome(flagAliases map[string][]string) {
