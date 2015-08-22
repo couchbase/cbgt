@@ -349,6 +349,68 @@ func TestCfgSimpleSubscribe(t *testing.T) {
 
 // ------------------------------------------------
 
+func TestCfgMemRev(t *testing.T) {
+	m := NewCfgMem()
+	cas, err := m.Set("key", []byte("val"), CAS_FORCE)
+	if err != nil {
+		t.Errorf("expected no err")
+	}
+	rev, err := m.GetRev("key", cas)
+	if err != nil {
+		t.Errorf("expected no err on GetRev with right cas")
+	}
+	if rev != nil {
+		t.Errorf("expected rev of nil when not set")
+	}
+	rev, err = m.GetRev("key-not-there", 0)
+	if err != nil || rev != nil {
+		t.Errorf("expected no hit on GetRev on key-not-there")
+	}
+	rev, err = m.GetRev("key", 0)
+	if err != nil {
+		t.Errorf("expected no err on GetRev with 0 cas")
+	}
+	if rev != nil {
+		t.Errorf("expected rev of nil when not set")
+	}
+	err = m.SetRev("key-not-there", 10, "rev111")
+	if err == nil {
+		t.Errorf("expected err on SetRev with non-existing key")
+	}
+	err = m.SetRev("key", cas+10, "rev100")
+	if err == nil {
+		t.Errorf("expected err on SetRev with wrong cas")
+	}
+	err = m.SetRev("key", cas, "rev-yes")
+	if err != nil {
+		t.Errorf("expected no err on setrev with right cas")
+	}
+	rev, err = m.GetRev("key", cas+20)
+	if err == nil || rev != nil {
+		t.Errorf("expected no err on GetRev with wrong cas")
+	}
+	rev, err = m.GetRev("key", cas)
+	if err != nil {
+		t.Errorf("expected no err on GetRev with right cas")
+	}
+	if rev != "rev-yes" {
+		t.Errorf("expected rev-yes")
+	}
+	err = m.SetRev("key", 0, "rev-yep")
+	if err != nil {
+		t.Errorf("expected no err on setrev with 0 cas")
+	}
+	rev, err = m.GetRev("key", cas)
+	if err != nil {
+		t.Errorf("expected no err on GetRev with right cas")
+	}
+	if rev != "rev-yep" {
+		t.Errorf("expected rev-yep")
+	}
+}
+
+// ------------------------------------------------
+
 func TestCfgCB(t *testing.T) {
 	c, err := NewCfgCB("a bad url", "some bogus bucket")
 	if err == nil || c != nil {
