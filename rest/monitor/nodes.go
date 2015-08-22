@@ -14,6 +14,7 @@ package monitor
 import (
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"time"
 )
 
@@ -24,6 +25,7 @@ type MonitorNodes struct {
 	sampleCh chan MonitorSample
 	options  MonitorNodesOptions
 	stopCh   chan struct{}
+	httpGet  func(url string) (resp *http.Response, err error)
 }
 
 type MonitorNodesOptions struct {
@@ -48,6 +50,7 @@ func StartMonitorNodes(
 		sampleCh: sampleCh,
 		options:  options,
 		stopCh:   make(chan struct{}),
+		httpGet:  HttpGet,
 	}
 
 	for _, urlUUID := range urlUUIDs {
@@ -109,7 +112,7 @@ func (m *MonitorNodes) sample(
 	urlUUID UrlUUID,
 	kind string,
 	start time.Time) {
-	res, err := HttpGet(urlUUID.Url + kind)
+	res, err := m.httpGet(urlUUID.Url + kind)
 
 	duration := time.Now().Sub(start)
 

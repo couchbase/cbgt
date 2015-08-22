@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"reflect"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type MonitorCluster struct {
 	sampleCh chan MonitorSample
 	options  MonitorClusterOptions
 	stopCh   chan struct{}
+	httpGet  func(url string) (resp *http.Response, err error)
 
 	m sync.Mutex // Protects the mutable fields that follow.
 
@@ -66,6 +68,7 @@ func StartMonitorCluster(
 		sampleCh: sampleCh,
 		options:  options,
 		stopCh:   make(chan struct{}),
+		httpGet:  HttpGet,
 	}
 
 	go m.run()
@@ -87,9 +90,9 @@ func (m *MonitorCluster) run() {
 
 	for {
 		seedURL, start, duration, cfgBytes, errs :=
-			httpGetBytes(m.seedURLs, "/api/cfg")
+			httpGetBytes(m.httpGet, m.seedURLs, "/api/cfg")
 		if len(errs) > 0 {
-			log.Printf("run: httpGetCfg, errs: %+v", errs)
+			log.Printf("run: httpGetBytes, errs: %+v", errs)
 
 			m.sampleCh <- MonitorSample{
 				Kind:     "/api/cfg",
@@ -190,7 +193,9 @@ func NodeDefsUrlUUIDs(nodeDefs *cbgt.NodeDefs) (r []UrlUUID) {
 
 // ------------------------------------------------------
 
-func httpGetBytes(baseURLs []string, suffix string) (
+func httpGetBytes(
+	httpGet func(url string) (resp *http.Response, err error),
+	baseURLs []string, suffix string) (
 	baseURL string,
 	start time.Time,
 	duration time.Duration,
@@ -202,7 +207,7 @@ func httpGetBytes(baseURLs []string, suffix string) (
 		url := baseURL + "/api/cfg"
 
 		start = time.Now()
-		resp, err := HttpGet(url)
+		resp, err := httpGet(url)
 		duration = time.Now().Sub(start)
 
 		if err != nil {
