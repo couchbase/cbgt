@@ -417,3 +417,50 @@ func TestCfgCB(t *testing.T) {
 		t.Errorf("expected NewCfgCB to fail on bogus url")
 	}
 }
+
+// ------------------------------------------------
+
+// Disabled as metakv just spams with endless log messages of...
+//
+//    2015/08/21 22:17:39 metakv notifier failed \
+//       (Post /_metakv: Unable to initialize cbauth's revrpc: \
+//       Some cbauth environment variables are not set. \
+//       I.e.: (rpc-url: `', user: `', pwd: `'))
+//
+func disabled_TestCfgMetaKvIllConfigured(t *testing.T) {
+	m, err := NewCfgMetaKv()
+	if err != nil || m == nil {
+		t.Errorf("expected no err")
+	}
+
+	err = m.Load()
+	if err != nil {
+		t.Errorf("expected no load err")
+	}
+
+	err = m.Refresh()
+	if err != nil {
+		t.Errorf("expected no refresh err")
+	}
+
+	ech := make(chan CfgEvent, 100)
+	err = m.Subscribe("hello", ech)
+	if err != nil {
+		t.Errorf("expected no subscribe err")
+	}
+
+	val, cas, err := m.Get("key-not-there", 0)
+	if err != nil || val != nil || cas != 0 {
+		t.Errorf("expected no err on get on key-not-there")
+	}
+
+	cas, err = m.Set("key", []byte("val"), 0)
+	if err == nil || cas != 0 {
+		t.Errorf("expected err on set because metakv not properly setup")
+	}
+
+	err = m.Del("key", 0)
+	if err == nil {
+		t.Errorf("expected err on del because metakv not properly setup")
+	}
+}
