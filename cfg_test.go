@@ -416,6 +416,11 @@ func TestCfgCB(t *testing.T) {
 	if err == nil || c != nil {
 		t.Errorf("expected NewCfgCB to fail on bogus url")
 	}
+
+	c, err = NewCfgCB("http://fake:6666666", "some bogus bucket")
+	if err == nil || c != nil {
+		t.Errorf("expected NewCfgCB to fail on real-looking, but fake url")
+	}
 }
 
 // ------------------------------------------------
