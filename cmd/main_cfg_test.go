@@ -56,4 +56,12 @@ func TestMainCfg(t *testing.T) {
 	if err == nil || cfg != nil {
 		t.Errorf("expected err on bad server")
 	}
+
+	if false { // metakv skipped due to log spam.
+		cfg, err = MainCfg("cbgt", "metakv",
+			bindHttp, register, emptyDir)
+		if err != nil || cfg == nil {
+			t.Errorf("expected no err metakv cfg")
+		}
+	}
 }
