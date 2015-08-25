@@ -13,6 +13,7 @@ package cbgt
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -144,5 +145,58 @@ func TestErrorConsistencyWait(t *testing.T) {
 	e := &ErrorConsistencyWait{}
 	if e.Error() == "" {
 		t.Errorf("expected err")
+	}
+}
+
+func TestErrorConsistencyWaitDone(t *testing.T) {
+	currSeqFunc := func() uint64 {
+		return 101
+	}
+
+	cancelCh := make(chan bool)
+	doneCh := make(chan error)
+
+	var cwdErr error
+	endCh := make(chan struct{})
+
+	go func() {
+		cwdErr = ConsistencyWaitDone("partition",
+			cancelCh,
+			doneCh,
+			currSeqFunc)
+		close(endCh)
+	}()
+
+	close(cancelCh)
+
+	<-endCh
+
+	if cwdErr == nil {
+		t.Errorf("expected err")
+	}
+
+	// --------------------------
+
+	cancelCh = make(chan bool)
+	doneCh = make(chan error)
+
+	cwdErr = nil
+	endCh = make(chan struct{})
+
+	go func() {
+		cwdErr = ConsistencyWaitDone("partition",
+			cancelCh,
+			doneCh,
+			currSeqFunc)
+		close(endCh)
+	}()
+
+	doneErr := fmt.Errorf("doneErr")
+	doneCh <- doneErr
+
+	<-endCh
+
+	if cwdErr != doneErr {
+		t.Errorf("expected doneErr")
 	}
 }
