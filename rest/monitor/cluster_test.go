@@ -204,7 +204,7 @@ func testStartMonitorCluster(t *testing.T,
 	default:
 	}
 
-	if httpGets != expHttpGets {
-		t.Errorf("expected %d http gets, got: %d", expHttpGets, httpGets)
+	if httpGets < expHttpGets {
+		t.Errorf("expected at least %d http gets, got: %d", expHttpGets, httpGets)
 	}
 }
