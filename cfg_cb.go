@@ -37,6 +37,8 @@ type CfgCB struct {
 	cfgMem *CfgMem
 	cfgKey string
 
+	options map[string]interface{}
+
 	bds  cbdatasource.BucketDataSource
 	bdsm sync.Mutex
 	seqs map[uint16]uint64 // To track max seq #'s we received per vbucketId.
@@ -44,35 +46,55 @@ type CfgCB struct {
 }
 
 var cfgCBOptions = &cbdatasource.BucketDataSourceOptions{
-	// TODO: Make these parametrized.
+	// TODO: Make these parametrized, using the CfgCB.options.
 	ClusterManagerSleepMaxMS: 20000,
 	DataManagerSleepMaxMS:    20000,
 }
 
+// NewCfgCB returns a Cfg implementation that reads/writes its entries
+// from/to a couchbase bucket, using DCP streams to subscribe to
+// changes.
 func NewCfgCB(urlStr, bucket string) (*CfgCB, error) {
+	return NewCfgCBEx(urlStr, bucket, nil)
+}
+
+// NewCfgCBEx is a more advanced version of NewCfgCB(), with more
+// initialization options via the options map.  Allowed options:
+// "keyPrefix" - an optional string prefix that's prepended to any
+// keys that are written to or read from the couchbase bucket.
+func NewCfgCBEx(urlStr, bucket string,
+	options map[string]interface{}) (*CfgCB, error) {
 	url, err := couchbase.ParseURL(urlStr)
 	if err != nil {
 		return nil, err
 	}
 
-	c := &CfgCB{
-		urlStr: urlStr,
-		url:    url,
-		bucket: bucket,
-		cfgMem: NewCfgMem(),
-		cfgKey: "cfg",
+	keyPrefix := ""
+	if options != nil {
+		keyPrefix = options["keyPrefix"].(string)
 	}
 
-	_, err = c.getBucket()
+	c := &CfgCB{
+		urlStr:  urlStr,
+		url:     url,
+		bucket:  bucket,
+		cfgMem:  NewCfgMem(),
+		cfgKey:  keyPrefix + "cfg",
+		options: options,
+	}
+
+	b, err := c.getBucket() // TODO: Need to b.Close()?
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Just listen to the exact vbucket that the cfgKey lives
-	// in rather than listening to all vbuckets.
+	bucketUUID := ""
+	vbucketIDs := []uint16{uint16(b.VBHash(c.cfgKey))}
+
 	bds, err := cbdatasource.NewBucketDataSource(
 		[]string{urlStr},
-		"default", bucket, "", nil, c, c, cfgCBOptions)
+		"default",
+		bucket, bucketUUID, vbucketIDs, c, c, cfgCBOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +108,21 @@ func NewCfgCB(urlStr, bucket string) (*CfgCB, error) {
 	return c, nil
 }
 
-// SetKeyPrefix changes the key prefix that the CfgCB will use as it
-// reads/writes its documents to the couchbase bucket (default key
-// prefix is "").  Use SetKeyPrefix with care, as you must arrange all
-// nodes in the cluster to use the same key prefix.  The SetKeyPrefix
-// should be used right after NewCfgCB.
+// DEPRECATED: Please instead use the NewCfgCBEx() API with an options
+// map entry of "keyPrefix".
+//
+// The old docs for existing SetKeyPrefix users: SetKeyPrefix changes
+// the key prefix that the CfgCB will use as it reads/writes its
+// documents to the couchbase bucket (default key prefix is "").  Use
+// SetKeyPrefix with care, as you must arrange all nodes in the
+// cluster to use the same key prefix.  The SetKeyPrefix should be
+// used right after NewCfgCB.
 func (c *CfgCB) SetKeyPrefix(keyPrefix string) {
-	c.cfgKey = keyPrefix + "cfg"
+	if c.options == nil {
+		c.options = map[string]interface{}{}
+	}
+	c.options["keyPrefix"] = keyPrefix
+	c.Refresh()
 }
 
 func (c *CfgCB) Get(key string, cas uint64) (
@@ -199,12 +229,10 @@ func (c *CfgCB) Refresh() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	c2, err := NewCfgCB(c.urlStr, c.bucket)
+	c2, err := NewCfgCBEx(c.urlStr, c.bucket, c.options)
 	if err != nil {
 		return err
 	}
-
-	c2.cfgKey = c.cfgKey
 
 	err = c2.Load()
 	if err != nil {
