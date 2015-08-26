@@ -25,12 +25,15 @@ type MonitorNodes struct {
 	sampleCh chan MonitorSample
 	options  MonitorNodesOptions
 	stopCh   chan struct{}
-	httpGet  func(url string) (resp *http.Response, err error)
 }
 
 type MonitorNodesOptions struct {
 	StatsSampleInterval time.Duration // Ex: 1 * time.Second.
 	DiagSampleInterval  time.Duration
+
+	// Optional, defaults to http.Get(); this is used, for example,
+	// for unit testing.
+	HttpGet func(url string) (resp *http.Response, err error)
 }
 
 // StartMonitorNodes begins REST stats and diag sampling from a fixed
@@ -50,7 +53,6 @@ func StartMonitorNodes(
 		sampleCh: sampleCh,
 		options:  options,
 		stopCh:   make(chan struct{}),
-		httpGet:  HttpGet,
 	}
 
 	for _, urlUUID := range urlUUIDs {
@@ -112,7 +114,12 @@ func (m *MonitorNodes) sample(
 	urlUUID UrlUUID,
 	kind string,
 	start time.Time) {
-	res, err := m.httpGet(urlUUID.Url + kind)
+	httpGet := m.options.HttpGet
+	if httpGet == nil {
+		httpGet = http.Get
+	}
+
+	res, err := httpGet(urlUUID.Url + kind)
 
 	duration := time.Now().Sub(start)
 

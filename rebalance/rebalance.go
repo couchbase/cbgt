@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -42,12 +43,19 @@ type RebalanceProgress struct {
 	OrchestratorProgress blance.OrchestratorProgress
 }
 
+type RebalanceOptions struct {
+	// Optional, defaults to http.Get(); this is used, for example,
+	// for unit testing.
+	HttpGet func(url string) (resp *http.Response, err error)
+}
+
 // A rebalancer struct holds all the tracking information for the
 // Rebalance operation.
 type rebalancer struct {
 	version    string   // See cbgt.Manager's version.
 	cfg        cbgt.Cfg // See cbgt.Manager's cfg.
 	server     string   // See cbgt.Manager's server.
+	options    RebalanceOptions
 	progressCh chan RebalanceProgress
 
 	monitor         *monitor.MonitorNodes
@@ -98,7 +106,8 @@ type StateOp struct {
 // and orchestrating partition reassignments and the cbgt/rest/monitor
 // library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
-	waitAssignPartitionDone WaitAssignPartitionDone) (
+	waitAssignPartitionDone WaitAssignPartitionDone,
+	options RebalanceOptions) (
 	*rebalancer, error) {
 	// TODO: Need timeouts on moves.
 	//
@@ -133,7 +142,10 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	monitorSampleCh := make(chan monitor.MonitorSample)
 
-	monitorOptions := monitor.MonitorNodesOptions{} // TODO.
+	monitorOptions := monitor.MonitorNodesOptions{
+		// TODO: more options.
+		HttpGet: options.HttpGet,
+	}
 
 	monitor, err := monitor.StartMonitorNodes(urlUUIDs,
 		monitorSampleCh, monitorOptions)
@@ -149,6 +161,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		version:            version,
 		cfg:                cfg,
 		server:             server,
+		options:            options,
 		progressCh:         make(chan RebalanceProgress),
 		monitor:            monitor,
 		monitorDoneCh:      make(chan struct{}),

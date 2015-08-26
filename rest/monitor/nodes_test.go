@@ -22,15 +22,14 @@ import (
 )
 
 func TestEmptyStartMonitorNodes(t *testing.T) {
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		t.Errorf("expected no get")
 		return nil, nil
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
 
-	opt := MonitorNodesOptions{}
+	opt := MonitorNodesOptions{
+		HttpGet: httpGet,
+	}
 
 	m, err := StartMonitorNodes(nil, nil, opt)
 	if err != nil || m == nil {
@@ -42,7 +41,7 @@ func TestEmptyStartMonitorNodes(t *testing.T) {
 
 func Test1NodeStartMonitorNodes(t *testing.T) {
 	httpGets := 0
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		httpGets++
 
 		if url != "url0/api/stats" &&
@@ -55,13 +54,12 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
 
 	sampleCh := make(chan MonitorSample)
 
-	opt := MonitorNodesOptions{}
+	opt := MonitorNodesOptions{
+		HttpGet: httpGet,
+	}
 
 	m, err := StartMonitorNodes([]UrlUUID{
 		UrlUUID{"url0", "uuid0"},
@@ -105,7 +103,7 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 
 func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 	httpGets := 0
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		httpGets++
 
 		if url == "url0/api/stats" {
@@ -117,15 +115,13 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 
 		return nil, fmt.Errorf("httpGetErr")
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
 
 	sampleCh := make(chan MonitorSample)
 
 	opt := MonitorNodesOptions{
 		StatsSampleInterval: 10000 * time.Second,
 		DiagSampleInterval:  10000 * time.Second,
+		HttpGet:             httpGet,
 	}
 
 	m, err := StartMonitorNodes([]UrlUUID{
@@ -172,7 +168,7 @@ func Test1NodeStartMonitorNodesFast(t *testing.T) {
 	var mut sync.Mutex
 	httpGets := 0
 
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		mut.Lock()
 		httpGets++
 		mut.Unlock()
@@ -187,15 +183,13 @@ func Test1NodeStartMonitorNodesFast(t *testing.T) {
 			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
 
 	sampleCh := make(chan MonitorSample)
 
 	opt := MonitorNodesOptions{
 		StatsSampleInterval: 100,
 		DiagSampleInterval:  100,
+		HttpGet:             httpGet,
 	}
 
 	m, err := StartMonitorNodes([]UrlUUID{

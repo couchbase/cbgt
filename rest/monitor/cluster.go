@@ -34,7 +34,6 @@ type MonitorCluster struct {
 	sampleCh chan MonitorSample
 	options  MonitorClusterOptions
 	stopCh   chan struct{}
-	httpGet  func(url string) (resp *http.Response, err error)
 
 	m sync.Mutex // Protects the mutable fields that follow.
 
@@ -48,6 +47,10 @@ type MonitorCluster struct {
 type MonitorClusterOptions struct {
 	CfgSampleInterval   time.Duration // Ex: 1 * time.Second.
 	MonitorNodesOptions MonitorNodesOptions
+
+	// Optional, defaults to http.Get(); this is used, for example,
+	// for unit testing.
+	HttpGet func(url string) (resp *http.Response, err error)
 }
 
 // --------------------------------------------------------
@@ -68,7 +71,6 @@ func StartMonitorCluster(
 		sampleCh: sampleCh,
 		options:  options,
 		stopCh:   make(chan struct{}),
-		httpGet:  HttpGet,
 	}
 
 	go m.run()
@@ -88,9 +90,14 @@ func (m *MonitorCluster) run() {
 		cfgSampleInterval = DEFAULT_CFG_SAMPLE_INTERVAL_SECS * time.Second
 	}
 
+	httpGet := m.options.HttpGet
+	if httpGet == nil {
+		httpGet = http.Get
+	}
+
 	for {
 		seedURL, start, duration, cfgBytes, errs :=
-			httpGetBytes(m.httpGet, m.seedURLs, "/api/cfg")
+			httpGetBytes(httpGet, m.seedURLs, "/api/cfg")
 		if len(errs) > 0 {
 			log.Printf("run: httpGetBytes, errs: %+v", errs)
 
@@ -212,7 +219,7 @@ func httpGetBytes(
 
 		if err != nil {
 			errs = append(errs, fmt.Errorf("httpGetBytes,"+
-				" HttpGet, url: %s, err: %v", url, err))
+				" httpGet, url: %s, err: %v", url, err))
 			continue // Try next url.
 		}
 

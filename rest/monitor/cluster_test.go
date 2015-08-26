@@ -22,15 +22,17 @@ import (
 )
 
 func TestEmptyStartMonitorCluster(t *testing.T) {
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		t.Errorf("expected no get")
 		return nil, nil
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
 
-	opt := MonitorClusterOptions{}
+	opt := MonitorClusterOptions{
+		HttpGet: httpGet,
+		MonitorNodesOptions: MonitorNodesOptions{
+			HttpGet: httpGet,
+		},
+	}
 
 	m, err := StartMonitorCluster(nil, nil, opt)
 	if err != nil || m == nil {
@@ -44,7 +46,7 @@ func TestStartMonitorClusterEmptyCfg(t *testing.T) {
 	var mut sync.Mutex
 
 	httpGets := 0
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		mut.Lock()
 		httpGets++
 		mut.Unlock()
@@ -58,13 +60,15 @@ func TestStartMonitorClusterEmptyCfg(t *testing.T) {
 			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
 
 	sampleCh := make(chan MonitorSample)
 
-	opt := MonitorClusterOptions{}
+	opt := MonitorClusterOptions{
+		HttpGet: httpGet,
+		MonitorNodesOptions: MonitorNodesOptions{
+			HttpGet: httpGet,
+		},
+	}
 
 	m, err := StartMonitorCluster([]string{"url0"},
 		sampleCh, opt)
@@ -126,7 +130,7 @@ func testStartMonitorCluster(t *testing.T,
 	var mut sync.Mutex
 
 	httpGets := 0
-	HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
 		mut.Lock()
 		httpGets++
 		mut.Unlock()
@@ -159,9 +163,9 @@ func testStartMonitorCluster(t *testing.T,
 
 		return nil, fmt.Errorf("unexpected to reach here")
 	}
-	defer func() {
-		HttpGet = http.Get
-	}()
+
+	opt.HttpGet = httpGet
+	opt.MonitorNodesOptions.HttpGet = httpGet
 
 	sampleCh := make(chan MonitorSample)
 

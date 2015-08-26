@@ -12,11 +12,8 @@
 package monitor
 
 import (
-	"net/http"
 	"time"
 )
-
-var HttpGet = http.Get // Overridable for unit-testability.
 
 const DEFAULT_STATS_SAMPLE_INTERVAL_SECS = 1
 const DEFAULT_DIAG_SAMPLE_INTERVAL_SECS = 60

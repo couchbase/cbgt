@@ -82,7 +82,8 @@ func main() {
 		return
 	}
 
-	r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server, nil)
+	r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server,
+		nil, rebalance.RebalanceOptions{})
 	if err != nil {
 		log.Fatalf("main: StartRebalance, err: %v", err)
 		return

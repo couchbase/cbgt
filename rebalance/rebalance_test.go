@@ -18,30 +18,31 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/rest/monitor"
 )
 
 func TestRebalance(t *testing.T) {
 	testDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(testDir)
 
+	var mut sync.Mutex
+
 	httpGets := 0
-	monitor.HttpGet = func(url string) (resp *http.Response, err error) {
+	httpGet := func(url string) (resp *http.Response, err error) {
+		mut.Lock()
 		httpGets++
+		mut.Unlock()
 
 		return &http.Response{
 			StatusCode: 200,
 			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
-	defer func() {
-		monitor.HttpGet = http.Get
-	}()
 
 	tests := []struct {
 		label       string
@@ -177,7 +178,11 @@ func TestRebalance(t *testing.T) {
 			}
 		}
 
-		r, err := StartRebalance(cbgt.VERSION, cfg, ".", nil)
+		r, err := StartRebalance(cbgt.VERSION, cfg, ".", nil,
+			RebalanceOptions{
+				HttpGet: httpGet,
+			},
+		)
 		if (test.expStartErr && err == nil) ||
 			(!test.expStartErr && err != nil) {
 			t.Errorf("testi: %d, label: %q,"+
