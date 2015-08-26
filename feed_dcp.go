@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	log "github.com/couchbase/clog"
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 )
@@ -61,13 +62,15 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
 		mgr.tagsMap != nil && !mgr.tagsMap["feed"])
 	if err != nil {
-		return fmt.Errorf("feed_dcp: could not prepare DCP feed to server: %s,"+
+		return fmt.Errorf("feed_dcp:"+
+			" could not prepare DCP feed, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
 			mgr.server, bucketName, indexName, err)
 	}
 	err = feed.Start()
 	if err != nil {
-		return fmt.Errorf("feed_dcp: could not start, server: %s, err: %v",
+		return fmt.Errorf("feed_dcp:"+
+			" could not start, server: %s, err: %v",
 			mgr.server, err)
 	}
 	err = mgr.registerFeed(feed)
@@ -156,7 +159,11 @@ func (d *DCPFeedParams) GetCredentials() (string, string, string) {
 	return d.AuthUser, d.AuthPassword, d.AuthUser
 }
 
-func (d *DCPFeedParams) GetSaslCredentials() (string, string) {
+type DCPFeedParamsSasl struct {
+	DCPFeedParams
+}
+
+func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
 	// TODO: bucketName not necessarily userName.
 	return d.AuthSaslUser, d.AuthSaslPassword
 }
@@ -183,25 +190,30 @@ func NewDCPFeed(name, indexName, url, poolName,
 	}
 
 	urls := strings.Split(url, ";")
-	if params.AuthUser == "" {
-		// Review:Should we check all the urls or not ??
+
+	var auth couchbase.AuthHandler = params
+
+	if params.AuthUser == "" &&
+		params.AuthSaslUser == "" {
 		for _, serverUrl := range urls {
-			var err error
-			auth, err := NewCbAuthHandler(serverUrl)
+			cbAuthHandler, err := NewCbAuthHandler(serverUrl)
 			if err != nil {
 				continue
 			}
-			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
+			params.AuthUser, params.AuthPassword, err =
+				cbAuthHandler.GetCredentials()
 			if err != nil {
 				continue
 			}
 			params.AuthSaslUser, params.AuthSaslPassword, err =
-				auth.GetSaslCredentials()
+				cbAuthHandler.GetSaslCredentials()
 			if err != nil {
 				continue
 			}
 			break
 		}
+	} else if params.AuthSaslUser != "" {
+		auth = &DCPFeedParamsSasl{*params}
 	}
 
 	options := &cbdatasource.BucketDataSourceOptions{
@@ -232,7 +244,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 
 	feed.bds, err = cbdatasource.NewBucketDataSource(
 		urls, poolName, bucketName, bucketUUID,
-		vbucketIds, params, feed, options)
+		vbucketIds, auth, feed, options)
 	if err != nil {
 		return nil, err
 	}
