@@ -262,6 +262,10 @@ func (a *CfgCB) GetCredentials() (string, string, string) {
 
 func (r *CfgCB) OnError(err error) {
 	log.Printf("cfg_cb: OnError, err: %v", err)
+
+	go func() {
+		r.cfgMem.FireEvent("", 0, err)
+	}()
 }
 
 func (r *CfgCB) DataUpdate(vbucketId uint16, key []byte, seq uint64,

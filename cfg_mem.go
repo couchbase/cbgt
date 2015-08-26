@@ -109,7 +109,7 @@ func (c *CfgMem) Set(key string, val []byte, cas uint64) (
 	copy(nextEntry.Val, val)
 	c.Entries[key] = nextEntry
 	c.CASNext += 1
-	c.fireEvent(key, nextEntry.CAS)
+	c.fireEvent(key, nextEntry.CAS, nil)
 	return nextEntry.CAS, nil
 }
 
@@ -124,7 +124,7 @@ func (c *CfgMem) Del(key string, cas uint64) error {
 		}
 	}
 	delete(c.Entries, key)
-	c.fireEvent(key, 0)
+	c.fireEvent(key, 0, nil)
 	return nil
 }
 
@@ -140,9 +140,19 @@ func (c *CfgMem) Subscribe(key string, ch chan CfgEvent) error {
 	return nil
 }
 
-func (c *CfgMem) fireEvent(key string, cas uint64) {
+func (c *CfgMem) FireEvent(key string, cas uint64, err error) {
+	c.m.Lock()
+	c.fireEvent(key, cas, err)
+	c.m.Unlock()
+}
+
+func (c *CfgMem) fireEvent(key string, cas uint64, err error) {
 	for _, c := range c.subscriptions[key] {
-		go func(c chan<- CfgEvent) { c <- CfgEvent{Key: key, CAS: cas} }(c)
+		go func(c chan<- CfgEvent) {
+			c <- CfgEvent{
+				Key: key, CAS: cas, Error: err,
+			}
+		}(c)
 	}
 }
 
@@ -153,9 +163,9 @@ func (c *CfgMem) Refresh() error {
 	for key := range c.subscriptions {
 		entry, exists := c.Entries[key]
 		if exists && entry != nil {
-			c.fireEvent(key, entry.CAS)
+			c.fireEvent(key, entry.CAS, nil)
 		} else {
-			c.fireEvent(key, 0)
+			c.fireEvent(key, 0, nil)
 		}
 	}
 

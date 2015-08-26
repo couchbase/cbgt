@@ -48,6 +48,7 @@ func (e *CfgCASError) Error() string { return "CAS mismatch" }
 
 // See the Cfg.Subscribe() method.
 type CfgEvent struct {
-	Key string
-	CAS uint64
+	Key   string
+	CAS   uint64
+	Error error
 }
