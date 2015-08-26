@@ -15,7 +15,9 @@ import (
 	"encoding/json"
 	"reflect"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbaselabs/blance"
+	"net/url"
 )
 
 // JSON/struct definitions of what the Manager stores in the Cfg.
@@ -412,4 +414,33 @@ func PIndexMatchesPlan(pindex *PIndex, planPIndex *PlanPIndex) bool {
 		pindex.SourceParams == planPIndex.SourceParams &&
 		pindex.SourcePartitions == planPIndex.SourcePartitions
 	return same
+}
+
+//------------------------------------------------------------------
+type CbAuthHandler struct {
+	Hostport string
+}
+
+func (ah *CbAuthHandler) GetSaslCredentials() (string, string, error) {
+	u, p, err := cbauth.GetMemcachedServiceAuth(ah.Hostport)
+	if err != nil {
+		return "", "", err
+	}
+	return u, p, nil
+}
+
+func (ah *CbAuthHandler) GetCredentials() (string, string, error) {
+	u, p, err := cbauth.GetHTTPServiceAuth(ah.Hostport)
+	if err != nil {
+		return "", "", err
+	}
+	return u, p, nil
+}
+
+func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
+	u, err := url.Parse(s)
+	if err == nil {
+		return &CbAuthHandler{Hostport: u.Host}, nil
+	}
+	return nil, err
 }
