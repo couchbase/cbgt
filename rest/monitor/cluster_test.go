@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -40,9 +41,13 @@ func TestEmptyStartMonitorCluster(t *testing.T) {
 }
 
 func TestStartMonitorClusterEmptyCfg(t *testing.T) {
+	var mut sync.Mutex
+
 	httpGets := 0
 	HttpGet = func(url string) (resp *http.Response, err error) {
+		mut.Lock()
 		httpGets++
+		mut.Unlock()
 
 		if url != "url0/api/cfg" {
 			t.Errorf("expected http get, url: %s", url)
@@ -85,9 +90,11 @@ func TestStartMonitorClusterEmptyCfg(t *testing.T) {
 	default:
 	}
 
+	mut.Lock()
 	if httpGets != 1 {
 		t.Errorf("expected 1 http gets")
 	}
+	mut.Unlock()
 }
 
 func TestStartMonitorCluster(t *testing.T) {
@@ -116,9 +123,13 @@ func testStartMonitorCluster(t *testing.T,
 	samplesBeforeStop int,
 	expHttpGets int,
 	cfgOk bool) {
+	var mut sync.Mutex
+
 	httpGets := 0
 	HttpGet = func(url string) (resp *http.Response, err error) {
+		mut.Lock()
 		httpGets++
+		mut.Unlock()
 
 		if url == "url0/api/cfg" {
 			return &http.Response{
@@ -204,7 +215,9 @@ func testStartMonitorCluster(t *testing.T,
 	default:
 	}
 
+	mut.Lock()
 	if httpGets < expHttpGets {
 		t.Errorf("expected at least %d http gets, got: %d", expHttpGets, httpGets)
 	}
+	mut.Unlock()
 }
