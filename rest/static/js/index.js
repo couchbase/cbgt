@@ -235,10 +235,14 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
                 // The k is pindexName / feedName.
                 for (var k in data[aa]) {
                     var kk = data[aa][k];
-                    // The j is category of stats, like
+                    // The j is category of stats, like basic,
                     // bleveKVStoreStats, pindexStoreStats,
                     // bucketDataSourceStats, destStats.
                     for (var j in kk) {
+                        if (j == "partitions") { // Skip partition seq's/uuid's.
+                            continue
+                        }
+
                         var jj = data[aa][k][j];
                         errors = errors.concat(jj.Errors || []);
 
