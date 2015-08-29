@@ -71,7 +71,10 @@ func NewCfgCBEx(urlStr, bucket string,
 
 	keyPrefix := ""
 	if options != nil {
-		keyPrefix = options["keyPrefix"].(string)
+		v, exists := options["keyPrefix"]
+		if exists {
+			keyPrefix = v.(string)
+		}
 	}
 
 	c := &CfgCB{

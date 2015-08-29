@@ -419,7 +419,21 @@ func TestCfgCB(t *testing.T) {
 
 	c, err = NewCfgCB("http://fake:6666666", "some bogus bucket")
 	if err == nil || c != nil {
-		t.Errorf("expected NewCfgCB to fail on real-looking, but fake url")
+		t.Errorf("expected NewCfgCB err on real-ish, but fake url")
+	}
+
+	c, err = NewCfgCBEx("http://fake:6666666", "some bogus bucket",
+		map[string]interface{}{})
+	if err == nil || c != nil {
+		t.Errorf("expected NewCfgCBEx err on real-ish, but fake url")
+	}
+
+	c, err = NewCfgCBEx("http://fake:6666666", "some bogus bucket",
+		map[string]interface{}{
+			"keyPrefix": "foo",
+		})
+	if err == nil || c != nil {
+		t.Errorf("expected NewCfgCBEx err fake url, with keyPrefix")
 	}
 }
 
