@@ -187,7 +187,6 @@ func testStartMonitorCluster(t *testing.T,
 
 	for i := 0; i < samplesBeforeStop; i++ {
 		s, ok := <-sampleCh
-
 		if !ok {
 			t.Errorf("unexpected sample ok: %#v, ok: %v", s, ok)
 		}
@@ -213,11 +212,8 @@ func testStartMonitorCluster(t *testing.T,
 
 	m.Stop()
 
-	select {
-	case s := <-sampleCh:
-		t.Errorf("unexpected sample, s: %#v", s)
-	default:
-	}
+	// NOTE: There may or may not be extra samples on sampleCh already
+	// inflight when we were trying to Stop() -- racy'iness.
 
 	mut.Lock()
 	if httpGets < expHttpGets {
