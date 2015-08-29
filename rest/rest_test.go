@@ -26,6 +26,27 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
+func TestInitStaticRouter(t *testing.T) {
+	r := mux.NewRouter()
+
+	staticDir := ""
+	staticETag := ""
+	pagesHandler := RewriteURL("/", http.FileServer(AssetFS()))
+
+	r = InitStaticRouter(r,
+		staticDir, staticETag, []string{
+			"/indexes",
+			"/nodes",
+			"/monitor",
+			"/manage",
+			"/logs",
+			"/debug",
+		}, pagesHandler)
+	if r == nil {
+		t.Errorf("expected r")
+	}
+}
+
 func TestMustEncode(t *testing.T) {
 	defer func() {
 		r := recover()
