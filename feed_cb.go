@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
 )
@@ -208,4 +209,34 @@ func CouchbaseParseSourceName(
 	bucketName := a[4]
 
 	return server, poolName, bucketName
+}
+
+// -------------------------------------------------
+
+type CbAuthHandler struct {
+	Hostport string
+}
+
+func (ah *CbAuthHandler) GetSaslCredentials() (string, string, error) {
+	u, p, err := cbauth.GetMemcachedServiceAuth(ah.Hostport)
+	if err != nil {
+		return "", "", err
+	}
+	return u, p, nil
+}
+
+func (ah *CbAuthHandler) GetCredentials() (string, string, error) {
+	u, p, err := cbauth.GetHTTPServiceAuth(ah.Hostport)
+	if err != nil {
+		return "", "", err
+	}
+	return u, p, nil
+}
+
+func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
+	u, err := url.Parse(s)
+	if err == nil {
+		return &CbAuthHandler{Hostport: u.Host}, nil
+	}
+	return nil, err
 }
