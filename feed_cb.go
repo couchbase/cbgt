@@ -256,8 +256,9 @@ func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
 
 // -------------------------------------------------
 
-// CouchbasePartitionSeqsFunc returns the current partitions (vbucket
-// id's) and their UUID's / seq's, via a stats request.
+// CouchbasePartitionSeqs returns a map keyed by partition/vbucket ID
+// with values of each vbucket's UUID / high_seqno.  It implements the
+// FeedPartitionsFunc func signature.
 func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string) (
 	map[string]UUIDSeq, error) {
@@ -267,7 +268,40 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	defer bucket.Close()
+	rv := map[string]UUIDSeq{}
 
-	return nil, fmt.Errorf("TODO")
+	stats := bucket.GetStats("vbucket-details")
+
+	for _, nodeStats := range stats {
+		// TODO: What if vbucket appears across multiple nodes?  Need
+		// to look for the highest (or lowest?) seq number?
+		for _, vbid := range vbucketIdStrings {
+			stateVal, ok := nodeStats["vb_"+vbid]
+			if !ok || stateVal != "active" {
+				continue
+			}
+
+			uuid, ok := nodeStats["vb_"+vbid+":uuid"]
+			if !ok {
+				continue
+			}
+
+			seqStr, ok := nodeStats["vb_"+vbid+":high_seqno"]
+			if !ok {
+				continue
+			}
+
+			seq, err := strconv.ParseUint(seqStr, 10, 64)
+			if err == nil {
+				rv[vbid] = UUIDSeq{
+					UUID: uuid,
+					Seq:  seq,
+				}
+			}
+		}
+	}
+
+	bucket.Close()
+
+	return rv, nil
 }
