@@ -153,6 +153,72 @@ func TestErrorOnlyDestProviderWithDestForwarder(t *testing.T) {
 	if df.ConsistencyWait("", "", "", 0, nil) == nil {
 		t.Errorf("expected err")
 	}
+	if _, err := df.Count(nil, nil); err == nil {
+		t.Errorf("expected err")
+	}
+	if df.Query(nil, nil, nil, nil) == nil {
+		t.Errorf("expected err")
+	}
+	if df.Stats(nil) == nil {
+		t.Errorf("expected err")
+	}
+	if df.Close() == nil {
+		t.Errorf("expected err")
+	}
+}
+
+type FanInDestProvider struct {
+	Target Dest
+}
+
+func (dp *FanInDestProvider) Dest(partition string) (Dest, error) {
+	return dp.Target, nil
+}
+
+func (dp *FanInDestProvider) Count(pindex *PIndex,
+	cancelCh <-chan bool) (uint64, error) {
+	return 0, fmt.Errorf("always error for testing")
+}
+
+func (dp *FanInDestProvider) Query(pindex *PIndex, req []byte, res io.Writer,
+	cancelCh <-chan bool) error {
+	return fmt.Errorf("always error for testing")
+}
+
+func (dp *FanInDestProvider) Stats(io.Writer) error {
+	return fmt.Errorf("always error for testing")
+}
+
+func (dp *FanInDestProvider) Close() error {
+	return fmt.Errorf("always error for testing")
+}
+
+func TestChainedDestForwarder(t *testing.T) {
+	df := &DestForwarder{&FanInDestProvider{
+		&DestForwarder{&ErrorOnlyDestProvider{}},
+	}}
+	if df.DataUpdate("", nil, 0, nil, 0, DEST_EXTRAS_TYPE_NIL, nil) == nil {
+		t.Errorf("expected err")
+	}
+	if df.DataDelete("", nil, 0, 0, DEST_EXTRAS_TYPE_NIL, nil) == nil {
+		t.Errorf("expected err")
+	}
+	if df.SnapshotStart("", 0, 0) == nil {
+		t.Errorf("expected err")
+	}
+	if df.OpaqueSet("", nil) == nil {
+		t.Errorf("expected err")
+	}
+	value, lastSeq, err := df.OpaqueGet("")
+	if err == nil || value != nil || lastSeq != 0 {
+		t.Errorf("expected err")
+	}
+	if df.Rollback("", 0) == nil {
+		t.Errorf("expected err")
+	}
+	if df.ConsistencyWait("", "", "", 0, nil) == nil {
+		t.Errorf("expected err")
+	}
 }
 
 func TestDestStatsWriteJSON(t *testing.T) {
