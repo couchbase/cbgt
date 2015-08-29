@@ -105,7 +105,8 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	}
 
 	if params.AuthUser == "" {
-		if auth, err := NewCbAuthHandler(server); err == nil {
+		auth, err := NewCbAuthHandler(server)
+		if err == nil {
 			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
 		}
 		if err != nil {

@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -369,5 +370,72 @@ func TestCouchbaseParseSourceName(t *testing.T) {
 		p != "myPool" ||
 		b != "theBucket" {
 		t.Errorf("expected theBucket, got: %s %s %s", s, p, b)
+	}
+
+	bu = "https://%"
+	s, p, b = CouchbaseParseSourceName("s", "p", bu)
+	if s != "s" ||
+		p != "p" ||
+		b != bu {
+		t.Errorf("expected spbu, got: %s %s %s", s, p, b)
+	}
+}
+
+func TestCouchbasePartitions(t *testing.T) {
+	tests := []struct {
+		sourceType, sourceName, sourceUUID, sourceParams, serverIn string
+
+		expErr        bool
+		expPartitions []string
+	}{
+		{"couchbase", "", "", "", "bar", true, nil},
+		{"couchbase", "", "", "{}", "bar", true, nil},
+		{"couchbase", "", "", `{"authUser": "default"}`, "bar", true, nil},
+		{"couchbase", "", "", `{"authUser": "baz"}`, "bar", true, nil},
+
+		{"couchbase", "foo", "", "", "bar", true, nil},
+		{"couchbase", "foo", "", "{}", "bar", true, nil},
+		{"couchbase", "foo", "", `{"authUser": "default"}`, "bar", true, nil},
+		{"couchbase", "foo", "", `{"authUser": "baz"}`, "bar", true, nil},
+
+		{"couchbase", "http://fake:8091/pools/default/buckets/default",
+			"", "{}", "baz", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/default",
+			"", `{"authUser": "default"}`, "baz", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/default",
+			"", `{"authUser": "baz"}`, "baz", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/default",
+			"", `{"authUser": "default"}`, "default", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/default",
+			"", `{"authUser": "baz"}`, "default", true, nil},
+
+		{"couchbase", "http://fake:8091/pools/default/buckets/default",
+			"", `{"authUser": "default"}`, "http://fake:8091/pools/default/buckets/default", true, nil},
+
+		{"couchbase", "http://fake:8091/pools/default/buckets/notDefault",
+			"", "{}", "baz", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/notDefault",
+			"", `{"authUser": "default"}`, "baz", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/notDefault",
+			"", `{"authUser": "baz"}`, "baz", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/notDefault",
+			"", `{"authUser": "default"}`, "default", true, nil},
+		{"couchbase", "http://fake:8091/pools/default/buckets/notDefault",
+			"", `{"authUser": "baz"}`, "default", true, nil},
+	}
+
+	for _, test := range tests {
+		partitions, err := CouchbasePartitions(test.sourceType, test.sourceName,
+			test.sourceUUID, test.sourceParams, test.serverIn)
+		if (test.expErr && err == nil) ||
+			(!test.expErr && err != nil) {
+			t.Errorf("test err != expErr,"+
+				" err: %v, test: %#v", err, test)
+		}
+
+		if !reflect.DeepEqual(partitions, test.expPartitions) {
+			t.Errorf("test partitions != expPartitions,"+
+				" partitions: %v, test: %#v", partitions, test)
+		}
 	}
 }
