@@ -13,10 +13,13 @@ package cbgt
 
 import (
 	"bytes"
+	"container/list"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/rcrowley/go-metrics"
 )
 
 func TestOpenPIndex(t *testing.T) {
@@ -198,5 +201,27 @@ func TestErrorConsistencyWaitDone(t *testing.T) {
 
 	if cwdErr != doneErr {
 		t.Errorf("expected doneErr")
+	}
+}
+
+func TestPIndexStoreStats(t *testing.T) {
+	s := PIndexStoreStats{
+		TimerBatchStore: metrics.NewTimer(),
+		Errors:          list.New(),
+	}
+
+	w := bytes.NewBuffer(nil)
+	s.WriteJSON(w)
+	if w.String() == "" {
+		t.Errorf("expected some writes")
+	}
+
+	s.Errors.PushBack("hello")
+	s.Errors.PushBack("world")
+
+	w2 := bytes.NewBuffer(nil)
+	s.WriteJSON(w2)
+	if w2.String() == "" {
+		t.Errorf("expected some writes")
 	}
 }
