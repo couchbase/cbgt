@@ -49,6 +49,7 @@ var FeedTypes = make(map[string]*FeedType) // Key is sourceType.
 type FeedType struct {
 	Start           FeedStartFunc
 	Partitions      FeedPartitionsFunc
+	PartitionSeqs   FeedPartitionSeqsFunc
 	Public          bool
 	Description     string
 	StartSample     interface{}
@@ -57,14 +58,25 @@ type FeedType struct {
 
 // A FeedStartFunc is part of a FeedType registration as is invoked by
 // a Manager when a new feed instance needs to be started.
-type FeedStartFunc func(mgr *Manager, feedName, indexName, indexUUID string,
+type FeedStartFunc func(mgr *Manager,
+	feedName, indexName, indexUUID string,
 	sourceType, sourceName, sourceUUID, sourceParams string,
 	dests map[string]Dest) error
 
 // Each Feed or data-source type knows of the data partitions for a
 // data source.
-type FeedPartitionsFunc func(sourceType, sourceName, sourceUUID, sourceParams,
-	server string) ([]string, error)
+type FeedPartitionsFunc func(sourceType, sourceName, sourceUUID,
+	sourceParams, server string) ([]string, error)
+
+// Returns the current partitions and their seq's.
+type FeedPartitionSeqsFunc func(sourceType, sourceName, sourceUUID,
+	sourceParams, server string) (map[string]UUIDSeq, error)
+
+// A UUIDSeq associates a uuid (such as a partition uuid) with a seq.
+type UUIDSeq struct {
+	UUID string
+	Seq  uint64
+}
 
 // RegisterFeedType is invoked at init/startup time to register a
 // FeedType.
