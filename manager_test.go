@@ -135,6 +135,12 @@ func TestManagerRestart(t *testing.T) {
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
+
+	pit, err := PIndexImplTypeForIndex(cfg, "foo")
+	if err == nil || pit != nil {
+		t.Error("expected pit for uncreated foo index")
+	}
+
 	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
 	if err := m.Start("wanted"); err != nil {
@@ -181,6 +187,15 @@ func TestManagerRestart(t *testing.T) {
 	if len(feeds) != 1 || len(pindexes) != 1 {
 		t.Errorf("expected load 1 feed, 1 pindex, got: %+v, %+v",
 			feeds, pindexes)
+	}
+
+	pit, err = PIndexImplTypeForIndex(cfg, "foo")
+	if err != nil || pit == nil {
+		t.Error("expected pit for foo index")
+	}
+	pit, err = PIndexImplTypeForIndex(cfg, "bogus")
+	if err == nil || pit != nil {
+		t.Error("expected no pit for bogus index")
 	}
 }
 
