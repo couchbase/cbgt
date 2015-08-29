@@ -32,17 +32,19 @@ const DEST_EXTRAS_TYPE_DCP = DestExtrasType(0x0002)
 
 func init() {
 	RegisterFeedType("couchbase", &FeedType{
-		Start:      StartDCPFeed,
-		Partitions: CouchbasePartitions,
-		Public:     true,
+		Start:         StartDCPFeed,
+		Partitions:    CouchbasePartitions,
+		PartitionSeqs: CouchbasePartitionSeqs,
+		Public:        true,
 		Description: "general/couchbase" +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),
 	})
 	RegisterFeedType("couchbase-dcp", &FeedType{
-		Start:      StartDCPFeed,
-		Partitions: CouchbasePartitions,
-		Public:     false, // Won't be listed in /api/managerMeta output.
+		Start:         StartDCPFeed,
+		Partitions:    CouchbasePartitions,
+		PartitionSeqs: CouchbasePartitionSeqs,
+		Public:        false, // Won't be listed in /api/managerMeta output.
 		Description: "general/couchbase-dcp" +
 			" - a Couchbase Server bucket will be the data source," +
 			" via DCP protocol",

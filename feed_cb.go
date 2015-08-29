@@ -90,75 +90,19 @@ type CBFeedParams struct {
 // data-source/feed.
 func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string) (partitions []string, err error) {
-	server, poolName, bucketName :=
-		CouchbaseParseSourceName(serverIn, "default", sourceName)
-
-	params := CBFeedParams{}
-	if sourceParams != "" {
-		err := json.Unmarshal([]byte(sourceParams), &params)
-		if err != nil {
-			return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
-				" failed sourceParams JSON to CBFeedParams,"+
-				" server: %s, poolName: %s, bucketName: %s,"+
-				" sourceType: %s, sourceParams: %q, err: %v",
-				server, poolName, bucketName, sourceType, sourceParams, err)
-		}
-	}
-
-	if params.AuthUser == "" {
-		auth, err := NewCbAuthHandler(server)
-		if err == nil {
-			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
-		}
-		if err != nil {
-			return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
-				" failed in parsing credentials,"+
-				" server: %s, poolName: %s, bucketName: %s,"+
-				" sourceType: %s, sourceParams: %q, err: %v",
-				server, poolName, bucketName, sourceType, sourceParams, err)
-		}
-	}
-
-	var client couchbase.Client
-
-	if params.AuthUser != "" || bucketName != "default" {
-		client, err = couchbase.ConnectWithAuthCreds(server,
-			params.AuthUser, params.AuthPassword)
-	} else {
-		client, err = couchbase.Connect(server)
-	}
+	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
+		serverIn)
 	if err != nil {
-		return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
-			" connection failed, server: %s, poolName: %s,"+
-			" bucketName: %s, sourceType: %s, sourceParams: %q, err: %v,"+
-			" please check that your authUser and authPassword are correct"+
-			" and that your couchbase server (%q) is available",
-			server, poolName, bucketName, sourceType, sourceParams, err, server)
+		return nil, err
 	}
 
-	pool, err := client.GetPool(poolName)
-	if err != nil {
-		return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
-			" failed GetPool, server: %s, poolName: %s,"+
-			" bucketName: %s, sourceType: %s, sourceParams: %q, err: %v",
-			server, poolName, bucketName, sourceType, sourceParams, err)
-	}
-
-	bucket, err := pool.GetBucket(bucketName)
-	if err != nil {
-		return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
-			" failed GetBucket, server: %s, poolName: %s,"+
-			" bucketName: %s, err: %v, please check that your"+
-			" bucketName/sourceName (%q) is correct",
-			server, poolName, bucketName, err, bucketName)
-	}
 	defer bucket.Close()
 
 	vbm := bucket.VBServerMap()
 	if vbm == nil {
-		return nil, fmt.Errorf("feed_cb: DataSourcePartitions/couchbase"+
-			" no VBServerMap, server: %s, poolName: %s, bucketName: %s, err: %v",
-			server, poolName, bucketName, err)
+		return nil, fmt.Errorf("feed_cb: CouchbasePartitions"+
+			" no VBServerMap, server: %s, sourceName: %s, err: %v",
+			serverIn, sourceName, err)
 	}
 
 	// NOTE: We assume that vbucket numbers are continuous
@@ -169,6 +113,75 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 		rv[i] = strconv.Itoa(i)
 	}
 	return rv, nil
+}
+
+func CouchbaseBucket(sourceName, sourceUUID, sourceParams,
+	serverIn string) (*couchbase.Bucket, error) {
+	server, poolName, bucketName :=
+		CouchbaseParseSourceName(serverIn, "default", sourceName)
+
+	params := CBFeedParams{}
+	if sourceParams != "" {
+		err := json.Unmarshal([]byte(sourceParams), &params)
+		if err != nil {
+			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
+				" failed sourceParams JSON to CBFeedParams,"+
+				" server: %s, poolName: %s, bucketName: %s,"+
+				" sourceParams: %q, err: %v",
+				server, poolName, bucketName, sourceParams, err)
+		}
+	}
+
+	if params.AuthUser == "" {
+		auth, err := NewCbAuthHandler(server)
+		if err == nil {
+			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
+				" failed in parsing credentials,"+
+				" server: %s, poolName: %s, bucketName: %s,"+
+				" sourceParams: %q, err: %v",
+				server, poolName, bucketName, sourceParams, err)
+		}
+	}
+
+	var err error
+	var client couchbase.Client
+
+	if params.AuthUser != "" || bucketName != "default" {
+		client, err = couchbase.ConnectWithAuthCreds(server,
+			params.AuthUser, params.AuthPassword)
+	} else {
+		client, err = couchbase.Connect(server)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
+			" connection failed, server: %s, poolName: %s,"+
+			" bucketName: %s, sourceParams: %q, err: %v,"+
+			" please check that your authUser and authPassword are correct"+
+			" and that your couchbase server (%q) is available",
+			server, poolName, bucketName, sourceParams, err, server)
+	}
+
+	pool, err := client.GetPool(poolName)
+	if err != nil {
+		return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
+			" failed GetPool, server: %s, poolName: %s,"+
+			" bucketName: %s, sourceParams: %q, err: %v",
+			server, poolName, bucketName, sourceParams, err)
+	}
+
+	bucket, err := pool.GetBucket(bucketName)
+	if err != nil {
+		return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
+			" failed GetBucket, server: %s, poolName: %s,"+
+			" bucketName: %s, err: %v, please check that your"+
+			" bucketName/sourceName (%q) is correct",
+			server, poolName, bucketName, err, bucketName)
+	}
+
+	return bucket, nil
 }
 
 // CouchbaseParseSourceName parses a sourceName, if it's a couchbase
@@ -239,4 +252,22 @@ func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
 		return &CbAuthHandler{Hostport: u.Host}, nil
 	}
 	return nil, err
+}
+
+// -------------------------------------------------
+
+// CouchbasePartitionSeqsFunc returns the current partitions (vbucket
+// id's) and their UUID's / seq's, via a stats request.
+func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
+	sourceParams, serverIn string) (
+	map[string]UUIDSeq, error) {
+	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
+		serverIn)
+	if err != nil {
+		return nil, err
+	}
+
+	defer bucket.Close()
+
+	return nil, fmt.Errorf("TODO")
 }
