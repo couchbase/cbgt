@@ -130,6 +130,19 @@ func TestNilFeedStart(t *testing.T) {
 	if f.Start() != nil {
 		t.Errorf("expected NILFeed.Start() to work")
 	}
+	if f.Dests() != nil {
+		t.Errorf("expected nil dests")
+	}
+	w := bytes.NewBuffer(nil)
+	if f.Stats(w) != nil {
+		t.Errorf("expected no err on nil feed stats")
+	}
+	if w.String() != "{}" {
+		t.Errorf("expected json stats")
+	}
+	if f.Close() != nil {
+		t.Errorf("expected nil dests")
+	}
 }
 
 func TestPrimaryFeed(t *testing.T) {
