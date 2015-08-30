@@ -692,24 +692,21 @@ func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
 					}
 
 					if sample.Kind == "/api/stats" {
-						var uuidSeqCurr cbgt.UUIDSeq
-
-						r.m.Lock()
-						partitions, exists := r.currSeqs[planPIndex.Name]
-						if exists && partitions != nil {
-							nodes, exists := partitions[partition]
-							if exists && nodes != nil {
-								uuidSeq, exists := nodes[node]
-								if exists {
-									uuidSeqCurr = uuidSeq
-								}
+						uuidSeqCurr, exists := r.getCurrSeq(
+							planPIndex.Name, partition, node)
+						if exists {
+							if uuidSeqCurr.UUID != uuidSeqWant.UUID {
+								return fmt.Errorf("rebalance:"+
+									" uuid mismatch, indexDef: %#v,"+
+									" partition: %s, node: %s, state: %s, op: %s,"+
+									" uuidSeqCurr: %#v, uuidSeqWant: %#v",
+									indexDef, partition, node, state, op,
+									uuidSeqCurr, uuidSeqWant)
 							}
-						}
-						r.m.Unlock()
 
-						if uuidSeqCurr.UUID == uuidSeqWant.UUID &&
-							uuidSeqCurr.Seq >= uuidSeqWant.Seq {
-							return nil
+							if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
+								return nil
+							}
 						}
 					}
 				}
@@ -718,6 +715,27 @@ func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
 	}
 
 	return nil
+}
+
+func (r *rebalancer) getCurrSeq(pindex, partition, node string) (
+	uuidSeq cbgt.UUIDSeq, uuidSeqExists bool) {
+	r.m.Lock()
+
+	partitions, exists := r.currSeqs[pindex]
+	if exists && partitions != nil {
+		nodes, exists := partitions[partition]
+		if exists && nodes != nil {
+			us, exists := nodes[node]
+			if exists {
+				uuidSeq = us
+				uuidSeqExists = true
+			}
+		}
+	}
+
+	r.m.Unlock()
+
+	return uuidSeq, uuidSeqExists
 }
 
 // --------------------------------------------------------
