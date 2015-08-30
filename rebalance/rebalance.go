@@ -329,10 +329,6 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 
 	assignPartitionFunc := func(stopCh chan struct{},
 		partition, node, state, op string) error {
-		if r.options.DryRun {
-			return nil
-		}
-
 		err := r.assignPartition(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
@@ -490,6 +486,10 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 		partition, node, state, op)
 	if err != nil {
 		return err
+	}
+
+	if r.options.DryRun {
+		return nil
 	}
 
 	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
