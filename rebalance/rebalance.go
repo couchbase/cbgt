@@ -52,9 +52,10 @@ type rebalancer struct {
 	options    RebalanceOptions
 	progressCh chan RebalanceProgress
 
-	monitor         *monitor.MonitorNodes
-	monitorDoneCh   chan struct{}
-	monitorSampleCh chan monitor.MonitorSample
+	monitor             *monitor.MonitorNodes
+	monitorDoneCh       chan struct{}
+	monitorSampleCh     chan monitor.MonitorSample
+	monitorSampleWantCh chan chan monitor.MonitorSample
 
 	nodesAll      []string          // Array of node UUID's.
 	nodesToAdd    []string          // Array of node UUID's.
@@ -77,6 +78,9 @@ type rebalancer struct {
 	// Map of index -> partition -> node -> StateOp.
 	currStates CurrStates
 
+	// Map of pindex -> partition -> node -> cbgt.UUIDSeq.
+	currSeqs CurrSeqs
+
 	stopCh chan struct{} // Closed by app or when there's an error.
 }
 
@@ -89,6 +93,9 @@ type StateOp struct {
 	state string
 	op    string // May be "" for unknown or no in-flight op.
 }
+
+// Map of pindex -> partition -> node -> cbgt.UUIDSeq.
+type CurrSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 
 // --------------------------------------------------------
 
@@ -138,7 +145,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		HttpGet: options.HttpGet,
 	}
 
-	monitor, err := monitor.StartMonitorNodes(urlUUIDs,
+	monitorInst, err := monitor.StartMonitorNodes(urlUUIDs,
 		monitorSampleCh, monitorOptions)
 	if err != nil {
 		return nil, err
@@ -149,26 +156,28 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	stopCh := make(chan struct{})
 
 	r := &rebalancer{
-		version:            version,
-		cfg:                cfg,
-		server:             server,
-		options:            options,
-		progressCh:         make(chan RebalanceProgress),
-		monitor:            monitor,
-		monitorDoneCh:      make(chan struct{}),
-		monitorSampleCh:    monitorSampleCh,
-		nodesAll:           nodesAll,
-		nodesToAdd:         nodesToAdd,
-		nodesToRemove:      nodesToRemove,
-		nodeWeights:        nodeWeights,
-		nodeHierarchy:      nodeHierarchy,
-		begIndexDefs:       begIndexDefs,
-		begNodeDefs:        begNodeDefs,
-		begPlanPIndexes:    begPlanPIndexes,
-		begPlanPIndexesCAS: begPlanPIndexesCAS,
-		endPlanPIndexes:    cbgt.NewPlanPIndexes(version),
-		currStates:         map[string]map[string]map[string]StateOp{},
-		stopCh:             stopCh,
+		version:             version,
+		cfg:                 cfg,
+		server:              server,
+		options:             options,
+		progressCh:          make(chan RebalanceProgress),
+		monitor:             monitorInst,
+		monitorDoneCh:       make(chan struct{}),
+		monitorSampleCh:     monitorSampleCh,
+		monitorSampleWantCh: make(chan chan monitor.MonitorSample),
+		nodesAll:            nodesAll,
+		nodesToAdd:          nodesToAdd,
+		nodesToRemove:       nodesToRemove,
+		nodeWeights:         nodeWeights,
+		nodeHierarchy:       nodeHierarchy,
+		begIndexDefs:        begIndexDefs,
+		begNodeDefs:         begNodeDefs,
+		begPlanPIndexes:     begPlanPIndexes,
+		begPlanPIndexesCAS:  begPlanPIndexesCAS,
+		endPlanPIndexes:     cbgt.NewPlanPIndexes(version),
+		currStates:          map[string]map[string]map[string]StateOp{},
+		currSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
+		stopCh:              stopCh,
 	}
 
 	// TODO: Prepopulate currStates so that we can double-check that
@@ -466,8 +475,8 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 			cas, err)
 	}
 
-	return r.waitAssignPartitionDone(stopCh, index, partition,
-		node, state, op)
+	return r.waitAssignPartitionDone(stopCh, indexDef, planPIndexes,
+		partition, node, state, op)
 }
 
 // assignPartitionCurrStates validates the state transition is proper
@@ -635,8 +644,80 @@ func (r *rebalancer) getNodePlanParamsReadWrite(
 // waitAssignPartitionDone will block until stopped or until an
 // index/partition/node/state/op transition is complete.
 func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
-	index, partition, node, state, op string) error {
-	return nil // TODO.
+	indexDef *cbgt.IndexDef,
+	planPIndexes *cbgt.PlanPIndexes,
+	partition, node, state, op string) error {
+	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
+	if !exists || feedType == nil || feedType.PartitionSeqs == nil {
+		return nil
+	}
+
+	planPIndex, err := r.getPIndex(planPIndexes, partition)
+	if err != nil {
+		return err
+	}
+
+	// TODO: Give up after waiting too long.
+	// TODO: Or, if we see it's converging.
+	for {
+		partitions, err := feedType.PartitionSeqs(indexDef.SourceType,
+			indexDef.SourceName,
+			indexDef.SourceUUID,
+			indexDef.SourceParams, r.server)
+		if err != nil {
+			return err
+		}
+
+		uuidSeqWant, exists := partitions[partition]
+		if !exists {
+			return fmt.Errorf("rebalance:"+
+				" waitAssignPartitionDone,"+
+				" missing partition from PartitionSeqs, indexDef: %#v,"+
+				" partition: %s, node: %s, state: %s, op: %s,"+
+				" partitions: %#v", indexDef, partition, node, state, op,
+				partitions)
+		}
+
+		for {
+			sampleWantCh := make(chan monitor.MonitorSample)
+
+			select {
+			case <-stopCh:
+				return blance.ErrorStopped
+
+			case r.monitorSampleWantCh <- sampleWantCh:
+				for sample := range sampleWantCh {
+					if sample.Error != nil {
+						continue
+					}
+
+					if sample.Kind == "/api/stats" {
+						var uuidSeqCurr cbgt.UUIDSeq
+
+						r.m.Lock()
+						partitions, exists := r.currSeqs[planPIndex.Name]
+						if exists && partitions != nil {
+							nodes, exists := partitions[partition]
+							if exists && nodes != nil {
+								uuidSeq, exists := nodes[node]
+								if exists {
+									uuidSeqCurr = uuidSeq
+								}
+							}
+						}
+						r.m.Unlock()
+
+						if uuidSeqCurr.UUID == uuidSeqWant.UUID &&
+							uuidSeqCurr.Seq >= uuidSeqWant.Seq {
+							return nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // --------------------------------------------------------
@@ -658,8 +739,64 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 
 			if s.Error != nil {
 				r.progressCh <- RebalanceProgress{Error: s.Error}
-
 				r.Stop() // Stop the rebalance.
+				continue
+			}
+
+			if s.Kind == "/api/stats" {
+				m := struct {
+					PIndexes map[string]struct {
+						Partitions map[string]struct {
+							UUID string `json:"uuid"`
+							Seq  uint64 `json:"seq"`
+						} `json:"partitions"`
+					} `json:"pindexes"`
+				}{}
+
+				err := json.Unmarshal(s.Data, &m)
+				if err != nil {
+					r.progressCh <- RebalanceProgress{Error: err}
+					r.Stop() // Stop the rebalance.
+					continue
+				}
+
+				for pindex, x := range m.PIndexes {
+					for partition, uuidSeq := range x.Partitions {
+						r.m.Lock()
+
+						partitions, exists := r.currSeqs[pindex]
+						if !exists || partitions == nil {
+							partitions = map[string]map[string]cbgt.UUIDSeq{}
+							r.currSeqs[pindex] = partitions
+						}
+
+						nodes, exists := partitions[partition]
+						if !exists || nodes == nil {
+							nodes = map[string]cbgt.UUIDSeq{}
+							partitions[partition] = nodes
+						}
+
+						nodes[s.UUID] = cbgt.UUIDSeq{
+							UUID: uuidSeq.UUID,
+							Seq:  uuidSeq.Seq,
+						}
+
+						r.m.Unlock()
+					}
+				}
+			}
+
+			notifyWanters := true
+
+			for notifyWanters {
+				select {
+				case sampleWantCh := <-r.monitorSampleWantCh:
+					sampleWantCh <- s
+					close(sampleWantCh)
+
+				default:
+					notifyWanters = false
+				}
 			}
 		}
 	}
