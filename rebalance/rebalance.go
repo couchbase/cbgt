@@ -40,10 +40,14 @@ type RebalanceProgress struct {
 type RebalanceOptions struct {
 	DryRun bool // When true, no changes, for analysis/planning.
 
+	Log RebalanceLogFunc
+
 	// Optional, defaults to http.Get(); this is used, for example,
 	// for unit testing.
 	HttpGet func(url string) (resp *http.Response, err error)
 }
+
+type RebalanceLogFunc func(format string, v ...interface{})
 
 // A rebalancer struct holds all the tracking information for the
 // Rebalance operation.
@@ -107,10 +111,15 @@ type CurrSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 // and orchestrating partition reassignments and the cbgt/rest/monitor
 // library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
-	options RebalanceOptions) (
+	optionsIn RebalanceOptions) (
 	*rebalancer, error) {
 	// TODO: Need timeouts on moves.
 	//
+	options := optionsIn
+	if options.Log == nil {
+		options.Log = log.Printf
+	}
+
 	uuid := "" // We don't have a uuid, as we're not a node.
 
 	begIndexDefs, begNodeDefs, begPlanPIndexes, begPlanPIndexesCAS, err :=
@@ -123,17 +132,17 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		nodeWeights, nodeHierarchy :=
 		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
 
-	log.Printf("rebalance: nodesAll: %#v", nodesAll)
-	log.Printf("rebalance: nodesToAdd: %#v", nodesToAdd)
-	log.Printf("rebalance: nodesToRemove: %#v", nodesToRemove)
-	log.Printf("rebalance: nodeWeights: %#v", nodeWeights)
-	log.Printf("rebalance: nodeHierarchy: %#v", nodeHierarchy)
-	log.Printf("rebalance: begIndexDefs: %#v", begIndexDefs)
-	log.Printf("rebalance: begNodeDefs: %#v", begNodeDefs)
+	options.Log("rebalance: nodesAll: %#v", nodesAll)
+	options.Log("rebalance: nodesToAdd: %#v", nodesToAdd)
+	options.Log("rebalance: nodesToRemove: %#v", nodesToRemove)
+	options.Log("rebalance: nodeWeights: %#v", nodeWeights)
+	options.Log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
+	options.Log("rebalance: begIndexDefs: %#v", begIndexDefs)
+	options.Log("rebalance: begNodeDefs: %#v", begNodeDefs)
 
 	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
 
-	log.Printf("rebalance: begPlanPIndexes: %s, cas: %v",
+	options.Log("rebalance: begPlanPIndexes: %s, cas: %v",
 		begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// --------------------------------------------------------
@@ -268,12 +277,12 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 		default:
 		}
 
-		log.Printf("=====================================")
-		log.Printf("runRebalanceIndexes: %d of %d", i, n)
+		r.options.Log("=====================================")
+		r.options.Log("runRebalanceIndexes: %d of %d", i, n)
 
 		_, err := r.rebalanceIndex(indexDef)
 		if err != nil {
-			log.Printf("run: indexDef.Name: %s, err: %#v",
+			r.options.Log("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 		}
 
@@ -300,13 +309,13 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 // rebalanceIndex rebalances a single index.
 func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
-	log.Printf(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
+	r.options.Log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
 	if cbgt.CasePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
 		r.m.Unlock()
 
-		log.Printf("  plan frozen: indexDef.Name: %s,"+
+		r.options.Log("  plan frozen: indexDef.Name: %s,"+
 			" cloned previous plan", indexDef.Name)
 
 		return false, nil
@@ -327,7 +336,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		err := r.assignPartition(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
-			log.Printf("assignPartitionFunc, err: %v", err)
+			r.options.Log("assignPartitionFunc, err: %v", err)
 		}
 
 		return err
@@ -355,10 +364,10 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	for progress := range o.ProgressCh() {
 		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
-		log.Printf("   index: %s, #%d %+v",
+		r.options.Log("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		log.Printf("     %+v", progress)
+		r.options.Log("     %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
@@ -409,7 +418,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	endPlanPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
 		indexDef, r.server, r.endPlanPIndexes)
 	if err != nil {
-		log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.options.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
 			" indexDef: %#v, server: %s, err: %v",
 			indexDef.Name, indexDef, r.server, err)
@@ -428,13 +437,13 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
 	for _, warning := range warnings {
-		log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.options.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q, indexDef: %#v",
 			indexDef.Name, warning, indexDef)
 	}
 
 	j, _ := json.Marshal(r.endPlanPIndexes)
-	log.Printf("  calcBegEndMaps: indexDef.Name: %s,"+
+	r.options.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 		" endPlanPIndexes: %s", indexDef.Name, j)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
@@ -451,7 +460,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // synchronously change the partition/node/state/op for an index.
 func (r *rebalancer) assignPartition(stopCh chan struct{},
 	index, partition, node, state, op string) error {
-	log.Printf("  assignPartition: index: %s,"+
+	r.options.Log("  assignPartition: index: %s,"+
 		" partition: %s, node: %s, state: %s, op: %s",
 		index, partition, node, state, op)
 
