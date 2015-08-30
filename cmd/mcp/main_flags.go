@@ -24,7 +24,7 @@ const DEFAULT_DATA_DIR = "data"
 
 type Flags struct {
 	CfgConnect string
-	DataDir    string
+	DryRun     bool
 	Help       bool
 	Server     string
 	Version    bool
@@ -60,32 +60,29 @@ func initFlags(flags *Flags) map[string][]string {
 	}
 
 	s(&flags.CfgConnect,
-		[]string{"cfgConnect", "cfg", "c"}, "CFG_CONNECT", "simple",
-		"connection string to a configuration provider/server"+
+		[]string{"cfgConnect", "cfg", "c"}, "CFG_CONNECT", "<MISSING>",
+		"required connection string to a configuration provider/server"+
 			"\nfor clustering multiple nodes:"+
 			"\n* couchbase:http://BUCKET_USER:BUCKET_PSWD@CB_HOST:CB_PORT"+
 			"\n     - manages a cluster configuration in a couchbase"+
 			"\n       3.x bucket; for example:"+
 			"\n       'couchbase:http://my-cfg-bucket@127.0.0.1:8091';"+
-			"\n* simple"+
-			"\n     - intended for development usage, the 'simple'"+
-			"\n       configuration provider manages a configuration"+
-			"\n       for a single, unclustered node in a local"+
-			"\n       file that's stored in the dataDir;"+
 			"\n* metakv"+
 			"\n     - manages a cluster configuration in metakv store;"+
 			"\n       environment variable CBAUTH_REVRPC_URL needs to be set"+
 			"\n       for metakv; for example:"+
-			"\n       'export CBAUTH_REVRPC_URL=http://user:password@localhost:9000/mcp';"+
-			"\ndefault is 'simple'.")
+			"\n       'export CBAUTH_REVRPC_URL=http://user:password@localhost:9000/mcp'.")
+	b(&flags.DryRun,
+		[]string{"dryRun", "noChanges", "n"}, "", false,
+		"no actual changes will be executed.")
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")
 	s(&flags.Server,
-		[]string{"server", "s"}, "URL", "",
-		"URL to datasource server; example when using couchbase 3.x as"+
-			"\nyour datasource server: 'http://localhost:8091';"+
-			"\nuse '.' when there is no datasource server.")
+		[]string{"server", "s"}, "URL", "<MISSING>",
+		"required URL to datasource server;"+
+			" example when using couchbase 3.x as"+
+			"\nyour datasource server: 'http://localhost:8091'.")
 	b(&flags.Version,
 		[]string{"version", "v"}, "", false,
 		"print version string and exit.")

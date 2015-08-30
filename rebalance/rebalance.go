@@ -38,6 +38,8 @@ type RebalanceProgress struct {
 }
 
 type RebalanceOptions struct {
+	DryRun bool // When true, no changes, for analysis/planning.
+
 	// Optional, defaults to http.Get(); this is used, for example,
 	// for unit testing.
 	HttpGet func(url string) (resp *http.Response, err error)
@@ -256,6 +258,9 @@ func (r *rebalancer) VisitCurrStates(visitor func(CurrStates)) {
 
 // rebalanceIndexes rebalances each index, one at a time.
 func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
+	i := 1
+	n := len(r.begIndexDefs.IndexDefs)
+
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
 		select {
 		case <-stopCh:
@@ -263,11 +268,16 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 		default:
 		}
 
+		log.Printf("=====================================")
+		log.Printf("runRebalanceIndexes: %d of %d", i, n)
+
 		_, err := r.rebalanceIndex(indexDef)
 		if err != nil {
 			log.Printf("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 		}
+
+		i++
 	}
 
 	// Completion of rebalance operation, whether naturally or due to
@@ -281,6 +291,8 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	<-r.monitorDoneCh
 
 	close(r.progressCh)
+
+	// TODO: Need to close monitorSampleWantCh?
 }
 
 // --------------------------------------------------------
@@ -308,6 +320,10 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 
 	assignPartitionFunc := func(stopCh chan struct{},
 		partition, node, state, op string) error {
+		if r.options.DryRun {
+			return nil
+		}
+
 		err := r.assignPartition(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
@@ -339,11 +355,10 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	for progress := range o.ProgressCh() {
 		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
-		log.Printf("   indexDef.Name: %s, progress: %d, %+v",
+		log.Printf("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		log.Printf("   indexDef.Name: %s, progress: %d, %+v",
-			indexDef.Name, numProgress, progress)
+		log.Printf("     %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
