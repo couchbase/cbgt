@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -81,16 +82,16 @@ type rebalancer struct {
 	// We start a new blance.Orchestrator for each index.
 	o *blance.Orchestrator
 
-	// Map of index -> partition -> node -> StateOp.
+	// Map of index -> pindex -> node -> StateOp.
 	currStates CurrStates
 
-	// Map of pindex -> partition -> node -> cbgt.UUIDSeq.
+	// Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
 	currSeqs CurrSeqs
 
 	stopCh chan struct{} // Closed by app or when there's an error.
 }
 
-// Map of index -> partition -> node -> StateOp.
+// Map of index -> pindex -> node -> StateOp.
 type CurrStates map[string]map[string]map[string]StateOp
 
 // A StateOp is used to track state transitions and associates a state
@@ -100,7 +101,7 @@ type StateOp struct {
 	op    string // May be "" for unknown or no in-flight op.
 }
 
-// Map of pindex -> partition -> node -> cbgt.UUIDSeq.
+// Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
 type CurrSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 
 // --------------------------------------------------------
@@ -329,7 +330,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 
 	assignPartitionFunc := func(stopCh chan struct{},
 		partition, node, state, op string) error {
-		err := r.assignPartition(stopCh,
+		err := r.assignPIndex(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
 			r.options.Log("assignPartitionFunc, err: %v", err)
@@ -363,7 +364,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		r.options.Log("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		r.options.Log("     %+v", progress)
+		r.options.Log("    %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
@@ -452,15 +453,15 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 // --------------------------------------------------------
 
-// assignPartition is invoked when blance.OrchestrateMoves() wants to
-// synchronously change the partition/node/state/op for an index.
-func (r *rebalancer) assignPartition(stopCh chan struct{},
-	index, partition, node, state, op string) error {
-	r.options.Log("  assignPartition: index: %s,"+
-		" partition: %s, node: %s, state: %s, op: %s",
-		index, partition, node, state, op)
+// assignPIndex is invoked when blance.OrchestrateMoves() wants to
+// synchronously change the pindex/node/state/op for an index.
+func (r *rebalancer) assignPIndex(stopCh chan struct{},
+	index, pindex, node, state, op string) error {
+	r.options.Log("  assignPIndex: index: %s,"+
+		" pindex: %s, node: %s, state: %q, op: %s",
+		index, pindex, node, state, op)
 
-	err := r.assignPartitionCurrStates(index, partition, node, state, op)
+	err := r.assignPIndexCurrStates(index, pindex, node, state, op)
 	if err != nil {
 		return err
 	}
@@ -472,9 +473,9 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 	indexDef := indexDefs.IndexDefs[index]
 	if indexDef == nil {
-		return fmt.Errorf("assignPartition: no indexDef,"+
-			" index: %s, partition: %s, node: %s, state: %s, op: %s",
-			index, partition, node, state, op)
+		return fmt.Errorf("assignPIndex: no indexDef,"+
+			" index: %s, pindex: %s, node: %s, state: %q, op: %s",
+			index, pindex, node, state, op)
 	}
 
 	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
@@ -483,7 +484,7 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 	}
 
 	err = r.updatePlanPIndexes(planPIndexes, indexDef,
-		partition, node, state, op)
+		pindex, node, state, op)
 	if err != nil {
 		return err
 	}
@@ -494,42 +495,42 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 
 	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
 	if err != nil {
-		return fmt.Errorf("assignPartition: update plan,"+
+		return fmt.Errorf("assignPIndex: update plan,"+
 			" perhaps a concurrent planner won, cas: %d, err: %v",
 			cas, err)
 	}
 
-	return r.waitAssignPartitionDone(stopCh, indexDef, planPIndexes,
-		partition, node, state, op)
+	return r.waitAssignPIndexDone(stopCh, indexDef, planPIndexes,
+		pindex, node, state, op)
 }
 
-// assignPartitionCurrStates validates the state transition is proper
+// assignPIndexCurrStates validates the state transition is proper
 // and then updates currStates to the assigned
-// index/partition/node/state/op.
-func (r *rebalancer) assignPartitionCurrStates(
-	index, partition, node, state, op string) error {
+// index/pindex/node/state/op.
+func (r *rebalancer) assignPIndexCurrStates(
+	index, pindex, node, state, op string) error {
 	r.m.Lock()
 
-	partitions, exists := r.currStates[index]
-	if !exists || partitions == nil {
-		partitions = map[string]map[string]StateOp{}
-		r.currStates[index] = partitions
+	pindexes, exists := r.currStates[index]
+	if !exists || pindexes == nil {
+		pindexes = map[string]map[string]StateOp{}
+		r.currStates[index] = pindexes
 	}
 
-	nodes, exists := partitions[partition]
+	nodes, exists := pindexes[pindex]
 	if !exists || nodes == nil {
 		nodes = map[string]StateOp{}
-		partitions[partition] = nodes
+		pindexes[pindex] = nodes
 	}
 
 	if op == "add" {
 		if stateOp, exists := nodes[node]; exists && stateOp.state != "" {
 			r.m.Unlock()
 
-			return fmt.Errorf("assignPartitionCurrStates:"+
-				" op was add when exists, index: %s,"+
-				" partition: %s, node: %s, state: %s, op: %s, stateOp: %#v",
-				index, partition, node, state, op, stateOp)
+			return fmt.Errorf("assignPIndexCurrStates:"+
+				" op was add when exists, index: %s, pindex: %s,"+
+				" node: %s, state: %q, op: %s, stateOp: %#v",
+				index, pindex, node, state, op, stateOp)
 		}
 	} else {
 		// TODO: This validity check will only work after we
@@ -537,10 +538,10 @@ func (r *rebalancer) assignPartitionCurrStates(
 		// if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
 		// 	r.m.Unlock()
 		//
-		// 	return fmt.Errorf("assignPartitionCurrStates:"+
+		// 	return fmt.Errorf("assignPIndexCurrStates:"+
 		// 		" op was non-add when not exists, index: %s,"+
-		// 		" partition: %s, node: %s, state: %s, op: %s, stateOp: %#v",
-		// 		index, partition, node, state, op, stateOp)
+		// 		" pindex: %s, node: %s, state: %q, op: %s, stateOp: %#v",
+		// 		index, pindex, node, state, op, stateOp)
 		// }
 	}
 
@@ -556,14 +557,14 @@ func (r *rebalancer) assignPartitionCurrStates(
 // state transition is invalid.
 func (r *rebalancer) updatePlanPIndexes(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
-	partition, node, state, op string) error {
-	planPIndex, err := r.getPIndex(planPIndexes, partition)
+	pindex, node, state, op string) error {
+	planPIndex, err := r.getPlanPIndex(planPIndexes, pindex)
 	if err != nil {
 		return err
 	}
 
 	canRead, canWrite :=
-		r.getNodePlanParamsReadWrite(indexDef, partition, node)
+		r.getNodePlanParamsReadWrite(indexDef, pindex, node)
 
 	if planPIndex.Nodes == nil {
 		planPIndex.Nodes = make(map[string]*cbgt.PlanPIndexNode)
@@ -578,9 +579,9 @@ func (r *rebalancer) updatePlanPIndexes(
 		if planPIndex.Nodes[node] != nil {
 			return fmt.Errorf("updatePlanPIndexes:"+
 				" planPIndex already exists,"+
-				" indexDef.Name: %s, partition: %s,"+
-				" node: %s, state: %s, op: %s, planPIndex: %#v",
-				indexDef.Name, partition, node, state, op, planPIndex)
+				" indexDef: %#v, pindex: %s,"+
+				" node: %s, state: %q, op: %s, planPIndex: %#v",
+				indexDef, pindex, node, state, op, planPIndex)
 		}
 
 		// TODO: Need to shift the other node priorities around?
@@ -593,9 +594,9 @@ func (r *rebalancer) updatePlanPIndexes(
 		if planPIndex.Nodes[node] == nil {
 			return fmt.Errorf("updatePlanPIndexes:"+
 				" planPIndex missing,"+
-				" indexDef.Name: %s, partition: %s,"+
-				" node: %s, state: %s, op: %s, planPIndex: %#v",
-				indexDef.Name, partition, node, state, op, planPIndex)
+				" indexDef.Name: %s, pindex: %s,"+
+				" node: %s, state: %q, op: %s, planPIndex: %#v",
+				indexDef.Name, pindex, node, state, op, planPIndex)
 		}
 
 		if op == "del" {
@@ -619,42 +620,42 @@ func (r *rebalancer) updatePlanPIndexes(
 
 // --------------------------------------------------------
 
-// getPIndex returns the planPIndex, defaulting to the endPlanPIndex's
-// definition if necessary.
-func (r *rebalancer) getPIndex(
-	planPIndexes *cbgt.PlanPIndexes, partition string) (
+// getPlanPIndex returns the planPIndex, defaulting to the
+// endPlanPIndex's definition if necessary.
+func (r *rebalancer) getPlanPIndex(
+	planPIndexes *cbgt.PlanPIndexes, pindex string) (
 	*cbgt.PlanPIndex, error) {
-	planPIndex := planPIndexes.PlanPIndexes[partition]
+	planPIndex := planPIndexes.PlanPIndexes[pindex]
 	if planPIndex == nil {
 		r.m.Lock()
-		endPlanPIndex := r.endPlanPIndexes.PlanPIndexes[partition]
+		endPlanPIndex := r.endPlanPIndexes.PlanPIndexes[pindex]
 		if endPlanPIndex != nil {
 			p := *endPlanPIndex // Copy.
 			planPIndex = &p
 			planPIndex.Nodes = nil
-			planPIndexes.PlanPIndexes[partition] = planPIndex
+			planPIndexes.PlanPIndexes[pindex] = planPIndex
 		}
 		r.m.Unlock()
 	}
 
 	if planPIndex == nil {
-		return nil, fmt.Errorf("getPIndex: no planPIndex,"+
-			" partition: %s", partition)
+		return nil, fmt.Errorf("getPlanPIndex: no planPIndex,"+
+			" pindex: %s", pindex)
 	}
 
 	return planPIndex, nil
 }
 
 // getNodePlanParamsReadWrite returns the read/write config for a
-// partition for a node based on the plan params.
+// pindex for a node based on the plan params.
 func (r *rebalancer) getNodePlanParamsReadWrite(
-	indexDef *cbgt.IndexDef, partition string, node string) (
+	indexDef *cbgt.IndexDef, pindex string, node string) (
 	canRead, canWrite bool) {
 	canRead, canWrite = true, true
 
 	nodePlanParam := cbgt.GetNodePlanParam(
 		indexDef.PlanParams.NodePlanParams, node,
-		indexDef.Name, partition)
+		indexDef.Name, pindex)
 	if nodePlanParam != nil {
 		canRead = nodePlanParam.CanRead
 		canWrite = nodePlanParam.CanWrite
@@ -665,44 +666,54 @@ func (r *rebalancer) getNodePlanParamsReadWrite(
 
 // --------------------------------------------------------
 
-// waitAssignPartitionDone will block until stopped or until an
-// index/partition/node/state/op transition is complete.
-func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
+// waitAssignPIndexDone will block until stopped or until an
+// index/pindex/node/state/op transition is complete.
+func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 	indexDef *cbgt.IndexDef,
 	planPIndexes *cbgt.PlanPIndexes,
-	partition, node, state, op string) error {
+	pindex, node, state, op string) error {
+	if op == "del" {
+		return nil // TODO: Handle op del better.
+	}
+
 	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
 	if !exists || feedType == nil || feedType.PartitionSeqs == nil {
 		return nil
 	}
 
-	planPIndex, err := r.getPIndex(planPIndexes, partition)
+	planPIndex, err := r.getPlanPIndex(planPIndexes, pindex)
 	if err != nil {
 		return err
 	}
 
+	sourcePartitions := strings.Split(planPIndex.SourcePartitions, ",")
+
 	// TODO: Give up after waiting too long.
-	// TODO: Or, if we see it's converging.
-	for {
-		partitions, err := feedType.PartitionSeqs(indexDef.SourceType,
-			indexDef.SourceName,
-			indexDef.SourceUUID,
-			indexDef.SourceParams, r.server)
+	// TODO: Claim success and proceed if we see it's converging.
+	for _, sourcePartition := range sourcePartitions {
+		sourcePartitionSeqs, err :=
+			feedType.PartitionSeqs(indexDef.SourceType,
+				indexDef.SourceName,
+				indexDef.SourceUUID,
+				indexDef.SourceParams, r.server)
 		if err != nil {
 			return err
 		}
 
-		uuidSeqWant, exists := partitions[partition]
+		uuidSeqWant, exists := sourcePartitionSeqs[sourcePartition]
 		if !exists {
 			return fmt.Errorf("rebalance:"+
-				" waitAssignPartitionDone,"+
-				" missing partition from PartitionSeqs, indexDef: %#v,"+
-				" partition: %s, node: %s, state: %s, op: %s,"+
-				" partitions: %#v", indexDef, partition, node, state, op,
-				partitions)
+				" waitAssignPIndexDone,"+
+				" missing sourcePartition from PartitionSeqs,"+
+				" indexDef: %#v, sourcePartition: %s, node: %s,"+
+				" state: %q, op: %s, sourcePartitionSeqs: %#v",
+				indexDef, sourcePartition, node, state, op,
+				sourcePartitionSeqs)
 		}
 
-		for {
+		caughtUp := false
+
+		for !caughtUp {
 			sampleWantCh := make(chan monitor.MonitorSample)
 
 			select {
@@ -716,20 +727,24 @@ func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
 					}
 
 					if sample.Kind == "/api/stats" {
-						uuidSeqCurr, exists := r.getCurrSeq(
-							planPIndex.Name, partition, node)
+						uuidSeqCurr, exists :=
+							r.getCurrSeq(pindex, sourcePartition, node)
 						if exists {
 							if uuidSeqCurr.UUID != uuidSeqWant.UUID {
 								return fmt.Errorf("rebalance:"+
+									" waitAssignPIndexDone,"+
 									" uuid mismatch, indexDef: %#v,"+
-									" partition: %s, node: %s, state: %s, op: %s,"+
+									" sourcePartition: %s, node: %s,"+
+									" state: %q, op: %s,"+
 									" uuidSeqCurr: %#v, uuidSeqWant: %#v",
-									indexDef, partition, node, state, op,
+									indexDef, sourcePartition,
+									node, state, op,
 									uuidSeqCurr, uuidSeqWant)
 							}
 
 							if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
-								return nil
+								caughtUp = true
+								break // From !caughtUp loop.
 							}
 						}
 					}
@@ -741,13 +756,15 @@ func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
 	return nil
 }
 
-func (r *rebalancer) getCurrSeq(pindex, partition, node string) (
+// getCurrSeq returns the last seen cbgt.UUIDSeq for a
+// pindex/sourcePartition/node.
+func (r *rebalancer) getCurrSeq(pindex, sourcePartition, node string) (
 	uuidSeq cbgt.UUIDSeq, uuidSeqExists bool) {
 	r.m.Lock()
 
-	partitions, exists := r.currSeqs[pindex]
-	if exists && partitions != nil {
-		nodes, exists := partitions[partition]
+	sourcePartitions, exists := r.currSeqs[pindex]
+	if exists && sourcePartitions != nil {
+		nodes, exists := sourcePartitions[sourcePartition]
 		if exists && nodes != nil {
 			us, exists := nodes[node]
 			if exists {
@@ -803,19 +820,20 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 				}
 
 				for pindex, x := range m.PIndexes {
-					for partition, uuidSeq := range x.Partitions {
+					for sourcePartition, uuidSeq := range x.Partitions {
 						r.m.Lock()
 
-						partitions, exists := r.currSeqs[pindex]
-						if !exists || partitions == nil {
-							partitions = map[string]map[string]cbgt.UUIDSeq{}
-							r.currSeqs[pindex] = partitions
+						sourcePartitions, exists := r.currSeqs[pindex]
+						if !exists || sourcePartitions == nil {
+							sourcePartitions =
+								map[string]map[string]cbgt.UUIDSeq{}
+							r.currSeqs[pindex] = sourcePartitions
 						}
 
-						nodes, exists := partitions[partition]
+						nodes, exists := sourcePartitions[sourcePartition]
 						if !exists || nodes == nil {
 							nodes = map[string]cbgt.UUIDSeq{}
-							partitions[partition] = nodes
+							sourcePartitions[sourcePartition] = nodes
 						}
 
 						nodes[s.UUID] = cbgt.UUIDSeq{
