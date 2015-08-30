@@ -28,12 +28,6 @@ import (
 var ErrorNotPausable = errors.New("not pausable")
 var ErrorNotResumable = errors.New("not resumable")
 
-// WaitAssignPartitionDone is the signature of the synchronous
-// callback that Rebalance() invokes to wait for an
-// index/partition/node/state/op transition to complete.
-type WaitAssignPartitionDone func(stopCh chan struct{},
-	index, partition, node, state, op string) error
-
 // RebalanceProgress represents progress status information as the
 // Rebalance() operation proceeds.
 type RebalanceProgress struct {
@@ -73,8 +67,6 @@ type rebalancer struct {
 	begPlanPIndexes    *cbgt.PlanPIndexes
 	begPlanPIndexesCAS uint64
 
-	waitAssignPartitionDone WaitAssignPartitionDone
-
 	m sync.Mutex // Protects the mutable fields that follow.
 
 	endPlanPIndexes *cbgt.PlanPIndexes
@@ -106,7 +98,6 @@ type StateOp struct {
 // and orchestrating partition reassignments and the cbgt/rest/monitor
 // library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
-	waitAssignPartitionDone WaitAssignPartitionDone,
 	options RebalanceOptions) (
 	*rebalancer, error) {
 	// TODO: Need timeouts on moves.
@@ -178,8 +169,6 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		endPlanPIndexes:    cbgt.NewPlanPIndexes(version),
 		currStates:         map[string]map[string]map[string]StateOp{},
 		stopCh:             stopCh,
-
-		waitAssignPartitionDone: waitAssignPartitionDone,
 	}
 
 	// TODO: Prepopulate currStates so that we can double-check that
@@ -477,10 +466,6 @@ func (r *rebalancer) assignPartition(stopCh chan struct{},
 			cas, err)
 	}
 
-	if r.waitAssignPartitionDone == nil {
-		return nil
-	}
-
 	return r.waitAssignPartitionDone(stopCh, index, partition,
 		node, state, op)
 }
@@ -643,6 +628,15 @@ func (r *rebalancer) getNodePlanParamsReadWrite(
 	}
 
 	return canRead, canWrite
+}
+
+// --------------------------------------------------------
+
+// waitAssignPartitionDone will block until stopped or until an
+// index/partition/node/state/op transition is complete.
+func (r *rebalancer) waitAssignPartitionDone(stopCh chan struct{},
+	index, partition, node, state, op string) error {
+	return nil // TODO.
 }
 
 // --------------------------------------------------------
