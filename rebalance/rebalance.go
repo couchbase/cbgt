@@ -461,18 +461,25 @@ func (r *rebalancer) assignPIndex(stopCh chan struct{},
 		" pindex: %s, node: %s, state: %q, op: %s",
 		index, pindex, node, state, op)
 
-	err := r.assignPIndexCurrStates(index, pindex, node, state, op)
+	r.m.Lock() // Reduce but not eliminate CAS conflicts.
+
+	err := r.assignPIndexCurrStates_unlocked(index,
+		pindex, node, state, op)
 	if err != nil {
+		r.m.Unlock()
 		return err
 	}
 
 	indexDefs, err := cbgt.PlannerGetIndexDefs(r.cfg, r.version)
 	if err != nil {
+		r.m.Unlock()
 		return err
 	}
 
 	indexDef := indexDefs.IndexDefs[index]
 	if indexDef == nil {
+		r.m.Unlock()
+
 		return fmt.Errorf("assignPIndex: no indexDef,"+
 			" index: %s, pindex: %s, node: %s, state: %q, op: %s",
 			index, pindex, node, state, op)
@@ -480,20 +487,26 @@ func (r *rebalancer) assignPIndex(stopCh chan struct{},
 
 	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
 	if err != nil {
+		r.m.Unlock()
 		return err
 	}
 
-	err = r.updatePlanPIndexes(planPIndexes, indexDef,
+	err = r.updatePlanPIndexes_unlocked(planPIndexes, indexDef,
 		pindex, node, state, op)
 	if err != nil {
+		r.m.Unlock()
 		return err
 	}
 
 	if r.options.DryRun {
+		r.m.Unlock()
 		return nil
 	}
 
 	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
+
+	r.m.Unlock()
+
 	if err != nil {
 		return fmt.Errorf("assignPIndex: update plan,"+
 			" perhaps a concurrent planner won, cas: %d, err: %v",
@@ -504,13 +517,11 @@ func (r *rebalancer) assignPIndex(stopCh chan struct{},
 		pindex, node, state, op)
 }
 
-// assignPIndexCurrStates validates the state transition is proper
-// and then updates currStates to the assigned
+// assignPIndexCurrStates_unlocked validates the state transition is
+// proper and then updates currStates to the assigned
 // index/pindex/node/state/op.
-func (r *rebalancer) assignPIndexCurrStates(
+func (r *rebalancer) assignPIndexCurrStates_unlocked(
 	index, pindex, node, state, op string) error {
-	r.m.Lock()
-
 	pindexes, exists := r.currStates[index]
 	if !exists || pindexes == nil {
 		pindexes = map[string]map[string]StateOp{}
@@ -547,18 +558,16 @@ func (r *rebalancer) assignPIndexCurrStates(
 
 	nodes[node] = StateOp{state, op}
 
-	r.m.Unlock()
-
 	return nil
 }
 
-// updatePlanPIndexes modifies the planPIndexes in/out param based on
-// the indexDef/node/state/op params, and may return an error if the
-// state transition is invalid.
-func (r *rebalancer) updatePlanPIndexes(
+// updatePlanPIndexes_unlocked modifies the planPIndexes in/out param
+// based on the indexDef/node/state/op params, and may return an error
+// if the state transition is invalid.
+func (r *rebalancer) updatePlanPIndexes_unlocked(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
 	pindex, node, state, op string) error {
-	planPIndex, err := r.getPlanPIndex(planPIndexes, pindex)
+	planPIndex, err := r.getPlanPIndex_unlocked(planPIndexes, pindex)
 	if err != nil {
 		return err
 	}
@@ -620,14 +629,13 @@ func (r *rebalancer) updatePlanPIndexes(
 
 // --------------------------------------------------------
 
-// getPlanPIndex returns the planPIndex, defaulting to the
+// getPlanPIndex_unlocked returns the planPIndex, defaulting to the
 // endPlanPIndex's definition if necessary.
-func (r *rebalancer) getPlanPIndex(
+func (r *rebalancer) getPlanPIndex_unlocked(
 	planPIndexes *cbgt.PlanPIndexes, pindex string) (
 	*cbgt.PlanPIndex, error) {
 	planPIndex := planPIndexes.PlanPIndexes[pindex]
 	if planPIndex == nil {
-		r.m.Lock()
 		endPlanPIndex := r.endPlanPIndexes.PlanPIndexes[pindex]
 		if endPlanPIndex != nil {
 			p := *endPlanPIndex // Copy.
@@ -635,7 +643,6 @@ func (r *rebalancer) getPlanPIndex(
 			planPIndex.Nodes = nil
 			planPIndexes.PlanPIndexes[pindex] = planPIndex
 		}
-		r.m.Unlock()
 	}
 
 	if planPIndex == nil {
@@ -681,7 +688,10 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 		return nil
 	}
 
-	planPIndex, err := r.getPlanPIndex(planPIndexes, pindex)
+	r.m.Lock()
+	planPIndex, err := r.getPlanPIndex_unlocked(planPIndexes, pindex)
+	r.m.Unlock()
+
 	if err != nil {
 		return err
 	}
