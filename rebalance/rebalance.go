@@ -112,15 +112,10 @@ type CurrSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 // and orchestrating partition reassignments and the cbgt/rest/monitor
 // library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
-	optionsIn RebalanceOptions) (
+	options RebalanceOptions) (
 	*rebalancer, error) {
 	// TODO: Need timeouts on moves.
 	//
-	options := optionsIn
-	if options.Log == nil {
-		options.Log = log.Printf
-	}
-
 	uuid := "" // We don't have a uuid, as we're not a node.
 
 	begIndexDefs, begNodeDefs, begPlanPIndexes, begPlanPIndexesCAS, err :=
@@ -132,19 +127,6 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesAll, nodesToAdd, nodesToRemove,
 		nodeWeights, nodeHierarchy :=
 		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
-
-	options.Log("rebalance: nodesAll: %#v", nodesAll)
-	options.Log("rebalance: nodesToAdd: %#v", nodesToAdd)
-	options.Log("rebalance: nodesToRemove: %#v", nodesToRemove)
-	options.Log("rebalance: nodeWeights: %#v", nodeWeights)
-	options.Log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
-	options.Log("rebalance: begIndexDefs: %#v", begIndexDefs)
-	options.Log("rebalance: begNodeDefs: %#v", begNodeDefs)
-
-	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
-
-	options.Log("rebalance: begPlanPIndexes: %s, cas: %v",
-		begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// --------------------------------------------------------
 
@@ -191,6 +173,19 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		currSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
 		stopCh:              stopCh,
 	}
+
+	r.log("rebalance: nodesAll: %#v", nodesAll)
+	r.log("rebalance: nodesToAdd: %#v", nodesToAdd)
+	r.log("rebalance: nodesToRemove: %#v", nodesToRemove)
+	r.log("rebalance: nodeWeights: %#v", nodeWeights)
+	r.log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
+	r.log("rebalance: begIndexDefs: %#v", begIndexDefs)
+	r.log("rebalance: begNodeDefs: %#v", begNodeDefs)
+
+	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
+
+	r.log("rebalance: begPlanPIndexes: %s, cas: %v",
+		begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// TODO: Prepopulate currStates so that we can double-check that
 	// our state transitions in assignPartition are valid.
@@ -266,6 +261,17 @@ func (r *rebalancer) VisitCurrStates(visitor func(CurrStates)) {
 
 // --------------------------------------------------------
 
+func (r *rebalancer) log(fmt string, v ...interface{}) {
+	f := r.options.Log
+	if f == nil {
+		f = log.Printf
+	}
+
+	f(fmt, v...)
+}
+
+// --------------------------------------------------------
+
 // rebalanceIndexes rebalances each index, one at a time.
 func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
@@ -278,12 +284,12 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 		default:
 		}
 
-		r.options.Log("=====================================")
-		r.options.Log("runRebalanceIndexes: %d of %d", i, n)
+		r.log("=====================================")
+		r.log("runRebalanceIndexes: %d of %d", i, n)
 
 		_, err := r.rebalanceIndex(indexDef)
 		if err != nil {
-			r.options.Log("run: indexDef.Name: %s, err: %#v",
+			r.log("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 		}
 
@@ -310,13 +316,13 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 // rebalanceIndex rebalances a single index.
 func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
-	r.options.Log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
+	r.log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
 	if cbgt.CasePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
 		r.m.Unlock()
 
-		r.options.Log("  plan frozen: indexDef.Name: %s,"+
+		r.log("  plan frozen: indexDef.Name: %s,"+
 			" cloned previous plan", indexDef.Name)
 
 		return false, nil
@@ -333,7 +339,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		err := r.assignPIndex(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
-			r.options.Log("assignPartitionFunc, err: %v", err)
+			r.log("assignPartitionFunc, err: %v", err)
 		}
 
 		return err
@@ -361,10 +367,10 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	for progress := range o.ProgressCh() {
 		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
-		r.options.Log("   index: %s, #%d %+v",
+		r.log("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		r.options.Log("    %+v", progress)
+		r.log("    %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
@@ -415,7 +421,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	endPlanPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
 		indexDef, r.server, r.endPlanPIndexes)
 	if err != nil {
-		r.options.Log("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
 			" indexDef: %#v, server: %s, err: %v",
 			indexDef.Name, indexDef, r.server, err)
@@ -434,13 +440,13 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
 	for _, warning := range warnings {
-		r.options.Log("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q, indexDef: %#v",
 			indexDef.Name, warning, indexDef)
 	}
 
 	j, _ := json.Marshal(r.endPlanPIndexes)
-	r.options.Log("  calcBegEndMaps: indexDef.Name: %s,"+
+	r.log("  calcBegEndMaps: indexDef.Name: %s,"+
 		" endPlanPIndexes: %s", indexDef.Name, j)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
@@ -457,7 +463,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // synchronously change the pindex/node/state/op for an index.
 func (r *rebalancer) assignPIndex(stopCh chan struct{},
 	index, pindex, node, state, op string) error {
-	r.options.Log("  assignPIndex: index: %s,"+
+	r.log("  assignPIndex: index: %s,"+
 		" pindex: %s, node: %s, state: %q, op: %s",
 		index, pindex, node, state, op)
 
