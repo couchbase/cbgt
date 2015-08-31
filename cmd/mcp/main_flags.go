@@ -27,6 +27,7 @@ type Flags struct {
 	DryRun     bool
 	Help       bool
 	Server     string
+	Verbose    int
 	Version    bool
 }
 
@@ -45,6 +46,15 @@ func initFlags(flags *Flags) map[string][]string {
 		defaultVal, usage string) { // String cmd-line param.
 		for _, name := range names {
 			flag.StringVar(v, name, defaultVal, usage)
+		}
+		flagAliases[names[0]] = names
+		flagKinds[names[0]] = kind
+	}
+
+	i := func(v *int, names []string, kind string,
+		defaultVal int, usage string) { // Integer cmd-line param.
+		for _, name := range names {
+			flag.IntVar(v, name, defaultVal, usage)
 		}
 		flagAliases[names[0]] = names
 		flagKinds[names[0]] = kind
@@ -83,6 +93,9 @@ func initFlags(flags *Flags) map[string][]string {
 		"required URL to datasource server;"+
 			" example when using couchbase 3.x as"+
 			"\nyour datasource server: 'http://localhost:8091'.")
+	i(&flags.Verbose,
+		[]string{"verbose"}, "INTEGER", 3,
+		"optional level of logging verbosity; higher is more verbose.")
 	b(&flags.Version,
 		[]string{"version", "v"}, "", false,
 		"print version string and exit.")

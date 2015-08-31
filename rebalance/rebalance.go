@@ -41,7 +41,8 @@ type RebalanceProgress struct {
 type RebalanceOptions struct {
 	DryRun bool // When true, no changes, for analysis/planning.
 
-	Log RebalanceLogFunc
+	Log     RebalanceLogFunc
+	Verbose int
 
 	// Optional, defaults to http.Get(); this is used, for example,
 	// for unit testing.
@@ -262,6 +263,15 @@ func (r *rebalancer) VisitCurrStates(visitor func(CurrStates)) {
 // --------------------------------------------------------
 
 func (r *rebalancer) log(fmt string, v ...interface{}) {
+	if r.options.Verbose < 0 {
+		return
+	}
+
+	if r.options.Verbose < len(fmt) &&
+		fmt[r.options.Verbose] == ' ' {
+		return
+	}
+
 	f := r.options.Log
 	if f == nil {
 		f = log.Printf
