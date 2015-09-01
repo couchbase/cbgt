@@ -398,7 +398,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		r.log("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		r.log("    %+v", progress)
+		r.log("     progress: %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
@@ -840,7 +840,7 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 				return
 			}
 
-			// r.log("rebalance: runMonitor, s.Kind: %s", s.Kind)
+			r.log("      monitor: %s, node: %s", s.Kind, s.UUID)
 
 			if s.Error != nil {
 				r.log("rebalance: runMonitor, s.Error: %#v", s.Error)
@@ -886,6 +886,8 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 							sourcePartitions[sourcePartition] = nodes
 						}
 
+						uuidSeqPrev, uuidSeqPrevExists := nodes[s.UUID]
+
 						nodes[s.UUID] = cbgt.UUIDSeq{
 							UUID: uuidSeq.UUID,
 							Seq:  uuidSeq.Seq,
@@ -893,9 +895,15 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 
 						r.m.Unlock()
 
-						// r.log("rebalance: runMonitor, pindex: %s,"+
-						//	" sourcePartiton: %s, uuidSeq: %+v",
-						//	pindex, sourcePartition, uuidSeq)
+						if !uuidSeqPrevExists ||
+							uuidSeqPrev.UUID != uuidSeq.UUID ||
+							uuidSeqPrev.Seq != uuidSeq.Seq {
+							r.log("    monitor, node: %s,"+
+								" pindex: %s, sourcePartiton: %s,"+
+								" uuidSeq: %+v, uuidSeqPrev: %+v",
+								s.UUID, pindex, sourcePartition,
+								uuidSeq, uuidSeqPrev)
+						}
 					}
 				}
 			}
