@@ -23,12 +23,13 @@ import (
 const DEFAULT_DATA_DIR = "data"
 
 type Flags struct {
-	CfgConnect string
-	DryRun     bool
-	Help       bool
-	Server     string
-	Verbose    int
-	Version    bool
+	CfgConnect  string
+	DryRun      bool
+	Help        bool
+	RemoveNodes string
+	Server      string
+	Verbose     int
+	Version     bool
 }
 
 var flags Flags
@@ -88,6 +89,9 @@ func initFlags(flags *Flags) map[string][]string {
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")
+	s(&flags.RemoveNodes,
+		[]string{"removeNodes", "r"}, "UUID-LIST", "",
+		"optional, comma-separated list of node UUID's to remove.")
 	s(&flags.Server,
 		[]string{"server", "s"}, "URL", "<MISSING>",
 		"required URL to datasource server;"+

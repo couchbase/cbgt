@@ -113,6 +113,7 @@ type CurrSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 // and orchestrating partition reassignments and the cbgt/rest/monitor
 // library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
+	nodesToRemoveParam []string,
 	options RebalanceOptions) (
 	*rebalancer, error) {
 	// TODO: Need timeouts on moves.
@@ -128,6 +129,23 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesAll, nodesToAdd, nodesToRemove,
 		nodeWeights, nodeHierarchy :=
 		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
+
+	nodesUnknown := cbgt.StringsRemoveStrings(nodesToRemoveParam, nodesAll)
+	if len(nodesUnknown) > 0 {
+		return nil, fmt.Errorf("rebalance:"+
+			" unknown nodes in nodesToRemoveParam: %#v",
+			nodesUnknown)
+	}
+
+	nodesBoth := cbgt.StringsIntersectStrings(nodesToRemoveParam, nodesToAdd)
+	if len(nodesBoth) > 0 {
+		return nil, fmt.Errorf("rebalance:"+
+			" nodes listed in both nodesToRemoveParam and nodesToAdd: %#v",
+			nodesBoth)
+	}
+
+	nodesToRemove = append(nodesToRemove, nodesToRemoveParam...)
+	nodesToRemove = cbgt.StringsIntersectStrings(nodesToRemove, nodesToRemove)
 
 	// --------------------------------------------------------
 
@@ -822,7 +840,11 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 				return
 			}
 
+			// r.log("rebalance: runMonitor, s.Kind: %s", s.Kind)
+
 			if s.Error != nil {
+				r.log("rebalance: runMonitor, s.Error: %#v", s.Error)
+
 				r.progressCh <- RebalanceProgress{Error: s.Error}
 				r.Stop() // Stop the rebalance.
 				continue
@@ -840,6 +862,8 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 
 				err := json.Unmarshal(s.Data, &m)
 				if err != nil {
+					r.log("rebalance: runMonitor json, err: %#v", err)
+
 					r.progressCh <- RebalanceProgress{Error: err}
 					r.Stop() // Stop the rebalance.
 					continue
@@ -868,6 +892,10 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 						}
 
 						r.m.Unlock()
+
+						// r.log("rebalance: runMonitor, pindex: %s,"+
+						//	" sourcePartiton: %s, uuidSeq: %+v",
+						//	pindex, sourcePartition, uuidSeq)
 					}
 				}
 			}

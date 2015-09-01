@@ -30,6 +30,12 @@ func TestRebalance(t *testing.T) {
 	testDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(testDir)
 
+	nodeDir := func(node string) string {
+		d := testDir + string(os.PathSeparator) + node
+		os.MkdirAll(d, 0700)
+		return d
+	}
+
 	var mut sync.Mutex
 
 	httpGets := 0
@@ -121,6 +127,8 @@ func TestRebalance(t *testing.T) {
 
 		checkCurrStatesIndexes := false
 
+		nodesToRemove := []string(nil)
+
 		for opi, op := range strings.Split(test.ops, " ") {
 			log.Printf(" opi: %d, op: %s", opi, op)
 
@@ -150,15 +158,18 @@ func TestRebalance(t *testing.T) {
 					register = test.params[nodeName+".register"]
 				}
 
-				if mgrs[nodeName] != nil {
-					mgrs[nodeName].Stop()
-					delete(mgrs, nodeName)
+				if register == "unknown" {
+					nodesToRemove = append(nodesToRemove, nodeName)
+
+					// Delay actual unknown registration / removal
+					// until after rebalance finishes.
+					continue
 				}
 
 				waitUntilEmptyCfgEventsNodeDefsWanted()
 
-				mgr, err := startNodeManager(testDir, cfg,
-					name, register, test.params, server)
+				mgr, err := startNodeManager(nodeDir(nodeName),
+					cfg, nodeName, register, test.params, server)
 				if err != nil || mgr == nil {
 					t.Errorf("expected no err, got: %#v", err)
 				}
@@ -166,9 +177,7 @@ func TestRebalance(t *testing.T) {
 					mgr0 = mgr
 				}
 
-				if register != "unknown" {
-					mgrs[nodeName] = mgr
-				}
+				mgrs[nodeName] = mgr
 
 				mgr.Kick("kick")
 
@@ -179,6 +188,7 @@ func TestRebalance(t *testing.T) {
 		}
 
 		r, err := StartRebalance(cbgt.VERSION, cfg, ".",
+			nodesToRemove,
 			RebalanceOptions{
 				HttpGet: httpGet,
 			},
@@ -213,6 +223,31 @@ func TestRebalance(t *testing.T) {
 
 		if err != nil {
 			t.Errorf("expected no end err, got: %v", err)
+		}
+
+		for _, nodeToRemove := range nodesToRemove {
+			if mgrs[nodeToRemove] != nil {
+				mgrs[nodeToRemove].Stop()
+				delete(mgrs, nodeToRemove)
+			}
+
+			// TODO: Perhaps one day, the MCP will unregister the node;
+			// for now, we unregister it "manually".
+			if true {
+				waitUntilEmptyCfgEventsNodeDefsWanted()
+
+				mgr, err := startNodeManager(nodeDir(nodeToRemove),
+					cfg, nodeToRemove, "unknown", test.params, server)
+				if err != nil || mgr == nil {
+					t.Errorf("expected no err, got: %#v", err)
+				}
+
+				mgr.Kick("kick")
+
+				waitUntilEmptyCfgEventsNodeDefsWanted()
+
+				mgr.Stop()
+			}
 		}
 
 		endIndexDefs, endNodeDefs, endPlanPIndexes, endPlanPIndexesCAS, err :=

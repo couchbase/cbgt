@@ -21,6 +21,7 @@ import (
 	"path"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	log "github.com/couchbase/clog"
@@ -61,6 +62,11 @@ func main() {
 
 	MainWelcome(flagAliases)
 
+	nodesToRemove := []string(nil)
+	if len(flags.RemoveNodes) > 0 {
+		nodesToRemove = strings.Split(flags.RemoveNodes, ",")
+	}
+
 	bindHttp := "NO-BIND-HTTP"
 	register := "unchanged"
 	dataDir := "NO-DATA-DIR"
@@ -83,6 +89,7 @@ func main() {
 	}
 
 	r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server,
+		nodesToRemove,
 		rebalance.RebalanceOptions{
 			DryRun:  flags.DryRun,
 			Verbose: flags.Verbose,
