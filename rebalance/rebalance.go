@@ -397,8 +397,14 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 
 	numProgress := 0
 	var lastProgress blance.OrchestratorProgress
+	var firstErr error
 
 	for progress := range o.ProgressCh() {
+		if len(progress.Errors) > 0 &&
+			firstErr == nil {
+			firstErr = progress.Errors[0]
+		}
+
 		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
 		r.log("   index: %s, #%d %+v",
@@ -431,12 +437,9 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	//     cas, err)
 	// }
 
-	if len(lastProgress.Errors) > 0 {
-		// TODO: Propagate all errors better.
-		return true, lastProgress.Errors[0]
-	}
-
-	return true, nil // TODO: compute proper change response.
+	// TODO: Propagate all errors better.
+	// TODO: compute proper change response.
+	return true, firstErr
 }
 
 // --------------------------------------------------------
@@ -798,10 +801,10 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 
 						if exists {
 							r.log("      waitAssignPIndexDone,"+
-								" indexDef: %#v, sourcePartition: %s,"+
+								" indexDef: %s, sourcePartition: %s,"+
 								" node: %s, state: %q, op: %s,"+
-								" uuidSeqWant: %+v, uuidSeqCurr: %#v",
-								indexDef, sourcePartition, node,
+								" uuidSeqWant: %+v, uuidSeqCurr: %+v",
+								indexDef.Name, sourcePartition, node,
 								state, op, uuidSeqWant, uuidSeqCurr)
 
 							if uuidSeqCurr.UUID != uuidSeqWant.UUID {
@@ -809,7 +812,7 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 									" waitAssignPIndexDone uuid mismatch,"+
 									" indexDef: %#v, sourcePartition: %s,"+
 									" node: %s, state: %q, op: %s,"+
-									" uuidSeqWant: %+v, uuidSeqCurr: %#v",
+									" uuidSeqWant: %+v, uuidSeqCurr: %+v",
 									indexDef, sourcePartition, node,
 									state, op, uuidSeqWant, uuidSeqCurr)
 							}
@@ -851,6 +854,8 @@ func (r *rebalancer) getCurrSeq(pindex, sourcePartition, node string) (
 	return uuidSeq, uuidSeqExists
 }
 
+// setCurrSeq updates the last seen cbgt.UUIDSeq for a
+// pindex/sourcePartition/node, and returns the previous cbgt.UUIDSeq.
 func (r *rebalancer) setCurrSeq(pindex, sourcePartition, node string,
 	uuid string, seq uint64) (
 	uuidSeqPrev cbgt.UUIDSeq, uuidSeqPrevExists bool) {
