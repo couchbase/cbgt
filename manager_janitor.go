@@ -164,13 +164,13 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	addFeeds, removeFeeds :=
 		CalcFeedsDelta(mgr.uuid, planPIndexes, currFeeds, currPIndexes)
 
-	log.Printf("janitor: feeds to add:")
+	log.Printf("janitor: feeds to add: %d", len(addFeeds))
 	for _, targetPIndexes := range addFeeds {
 		if len(targetPIndexes) > 0 {
 			log.Printf("  %s", FeedName(targetPIndexes[0]))
 		}
 	}
-	log.Printf("janitor: feeds to remove:")
+	log.Printf("janitor: feeds to remove: %d", len(removeFeeds))
 	for _, removeFeed := range removeFeeds {
 		log.Printf("  %s", removeFeed.Name())
 	}
