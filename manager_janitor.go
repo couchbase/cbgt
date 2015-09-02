@@ -214,16 +214,12 @@ func CalcPIndexesDelta(mgrUUID string,
 	wantedPlanPIndexes *PlanPIndexes) (
 	addPlanPIndexes []*PlanPIndex,
 	removePIndexes []*PIndex) {
-	// Allocate our return arrays.
-	addPlanPIndexes = make([]*PlanPIndex, 0)
-	removePIndexes = make([]*PIndex, 0)
-
-	// Just for fast transient lookups.
-	mapWantedPlanPIndex := make(map[string]*PlanPIndex)
-	mapRemovePIndex := make(map[string]*PIndex)
+	// For fast transient lookups.
+	mapWantedPlanPIndex := map[string]*PlanPIndex{}
+	mapRemovePIndex := map[string]*PIndex{}
 
 	// For each wanted plan pindex, if a pindex does not exist or is
-	// different, then schedule to add.
+	// different, then include for addition.
 	for _, wantedPlanPIndex := range wantedPlanPIndexes.PlanPIndexes {
 	nodeUUIDs:
 		for nodeUUID, planPIndexNode := range wantedPlanPIndex.Nodes {
@@ -247,7 +243,7 @@ func CalcPIndexesDelta(mgrUUID string,
 	}
 
 	// For each existing pindex, if not part of wanted plan pindex,
-	// then schedule for removal.
+	// then include for removal.
 	for _, currPIndex := range currPIndexes {
 		if _, exists := mapWantedPlanPIndex[currPIndex.Name]; !exists {
 			if _, exists = mapRemovePIndex[currPIndex.Name]; !exists {
@@ -267,10 +263,6 @@ func CalcPIndexesDelta(mgrUUID string,
 func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 	currFeeds map[string]Feed, pindexes map[string]*PIndex) (
 	addFeeds [][]*PIndex, removeFeeds []Feed) {
-	// Allocate result holders.
-	addFeeds = make([][]*PIndex, 0)
-	removeFeeds = make([]Feed, 0)
-
 	// Group the writable pindexes by their feed names.  Non-writable
 	// pindexes (perhaps index ingest is paused) will have their feeds
 	// removed.  Of note, currently, a pindex is never fed by >1 feed.
