@@ -367,7 +367,10 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		err := r.assignPIndex(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
-			r.log("assignPartitionFunc, err: %v", err)
+			r.log("rebalance: assignPartitionFunc, err: %v", err)
+
+			r.progressCh <- RebalanceProgress{Error: err}
+			r.Stop() // Stop the rebalance.
 		}
 
 		return err
@@ -767,6 +770,15 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 			case r.monitorSampleWantCh <- sampleWantCh:
 				for sample := range sampleWantCh {
 					if sample.Error != nil {
+						r.log("rebalance:"+
+							" waitAssignPIndexDone sample error,"+
+							" uuid mismatch, indexDef: %#v,"+
+							" indexDef: %#v, sourcePartition: %s,"+
+							" node: %s, state: %q, op: %s,"+
+							" uuidSeqWant: %#v, sample: %#v",
+							indexDef, sourcePartition, node,
+							state, op, uuidSeqWant, sample)
+
 						continue
 					}
 
@@ -774,16 +786,21 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 						uuidSeqCurr, exists :=
 							r.getCurrSeq(pindex, sourcePartition, node)
 						if exists {
+							r.log("      waitAssignPIndexDone,"+
+								" indexDef: %#v, sourcePartition: %s,"+
+								" node: %s, state: %q, op: %s,"+
+								" uuidSeqWant: %#v, uuidSeqCurr: %#v",
+								indexDef, sourcePartition, node,
+								state, op, uuidSeqWant, uuidSeqCurr)
+
 							if uuidSeqCurr.UUID != uuidSeqWant.UUID {
 								return fmt.Errorf("rebalance:"+
-									" waitAssignPIndexDone,"+
-									" uuid mismatch, indexDef: %#v,"+
-									" sourcePartition: %s, node: %s,"+
-									" state: %q, op: %s,"+
-									" uuidSeqCurr: %#v, uuidSeqWant: %#v",
-									indexDef, sourcePartition,
-									node, state, op,
-									uuidSeqCurr, uuidSeqWant)
+									" waitAssignPIndexDone uuid mismatch,"+
+									" indexDef: %#v, sourcePartition: %s,"+
+									" node: %s, state: %q, op: %s,"+
+									" uuidSeqWant: %#v, uuidSeqCurr: %#v",
+									indexDef, sourcePartition, node,
+									state, op, uuidSeqWant, uuidSeqCurr)
 							}
 
 							if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
@@ -821,6 +838,36 @@ func (r *rebalancer) getCurrSeq(pindex, sourcePartition, node string) (
 	r.m.Unlock()
 
 	return uuidSeq, uuidSeqExists
+}
+
+func (r *rebalancer) setCurrSeq(pindex, sourcePartition, node string,
+	uuid string, seq uint64) (
+	uuidSeqPrev cbgt.UUIDSeq, uuidSeqPrevExists bool) {
+	r.m.Lock()
+
+	sourcePartitions, exists := r.currSeqs[pindex]
+	if !exists || sourcePartitions == nil {
+		sourcePartitions =
+			map[string]map[string]cbgt.UUIDSeq{}
+		r.currSeqs[pindex] = sourcePartitions
+	}
+
+	nodes, exists := sourcePartitions[sourcePartition]
+	if !exists || nodes == nil {
+		nodes = map[string]cbgt.UUIDSeq{}
+		sourcePartitions[sourcePartition] = nodes
+	}
+
+	uuidSeqPrev, uuidSeqPrevExists = nodes[node]
+
+	nodes[node] = cbgt.UUIDSeq{
+		UUID: uuid,
+		Seq:  seq,
+	}
+
+	r.m.Unlock()
+
+	return uuidSeqPrev, uuidSeqPrevExists
 }
 
 // --------------------------------------------------------
@@ -871,30 +918,9 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 
 				for pindex, x := range m.PIndexes {
 					for sourcePartition, uuidSeq := range x.Partitions {
-						r.m.Lock()
-
-						sourcePartitions, exists := r.currSeqs[pindex]
-						if !exists || sourcePartitions == nil {
-							sourcePartitions =
-								map[string]map[string]cbgt.UUIDSeq{}
-							r.currSeqs[pindex] = sourcePartitions
-						}
-
-						nodes, exists := sourcePartitions[sourcePartition]
-						if !exists || nodes == nil {
-							nodes = map[string]cbgt.UUIDSeq{}
-							sourcePartitions[sourcePartition] = nodes
-						}
-
-						uuidSeqPrev, uuidSeqPrevExists := nodes[s.UUID]
-
-						nodes[s.UUID] = cbgt.UUIDSeq{
-							UUID: uuidSeq.UUID,
-							Seq:  uuidSeq.Seq,
-						}
-
-						r.m.Unlock()
-
+						uuidSeqPrev, uuidSeqPrevExists := r.setCurrSeq(
+							pindex, sourcePartition, s.UUID,
+							uuidSeq.UUID, uuidSeq.Seq)
 						if !uuidSeqPrevExists ||
 							uuidSeqPrev.UUID != uuidSeq.UUID ||
 							uuidSeqPrev.Seq != uuidSeq.Seq {
