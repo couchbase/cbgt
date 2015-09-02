@@ -280,11 +280,8 @@ func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 		if exists && planPIndex != nil &&
 			PlanPIndexNodeCanWrite(planPIndex.Nodes[nodeUUID]) {
 			feedName := FeedName(pindex)
-			arr, exists := groupedPIndexes[feedName]
-			if !exists {
-				arr = make([]*PIndex, 0)
-			}
-			groupedPIndexes[feedName] = append(arr, pindex)
+			groupedPIndexes[feedName] =
+				append(groupedPIndexes[feedName], pindex)
 		}
 	}
 
