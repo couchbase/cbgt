@@ -200,6 +200,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	r.log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
 	r.log("rebalance: begIndexDefs: %#v", begIndexDefs)
 	r.log("rebalance: begNodeDefs: %#v", begNodeDefs)
+	r.log("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
 
 	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
 
@@ -319,6 +320,8 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 		if err != nil {
 			r.log("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
+
+			break
 		}
 
 		i++
@@ -775,7 +778,7 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 							" uuid mismatch, indexDef: %#v,"+
 							" indexDef: %#v, sourcePartition: %s,"+
 							" node: %s, state: %q, op: %s,"+
-							" uuidSeqWant: %#v, sample: %#v",
+							" uuidSeqWant: %+v, sample: %#v",
 							indexDef, sourcePartition, node,
 							state, op, uuidSeqWant, sample)
 
@@ -785,11 +788,19 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 					if sample.Kind == "/api/stats" {
 						uuidSeqCurr, exists :=
 							r.getCurrSeq(pindex, sourcePartition, node)
+
+						r.log("      waitAssignPIndexDone,"+
+							" index: %s, sourcePartition: %s,"+
+							" node: %s, state: %q, op: %s,"+
+							" uuidSeqWant: %+v, sample: %s, exists: %v",
+							indexDef.Name, sourcePartition, node,
+							state, op, uuidSeqWant, sample.Kind, exists)
+
 						if exists {
 							r.log("      waitAssignPIndexDone,"+
 								" indexDef: %#v, sourcePartition: %s,"+
 								" node: %s, state: %q, op: %s,"+
-								" uuidSeqWant: %#v, uuidSeqCurr: %#v",
+								" uuidSeqWant: %+v, uuidSeqCurr: %#v",
 								indexDef, sourcePartition, node,
 								state, op, uuidSeqWant, uuidSeqCurr)
 
@@ -798,7 +809,7 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 									" waitAssignPIndexDone uuid mismatch,"+
 									" indexDef: %#v, sourcePartition: %s,"+
 									" node: %s, state: %q, op: %s,"+
-									" uuidSeqWant: %#v, uuidSeqCurr: %#v",
+									" uuidSeqWant: %+v, uuidSeqCurr: %#v",
 									indexDef, sourcePartition, node,
 									state, op, uuidSeqWant, uuidSeqCurr)
 							}
@@ -925,7 +936,7 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 							uuidSeqPrev.UUID != uuidSeq.UUID ||
 							uuidSeqPrev.Seq != uuidSeq.Seq {
 							r.log("    monitor, node: %s,"+
-								" pindex: %s, sourcePartiton: %s,"+
+								" pindex: %s, sourcePartition: %s,"+
 								" uuidSeq: %+v, uuidSeqPrev: %+v",
 								s.UUID, pindex, sourcePartition,
 								uuidSeq, uuidSeqPrev)
