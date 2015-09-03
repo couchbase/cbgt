@@ -127,13 +127,13 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	addPlanPIndexes, removePIndexes :=
 		CalcPIndexesDelta(mgr.uuid, currPIndexes, planPIndexes)
 
-	log.Printf("janitor: pindexes to add: %d", len(addPlanPIndexes))
-	for _, ppi := range addPlanPIndexes {
-		log.Printf("  %+v", ppi)
-	}
 	log.Printf("janitor: pindexes to remove: %d", len(removePIndexes))
 	for _, pi := range removePIndexes {
 		log.Printf("  %+v", pi)
+	}
+	log.Printf("janitor: pindexes to add: %d", len(addPlanPIndexes))
+	for _, ppi := range addPlanPIndexes {
+		log.Printf("  %+v", ppi)
 	}
 
 	var errs []error
@@ -164,15 +164,15 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	addFeeds, removeFeeds :=
 		CalcFeedsDelta(mgr.uuid, planPIndexes, currFeeds, currPIndexes)
 
+	log.Printf("janitor: feeds to remove: %d", len(removeFeeds))
+	for _, removeFeed := range removeFeeds {
+		log.Printf("  %s", removeFeed.Name())
+	}
 	log.Printf("janitor: feeds to add: %d", len(addFeeds))
 	for _, targetPIndexes := range addFeeds {
 		if len(targetPIndexes) > 0 {
 			log.Printf("  %s", FeedName(targetPIndexes[0]))
 		}
-	}
-	log.Printf("janitor: feeds to remove: %d", len(removeFeeds))
-	for _, removeFeed := range removeFeeds {
-		log.Printf("  %s", removeFeed.Name())
 	}
 
 	// First, teardown feeds that need to be removed.
