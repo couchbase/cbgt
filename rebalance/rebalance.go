@@ -666,6 +666,7 @@ func (r *rebalancer) updatePlanPIndexes_unlocked(
 
 	planPIndex.UUID = cbgt.NewUUID()
 	planPIndexes.UUID = cbgt.NewUUID()
+	planPIndexes.ImplVersion = r.version
 
 	return nil
 }
