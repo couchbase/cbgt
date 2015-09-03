@@ -259,13 +259,16 @@ func CalcPIndexesDelta(mgrUUID string,
 // --------------------------------------------------------
 
 // Functionally determine the delta of which feeds need creation and
-// which should be shut down.
+// which should be shut down.  An updated feed would appear on both
+// the removeFeeds and addFeeds outputs, which assumes the caller is
+// going to remove feeds before adding feeds.
 func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 	currFeeds map[string]Feed, pindexes map[string]*PIndex) (
 	addFeeds [][]*PIndex, removeFeeds []Feed) {
 	// Group the writable pindexes by their feed names.  Non-writable
 	// pindexes (perhaps index ingest is paused) will have their feeds
-	// removed.  Of note, currently, a pindex is never fed by >1 feed.
+	// removed.  Of note, currently, a pindex is never fed by >1 feed,
+	// but a single feed may be emitting to multiple pindexes.
 	groupedPIndexes := make(map[string][]*PIndex)
 	for _, pindex := range pindexes {
 		planPIndex, exists := planPIndexes.PlanPIndexes[pindex.Name]
@@ -277,15 +280,47 @@ func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 		}
 	}
 
+	removedFeeds := map[string]bool{}
+
 	for feedName, feedPIndexes := range groupedPIndexes {
-		if _, exists := currFeeds[feedName]; !exists {
+		currFeed, currFeedExists := currFeeds[feedName]
+		if !currFeedExists {
 			addFeeds = append(addFeeds, feedPIndexes)
+		} else {
+			changed := false
+			currDests := currFeed.Dests()
+
+		FIND_CHANGED:
+			for _, feedPIndex := range feedPIndexes {
+				sourcePartitions :=
+					strings.Split(feedPIndex.SourcePartitions, ",")
+				for _, sourcePartition := range sourcePartitions {
+					if _, exists := currDests[sourcePartition]; !exists {
+						changed = true
+						break FIND_CHANGED
+					}
+				}
+			}
+
+			if changed {
+				addFeeds = append(addFeeds, feedPIndexes)
+
+				if currFeeds[feedName] != nil {
+					if !removedFeeds[feedName] {
+						removeFeeds = append(removeFeeds, currFeeds[feedName])
+						removedFeeds[feedName] = true
+					}
+				}
+			}
 		}
 	}
 
 	for currFeedName, currFeed := range currFeeds {
 		if _, exists := groupedPIndexes[currFeedName]; !exists {
-			removeFeeds = append(removeFeeds, currFeed)
+			if !removedFeeds[currFeedName] {
+				removeFeeds = append(removeFeeds, currFeed)
+				removedFeeds[currFeedName] = true
+			}
 		}
 	}
 
@@ -427,8 +462,8 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 
 	return mgr.startFeedByType(feedName,
 		pindexFirst.IndexName, pindexFirst.IndexUUID,
-		pindexFirst.SourceType, pindexFirst.SourceName, pindexFirst.SourceUUID,
-		pindexFirst.SourceParams,
+		pindexFirst.SourceType, pindexFirst.SourceName,
+		pindexFirst.SourceUUID, pindexFirst.SourceParams,
 		dests)
 }
 
