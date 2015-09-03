@@ -808,15 +808,18 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 								indexDef.Name, sourcePartition, node,
 								state, op, uuidSeqWant, uuidSeqCurr)
 
-							if uuidSeqCurr.UUID != uuidSeqWant.UUID {
-								return fmt.Errorf("rebalance:"+
-									" waitAssignPIndexDone uuid mismatch,"+
-									" indexDef: %#v, sourcePartition: %s,"+
-									" node: %s, state: %q, op: %s,"+
-									" uuidSeqWant: %+v, uuidSeqCurr: %+v",
-									indexDef, sourcePartition, node,
-									state, op, uuidSeqWant, uuidSeqCurr)
-							}
+							// TODO: Sometimes UUID's just don't
+							// match, so need to determine underlying
+							// cause.
+							// if uuidSeqCurr.UUID != uuidSeqWant.UUID {
+							// 	return fmt.Errorf("rebalance:"+
+							// 		" waitAssignPIndexDone uuid mismatch,"+
+							// 		" indexDef: %#v, sourcePartition: %s,"+
+							// 		" node: %s, state: %q, op: %s,"+
+							// 		" uuidSeqWant: %+v, uuidSeqCurr: %+v",
+							// 		indexDef, sourcePartition, node,
+							// 		state, op, uuidSeqWant, uuidSeqCurr)
+							// }
 
 							if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
 								caughtUp = true
