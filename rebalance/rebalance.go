@@ -775,8 +775,12 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 				return blance.ErrorStopped
 
 			case r.monitorSampleWantCh <- sampleWantCh:
+				var sampleErr error
+
 				for sample := range sampleWantCh {
 					if sample.Error != nil {
+						sampleErr = sample.Error
+
 						r.log("rebalance:"+
 							" waitAssignPIndexDone sample error,"+
 							" uuid mismatch, indexDef: %#v,"+
@@ -790,49 +794,57 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 					}
 
 					if sample.Kind == "/api/stats" {
-						uuidSeqCurr, exists :=
-							r.getCurrSeq(pindex, sourcePartition, node)
-
-						r.log("      waitAssignPIndexDone,"+
-							" index: %s, sourcePartition: %s,"+
-							" node: %s, state: %q, op: %s,"+
-							" uuidSeqWant: %+v, sample: %s, exists: %v",
-							indexDef.Name, sourcePartition, node,
-							state, op, uuidSeqWant, sample.Kind, exists)
-
-						if exists {
-							r.log("      waitAssignPIndexDone,"+
-								" indexDef: %s, sourcePartition: %s,"+
-								" node: %s, state: %q, op: %s,"+
-								" uuidSeqWant: %+v, uuidSeqCurr: %+v",
-								indexDef.Name, sourcePartition, node,
-								state, op, uuidSeqWant, uuidSeqCurr)
-
-							// TODO: Sometimes UUID's just don't
-							// match, so need to determine underlying
-							// cause.
-							// if uuidSeqCurr.UUID != uuidSeqWant.UUID {
-							// 	return fmt.Errorf("rebalance:"+
-							// 		" waitAssignPIndexDone uuid mismatch,"+
-							// 		" indexDef: %#v, sourcePartition: %s,"+
-							// 		" node: %s, state: %q, op: %s,"+
-							// 		" uuidSeqWant: %+v, uuidSeqCurr: %+v",
-							// 		indexDef, sourcePartition, node,
-							// 		state, op, uuidSeqWant, uuidSeqCurr)
-							// }
-
-							if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
-								caughtUp = true
-								break // From !caughtUp loop.
-							}
+						reached, err := r.uuidSeqReached(indexDef.Name,
+							pindex, sourcePartition, node, uuidSeqWant)
+						if err != nil {
+							sampleErr = err
+						} else {
+							caughtUp = caughtUp || reached
 						}
 					}
+				}
+
+				if sampleErr != nil {
+					return sampleErr
 				}
 			}
 		}
 	}
 
 	return nil
+}
+
+func (r *rebalancer) uuidSeqReached(index string, pindex string,
+	sourcePartition string, node string,
+	uuidSeqWant cbgt.UUIDSeq) (bool, error) {
+	uuidSeqCurr, exists :=
+		r.getCurrSeq(pindex, sourcePartition, node)
+
+	r.log("      uuidSeqReached,"+
+		" index: %s, pindex: %s, sourcePartition: %s,"+
+		" node: %s, uuidSeqWant: %+v, exists: %v",
+		index, pindex, sourcePartition, node,
+		uuidSeqWant, exists)
+
+	if exists {
+		// TODO: Sometimes UUID's just don't
+		// match, so need to determine underlying
+		// cause.
+		// if uuidSeqCurr.UUID != uuidSeqWant.UUID {
+		// 	return false, fmt.Errorf("rebalance:"+
+		// 		" uuidSeqReached uuid mismatch,"+
+		// 		" index: %s, pindex: %s, sourcePartition: %s,"+
+		// 		" node: %s, uuidSeqWant: %+v, uuidSeqCurr: %+v",
+		// 		index, pindex, sourcePartition, node,
+		// 		uuidSeqWant, uuidSeqCurr)
+		// }
+
+		if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // getCurrSeq returns the last seen cbgt.UUIDSeq for a
