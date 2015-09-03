@@ -765,6 +765,16 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 				sourcePartitionSeqs)
 		}
 
+		reached, err := r.uuidSeqReached(indexDef.Name,
+			pindex, sourcePartition, node, uuidSeqWant)
+		if err != nil {
+			return err
+		}
+
+		if reached {
+			return nil
+		}
+
 		caughtUp := false
 
 		for !caughtUp {
