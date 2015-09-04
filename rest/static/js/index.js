@@ -377,6 +377,11 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     $scope.mapping = null;
 
+    $scope.isEdit = $location.path().match(/_edit$/);
+    $scope.isClone = $location.path().match(/_clone$/);
+
+    origIndexName = $routeParams.indexName;
+
     $http.get('/api/managerMeta').
     success(function(data) {
         $scope.meta = data;
@@ -422,47 +427,45 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             JSON.stringify(data.startSamples["planParams"], undefined, 2);
         $scope.paramNumLines["planParams"] =
             $scope.newPlanParams.split("\n").length + 1;
-    });
 
-    origIndexName = $routeParams.indexName;
-    if (origIndexName && origIndexName.length > 0) {
-        $scope.isEdit = $location.path().match(/_edit$/);
-        $scope.isClone = $location.path().match(/_clone$/);
+        if (origIndexName && origIndexName.length > 0) {
+            $http.get('/api/index/' + origIndexName).
+            success(function(data) {
+                $scope.newIndexName = data.indexDef.name;
+                if ($scope.isClone) {
+                    $scope.newIndexName = data.indexDef.name + "-copy";
+                }
 
-        $http.get('/api/index/' + origIndexName).
-        success(function(data) {
-            $scope.newIndexName = data.indexDef.name;
-            if ($scope.isClone) {
-                $scope.newIndexName = data.indexDef.name + "-copy";
-            }
-
-            $scope.newIndexType = data.indexDef.type;
-            $scope.newIndexParams[data.indexDef.type] =
-                JSON.parse(data.indexDef.params);
-            for (var j in $scope.newIndexParams[data.indexDef.type]) {
-                $scope.newIndexParams[data.indexDef.type][j] =
-                    JSON.stringify($scope.newIndexParams[data.indexDef.type][j],
+                $scope.newIndexType = data.indexDef.type;
+                $scope.newIndexParams[data.indexDef.type] =
+                    JSON.parse(data.indexDef.params);
+                for (var j in $scope.newIndexParams[data.indexDef.type]) {
+                    $scope.newIndexParams[data.indexDef.type][j] =
+                        JSON.stringify($scope.newIndexParams[data.indexDef.type][j],
+                                       undefined, 2);
+                }
+                $scope.newSourceType = data.indexDef.sourceType;
+                $scope.newSourceName = data.indexDef.sourceName;
+                $scope.newSourceUUID = data.indexDef.sourceUUID;
+                $scope.newSourceParams[data.indexDef.sourceType] =
+                    data.indexDef.sourceParams;
+                $scope.newPlanParams =
+                    JSON.stringify(data.indexDef.planParams,
                                    undefined, 2);
-            }
-            $scope.newSourceType = data.indexDef.sourceType;
-            $scope.newSourceName = data.indexDef.sourceName;
-            $scope.newSourceUUID = data.indexDef.sourceUUID;
-            $scope.newSourceParams[data.indexDef.sourceType] =
-                data.indexDef.sourceParams;
-            $scope.newPlanParams =
-                JSON.stringify(data.indexDef.planParams,
-                               undefined, 2);
+                $scope.paramNumLines["planParams"] =
+                    $scope.newPlanParams.split("\n").length + 1;
 
-            $scope.prevIndexUUID = "";
-            if ($scope.isEdit) {
-                $scope.prevIndexUUID = data.indexDef.uuid;
-            }
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
-        })
-    }
+                $scope.prevIndexUUID = "";
+                if ($scope.isEdit) {
+                    $scope.prevIndexUUID = data.indexDef.uuid;
+                }
+            }).
+            error(function(data, code) {
+                $scope.errorMessage = errorMessage(data, code);
+                $scope.errorMessageFull = data;
+            })
+        }
+    });
 
     $scope.putIndex = function(indexName, indexType, indexParams,
                                sourceType, sourceName,
