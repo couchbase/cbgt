@@ -152,9 +152,6 @@ func reportProgress(r *rebalance.Rebalancer) {
 		if pe != nil &&
 			sourcePartitions != nil {
 			for sourcePartition, nodes := range sourcePartitions {
-				r.Log("sourcePartition: %s, pex: %+v",
-					sourcePartition, nodes[pe.node])
-
 				if sourcePartition == "" {
 					continue
 				}
