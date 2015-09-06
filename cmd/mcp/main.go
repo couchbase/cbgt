@@ -112,6 +112,7 @@ func main() {
 
 type ProgressEntry struct {
 	stateOp     rebalance.StateOp
+	initUUIDSeq cbgt.UUIDSeq
 	currUUIDSeq cbgt.UUIDSeq
 	wantUUIDSeq cbgt.UUIDSeq
 }
@@ -129,10 +130,30 @@ func reportProgress(r *rebalance.Rebalancer) {
 	inflightPIndexes := map[string]bool{}
 	inflightPIndexesSorted := []string(nil)
 
-	writeNodeEntry := func(b *bytes.Buffer, s string) {
+	opMap := map[string]string{
+		"":    ".",
+		"add": "+",
+		"del": "-",
+	}
+
+	writeNodeEntry := func(b *bytes.Buffer, s string,
+		pe *ProgressEntry) {
 		b.Write([]byte(s))
 
-		for i := 3; i < maxNodeLen; i++ {
+		start := 1
+		if pe != nil {
+			d := pe.wantUUIDSeq.Seq - pe.initUUIDSeq.Seq
+			if d != 0 {
+				pct :=
+					float32(pe.currUUIDSeq.Seq-pe.initUUIDSeq.Seq) /
+						float32(d)
+
+				n, _ := fmt.Fprintf(b, " %.2f", pct)
+				start = start + n
+			}
+		}
+
+		for i := start; i < maxNodeLen; i++ {
 			b.WriteByte(' ')
 		}
 	}
@@ -235,6 +256,10 @@ func reportProgress(r *rebalance.Rebalancer) {
 							sourcePartition, node,
 							func(pe *ProgressEntry) {
 								pe.currUUIDSeq = currUUIDSeq
+
+								if pe.initUUIDSeq.UUID == "" {
+									pe.initUUIDSeq = currUUIDSeq
+								}
 							})
 					}
 				}
@@ -279,27 +304,23 @@ func reportProgress(r *rebalance.Rebalancer) {
 					sourcePartitions, exists :=
 						progressEntries[inflightPIndex]
 					if !exists || sourcePartitions == nil {
-						writeNodeEntry(&b, "...")
+						writeNodeEntry(&b, ".", nil)
 						continue
 					}
 
 					nodes, exists := sourcePartitions[""]
 					if !exists || nodes == nil {
-						writeNodeEntry(&b, "...")
+						writeNodeEntry(&b, ".", nil)
 						continue
 					}
 
 					pe, exists := nodes[seenNode]
 					if !exists || pe == nil {
-						writeNodeEntry(&b, "...")
+						writeNodeEntry(&b, ".", nil)
 						continue
 					}
 
-					if pe.stateOp.Op == "" {
-						writeNodeEntry(&b, "___")
-					} else {
-						writeNodeEntry(&b, pe.stateOp.Op)
-					}
+					writeNodeEntry(&b, opMap[pe.stateOp.Op], pe)
 				}
 
 				b.WriteByte('\n')
