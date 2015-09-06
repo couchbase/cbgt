@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"expvar"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"path"
 	"runtime"
 	"runtime/pprof"
+	"sort"
 	"strings"
 	"time"
 
@@ -106,18 +108,209 @@ func main() {
 	log.Printf("main: done")
 }
 
+// ------------------------------------------------------------
+
+type ProgressEntry struct {
+	stateOp     rebalance.StateOp
+	currUUIDSeq cbgt.UUIDSeq
+	wantUUIDSeq cbgt.UUIDSeq
+}
+
 func reportProgress(r *rebalance.Rebalancer) {
-	for progress := range r.ProgressCh() {
-		if progress.Index == "" {
-			r.Visit(func(
-				currStates rebalance.CurrStates,
-				currSeqs rebalance.CurrSeqs,
-				wantSeqs rebalance.WantSeqs) {
-				// TODO.
-			})
+	maxNodeLen := 0
+	maxPIndexLen := 0
+
+	seenNodes := map[string]bool{}
+	seenNodesSorted := []string(nil)
+
+	// Map of pindex -> (source) partition -> node -> *ProgressEntry
+	progressEntries := map[string]map[string]map[string]*ProgressEntry{}
+
+	inflightPIndexes := map[string]bool{}
+	inflightPIndexesSorted := []string(nil)
+
+	writeNodeEntry := func(b *bytes.Buffer, s string) {
+		b.Write([]byte(s))
+
+		for i := 3; i < maxNodeLen; i++ {
+			b.WriteByte(' ')
 		}
 	}
+
+	updateProgressEntry := func(pindex, sourcePartition, node string,
+		cb func(*ProgressEntry)) {
+		if !seenNodes[node] {
+			seenNodes[node] = true
+			seenNodesSorted = append(seenNodesSorted, node)
+			sort.Strings(seenNodesSorted)
+
+			if maxNodeLen < len(node) {
+				maxNodeLen = len(node)
+			}
+		}
+
+		if maxPIndexLen < len(pindex) {
+			maxPIndexLen = len(pindex)
+		}
+
+		sourcePartitions, exists := progressEntries[pindex]
+		if !exists || sourcePartitions == nil {
+			sourcePartitions = map[string]map[string]*ProgressEntry{}
+			progressEntries[pindex] = sourcePartitions
+		}
+
+		nodes, exists := sourcePartitions[sourcePartition]
+		if !exists || nodes == nil {
+			nodes = map[string]*ProgressEntry{}
+			sourcePartitions[sourcePartition] = nodes
+		}
+
+		progressEntry, exists := nodes[node]
+		if !exists || progressEntry == nil {
+			progressEntry = &ProgressEntry{}
+			nodes[node] = progressEntry
+		}
+
+		cb(progressEntry)
+
+		// TODO: Check UUID matches, too.
+
+		if progressEntry.wantUUIDSeq.Seq >
+			progressEntry.currUUIDSeq.Seq {
+			if !inflightPIndexes[pindex] {
+				inflightPIndexes[pindex] = true
+				inflightPIndexesSorted =
+					append(inflightPIndexesSorted, pindex)
+
+				sort.Strings(inflightPIndexesSorted)
+			}
+		} else if false { // TODO: Shrink inflightPIndexes.
+			if progressEntry.wantUUIDSeq.Seq > 0 &&
+				progressEntry.currUUIDSeq.Seq > 0 &&
+				inflightPIndexes[pindex] {
+				delete(inflightPIndexes, pindex)
+
+				inflightPIndexesSorted =
+					make([]string, 0, len(inflightPIndexesSorted))
+				for inflightPIndex := range inflightPIndexes {
+					inflightPIndexesSorted =
+						append(inflightPIndexesSorted, inflightPIndex)
+				}
+
+				sort.Strings(inflightPIndexesSorted)
+			}
+		}
+	}
+
+	for progress := range r.ProgressCh() {
+		if progress.Index == "" {
+			r.Log("main: progress: %+v", progress)
+			continue
+		}
+
+		if progress.Error != nil {
+			r.Log("main: error, progress: %+v", progress)
+			continue
+		}
+
+		r.Visit(func(
+			currStates rebalance.CurrStates,
+			currSeqs rebalance.CurrSeqs,
+			wantSeqs rebalance.WantSeqs) {
+			for _, pindexes := range currStates {
+				for pindex, nodes := range pindexes {
+					for node, stateOp := range nodes {
+						updateProgressEntry(pindex, "", node,
+							func(pe *ProgressEntry) {
+								pe.stateOp = stateOp
+							})
+					}
+				}
+			}
+
+			for pindex, sourcePartitions := range currSeqs {
+				for sourcePartition, nodes := range sourcePartitions {
+					for node, currUUIDSeq := range nodes {
+						updateProgressEntry(pindex,
+							sourcePartition, node,
+							func(pe *ProgressEntry) {
+								pe.currUUIDSeq = currUUIDSeq
+							})
+					}
+				}
+			}
+
+			for pindex, sourcePartitions := range wantSeqs {
+				for sourcePartition, nodes := range sourcePartitions {
+					for node, wantUUIDSeq := range nodes {
+						updateProgressEntry(pindex,
+							sourcePartition, node,
+							func(pe *ProgressEntry) {
+								pe.wantUUIDSeq = wantUUIDSeq
+							})
+					}
+				}
+			}
+
+			// ----------------------------------------
+
+			var b bytes.Buffer
+
+			for i := 0; i < maxPIndexLen; i++ {
+				b.WriteByte(' ')
+			}
+			b.WriteByte(' ')
+
+			for i, seenNode := range seenNodesSorted {
+				if i > 0 {
+					b.WriteByte(' ')
+				}
+				b.Write([]byte(seenNode))
+			}
+			b.WriteByte('\n')
+
+			for _, inflightPIndex := range inflightPIndexesSorted {
+				b.Write([]byte("                    "))
+				b.Write([]byte(inflightPIndex))
+
+				for _, seenNode := range seenNodesSorted {
+					b.WriteByte(' ')
+
+					sourcePartitions, exists :=
+						progressEntries[inflightPIndex]
+					if !exists || sourcePartitions == nil {
+						writeNodeEntry(&b, "...")
+						continue
+					}
+
+					nodes, exists := sourcePartitions[""]
+					if !exists || nodes == nil {
+						writeNodeEntry(&b, "...")
+						continue
+					}
+
+					pe, exists := nodes[seenNode]
+					if !exists || pe == nil {
+						writeNodeEntry(&b, "...")
+						continue
+					}
+
+					if pe.stateOp.Op == "" {
+						writeNodeEntry(&b, "___")
+					} else {
+						writeNodeEntry(&b, pe.stateOp.Op)
+					}
+				}
+
+				b.WriteByte('\n')
+			}
+
+			r.Log("%s", b.String())
+		})
+	}
 }
+
+// ------------------------------------------------------------
 
 func MainWelcome(flagAliases map[string][]string) {
 	flag.VisitAll(func(f *flag.Flag) {
