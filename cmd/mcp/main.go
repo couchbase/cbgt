@@ -111,6 +111,8 @@ func main() {
 // ------------------------------------------------------------
 
 type ProgressEntry struct {
+	pindex, sourcePartition, node string // Immutable.
+
 	stateOp     rebalance.StateOp
 	initUUIDSeq cbgt.UUIDSeq
 	currUUIDSeq cbgt.UUIDSeq
@@ -188,7 +190,11 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 		progressEntry, exists := nodes[node]
 		if !exists || progressEntry == nil {
-			progressEntry = &ProgressEntry{}
+			progressEntry = &ProgressEntry{
+				pindex:          pindex,
+				sourcePartition: sourcePartition,
+				node:            node,
+			}
 			nodes[node] = progressEntry
 		}
 
