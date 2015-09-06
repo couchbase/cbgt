@@ -101,8 +101,8 @@ type CurrStates map[string]map[string]map[string]StateOp
 // A StateOp is used to track state transitions and associates a state
 // (i.e., "master") with an op (e.g., "add", "del").
 type StateOp struct {
-	state string
-	op    string // May be "" for unknown or no in-flight op.
+	State string
+	Op    string // May be "" for unknown or no in-flight op.
 }
 
 // Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
@@ -200,18 +200,18 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		stopCh:              stopCh,
 	}
 
-	r.log("rebalance: nodesAll: %#v", nodesAll)
-	r.log("rebalance: nodesToAdd: %#v", nodesToAdd)
-	r.log("rebalance: nodesToRemove: %#v", nodesToRemove)
-	r.log("rebalance: nodeWeights: %#v", nodeWeights)
-	r.log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
-	r.log("rebalance: begIndexDefs: %#v", begIndexDefs)
-	r.log("rebalance: begNodeDefs: %#v", begNodeDefs)
-	r.log("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
+	r.Log("rebalance: nodesAll: %#v", nodesAll)
+	r.Log("rebalance: nodesToAdd: %#v", nodesToAdd)
+	r.Log("rebalance: nodesToRemove: %#v", nodesToRemove)
+	r.Log("rebalance: nodeWeights: %#v", nodeWeights)
+	r.Log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
+	r.Log("rebalance: begIndexDefs: %#v", begIndexDefs)
+	r.Log("rebalance: begNodeDefs: %#v", begNodeDefs)
+	r.Log("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
 
 	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
 
-	r.log("rebalance: begPlanPIndexes: %s, cas: %v",
+	r.Log("rebalance: begPlanPIndexes: %s, cas: %v",
 		begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// TODO: Prepopulate currStates so that we can double-check that
@@ -288,7 +288,7 @@ func (r *Rebalancer) Visit(visitor func(CurrStates, CurrSeqs, WantSeqs)) {
 
 // --------------------------------------------------------
 
-func (r *Rebalancer) log(fmt string, v ...interface{}) {
+func (r *Rebalancer) Log(fmt string, v ...interface{}) {
 	if r.options.Verbose < 0 {
 		return
 	}
@@ -320,12 +320,12 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 		default:
 		}
 
-		r.log("=====================================")
-		r.log("runRebalanceIndexes: %d of %d", i, n)
+		r.Log("=====================================")
+		r.Log("runRebalanceIndexes: %d of %d", i, n)
 
 		_, err := r.rebalanceIndex(indexDef)
 		if err != nil {
-			r.log("run: indexDef.Name: %s, err: %#v",
+			r.Log("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 
 			break
@@ -354,13 +354,13 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 // rebalanceIndex rebalances a single index.
 func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
-	r.log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
+	r.Log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
 	if cbgt.CasePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
 		r.m.Unlock()
 
-		r.log("  plan frozen: indexDef.Name: %s,"+
+		r.Log("  plan frozen: indexDef.Name: %s,"+
 			" cloned previous plan", indexDef.Name)
 
 		return false, nil
@@ -377,7 +377,7 @@ func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		err := r.assignPIndex(stopCh,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
-			r.log("rebalance: assignPartitionFunc, err: %v", err)
+			r.Log("rebalance: assignPartitionFunc, err: %v", err)
 
 			r.progressCh <- RebalanceProgress{Error: err}
 			r.Stop() // Stop the rebalance.
@@ -414,10 +414,10 @@ func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 
 		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
-		r.log("   index: %s, #%d %+v",
+		r.Log("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		r.log("     progress: %+v", progress)
+		r.Log("     progress: %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                nil,
@@ -465,7 +465,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	endPlanPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
 		indexDef, r.server, r.endPlanPIndexes)
 	if err != nil {
-		r.log("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
 			" indexDef: %#v, server: %s, err: %v",
 			indexDef.Name, indexDef, r.server, err)
@@ -484,13 +484,13 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
 	for _, warning := range warnings {
-		r.log("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q, indexDef: %#v",
 			indexDef.Name, warning, indexDef)
 	}
 
 	j, _ := json.Marshal(r.endPlanPIndexes)
-	r.log("  calcBegEndMaps: indexDef.Name: %s,"+
+	r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 		" endPlanPIndexes: %s", indexDef.Name, j)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
@@ -507,7 +507,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // synchronously change the pindex/node/state/op for an index.
 func (r *Rebalancer) assignPIndex(stopCh chan struct{},
 	index, pindex, node, state, op string) error {
-	r.log("  assignPIndex: index: %s,"+
+	r.Log("  assignPIndex: index: %s,"+
 		" pindex: %s, node: %s, state: %q, op: %s",
 		index, pindex, node, state, op)
 
@@ -587,7 +587,7 @@ func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 	}
 
 	if op == "add" {
-		if stateOp, exists := nodes[node]; exists && stateOp.state != "" {
+		if stateOp, exists := nodes[node]; exists && stateOp.State != "" {
 			r.m.Unlock()
 
 			return fmt.Errorf("assignPIndexCurrStates:"+
@@ -598,7 +598,7 @@ func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 	} else {
 		// TODO: This validity check will only work after we
 		// pre-populate the currStates with the starting state.
-		// if stateOp, exists := nodes[node]; !exists || stateOp.state == "" {
+		// if stateOp, exists := nodes[node]; !exists || stateOp.State == "" {
 		// 	r.m.Unlock()
 		//
 		// 	return fmt.Errorf("assignPIndexCurrStates:"+
@@ -810,7 +810,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 					if sample.Error != nil {
 						sampleErr = sample.Error
 
-						r.log("rebalance:"+
+						r.Log("rebalance:"+
 							" waitAssignPIndexDone sample error,"+
 							" uuid mismatch, indexDef: %#v,"+
 							" indexDef: %#v, sourcePartition: %s,"+
@@ -851,7 +851,7 @@ func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 	uuidSeqCurr, exists :=
 		r.getUUIDSeq(r.currSeqs, pindex, sourcePartition, node)
 
-	r.log("      uuidSeqReached,"+
+	r.Log("      uuidSeqReached,"+
 		" index: %s, pindex: %s, sourcePartition: %s,"+
 		" node: %s, uuidSeqWant: %+v, exists: %v",
 		index, pindex, sourcePartition, node,
@@ -978,10 +978,10 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 				return
 			}
 
-			r.log("      monitor: %s, node: %s", s.Kind, s.UUID)
+			r.Log("      monitor: %s, node: %s", s.Kind, s.UUID)
 
 			if s.Error != nil {
-				r.log("rebalance: runMonitor, s.Error: %#v", s.Error)
+				r.Log("rebalance: runMonitor, s.Error: %#v", s.Error)
 
 				r.progressCh <- RebalanceProgress{Error: s.Error}
 				r.Stop() // Stop the rebalance.
@@ -1000,7 +1000,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 
 				err := json.Unmarshal(s.Data, &m)
 				if err != nil {
-					r.log("rebalance: runMonitor json, err: %#v", err)
+					r.Log("rebalance: runMonitor json, err: %#v", err)
 
 					r.progressCh <- RebalanceProgress{Error: err}
 					r.Stop() // Stop the rebalance.
@@ -1015,7 +1015,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 						if !uuidSeqPrevExists ||
 							uuidSeqPrev.UUID != uuidSeq.UUID ||
 							uuidSeqPrev.Seq != uuidSeq.Seq {
-							r.log("    monitor, node: %s,"+
+							r.Log("    monitor, node: %s,"+
 								" pindex: %s, sourcePartition: %s,"+
 								" uuidSeq: %+v, uuidSeqPrev: %+v",
 								s.UUID, pindex, sourcePartition,
