@@ -277,13 +277,17 @@ func TestRebalance(t *testing.T) {
 
 		expIndexes := strings.Split(test.expIndexes, " ")
 
-		r.VisitCurrStates(func(currStates CurrStates) {
+		r.Visit(func(
+			currStates CurrStates,
+			currSeqs CurrSeqs,
+			wantSeqs WantSeqs) {
 			if !checkCurrStatesIndexes {
 				return
 			}
 
 			if len(currStates) != len(expIndexes) {
-				t.Errorf("test.label: %s, len(expIndexes) != len(currStates), "+
+				t.Errorf("test.label: %s,"+
+					" len(expIndexes) != len(currStates), "+
 					" expIndexes: %#v, currStates: %#v, endIndexDefs: %#v",
 					test.label, expIndexes, currStates, endIndexDefs)
 			}

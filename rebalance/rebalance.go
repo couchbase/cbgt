@@ -89,6 +89,9 @@ type rebalancer struct {
 	// Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
 	currSeqs CurrSeqs
 
+	// Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
+	wantSeqs WantSeqs
+
 	stopCh chan struct{} // Closed by app or when there's an error.
 }
 
@@ -104,6 +107,9 @@ type StateOp struct {
 
 // Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
 type CurrSeqs map[string]map[string]map[string]cbgt.UUIDSeq
+
+// Map of pindex -> (source) partition -> node -> cbgt.UUIDSeq.
+type WantSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 
 // --------------------------------------------------------
 
@@ -190,6 +196,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		endPlanPIndexes:     cbgt.NewPlanPIndexes(version),
 		currStates:          map[string]map[string]map[string]StateOp{},
 		currSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
+		wantSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
 		stopCh:              stopCh,
 	}
 
@@ -271,11 +278,11 @@ func (r *rebalancer) ResumeNewAssignments() (err error) {
 	return err
 }
 
-// VisitCurrStates invokes the visitor callback with the current,
-// read-only CurrStates.
-func (r *rebalancer) VisitCurrStates(visitor func(CurrStates)) {
+// Visit invokes the visitor callback with the current,
+// read-only CurrStates, CurrSeqs and WantSeqs.
+func (r *rebalancer) Visit(visitor func(CurrStates, CurrSeqs, WantSeqs)) {
 	r.m.Lock()
-	visitor(r.currStates)
+	visitor(r.currStates, r.currSeqs, r.wantSeqs)
 	r.m.Unlock()
 }
 
@@ -560,6 +567,8 @@ func (r *rebalancer) assignPIndex(stopCh chan struct{},
 		pindex, node, state, op)
 }
 
+// --------------------------------------------------------
+
 // assignPIndexCurrStates_unlocked validates the state transition is
 // proper and then updates currStates to the assigned
 // index/pindex/node/state/op.
@@ -603,6 +612,8 @@ func (r *rebalancer) assignPIndexCurrStates_unlocked(
 
 	return nil
 }
+
+// --------------------------------------------------------
 
 // updatePlanPIndexes_unlocked modifies the planPIndexes in/out param
 // based on the indexDef/node/state/op params, and may return an error
@@ -700,6 +711,8 @@ func (r *rebalancer) getPlanPIndex_unlocked(
 	return planPIndex, nil
 }
 
+// --------------------------------------------------------
+
 // getNodePlanParamsReadWrite returns the read/write config for a
 // pindex for a node based on the plan params.
 func (r *rebalancer) getNodePlanParamsReadWrite(
@@ -768,6 +781,9 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 				sourcePartitionSeqs)
 		}
 
+		r.setUUIDSeq(r.wantSeqs, pindex, sourcePartition, node,
+			uuidSeqWant.UUID, uuidSeqWant.Seq)
+
 		reached, err := r.uuidSeqReached(indexDef.Name,
 			pindex, sourcePartition, node, uuidSeqWant)
 		if err != nil {
@@ -827,11 +843,13 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 	return nil
 }
 
+// --------------------------------------------------------
+
 func (r *rebalancer) uuidSeqReached(index string, pindex string,
 	sourcePartition string, node string,
 	uuidSeqWant cbgt.UUIDSeq) (bool, error) {
 	uuidSeqCurr, exists :=
-		r.getCurrSeq(pindex, sourcePartition, node)
+		r.getUUIDSeq(r.currSeqs, pindex, sourcePartition, node)
 
 	r.log("      uuidSeqReached,"+
 		" index: %s, pindex: %s, sourcePartition: %s,"+
@@ -860,13 +878,45 @@ func (r *rebalancer) uuidSeqReached(index string, pindex string,
 	return false, nil
 }
 
-// getCurrSeq returns the last seen cbgt.UUIDSeq for a
+// --------------------------------------------------------
+
+// getUUIDSeq returns the cbgt.UUIDSeq for a
 // pindex/sourcePartition/node.
-func (r *rebalancer) getCurrSeq(pindex, sourcePartition, node string) (
+func (r *rebalancer) getUUIDSeq(
+	m map[string]map[string]map[string]cbgt.UUIDSeq,
+	pindex, sourcePartition, node string) (
 	uuidSeq cbgt.UUIDSeq, uuidSeqExists bool) {
 	r.m.Lock()
+	uuidSeq, uuidSeqExists = GetUUIDSeq(m, pindex, sourcePartition, node)
+	r.m.Unlock()
 
-	sourcePartitions, exists := r.currSeqs[pindex]
+	return uuidSeq, uuidSeqExists
+}
+
+// setUUIDSeq updates the cbgt.UUIDSeq for a
+// pindex/sourcePartition/node, and returns the previous cbgt.UUIDSeq.
+func (r *rebalancer) setUUIDSeq(
+	m map[string]map[string]map[string]cbgt.UUIDSeq,
+	pindex, sourcePartition, node string,
+	uuid string, seq uint64) (
+	uuidSeqPrev cbgt.UUIDSeq, uuidSeqPrevExists bool) {
+	r.m.Lock()
+	uuidSeqPrev, uuidSeqPrevExists =
+		SetUUIDSeq(m, pindex, sourcePartition, node, uuid, seq)
+	r.m.Unlock()
+
+	return uuidSeqPrev, uuidSeqPrevExists
+}
+
+// --------------------------------------------------------
+
+// GetUUIDSeq returns the cbgt.UUIDSeq for a
+// pindex/sourcePartition/node.
+func GetUUIDSeq(
+	m map[string]map[string]map[string]cbgt.UUIDSeq,
+	pindex, sourcePartition, node string) (
+	uuidSeq cbgt.UUIDSeq, uuidSeqExists bool) {
+	sourcePartitions, exists := m[pindex]
 	if exists && sourcePartitions != nil {
 		nodes, exists := sourcePartitions[sourcePartition]
 		if exists && nodes != nil {
@@ -878,23 +928,21 @@ func (r *rebalancer) getCurrSeq(pindex, sourcePartition, node string) (
 		}
 	}
 
-	r.m.Unlock()
-
 	return uuidSeq, uuidSeqExists
 }
 
-// setCurrSeq updates the last seen cbgt.UUIDSeq for a
+// SetUUIDSeq updates the cbgt.UUIDSeq for a
 // pindex/sourcePartition/node, and returns the previous cbgt.UUIDSeq.
-func (r *rebalancer) setCurrSeq(pindex, sourcePartition, node string,
+func SetUUIDSeq(
+	m map[string]map[string]map[string]cbgt.UUIDSeq,
+	pindex, sourcePartition, node string,
 	uuid string, seq uint64) (
 	uuidSeqPrev cbgt.UUIDSeq, uuidSeqPrevExists bool) {
-	r.m.Lock()
-
-	sourcePartitions, exists := r.currSeqs[pindex]
+	sourcePartitions, exists := m[pindex]
 	if !exists || sourcePartitions == nil {
 		sourcePartitions =
 			map[string]map[string]cbgt.UUIDSeq{}
-		r.currSeqs[pindex] = sourcePartitions
+		m[pindex] = sourcePartitions
 	}
 
 	nodes, exists := sourcePartitions[sourcePartition]
@@ -909,8 +957,6 @@ func (r *rebalancer) setCurrSeq(pindex, sourcePartition, node string,
 		UUID: uuid,
 		Seq:  seq,
 	}
-
-	r.m.Unlock()
 
 	return uuidSeqPrev, uuidSeqPrevExists
 }
@@ -963,9 +1009,9 @@ func (r *rebalancer) runMonitor(stopCh chan struct{}) {
 
 				for pindex, x := range m.PIndexes {
 					for sourcePartition, uuidSeq := range x.Partitions {
-						uuidSeqPrev, uuidSeqPrevExists := r.setCurrSeq(
-							pindex, sourcePartition, s.UUID,
-							uuidSeq.UUID, uuidSeq.Seq)
+						uuidSeqPrev, uuidSeqPrevExists := r.setUUIDSeq(
+							r.currSeqs, pindex, sourcePartition,
+							s.UUID, uuidSeq.UUID, uuidSeq.Seq)
 						if !uuidSeqPrevExists ||
 							uuidSeqPrev.UUID != uuidSeq.UUID ||
 							uuidSeqPrev.Seq != uuidSeq.Seq {
