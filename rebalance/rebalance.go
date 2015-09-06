@@ -51,9 +51,9 @@ type RebalanceOptions struct {
 
 type RebalanceLogFunc func(format string, v ...interface{})
 
-// A rebalancer struct holds all the tracking information for the
+// A Rebalancer struct holds all the tracking information for the
 // Rebalance operation.
-type rebalancer struct {
+type Rebalancer struct {
 	version    string   // See cbgt.Manager's version.
 	cfg        cbgt.Cfg // See cbgt.Manager's cfg.
 	server     string   // See cbgt.Manager's server.
@@ -121,7 +121,7 @@ type WantSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesToRemoveParam []string,
 	options RebalanceOptions) (
-	*rebalancer, error) {
+	*Rebalancer, error) {
 	// TODO: Need timeouts on moves.
 	//
 	uuid := "" // We don't have a uuid, as we're not a node.
@@ -174,7 +174,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	stopCh := make(chan struct{})
 
-	r := &rebalancer{
+	r := &Rebalancer{
 		version:             version,
 		cfg:                 cfg,
 		server:              server,
@@ -227,7 +227,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 // Stop asynchronously requests a stop to the rebalance operation.
 // Callers can look for the closing of the ProgressCh() to see when
 // the rebalance operation has actually stopped.
-func (r *rebalancer) Stop() {
+func (r *Rebalancer) Stop() {
 	r.m.Lock()
 	if r.stopCh != nil {
 		close(r.stopCh)
@@ -247,13 +247,13 @@ func (r *rebalancer) Stop() {
 // the rebalance operation is finished, either naturally, or due to an
 // error, or via a Stop(), and all the rebalance-related resources
 // have been released.
-func (r *rebalancer) ProgressCh() chan RebalanceProgress {
+func (r *Rebalancer) ProgressCh() chan RebalanceProgress {
 	return r.progressCh
 }
 
 // PauseNewAssignments pauses any new assignments.  Any inflight
 // assignments, however, will continue to completion or error.
-func (r *rebalancer) PauseNewAssignments() (err error) {
+func (r *Rebalancer) PauseNewAssignments() (err error) {
 	err = ErrorNotPausable
 
 	r.m.Lock()
@@ -266,7 +266,7 @@ func (r *rebalancer) PauseNewAssignments() (err error) {
 }
 
 // ResumeNewAssignments resumes new assignments.
-func (r *rebalancer) ResumeNewAssignments() (err error) {
+func (r *Rebalancer) ResumeNewAssignments() (err error) {
 	err = ErrorNotResumable
 
 	r.m.Lock()
@@ -280,7 +280,7 @@ func (r *rebalancer) ResumeNewAssignments() (err error) {
 
 // Visit invokes the visitor callback with the current,
 // read-only CurrStates, CurrSeqs and WantSeqs.
-func (r *rebalancer) Visit(visitor func(CurrStates, CurrSeqs, WantSeqs)) {
+func (r *Rebalancer) Visit(visitor func(CurrStates, CurrSeqs, WantSeqs)) {
 	r.m.Lock()
 	visitor(r.currStates, r.currSeqs, r.wantSeqs)
 	r.m.Unlock()
@@ -288,7 +288,7 @@ func (r *rebalancer) Visit(visitor func(CurrStates, CurrSeqs, WantSeqs)) {
 
 // --------------------------------------------------------
 
-func (r *rebalancer) log(fmt string, v ...interface{}) {
+func (r *Rebalancer) log(fmt string, v ...interface{}) {
 	if r.options.Verbose < 0 {
 		return
 	}
@@ -309,7 +309,7 @@ func (r *rebalancer) log(fmt string, v ...interface{}) {
 // --------------------------------------------------------
 
 // rebalanceIndexes rebalances each index, one at a time.
-func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
+func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
 	n := len(r.begIndexDefs.IndexDefs)
 
@@ -352,7 +352,7 @@ func (r *rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 // --------------------------------------------------------
 
 // rebalanceIndex rebalances a single index.
-func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
+func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
 	r.log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
@@ -452,7 +452,7 @@ func (r *rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 // --------------------------------------------------------
 
 // calcBegEndMaps calculates the before and after maps for an index.
-func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
+func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	partitionModel blance.PartitionModel,
 	begMap blance.PartitionMap,
 	endMap blance.PartitionMap,
@@ -505,7 +505,7 @@ func (r *rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 // assignPIndex is invoked when blance.OrchestrateMoves() wants to
 // synchronously change the pindex/node/state/op for an index.
-func (r *rebalancer) assignPIndex(stopCh chan struct{},
+func (r *Rebalancer) assignPIndex(stopCh chan struct{},
 	index, pindex, node, state, op string) error {
 	r.log("  assignPIndex: index: %s,"+
 		" pindex: %s, node: %s, state: %q, op: %s",
@@ -572,7 +572,7 @@ func (r *rebalancer) assignPIndex(stopCh chan struct{},
 // assignPIndexCurrStates_unlocked validates the state transition is
 // proper and then updates currStates to the assigned
 // index/pindex/node/state/op.
-func (r *rebalancer) assignPIndexCurrStates_unlocked(
+func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 	index, pindex, node, state, op string) error {
 	pindexes, exists := r.currStates[index]
 	if !exists || pindexes == nil {
@@ -618,7 +618,7 @@ func (r *rebalancer) assignPIndexCurrStates_unlocked(
 // updatePlanPIndexes_unlocked modifies the planPIndexes in/out param
 // based on the indexDef/node/state/op params, and may return an error
 // if the state transition is invalid.
-func (r *rebalancer) updatePlanPIndexes_unlocked(
+func (r *Rebalancer) updatePlanPIndexes_unlocked(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
 	pindex, node, state, op string) error {
 	planPIndex, err := r.getPlanPIndex_unlocked(planPIndexes, pindex)
@@ -689,7 +689,7 @@ func (r *rebalancer) updatePlanPIndexes_unlocked(
 
 // getPlanPIndex_unlocked returns the planPIndex, defaulting to the
 // endPlanPIndex's definition if necessary.
-func (r *rebalancer) getPlanPIndex_unlocked(
+func (r *Rebalancer) getPlanPIndex_unlocked(
 	planPIndexes *cbgt.PlanPIndexes, pindex string) (
 	*cbgt.PlanPIndex, error) {
 	planPIndex := planPIndexes.PlanPIndexes[pindex]
@@ -715,7 +715,7 @@ func (r *rebalancer) getPlanPIndex_unlocked(
 
 // getNodePlanParamsReadWrite returns the read/write config for a
 // pindex for a node based on the plan params.
-func (r *rebalancer) getNodePlanParamsReadWrite(
+func (r *Rebalancer) getNodePlanParamsReadWrite(
 	indexDef *cbgt.IndexDef, pindex string, node string) (
 	canRead, canWrite bool) {
 	canRead, canWrite = true, true
@@ -735,7 +735,7 @@ func (r *rebalancer) getNodePlanParamsReadWrite(
 
 // waitAssignPIndexDone will block until stopped or until an
 // index/pindex/node/state/op transition is complete.
-func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
+func (r *Rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 	indexDef *cbgt.IndexDef,
 	planPIndexes *cbgt.PlanPIndexes,
 	pindex, node, state, op string) error {
@@ -845,7 +845,7 @@ func (r *rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 
 // --------------------------------------------------------
 
-func (r *rebalancer) uuidSeqReached(index string, pindex string,
+func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 	sourcePartition string, node string,
 	uuidSeqWant cbgt.UUIDSeq) (bool, error) {
 	uuidSeqCurr, exists :=
@@ -882,7 +882,7 @@ func (r *rebalancer) uuidSeqReached(index string, pindex string,
 
 // getUUIDSeq returns the cbgt.UUIDSeq for a
 // pindex/sourcePartition/node.
-func (r *rebalancer) getUUIDSeq(
+func (r *Rebalancer) getUUIDSeq(
 	m map[string]map[string]map[string]cbgt.UUIDSeq,
 	pindex, sourcePartition, node string) (
 	uuidSeq cbgt.UUIDSeq, uuidSeqExists bool) {
@@ -895,7 +895,7 @@ func (r *rebalancer) getUUIDSeq(
 
 // setUUIDSeq updates the cbgt.UUIDSeq for a
 // pindex/sourcePartition/node, and returns the previous cbgt.UUIDSeq.
-func (r *rebalancer) setUUIDSeq(
+func (r *Rebalancer) setUUIDSeq(
 	m map[string]map[string]map[string]cbgt.UUIDSeq,
 	pindex, sourcePartition, node string,
 	uuid string, seq uint64) (
@@ -965,7 +965,7 @@ func SetUUIDSeq(
 
 // runMonitor handles any error from the nodes monitoring subsystem by
 // stopping the rebalance.
-func (r *rebalancer) runMonitor(stopCh chan struct{}) {
+func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 	defer close(r.monitorDoneCh)
 
 	for {

@@ -99,15 +99,24 @@ func main() {
 		return
 	}
 
-	for progress := range r.ProgressCh() {
-		if progress.Index == "" {
-			log.Printf("main: progress: %+v", progress)
-		}
-	}
+	reportProgress(r)
 
 	r.Stop()
 
 	log.Printf("main: done")
+}
+
+func reportProgress(r *rebalance.Rebalancer) {
+	for progress := range r.ProgressCh() {
+		if progress.Index == "" {
+			r.Visit(func(
+				currStates rebalance.CurrStates,
+				currSeqs rebalance.CurrSeqs,
+				wantSeqs rebalance.WantSeqs) {
+				// TODO.
+			})
+		}
+	}
 }
 
 func MainWelcome(flagAliases map[string][]string) {
