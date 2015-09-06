@@ -139,20 +139,52 @@ func reportProgress(r *rebalance.Rebalancer) {
 	}
 
 	writeNodeEntry := func(b *bytes.Buffer, s string,
-		pe *ProgressEntry) {
+		pe *ProgressEntry,
+		sourcePartitions map[string]map[string]*ProgressEntry,
+	) {
 		b.Write([]byte(s))
 
 		start := 1
-		if pe != nil {
-			d := pe.wantUUIDSeq.Seq - pe.initUUIDSeq.Seq
-			if d != 0 {
-				pct :=
-					float32(pe.currUUIDSeq.Seq-pe.initUUIDSeq.Seq) /
-						float32(d)
 
-				n, _ := fmt.Fprintf(b, " %.2f", pct)
-				start = start + n
+		totPct := 0.0 // To compute average pct.
+		numPct := 0
+
+		if pe != nil &&
+			sourcePartitions != nil {
+			for sourcePartition, nodes := range sourcePartitions {
+				r.Log("sourcePartition: %s, pex: %+v",
+					sourcePartition, nodes[pe.node])
+
+				if sourcePartition == "" {
+					continue
+				}
+
+				pex := nodes[pe.node]
+				if pex == nil || pex.wantUUIDSeq.UUID == "" {
+					continue
+				}
+
+				if pex.wantUUIDSeq.Seq <= pex.currUUIDSeq.Seq {
+					totPct = totPct + 1.0
+					numPct = numPct + 1
+					continue
+				}
+
+				n := pex.currUUIDSeq.Seq - pex.initUUIDSeq.Seq
+				d := pex.wantUUIDSeq.Seq - pex.initUUIDSeq.Seq
+				if d > 0 {
+					pct := float64(n) / float64(d)
+					totPct = totPct + pct
+					numPct = numPct + 1
+				}
 			}
+		}
+
+		if numPct > 0 {
+			avgPct := totPct / float64(numPct)
+
+			n, _ := fmt.Fprintf(b, " %.1f%%", avgPct*100.0)
+			start = start + n
 		}
 
 		for i := start; i < maxNodeLen; i++ {
@@ -310,23 +342,24 @@ func reportProgress(r *rebalance.Rebalancer) {
 					sourcePartitions, exists :=
 						progressEntries[inflightPIndex]
 					if !exists || sourcePartitions == nil {
-						writeNodeEntry(&b, ".", nil)
+						writeNodeEntry(&b, ".", nil, nil)
 						continue
 					}
 
 					nodes, exists := sourcePartitions[""]
 					if !exists || nodes == nil {
-						writeNodeEntry(&b, ".", nil)
+						writeNodeEntry(&b, ".", nil, nil)
 						continue
 					}
 
 					pe, exists := nodes[seenNode]
 					if !exists || pe == nil {
-						writeNodeEntry(&b, ".", nil)
+						writeNodeEntry(&b, ".", nil, nil)
 						continue
 					}
 
-					writeNodeEntry(&b, opMap[pe.stateOp.Op], pe)
+					writeNodeEntry(&b, opMap[pe.stateOp.Op],
+						pe, sourcePartitions)
 				}
 
 				b.WriteByte('\n')
