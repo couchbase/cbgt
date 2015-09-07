@@ -633,9 +633,6 @@ func (r *Rebalancer) updatePlanPIndexes_unlocked(
 		planPIndex.Nodes = make(map[string]*cbgt.PlanPIndexNode)
 	}
 
-	// TODO: Instead of priority 0, we actually want to not override
-	// an existing priority 0 assignment if it's an existing primary,
-	// to support availability of pindexes for queries.
 	priority := 0
 	if state == "replica" {
 		priority = len(planPIndex.Nodes)
