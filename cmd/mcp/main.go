@@ -132,68 +132,6 @@ func reportProgress(r *rebalance.Rebalancer) {
 	inflightPIndexes := map[string]bool{}
 	inflightPIndexesSorted := []string(nil)
 
-	opMap := map[string]string{
-		"":        ".",
-		"add":     "+",
-		"del":     "-",
-		"promote": "P",
-		"demote":  "D",
-	}
-
-	writeNodeEntry := func(b *bytes.Buffer,
-		pe *ProgressEntry,
-		sourcePartitions map[string]map[string]*ProgressEntry,
-	) {
-		written := 0
-
-		totPct := 0.0 // To compute average pct.
-		numPct := 0
-
-		if pe != nil &&
-			sourcePartitions != nil {
-			written, _ = b.Write([]byte(opMap[pe.stateOp.Op]))
-
-			for sourcePartition, nodes := range sourcePartitions {
-				if sourcePartition == "" {
-					continue
-				}
-
-				pex := nodes[pe.node]
-				if pex == nil || pex.wantUUIDSeq.UUID == "" {
-					continue
-				}
-
-				if pex.wantUUIDSeq.Seq <= pex.currUUIDSeq.Seq {
-					totPct = totPct + 1.0
-					numPct = numPct + 1
-					continue
-				}
-
-				n := pex.currUUIDSeq.Seq - pex.initUUIDSeq.Seq
-				d := pex.wantUUIDSeq.Seq - pex.initUUIDSeq.Seq
-				if d > 0 {
-					pct := float64(n) / float64(d)
-					totPct = totPct + pct
-					numPct = numPct + 1
-				}
-			}
-		} else {
-			b.WriteByte('.')
-			written = 1
-		}
-
-		if numPct > 0 {
-			avgPct := totPct / float64(numPct)
-
-			n, _ := fmt.Fprintf(b, " %.1f%%", avgPct*100.0)
-			written = written + n
-		}
-
-		for i := written; i < maxNodeLen; i++ {
-			b.WriteByte(' ')
-		}
-	}
-
 	updateProgressEntry := func(pindex, sourcePartition, node string,
 		cb func(*ProgressEntry)) {
 		if !seenNodes[node] {
@@ -242,21 +180,6 @@ func reportProgress(r *rebalance.Rebalancer) {
 				inflightPIndexes[pindex] = true
 				inflightPIndexesSorted =
 					append(inflightPIndexesSorted, pindex)
-
-				sort.Strings(inflightPIndexesSorted)
-			}
-		} else if false { // TODO: Shrink inflightPIndexes.
-			if progressEntry.wantUUIDSeq.Seq > 0 &&
-				progressEntry.currUUIDSeq.Seq > 0 &&
-				inflightPIndexes[pindex] {
-				delete(inflightPIndexes, pindex)
-
-				inflightPIndexesSorted =
-					make([]string, 0, len(inflightPIndexesSorted))
-				for inflightPIndex := range inflightPIndexes {
-					inflightPIndexesSorted =
-						append(inflightPIndexesSorted, inflightPIndex)
-				}
 
 				sort.Strings(inflightPIndexesSorted)
 			}
@@ -344,23 +267,23 @@ func reportProgress(r *rebalance.Rebalancer) {
 					sourcePartitions, exists :=
 						progressEntries[inflightPIndex]
 					if !exists || sourcePartitions == nil {
-						writeNodeEntry(&b, nil, nil)
+						emitNodeEntry(&b, nil, nil, maxNodeLen)
 						continue
 					}
 
 					nodes, exists := sourcePartitions[""]
 					if !exists || nodes == nil {
-						writeNodeEntry(&b, nil, nil)
+						emitNodeEntry(&b, nil, nil, maxNodeLen)
 						continue
 					}
 
 					pe, exists := nodes[seenNode]
 					if !exists || pe == nil {
-						writeNodeEntry(&b, nil, nil)
+						emitNodeEntry(&b, nil, nil, maxNodeLen)
 						continue
 					}
 
-					writeNodeEntry(&b, pe, sourcePartitions)
+					emitNodeEntry(&b, pe, sourcePartitions, maxNodeLen)
 				}
 
 				b.WriteByte('\n')
@@ -368,6 +291,68 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 			r.Log("%s", b.String())
 		})
+	}
+}
+
+var opMap = map[string]string{
+	"":        ".",
+	"add":     "+",
+	"del":     "-",
+	"promote": "P",
+	"demote":  "D",
+}
+
+func emitNodeEntry(b *bytes.Buffer,
+	pe *ProgressEntry,
+	sourcePartitions map[string]map[string]*ProgressEntry,
+	maxNodeLen int) {
+	written := 0
+
+	totPct := 0.0 // To compute average pct.
+	numPct := 0
+
+	if pe != nil &&
+		sourcePartitions != nil {
+		written, _ = b.Write([]byte(opMap[pe.stateOp.Op]))
+
+		for sourcePartition, nodes := range sourcePartitions {
+			if sourcePartition == "" {
+				continue
+			}
+
+			pex := nodes[pe.node]
+			if pex == nil || pex.wantUUIDSeq.UUID == "" {
+				continue
+			}
+
+			if pex.wantUUIDSeq.Seq <= pex.currUUIDSeq.Seq {
+				totPct = totPct + 1.0
+				numPct = numPct + 1
+				continue
+			}
+
+			n := pex.currUUIDSeq.Seq - pex.initUUIDSeq.Seq
+			d := pex.wantUUIDSeq.Seq - pex.initUUIDSeq.Seq
+			if d > 0 {
+				pct := float64(n) / float64(d)
+				totPct = totPct + pct
+				numPct = numPct + 1
+			}
+		}
+	} else {
+		b.WriteByte('.')
+		written = 1
+	}
+
+	if numPct > 0 {
+		avgPct := totPct / float64(numPct)
+
+		n, _ := fmt.Fprintf(b, " %.1f%%", avgPct*100.0)
+		written = written + n
+	}
+
+	for i := written; i < maxNodeLen; i++ {
+		b.WriteByte(' ')
 	}
 }
 
