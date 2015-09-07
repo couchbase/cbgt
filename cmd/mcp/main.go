@@ -241,7 +241,8 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 			var b bytes.Buffer
 
-			for i := 0; i < maxPIndexLen; i++ {
+			written, _ := b.Write([]byte("%%%"))
+			for i := written; i < maxPIndexLen; i++ {
 				b.WriteByte(' ')
 			}
 			b.WriteByte(' ')
@@ -255,7 +256,7 @@ func reportProgress(r *rebalance.Rebalancer) {
 			b.WriteByte('\n')
 
 			for _, inflightPIndex := range inflightPIndexesSorted {
-				b.Write([]byte("                    "))
+				b.Write([]byte(" %                  "))
 				b.Write([]byte(inflightPIndex))
 
 				for _, seenNode := range seenNodesSorted {
