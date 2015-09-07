@@ -133,24 +133,26 @@ func reportProgress(r *rebalance.Rebalancer) {
 	inflightPIndexesSorted := []string(nil)
 
 	opMap := map[string]string{
-		"":    ".",
-		"add": "+",
-		"del": "-",
+		"":        ".",
+		"add":     "+",
+		"del":     "-",
+		"promote": "P",
+		"demote":  "D",
 	}
 
-	writeNodeEntry := func(b *bytes.Buffer, s string,
+	writeNodeEntry := func(b *bytes.Buffer,
 		pe *ProgressEntry,
 		sourcePartitions map[string]map[string]*ProgressEntry,
 	) {
-		b.Write([]byte(s))
-
-		start := 1
+		written := 0
 
 		totPct := 0.0 // To compute average pct.
 		numPct := 0
 
 		if pe != nil &&
 			sourcePartitions != nil {
+			written, _ = b.Write([]byte(opMap[pe.stateOp.Op]))
+
 			for sourcePartition, nodes := range sourcePartitions {
 				if sourcePartition == "" {
 					continue
@@ -175,16 +177,19 @@ func reportProgress(r *rebalance.Rebalancer) {
 					numPct = numPct + 1
 				}
 			}
+		} else {
+			b.WriteByte('.')
+			written = 1
 		}
 
 		if numPct > 0 {
 			avgPct := totPct / float64(numPct)
 
 			n, _ := fmt.Fprintf(b, " %.1f%%", avgPct*100.0)
-			start = start + n
+			written = written + n
 		}
 
-		for i := start; i < maxNodeLen; i++ {
+		for i := written; i < maxNodeLen; i++ {
 			b.WriteByte(' ')
 		}
 	}
@@ -339,24 +344,23 @@ func reportProgress(r *rebalance.Rebalancer) {
 					sourcePartitions, exists :=
 						progressEntries[inflightPIndex]
 					if !exists || sourcePartitions == nil {
-						writeNodeEntry(&b, ".", nil, nil)
+						writeNodeEntry(&b, nil, nil)
 						continue
 					}
 
 					nodes, exists := sourcePartitions[""]
 					if !exists || nodes == nil {
-						writeNodeEntry(&b, ".", nil, nil)
+						writeNodeEntry(&b, nil, nil)
 						continue
 					}
 
 					pe, exists := nodes[seenNode]
 					if !exists || pe == nil {
-						writeNodeEntry(&b, ".", nil, nil)
+						writeNodeEntry(&b, nil, nil)
 						continue
 					}
 
-					writeNodeEntry(&b, opMap[pe.stateOp.Op],
-						pe, sourcePartitions)
+					writeNodeEntry(&b, pe, sourcePartitions)
 				}
 
 				b.WriteByte('\n')
