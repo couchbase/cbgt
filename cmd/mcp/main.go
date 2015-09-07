@@ -120,6 +120,8 @@ type ProgressEntry struct {
 }
 
 func reportProgress(r *rebalance.Rebalancer) {
+	var lastEmit string
+
 	maxNodeLen := 0
 	maxPIndexLen := 0
 
@@ -287,7 +289,12 @@ func reportProgress(r *rebalance.Rebalancer) {
 				b.WriteByte('\n')
 			}
 
-			r.Log("%s", b.String())
+			currEmit := b.String()
+			if currEmit != lastEmit {
+				r.Log("%s", currEmit)
+			}
+
+			lastEmit = currEmit
 		})
 	}
 }
