@@ -166,7 +166,6 @@ type DCPFeedParamsSasl struct {
 }
 
 func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
-	// TODO: bucketName not necessarily userName.
 	return d.AuthSaslUser, d.AuthSaslPassword
 }
 
