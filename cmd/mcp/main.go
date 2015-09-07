@@ -174,15 +174,12 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 		// TODO: Check UUID matches, too.
 
-		if progressEntry.wantUUIDSeq.Seq >
-			progressEntry.currUUIDSeq.Seq {
-			if !inflightPIndexes[pindex] {
-				inflightPIndexes[pindex] = true
-				inflightPIndexesSorted =
-					append(inflightPIndexesSorted, pindex)
+		if !inflightPIndexes[pindex] {
+			inflightPIndexes[pindex] = true
+			inflightPIndexesSorted =
+				append(inflightPIndexesSorted, pindex)
 
-				sort.Strings(inflightPIndexesSorted)
-			}
+			sort.Strings(inflightPIndexesSorted)
 		}
 	}
 
