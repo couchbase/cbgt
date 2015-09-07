@@ -131,8 +131,8 @@ func reportProgress(r *rebalance.Rebalancer) {
 	// Map of pindex -> (source) partition -> node -> *ProgressEntry
 	progressEntries := map[string]map[string]map[string]*ProgressEntry{}
 
-	inflightPIndexes := map[string]bool{}
-	inflightPIndexesSorted := []string(nil)
+	seenPIndexes := map[string]bool{}
+	seenPIndexesSorted := []string(nil)
 
 	updateProgressEntry := func(pindex, sourcePartition, node string,
 		cb func(*ProgressEntry)) {
@@ -176,12 +176,12 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 		// TODO: Check UUID matches, too.
 
-		if !inflightPIndexes[pindex] {
-			inflightPIndexes[pindex] = true
-			inflightPIndexesSorted =
-				append(inflightPIndexesSorted, pindex)
+		if !seenPIndexes[pindex] {
+			seenPIndexes[pindex] = true
+			seenPIndexesSorted =
+				append(seenPIndexesSorted, pindex)
 
-			sort.Strings(inflightPIndexesSorted)
+			sort.Strings(seenPIndexesSorted)
 		}
 	}
 
@@ -257,15 +257,15 @@ func reportProgress(r *rebalance.Rebalancer) {
 			}
 			b.WriteByte('\n')
 
-			for _, inflightPIndex := range inflightPIndexesSorted {
+			for _, seenPIndex := range seenPIndexesSorted {
 				b.Write([]byte(" %                  "))
-				b.Write([]byte(inflightPIndex))
+				b.Write([]byte(seenPIndex))
 
 				for _, seenNode := range seenNodesSorted {
 					b.WriteByte(' ')
 
 					sourcePartitions, exists :=
-						progressEntries[inflightPIndex]
+						progressEntries[seenPIndex]
 					if !exists || sourcePartitions == nil {
 						emitNodeEntry(&b, nil, nil, maxNodeLen)
 						continue
