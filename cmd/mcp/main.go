@@ -239,57 +239,12 @@ func reportProgress(r *rebalance.Rebalancer) {
 				}
 			}
 
-			// ----------------------------------------
-
-			var b bytes.Buffer
-
-			written, _ := b.Write([]byte("%%%"))
-			for i := written; i < maxPIndexLen; i++ {
-				b.WriteByte(' ')
-			}
-			b.WriteByte(' ')
-
-			for i, seenNode := range seenNodesSorted {
-				if i > 0 {
-					b.WriteByte(' ')
-				}
-				b.Write([]byte(seenNode))
-			}
-			b.WriteByte('\n')
-
-			for _, seenPIndex := range seenPIndexesSorted {
-				b.Write([]byte(" %                  "))
-				b.Write([]byte(seenPIndex))
-
-				for _, seenNode := range seenNodesSorted {
-					b.WriteByte(' ')
-
-					sourcePartitions, exists :=
-						progressEntries[seenPIndex]
-					if !exists || sourcePartitions == nil {
-						emitNodeEntry(&b, nil, nil, maxNodeLen)
-						continue
-					}
-
-					nodes, exists := sourcePartitions[""]
-					if !exists || nodes == nil {
-						emitNodeEntry(&b, nil, nil, maxNodeLen)
-						continue
-					}
-
-					pe, exists := nodes[seenNode]
-					if !exists || pe == nil {
-						emitNodeEntry(&b, nil, nil, maxNodeLen)
-						continue
-					}
-
-					emitNodeEntry(&b, pe, sourcePartitions, maxNodeLen)
-				}
-
-				b.WriteByte('\n')
-			}
-
-			currEmit := b.String()
+			currEmit := progressTable(maxNodeLen, maxPIndexLen,
+				seenNodes,
+				seenNodesSorted,
+				seenPIndexes,
+				seenPIndexesSorted,
+				progressEntries)
 			if currEmit != lastEmit {
 				r.Log("%s", currEmit)
 			}
@@ -297,6 +252,64 @@ func reportProgress(r *rebalance.Rebalancer) {
 			lastEmit = currEmit
 		})
 	}
+}
+
+func progressTable(maxNodeLen, maxPIndexLen int,
+	seenNodes map[string]bool,
+	seenNodesSorted []string,
+	seenPIndexes map[string]bool,
+	seenPIndexesSorted []string,
+	progressEntries map[string]map[string]map[string]*ProgressEntry,
+) string {
+	var b bytes.Buffer
+
+	written, _ := b.Write([]byte("%%%"))
+	for i := written; i < maxPIndexLen; i++ {
+		b.WriteByte(' ')
+	}
+	b.WriteByte(' ')
+
+	for i, seenNode := range seenNodesSorted {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.Write([]byte(seenNode))
+	}
+	b.WriteByte('\n')
+
+	for _, seenPIndex := range seenPIndexesSorted {
+		b.Write([]byte(" %                  "))
+		b.Write([]byte(seenPIndex))
+
+		for _, seenNode := range seenNodesSorted {
+			b.WriteByte(' ')
+
+			sourcePartitions, exists :=
+				progressEntries[seenPIndex]
+			if !exists || sourcePartitions == nil {
+				progressCell(&b, nil, nil, maxNodeLen)
+				continue
+			}
+
+			nodes, exists := sourcePartitions[""]
+			if !exists || nodes == nil {
+				progressCell(&b, nil, nil, maxNodeLen)
+				continue
+			}
+
+			pe, exists := nodes[seenNode]
+			if !exists || pe == nil {
+				progressCell(&b, nil, nil, maxNodeLen)
+				continue
+			}
+
+			progressCell(&b, pe, sourcePartitions, maxNodeLen)
+		}
+
+		b.WriteByte('\n')
+	}
+
+	return b.String()
 }
 
 var opMap = map[string]string{
@@ -307,7 +320,7 @@ var opMap = map[string]string{
 	"demote":  "D",
 }
 
-func emitNodeEntry(b *bytes.Buffer,
+func progressCell(b *bytes.Buffer,
 	pe *ProgressEntry,
 	sourcePartitions map[string]map[string]*ProgressEntry,
 	maxNodeLen int) {
