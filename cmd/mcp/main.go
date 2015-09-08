@@ -119,6 +119,9 @@ type ProgressEntry struct {
 	initUUIDSeq cbgt.UUIDSeq
 	currUUIDSeq cbgt.UUIDSeq
 	wantUUIDSeq cbgt.UUIDSeq
+
+	move int
+	done bool
 }
 
 func reportProgress(r *rebalance.Rebalancer) {
@@ -170,6 +173,7 @@ func reportProgress(r *rebalance.Rebalancer) {
 				pindex:          pindex,
 				sourcePartition: sourcePartition,
 				node:            node,
+				move:            -1,
 			}
 			nodes[node] = progressEntry
 		}
@@ -197,7 +201,7 @@ func reportProgress(r *rebalance.Rebalancer) {
 			currStates rebalance.CurrStates,
 			currSeqs rebalance.CurrSeqs,
 			wantSeqs rebalance.WantSeqs,
-			nextMoves map[string]*blance.NextMoves) {
+			mapNextMoves map[string]*blance.NextMoves) {
 			for _, pindexes := range currStates {
 				for pindex, nodes := range pindexes {
 					for node, stateOp := range nodes {
@@ -234,6 +238,16 @@ func reportProgress(r *rebalance.Rebalancer) {
 								pe.wantUUIDSeq = wantUUIDSeq
 							})
 					}
+				}
+			}
+
+			for pindex, nextMoves := range mapNextMoves {
+				for i, nodeStateOp := range nextMoves.Moves {
+					updateProgressEntry(pindex, "", nodeStateOp.Node,
+						func(pe *ProgressEntry) {
+							pe.move = i
+							pe.done = i < nextMoves.Next
+						})
 				}
 			}
 		})
@@ -327,37 +341,41 @@ func progressCell(b *bytes.Buffer,
 	totPct := 0.0 // To compute average pct.
 	numPct := 0
 
-	if pe != nil &&
-		sourcePartitions != nil {
-		written, _ = b.Write([]byte(opMap[pe.stateOp.Op]))
+	if pe != nil {
+		written, _ = fmt.Fprintf(b, "%d ", pe.move)
 
-		for sourcePartition, nodes := range sourcePartitions {
-			if sourcePartition == "" {
-				continue
-			}
+		if sourcePartitions != nil {
+			n, _ := b.Write([]byte(opMap[pe.stateOp.Op]))
+			written = written + n
 
-			pex := nodes[pe.node]
-			if pex == nil || pex.wantUUIDSeq.UUID == "" {
-				continue
-			}
+			for sourcePartition, nodes := range sourcePartitions {
+				if sourcePartition == "" {
+					continue
+				}
 
-			if pex.wantUUIDSeq.Seq <= pex.currUUIDSeq.Seq {
-				totPct = totPct + 1.0
-				numPct = numPct + 1
-				continue
-			}
+				pex := nodes[pe.node]
+				if pex == nil || pex.wantUUIDSeq.UUID == "" {
+					continue
+				}
 
-			n := pex.currUUIDSeq.Seq - pex.initUUIDSeq.Seq
-			d := pex.wantUUIDSeq.Seq - pex.initUUIDSeq.Seq
-			if d > 0 {
-				pct := float64(n) / float64(d)
-				totPct = totPct + pct
-				numPct = numPct + 1
+				if pex.wantUUIDSeq.Seq <= pex.currUUIDSeq.Seq {
+					totPct = totPct + 1.0
+					numPct = numPct + 1
+					continue
+				}
+
+				n := pex.currUUIDSeq.Seq - pex.initUUIDSeq.Seq
+				d := pex.wantUUIDSeq.Seq - pex.initUUIDSeq.Seq
+				if d > 0 {
+					pct := float64(n) / float64(d)
+					totPct = totPct + pct
+					numPct = numPct + 1
+				}
 			}
 		}
 	} else {
-		b.WriteByte('.')
-		written = 1
+		b.Write([]byte("  ."))
+		written = 3
 	}
 
 	if numPct > 0 {
