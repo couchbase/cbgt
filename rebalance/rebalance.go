@@ -277,11 +277,20 @@ func (r *Rebalancer) ResumeNewAssignments() (err error) {
 	return err
 }
 
+type VisitFunc func(CurrStates, CurrSeqs, WantSeqs,
+	map[string]*blance.NextMoves)
+
 // Visit invokes the visitor callback with the current,
 // read-only CurrStates, CurrSeqs and WantSeqs.
-func (r *Rebalancer) Visit(visitor func(CurrStates, CurrSeqs, WantSeqs)) {
+func (r *Rebalancer) Visit(visitor VisitFunc) {
 	r.m.Lock()
-	visitor(r.currStates, r.currSeqs, r.wantSeqs)
+	if r.o != nil {
+		r.o.VisitNextMoves(func(m map[string]*blance.NextMoves) {
+			visitor(r.currStates, r.currSeqs, r.wantSeqs, m)
+		})
+	} else {
+		visitor(r.currStates, r.currSeqs, r.wantSeqs, nil)
+	}
 	r.m.Unlock()
 }
 

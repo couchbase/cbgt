@@ -21,6 +21,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/couchbaselabs/blance"
+
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
@@ -280,7 +282,8 @@ func TestRebalance(t *testing.T) {
 		r.Visit(func(
 			currStates CurrStates,
 			currSeqs CurrSeqs,
-			wantSeqs WantSeqs) {
+			wantSeqs WantSeqs,
+			nextMoves map[string]*blance.NextMoves) {
 			if !checkCurrStatesIndexes {
 				return
 			}

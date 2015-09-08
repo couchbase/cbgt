@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbaselabs/blance"
+
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
@@ -194,7 +196,8 @@ func reportProgress(r *rebalance.Rebalancer) {
 		r.Visit(func(
 			currStates rebalance.CurrStates,
 			currSeqs rebalance.CurrSeqs,
-			wantSeqs rebalance.WantSeqs) {
+			wantSeqs rebalance.WantSeqs,
+			nextMoves map[string]*blance.NextMoves) {
 			for _, pindexes := range currStates {
 				for pindex, nodes := range pindexes {
 					for node, stateOp := range nodes {
