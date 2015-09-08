@@ -588,8 +588,6 @@ func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 
 	if op == "add" {
 		if stateOp, exists := nodes[node]; exists && stateOp.State != "" {
-			r.m.Unlock()
-
 			return fmt.Errorf("assignPIndexCurrStates:"+
 				" op was add when exists, index: %s, pindex: %s,"+
 				" node: %s, state: %q, op: %s, stateOp: %#v",
@@ -599,8 +597,6 @@ func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 		// TODO: This validity check will only work after we
 		// pre-populate the currStates with the starting state.
 		// if stateOp, exists := nodes[node]; !exists || stateOp.State == "" {
-		// 	r.m.Unlock()
-		//
 		// 	return fmt.Errorf("assignPIndexCurrStates:"+
 		// 		" op was non-add when not exists, index: %s,"+
 		// 		" pindex: %s, node: %s, state: %q, op: %s, stateOp: %#v",
