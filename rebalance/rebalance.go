@@ -232,11 +232,10 @@ func (r *Rebalancer) Stop() {
 	if r.stopCh != nil {
 		close(r.stopCh)
 		r.stopCh = nil
-
-		if r.o != nil {
-			r.o.Stop()
-			r.o = nil
-		}
+	}
+	if r.o != nil {
+		r.o.Stop()
+		r.o = nil
 	}
 	r.m.Unlock()
 }
@@ -428,10 +427,6 @@ func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		numProgress++
 		lastProgress = progress
 	}
-
-	r.m.Lock()
-	r.o = nil
-	r.m.Unlock()
 
 	o.Stop()
 
