@@ -285,6 +285,8 @@ func progressTable(maxNodeLen, maxPIndexLen int,
 		if i > 0 {
 			b.WriteByte(' ')
 		}
+
+		// TODO: Emit node human readable ADDR:PORT.
 		b.Write([]byte(seenNode))
 	}
 	b.WriteByte('\n')
