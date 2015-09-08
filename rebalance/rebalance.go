@@ -160,8 +160,8 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	monitorSampleCh := make(chan monitor.MonitorSample)
 
 	monitorOptions := monitor.MonitorNodesOptions{
-		// TODO: more options.
-		HttpGet: options.HttpGet,
+		DiagSampleDisable: true,
+		HttpGet:           options.HttpGet,
 	}
 
 	monitorInst, err := monitor.StartMonitorNodes(urlUUIDs,
@@ -826,6 +826,8 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 							sampleErr = err
 						} else {
 							caughtUp = caughtUp || reached
+
+							r.progressCh <- RebalanceProgress{}
 						}
 					}
 				}

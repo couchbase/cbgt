@@ -186,11 +186,6 @@ func reportProgress(r *rebalance.Rebalancer) {
 	}
 
 	for progress := range r.ProgressCh() {
-		if progress.Index == "" {
-			r.Log("main: progress: %+v", progress)
-			continue
-		}
-
 		if progress.Error != nil {
 			r.Log("main: error, progress: %+v", progress)
 			continue
