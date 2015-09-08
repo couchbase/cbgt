@@ -244,6 +244,8 @@ func reportProgress(r *rebalance.Rebalancer) {
 		if currEmit != lastEmit {
 			r.Log("%s", currEmit)
 		}
+
+		lastEmit = currEmit
 	}
 }
 
