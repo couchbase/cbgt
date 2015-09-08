@@ -29,7 +29,10 @@ type MonitorNodes struct {
 
 type MonitorNodesOptions struct {
 	StatsSampleInterval time.Duration // Ex: 1 * time.Second.
-	DiagSampleInterval  time.Duration
+	StatsSampleDisable  bool
+
+	DiagSampleInterval time.Duration
+	DiagSampleDisable  bool
 
 	// Optional, defaults to http.Get(); this is used, for example,
 	// for unit testing.
@@ -85,8 +88,13 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 	diagTicker := time.NewTicker(diagSampleInterval)
 	defer diagTicker.Stop()
 
-	m.sample(urlUUID, "/api/stats", time.Now())
-	m.sample(urlUUID, "/api/diag", time.Now())
+	if !m.options.StatsSampleDisable {
+		m.sample(urlUUID, "/api/stats", time.Now())
+	}
+
+	if !m.options.DiagSampleDisable {
+		m.sample(urlUUID, "/api/diag", time.Now())
+	}
 
 	for {
 		select {
@@ -98,14 +106,18 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 				return
 			}
 
-			m.sample(urlUUID, "/api/stats", t)
+			if !m.options.StatsSampleDisable {
+				m.sample(urlUUID, "/api/stats", t)
+			}
 
 		case t, ok := <-diagTicker.C:
 			if !ok {
 				return
 			}
 
-			m.sample(urlUUID, "/api/diag", t)
+			if !m.options.DiagSampleDisable {
+				m.sample(urlUUID, "/api/diag", t)
+			}
 		}
 	}
 }
