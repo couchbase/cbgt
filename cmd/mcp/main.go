@@ -233,19 +233,17 @@ func reportProgress(r *rebalance.Rebalancer) {
 					}
 				}
 			}
-
-			currEmit := progressTable(maxNodeLen, maxPIndexLen,
-				seenNodes,
-				seenNodesSorted,
-				seenPIndexes,
-				seenPIndexesSorted,
-				progressEntries)
-			if currEmit != lastEmit {
-				r.Log("%s", currEmit)
-			}
-
-			lastEmit = currEmit
 		})
+
+		currEmit := progressTable(maxNodeLen, maxPIndexLen,
+			seenNodes,
+			seenNodesSorted,
+			seenPIndexes,
+			seenPIndexesSorted,
+			progressEntries)
+		if currEmit != lastEmit {
+			r.Log("%s", currEmit)
+		}
 	}
 }
 
