@@ -196,12 +196,16 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 		updateProgressEntries(r, updateProgressEntry)
 
-		currEmit := progressTable(maxNodeLen, maxPIndexLen,
+		var b bytes.Buffer
+
+		writeProgressTable(&b, maxNodeLen, maxPIndexLen,
 			seenNodes,
 			seenNodesSorted,
 			seenPIndexes,
 			seenPIndexesSorted,
 			progressEntries)
+
+		currEmit := b.String()
 		if currEmit != lastEmit {
 			r.Log("%s", currEmit)
 		}
@@ -272,15 +276,14 @@ func updateProgressEntries(
 	})
 }
 
-func progressTable(maxNodeLen, maxPIndexLen int,
+func writeProgressTable(b *bytes.Buffer,
+	maxNodeLen, maxPIndexLen int,
 	seenNodes map[string]bool,
 	seenNodesSorted []string,
 	seenPIndexes map[string]bool,
 	seenPIndexesSorted []string,
 	progressEntries map[string]map[string]map[string]*ProgressEntry,
-) string {
-	var b bytes.Buffer
-
+) {
 	written, _ := b.Write([]byte("%%%"))
 	for i := written; i < maxPIndexLen; i++ {
 		b.WriteByte(' ')
@@ -307,29 +310,27 @@ func progressTable(maxNodeLen, maxPIndexLen int,
 			sourcePartitions, exists :=
 				progressEntries[seenPIndex]
 			if !exists || sourcePartitions == nil {
-				progressCell(&b, nil, nil, maxNodeLen)
+				writeProgressCell(b, nil, nil, maxNodeLen)
 				continue
 			}
 
 			nodes, exists := sourcePartitions[""]
 			if !exists || nodes == nil {
-				progressCell(&b, nil, nil, maxNodeLen)
+				writeProgressCell(b, nil, nil, maxNodeLen)
 				continue
 			}
 
 			pe, exists := nodes[seenNode]
 			if !exists || pe == nil {
-				progressCell(&b, nil, nil, maxNodeLen)
+				writeProgressCell(b, nil, nil, maxNodeLen)
 				continue
 			}
 
-			progressCell(&b, pe, sourcePartitions, maxNodeLen)
+			writeProgressCell(b, pe, sourcePartitions, maxNodeLen)
 		}
 
 		b.WriteByte('\n')
 	}
-
-	return b.String()
 }
 
 var opMap = map[string]string{
@@ -340,7 +341,7 @@ var opMap = map[string]string{
 	"demote":  "D",
 }
 
-func progressCell(b *bytes.Buffer,
+func writeProgressCell(b *bytes.Buffer,
 	pe *ProgressEntry,
 	sourcePartitions map[string]map[string]*ProgressEntry,
 	maxNodeLen int) {
