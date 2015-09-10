@@ -197,60 +197,7 @@ func reportProgress(r *rebalance.Rebalancer) {
 			continue
 		}
 
-		r.Visit(func(
-			currStates rebalance.CurrStates,
-			currSeqs rebalance.CurrSeqs,
-			wantSeqs rebalance.WantSeqs,
-			mapNextMoves map[string]*blance.NextMoves) {
-			for _, pindexes := range currStates {
-				for pindex, nodes := range pindexes {
-					for node, stateOp := range nodes {
-						updateProgressEntry(pindex, "", node,
-							func(pe *ProgressEntry) {
-								pe.stateOp = stateOp
-							})
-					}
-				}
-			}
-
-			for pindex, sourcePartitions := range currSeqs {
-				for sourcePartition, nodes := range sourcePartitions {
-					for node, currUUIDSeq := range nodes {
-						updateProgressEntry(pindex,
-							sourcePartition, node,
-							func(pe *ProgressEntry) {
-								pe.currUUIDSeq = currUUIDSeq
-
-								if pe.initUUIDSeq.UUID == "" {
-									pe.initUUIDSeq = currUUIDSeq
-								}
-							})
-					}
-				}
-			}
-
-			for pindex, sourcePartitions := range wantSeqs {
-				for sourcePartition, nodes := range sourcePartitions {
-					for node, wantUUIDSeq := range nodes {
-						updateProgressEntry(pindex,
-							sourcePartition, node,
-							func(pe *ProgressEntry) {
-								pe.wantUUIDSeq = wantUUIDSeq
-							})
-					}
-				}
-			}
-
-			for pindex, nextMoves := range mapNextMoves {
-				for i, nodeStateOp := range nextMoves.Moves {
-					updateProgressEntry(pindex, "", nodeStateOp.Node,
-						func(pe *ProgressEntry) {
-							pe.move = i
-							pe.done = i < nextMoves.Next
-						})
-				}
-			}
-		})
+		updateProgressEntries(r, updateProgressEntry)
 
 		currEmit := progressTable(maxNodeLen, maxPIndexLen,
 			seenNodes,
@@ -264,6 +211,68 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 		lastEmit = currEmit
 	}
+}
+
+func updateProgressEntries(
+	r *rebalance.Rebalancer,
+	updateProgressEntry func(pindex, sourcePartition, node string,
+		cb func(*ProgressEntry)),
+) {
+	r.Visit(func(
+		currStates rebalance.CurrStates,
+		currSeqs rebalance.CurrSeqs,
+		wantSeqs rebalance.WantSeqs,
+		mapNextMoves map[string]*blance.NextMoves,
+	) {
+		for _, pindexes := range currStates {
+			for pindex, nodes := range pindexes {
+				for node, stateOp := range nodes {
+					updateProgressEntry(pindex, "", node,
+						func(pe *ProgressEntry) {
+							pe.stateOp = stateOp
+						})
+				}
+			}
+		}
+
+		for pindex, sourcePartitions := range currSeqs {
+			for sourcePartition, nodes := range sourcePartitions {
+				for node, currUUIDSeq := range nodes {
+					updateProgressEntry(pindex,
+						sourcePartition, node,
+						func(pe *ProgressEntry) {
+							pe.currUUIDSeq = currUUIDSeq
+
+							if pe.initUUIDSeq.UUID == "" {
+								pe.initUUIDSeq = currUUIDSeq
+							}
+						})
+				}
+			}
+		}
+
+		for pindex, sourcePartitions := range wantSeqs {
+			for sourcePartition, nodes := range sourcePartitions {
+				for node, wantUUIDSeq := range nodes {
+					updateProgressEntry(pindex,
+						sourcePartition, node,
+						func(pe *ProgressEntry) {
+							pe.wantUUIDSeq = wantUUIDSeq
+						})
+				}
+			}
+		}
+
+		for pindex, nextMoves := range mapNextMoves {
+			for i, nodeStateOp := range nextMoves.Moves {
+				updateProgressEntry(pindex, "", nodeStateOp.Node,
+					func(pe *ProgressEntry) {
+						pe.move = i
+						pe.done = i < nextMoves.Next
+					})
+			}
+		}
+	})
 }
 
 func progressTable(maxNodeLen, maxPIndexLen int,
