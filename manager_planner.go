@@ -107,14 +107,19 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 		return false, fmt.Errorf("planner: skipped due to nil cfg")
 	}
 
+	return Plan(mgr.cfg, mgr.version, mgr.uuid, mgr.server)
+}
+
+// Plan runs the planner once.
+func Plan(cfg Cfg, version, uuid, server string) (bool, error) {
 	indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
-		PlannerGetPlan(mgr.cfg, mgr.version, mgr.uuid)
+		PlannerGetPlan(cfg, version, uuid)
 	if err != nil {
 		return false, err
 	}
 
 	planPIndexes, err := CalcPlan(indexDefs, nodeDefs,
-		planPIndexesPrev, mgr.version, mgr.server)
+		planPIndexesPrev, version, server)
 	if err != nil {
 		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
 	}
@@ -123,7 +128,7 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 		return false, nil
 	}
 
-	_, err = CfgSetPlanPIndexes(mgr.cfg, planPIndexes, cas)
+	_, err = CfgSetPlanPIndexes(cfg, planPIndexes, cas)
 	if err != nil {
 		return false, fmt.Errorf("planner: could not save new plan,"+
 			" perhaps a concurrent planner won, cas: %d, err: %v",
