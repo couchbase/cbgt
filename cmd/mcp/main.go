@@ -13,7 +13,6 @@ package main
 
 import (
 	"bytes"
-	"expvar"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -36,8 +35,6 @@ import (
 )
 
 var VERSION = "v0.0.0"
-
-var expvars = expvar.NewMap("stats")
 
 func main() {
 	flag.Parse()
