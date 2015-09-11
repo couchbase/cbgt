@@ -319,17 +319,18 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
 	n := len(r.begIndexDefs.IndexDefs)
 
+LOOP:
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
 		select {
 		case <-stopCh:
-			break
+			break LOOP
 		default:
 		}
 
 		r.Log("=====================================")
 		r.Log("runRebalanceIndexes: %d of %d", i, n)
 
-		_, err := r.rebalanceIndex(indexDef)
+		_, err := r.rebalanceIndex(stopCh, indexDef)
 		if err != nil {
 			r.Log("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
@@ -358,7 +359,8 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 // --------------------------------------------------------
 
 // rebalanceIndex rebalances a single index.
-func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
+func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
+	indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
 	r.Log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
@@ -378,9 +380,10 @@ func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		return false, err
 	}
 
-	assignPartitionFunc := func(stopCh chan struct{},
-		partition, node, state, op string) error {
-		err := r.assignPIndex(stopCh,
+	assignPartitionFunc := func(stopCh2 chan struct{},
+		partition, node, state, op string,
+	) error {
+		err := r.assignPIndex(stopCh, stopCh2,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
 			r.Log("rebalance: assignPartitionFunc, err: %v", err)
@@ -429,7 +432,7 @@ func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 		r.Log("     progress: %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
-			Error:                nil,
+			Error:                firstErr,
 			Index:                indexDef.Name,
 			OrchestratorProgress: progress,
 		}
@@ -510,7 +513,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 // assignPIndex is invoked when blance.OrchestrateMoves() wants to
 // synchronously change the pindex/node/state/op for an index.
-func (r *Rebalancer) assignPIndex(stopCh chan struct{},
+func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 	index, pindex, node, state, op string) error {
 	r.Log("  assignPIndex: index: %s,"+
 		" pindex: %s, node: %s, state: %q, op: %s",
@@ -568,7 +571,8 @@ func (r *Rebalancer) assignPIndex(stopCh chan struct{},
 			cas, err)
 	}
 
-	return r.waitAssignPIndexDone(stopCh, indexDef, planPIndexes,
+	return r.waitAssignPIndexDone(stopCh, stopCh2,
+		indexDef, planPIndexes,
 		pindex, node, state, op)
 }
 
@@ -733,7 +737,7 @@ func (r *Rebalancer) getNodePlanParamsReadWrite(
 
 // waitAssignPIndexDone will block until stopped or until an
 // index/pindex/node/state/op transition is complete.
-func (r *Rebalancer) waitAssignPIndexDone(stopCh chan struct{},
+func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	indexDef *cbgt.IndexDef,
 	planPIndexes *cbgt.PlanPIndexes,
 	pindex, node, state, op string) error {
@@ -799,6 +803,9 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh chan struct{},
 
 			select {
 			case <-stopCh:
+				return blance.ErrorStopped
+
+			case <-stopCh2:
 				return blance.ErrorStopped
 
 			case r.monitorSampleWantCh <- sampleWantCh:

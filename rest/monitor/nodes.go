@@ -157,7 +157,7 @@ func (m *MonitorNodes) sample(
 			res, urlUUID, kind, err)
 	}
 
-	m.sampleCh <- MonitorSample{
+	monitorSample := MonitorSample{
 		Kind:     kind,
 		Url:      urlUUID.Url,
 		UUID:     urlUUID.UUID,
@@ -165,5 +165,10 @@ func (m *MonitorNodes) sample(
 		Duration: duration,
 		Error:    err,
 		Data:     data,
+	}
+
+	select {
+	case <-m.stopCh:
+	case m.sampleCh <- monitorSample:
 	}
 }

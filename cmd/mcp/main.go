@@ -203,6 +203,8 @@ func reportProgress(r *rebalance.Rebalancer) error {
 				firstError = progress.Error
 			}
 
+			r.Stop()
+
 			continue
 		}
 
