@@ -92,8 +92,9 @@ func main() {
 	r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server,
 		nodesToRemove,
 		rebalance.RebalanceOptions{
-			DryRun:  flags.DryRun,
-			Verbose: flags.Verbose,
+			FavorMinNodes: flags.FavorMinNodes,
+			DryRun:        flags.DryRun,
+			Verbose:       flags.Verbose,
 		})
 	if err != nil {
 		log.Fatalf("main: StartRebalance, err: %v", err)

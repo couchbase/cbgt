@@ -23,13 +23,14 @@ import (
 const DEFAULT_DATA_DIR = "data"
 
 type Flags struct {
-	CfgConnect  string
-	DryRun      bool
-	Help        bool
-	RemoveNodes string
-	Server      string
-	Verbose     int
-	Version     bool
+	CfgConnect    string
+	DryRun        bool
+	FavorMinNodes bool
+	Help          bool
+	RemoveNodes   string
+	Server        string
+	Verbose       int
+	Version       bool
 }
 
 var flags Flags
@@ -86,6 +87,10 @@ func initFlags(flags *Flags) map[string][]string {
 	b(&flags.DryRun,
 		[]string{"dryRun", "noChanges", "n"}, "", false,
 		"no actual changes will be executed.")
+	b(&flags.FavorMinNodes,
+		[]string{"favorMinNodes"}, "", false,
+		"advanced: favor min # of nodes used during partition moves,"+
+			"\nto favor single-mastership over availability.")
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")

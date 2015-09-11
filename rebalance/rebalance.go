@@ -39,6 +39,9 @@ type RebalanceProgress struct {
 }
 
 type RebalanceOptions struct {
+	// See blance.CalcPartitionMoves(favorMinNodes).
+	FavorMinNodes bool
+
 	DryRun bool // When true, no changes, for analysis/planning.
 
 	Log     RebalanceLogFunc
@@ -391,7 +394,10 @@ func (r *Rebalancer) rebalanceIndex(indexDef *cbgt.IndexDef) (
 
 	o, err := blance.OrchestrateMoves(
 		partitionModel,
-		blance.OrchestratorOptions{}, // TODO.
+		blance.OrchestratorOptions{
+			// TODO: More options.
+			FavorMinNodes: r.options.FavorMinNodes,
+		},
 		r.nodesAll,
 		begMap,
 		endMap,
