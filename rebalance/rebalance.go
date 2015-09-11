@@ -143,15 +143,10 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 			nodesUnknown)
 	}
 
-	nodesBoth := cbgt.StringsIntersectStrings(nodesToRemoveParam, nodesToAdd)
-	if len(nodesBoth) > 0 {
-		return nil, fmt.Errorf("rebalance:"+
-			" nodes listed in both nodesToRemoveParam and nodesToAdd: %#v",
-			nodesBoth)
-	}
-
 	nodesToRemove = append(nodesToRemove, nodesToRemoveParam...)
 	nodesToRemove = cbgt.StringsIntersectStrings(nodesToRemove, nodesToRemove)
+
+	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
 
 	// --------------------------------------------------------
 
