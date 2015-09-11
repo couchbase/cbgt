@@ -100,7 +100,11 @@ func main() {
 		return
 	}
 
-	reportProgress(r)
+	err = reportProgress(r)
+	if err != nil {
+		log.Fatalf("main: reportProgress, err: %v", err)
+		return
+	}
 
 	r.Stop()
 
@@ -121,7 +125,9 @@ type ProgressEntry struct {
 	done bool
 }
 
-func reportProgress(r *rebalance.Rebalancer) {
+func reportProgress(r *rebalance.Rebalancer) error {
+	var firstError error
+
 	var lastEmit string
 
 	maxNodeLen := 0
@@ -191,6 +197,11 @@ func reportProgress(r *rebalance.Rebalancer) {
 	for progress := range r.ProgressCh() {
 		if progress.Error != nil {
 			r.Log("main: error, progress: %+v", progress)
+
+			if firstError == nil {
+				firstError = progress.Error
+			}
+
 			continue
 		}
 
@@ -212,6 +223,8 @@ func reportProgress(r *rebalance.Rebalancer) {
 
 		lastEmit = currEmit
 	}
+
+	return firstError
 }
 
 func updateProgressEntries(
