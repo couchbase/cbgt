@@ -23,14 +23,15 @@ import (
 const DEFAULT_DATA_DIR = "data"
 
 type Flags struct {
-	CfgConnect    string
-	DryRun        bool
-	FavorMinNodes bool
-	Help          bool
-	RemoveNodes   string
-	Server        string
-	Verbose       int
-	Version       bool
+	CfgConnect     string
+	DryRun         bool
+	FavorMinNodes  bool
+	Help           bool
+	KeepRegistered bool
+	RemoveNodes    string
+	Server         string
+	Verbose        int
+	Version        bool
 }
 
 var flags Flags
@@ -94,6 +95,11 @@ func initFlags(flags *Flags) map[string][]string {
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")
+	b(&flags.KeepRegistered,
+		[]string{"keepRegistered"}, "", false,
+		"advanced: after moving pindexes off of 'removed' nodes,"+
+			"\nkeep those nodes still registered in the Cfg;"+
+			"\nuseful for debugging")
 	s(&flags.RemoveNodes,
 		[]string{"removeNodes", "r"}, "UUID-LIST", "",
 		"optional, comma-separated list of node UUID's to remove.")
