@@ -65,6 +65,10 @@ func main() {
 
 	// ----------------------------------------------
 
+	// User may have informed us about application specific index
+	// types, which we need to register (albeit with fake
+	// implementations) because there's a cbgt.CalcPlan() safety check
+	// which skips any unknown, unregistered index types.
 	if flags.IndexTypes != "" {
 		for _, indexType := range strings.Split(flags.IndexTypes, ",") {
 			if cbgt.PIndexImplTypes[indexType] == nil {
@@ -181,18 +185,6 @@ func unregisterNodes(cfg cbgt.Cfg, nodes []string, dryRun bool) error {
 	}
 
 	return nil
-}
-
-// ------------------------------------------------------------
-
-func NewErrorPIndexImpl(indexType, indexParams,
-	path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	return nil, nil, fmt.Errorf("ErrorPIndex-NEW")
-}
-
-func OpenErrorPIndexImpl(indexType, path string, restart func()) (
-	cbgt.PIndexImpl, cbgt.Dest, error) {
-	return nil, nil, fmt.Errorf("ErrorPIndex-OPEN")
 }
 
 // ------------------------------------------------------------
@@ -496,6 +488,18 @@ func writeProgressCell(b *bytes.Buffer,
 	for i := written; i < maxNodeLen; i++ {
 		b.WriteByte(' ')
 	}
+}
+
+// ------------------------------------------------------------
+
+func NewErrorPIndexImpl(indexType, indexParams,
+	path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	return nil, nil, fmt.Errorf("ErrorPIndex-NEW")
+}
+
+func OpenErrorPIndexImpl(indexType, path string, restart func()) (
+	cbgt.PIndexImpl, cbgt.Dest, error) {
+	return nil, nil, fmt.Errorf("ErrorPIndex-OPEN")
 }
 
 // ------------------------------------------------------------
