@@ -110,27 +110,38 @@ func main() {
 	r.Stop()
 
 	if !flags.KeepRegistered {
-		for _, nodeToRemove := range nodesToRemove {
-			log.Printf("main: unregistering node,"+
-				" nodeToRemove: %s", nodeToRemove)
-
-			for _, kind := range []string{
-				cbgt.NODE_DEFS_WANTED,
-				cbgt.NODE_DEFS_KNOWN,
-			} {
-				err := cbgt.CfgRemoveNodeDef(cfg, kind,
-					nodeToRemove, cbgt.VERSION)
-				if err != nil {
-					log.Fatalf("main: unregistering node,"+
-						" nodeToRemove: %s, kind: %s, err: %v",
-						nodeToRemove, kind, err)
-					return
-				}
-			}
+		err := removeNodes(cfg, nodesToRemove)
+		if err != nil {
+			log.Fatalf("main: removeNodes, err: %v", err)
+			return
 		}
 	}
 
 	log.Printf("main: done")
+}
+
+// ------------------------------------------------------------
+
+func removeNodes(cfg cbgt.Cfg, nodesToRemove []string) error {
+	for _, nodeToRemove := range nodesToRemove {
+		log.Printf("main: unregistering node,"+
+			" nodeToRemove: %s", nodeToRemove)
+
+		for _, kind := range []string{
+			cbgt.NODE_DEFS_WANTED,
+			cbgt.NODE_DEFS_KNOWN,
+		} {
+			err := cbgt.CfgRemoveNodeDef(cfg, kind,
+				nodeToRemove, cbgt.VERSION)
+			if err != nil {
+				return fmt.Errorf("unregistering node,"+
+					" nodeToRemove: %s, kind: %s, err: %v",
+					nodeToRemove, kind, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // ------------------------------------------------------------
