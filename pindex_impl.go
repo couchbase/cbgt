@@ -104,9 +104,10 @@ func RegisterPIndexImplType(indexType string, t *PIndexImplType) {
 func NewPIndexImpl(indexType, indexParams, path string, restart func()) (
 	PIndexImpl, Dest, error) {
 	t, exists := PIndexImplTypes[indexType]
-	if !exists || t == nil {
-		return nil, nil, fmt.Errorf("pindex_impl: NewPIndexImpl indexType: %s",
-			indexType)
+	if !exists || t == nil || t.New == nil {
+		return nil, nil,
+			fmt.Errorf("pindex_impl: NewPIndexImpl indexType: %s",
+				indexType)
 	}
 
 	return t.New(indexType, indexParams, path, restart)
@@ -117,7 +118,7 @@ func NewPIndexImpl(indexType, indexParams, path string, restart func()) (
 func OpenPIndexImpl(indexType, path string, restart func()) (
 	PIndexImpl, Dest, error) {
 	t, exists := PIndexImplTypes[indexType]
-	if !exists || t == nil {
+	if !exists || t == nil || t.Open == nil {
 		return nil, nil, fmt.Errorf("pindex_impl: OpenPIndexImpl"+
 			" indexType: %s", indexType)
 	}
