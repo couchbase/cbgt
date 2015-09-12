@@ -25,7 +25,7 @@ import (
 const JANITOR_CLOSE_PINDEX = "janitor_close_pindex"
 const JANITOR_REMOVE_PINDEX = "janitor_remove_pindex"
 
-// JanitorNOOP sends a synchronous NOOP request to the manager's janitor, if any.
+// JanitorNOOP sends a synchronous NOOP to the manager's janitor, if any.
 func (mgr *Manager) JanitorNOOP(msg string) {
 	atomic.AddUint64(&mgr.stats.TotJanitorNOOP, 1)
 
@@ -350,8 +350,9 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 	if err == nil {
 		pindex, err = OpenPIndex(mgr, path)
 		if err != nil {
-			log.Printf("janitor: startPIndex, OpenPIndex error, cleaning up and"+
-				" trying NewPIndex, path: %s, err: %v", path, err)
+			log.Printf("janitor: startPIndex, OpenPIndex error,"+
+				" cleaning up and trying NewPIndex,"+
+				" path: %s, err: %v", path, err)
 			os.RemoveAll(path)
 		} else {
 			if !PIndexMatchesPlan(pindex, planPIndex) {
@@ -397,9 +398,9 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 	for _, feed := range feeds {
 		for _, dest := range feed.Dests() {
 			if dest == pindex.Dest {
-				if err := mgr.stopFeed(feed); err != nil {
-					panic(fmt.Sprintf("janitor: stopping feed,"+
-						" err: %v", err))
+				err := mgr.stopFeed(feed)
+				if err != nil {
+					return err
 				}
 			}
 		}
@@ -419,7 +420,8 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 
 	pindexUnreg := mgr.unregisterPIndex(pindex.Name)
 	if pindexUnreg != nil && pindexUnreg != pindex {
-		panic("janitor: unregistered pindex isn't the one we're stopping")
+		return fmt.Errorf("janitor: unregistered pindex during stopPIndex,"+
+			" pindex: %#v, pindexUnreg: %#v", pindex, pindexUnreg)
 	}
 
 	return pindex.Close(remove)
@@ -442,20 +444,28 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 				" pindex: %#v", f, feedName, pindex)
 		}
 
-		addSourcePartition := func(sourcePartition string) {
+		addSourcePartition := func(sourcePartition string) error {
 			if _, exists := dests[sourcePartition]; exists {
-				panic(fmt.Sprintf("janitor: startFeed collision,"+
-					" sourcePartition: %s", sourcePartition))
+				return fmt.Errorf("janitor: startFeed collision,"+
+					" sourcePartition: %s, feedName: %s, pindex: %#v",
+					sourcePartition, feedName, pindex)
 			}
 			dests[sourcePartition] = pindex.Dest
+			return nil
 		}
 
 		if pindex.SourcePartitions == "" {
-			addSourcePartition("")
+			err := addSourcePartition("")
+			if err != nil {
+				return err
+			}
 		} else {
 			sourcePartitionsArr := strings.Split(pindex.SourcePartitions, ",")
 			for _, sourcePartition := range sourcePartitionsArr {
-				addSourcePartition(sourcePartition)
+				err := addSourcePartition(sourcePartition)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
