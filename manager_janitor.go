@@ -438,8 +438,8 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 	dests := make(map[string]Dest)
 	for _, pindex := range pindexes {
 		if f := FeedName(pindex); f != feedName {
-			panic(fmt.Sprintf("janitor: unexpected feedName: %s != %s",
-				f, feedName))
+			return fmt.Errorf("janitor: unexpected feedName: %s != %s,"+
+				" pindex: %#v", f, feedName, pindex)
 		}
 
 		addSourcePartition := func(sourcePartition string) {
