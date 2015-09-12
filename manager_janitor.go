@@ -499,7 +499,8 @@ func (mgr *Manager) stopFeed(feed Feed) error {
 
 	feedUnreg := mgr.unregisterFeed(feed.Name())
 	if feedUnreg != nil && feedUnreg != feed {
-		panic("janitor: unregistered feed isn't the one we're closing")
+		return fmt.Errorf("janitor: unregistered feed during stopFeed,"+
+			" feed: %#v, feedUnreg: %#v", feed, feedUnreg)
 	}
 
 	// NOTE: We're depending on feed to synchronously close, so we
