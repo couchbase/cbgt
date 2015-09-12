@@ -106,8 +106,8 @@ func initFlags(flags *Flags) map[string][]string {
 	s(&flags.Steps,
 		[]string{"steps"}, "STEPS", "",
 		"advanced: comma-separated list of mcp steps wanted;"+
-			"\nempty for all the normal mcp steps;"+
-			"\nallowed values: rebalance, unregister")
+			"\ndefaults to all the normal mcp steps;"+
+			"\nexample: 'rebalance,unregister,planner'")
 	i(&flags.Verbose,
 		[]string{"verbose"}, "INTEGER", 3,
 		"optional level of logging verbosity; higher is more verbose.")

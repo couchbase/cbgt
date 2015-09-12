@@ -93,6 +93,8 @@ func main() {
 	}
 
 	if steps == nil || steps["rebalance"] {
+		log.Printf("main: step rebalance")
+
 		r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server,
 			nodesToRemove,
 			rebalance.RebalanceOptions{
@@ -115,9 +117,21 @@ func main() {
 	}
 
 	if steps == nil || steps["unregister"] {
+		log.Printf("main: step unregister")
+
 		err := unregisterNodes(cfg, nodesToRemove, flags.DryRun)
 		if err != nil {
 			log.Fatalf("main: unregisterNodes, err: %v", err)
+			return
+		}
+	}
+
+	if steps == nil || steps["planner"] {
+		log.Printf("main: step planner")
+
+		changed, err := cbgt.Plan(cfg, cbgt.VERSION, "", flags.Server)
+		if err != nil {
+			log.Fatalf("main: plan, changed: %v, err: %v", changed, err)
 			return
 		}
 	}
