@@ -23,15 +23,15 @@ import (
 const DEFAULT_DATA_DIR = "data"
 
 type Flags struct {
-	CfgConnect     string
-	DryRun         bool
-	FavorMinNodes  bool
-	Help           bool
-	KeepRegistered bool
-	RemoveNodes    string
-	Server         string
-	Verbose        int
-	Version        bool
+	CfgConnect    string
+	DryRun        bool
+	FavorMinNodes bool
+	Help          bool
+	RemoveNodes   string
+	Server        string
+	Steps         string
+	Verbose       int
+	Version       bool
 }
 
 var flags Flags
@@ -95,11 +95,6 @@ func initFlags(flags *Flags) map[string][]string {
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")
-	b(&flags.KeepRegistered,
-		[]string{"keepRegistered"}, "", false,
-		"advanced: after moving pindexes off of 'removed' nodes,"+
-			"\nkeep those nodes still registered in the Cfg;"+
-			"\nuseful for debugging")
 	s(&flags.RemoveNodes,
 		[]string{"removeNodes", "r"}, "UUID-LIST", "",
 		"optional, comma-separated list of node UUID's to remove.")
@@ -108,6 +103,11 @@ func initFlags(flags *Flags) map[string][]string {
 		"required URL to datasource server;"+
 			" example when using couchbase 3.x as"+
 			"\nyour datasource server: 'http://localhost:8091'.")
+	s(&flags.Steps,
+		[]string{"steps"}, "STEPS", "",
+		"advanced: comma-separated list of mcp steps wanted;"+
+			"\nempty for all the normal mcp steps;"+
+			"\nallowed values: rebalance, unregister")
 	i(&flags.Verbose,
 		[]string{"verbose"}, "INTEGER", 3,
 		"optional level of logging verbosity; higher is more verbose.")

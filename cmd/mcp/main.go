@@ -68,12 +68,10 @@ func main() {
 		nodesToRemove = strings.Split(flags.RemoveNodes, ",")
 	}
 
-	bindHttp := "NO-BIND-HTTP"
+	bindHttp := "<NO-BIND-HTTP>"
 	register := "unchanged"
-	dataDir := "NO-DATA-DIR"
+	dataDir := "<NO-DATA-DIR>"
 
-	// If cfg is down, we error, leaving it to some user-supplied
-	// outside watchdog to backoff and restart/retry.
 	cfg, err := cmd.MainCfg("mcp", flags.CfgConnect,
 		bindHttp, register, dataDir)
 	if err != nil {
@@ -89,30 +87,37 @@ func main() {
 		return
 	}
 
-	r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server,
-		nodesToRemove,
-		rebalance.RebalanceOptions{
-			FavorMinNodes: flags.FavorMinNodes,
-			DryRun:        flags.DryRun,
-			Verbose:       flags.Verbose,
-		})
-	if err != nil {
-		log.Fatalf("main: StartRebalance, err: %v", err)
-		return
+	var steps map[string]bool
+	if flags.Steps != "" {
+		steps = cbgt.StringsToMap(strings.Split(flags.Steps, ","))
 	}
 
-	err = reportProgress(r)
-	if err != nil {
-		log.Fatalf("main: reportProgress, err: %v", err)
-		return
-	}
-
-	r.Stop()
-
-	if !flags.KeepRegistered {
-		err := removeNodes(cfg, nodesToRemove)
+	if steps == nil || steps["rebalance"] {
+		r, err := rebalance.StartRebalance(cbgt.VERSION, cfg, flags.Server,
+			nodesToRemove,
+			rebalance.RebalanceOptions{
+				FavorMinNodes: flags.FavorMinNodes,
+				DryRun:        flags.DryRun,
+				Verbose:       flags.Verbose,
+			})
 		if err != nil {
-			log.Fatalf("main: removeNodes, err: %v", err)
+			log.Fatalf("main: StartRebalance, err: %v", err)
+			return
+		}
+
+		err = reportProgress(r)
+		if err != nil {
+			log.Fatalf("main: reportProgress, err: %v", err)
+			return
+		}
+
+		r.Stop()
+	}
+
+	if steps == nil || steps["unregister"] {
+		err := unregisterNodes(cfg, nodesToRemove, flags.DryRun)
+		if err != nil {
+			log.Fatalf("main: unregisterNodes, err: %v", err)
 			return
 		}
 	}
@@ -122,21 +127,23 @@ func main() {
 
 // ------------------------------------------------------------
 
-func removeNodes(cfg cbgt.Cfg, nodesToRemove []string) error {
-	for _, nodeToRemove := range nodesToRemove {
-		log.Printf("main: unregistering node,"+
-			" nodeToRemove: %s", nodeToRemove)
+func unregisterNodes(cfg cbgt.Cfg, nodes []string, dryRun bool) error {
+	for _, node := range nodes {
+		log.Printf("main: unregistering, node: %s", node)
+
+		if dryRun {
+			continue
+		}
 
 		for _, kind := range []string{
 			cbgt.NODE_DEFS_WANTED,
 			cbgt.NODE_DEFS_KNOWN,
 		} {
-			err := cbgt.CfgRemoveNodeDef(cfg, kind,
-				nodeToRemove, cbgt.VERSION)
+			err := cbgt.CfgRemoveNodeDef(cfg, kind, node, cbgt.VERSION)
 			if err != nil {
-				return fmt.Errorf("unregistering node,"+
-					" nodeToRemove: %s, kind: %s, err: %v",
-					nodeToRemove, kind, err)
+				return fmt.Errorf("unregistering,"+
+					" node: %s, kind: %s, err: %v",
+					node, kind, err)
 			}
 		}
 	}
