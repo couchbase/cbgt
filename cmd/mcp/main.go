@@ -63,10 +63,21 @@ func main() {
 
 	MainWelcome(flagAliases)
 
-	nodesToRemove := []string(nil)
-	if len(flags.RemoveNodes) > 0 {
-		nodesToRemove = strings.Split(flags.RemoveNodes, ",")
+	// ----------------------------------------------
+
+	if flags.IndexTypes != "" {
+		for _, indexType := range strings.Split(flags.IndexTypes, ",") {
+			if cbgt.PIndexImplTypes[indexType] == nil {
+				cbgt.RegisterPIndexImplType(indexType,
+					&cbgt.PIndexImplType{
+						New:  NewErrorPIndexImpl,
+						Open: OpenErrorPIndexImpl,
+					})
+			}
+		}
 	}
+
+	// ----------------------------------------------
 
 	bindHttp := "<NO-BIND-HTTP>"
 	register := "unchanged"
@@ -85,6 +96,13 @@ func main() {
 			"  is available.",
 			flags.CfgConnect, err, flags.CfgConnect)
 		return
+	}
+
+	// ----------------------------------------------
+
+	nodesToRemove := []string(nil)
+	if len(flags.RemoveNodes) > 0 {
+		nodesToRemove = strings.Split(flags.RemoveNodes, ",")
 	}
 
 	var steps map[string]bool
@@ -163,6 +181,18 @@ func unregisterNodes(cfg cbgt.Cfg, nodes []string, dryRun bool) error {
 	}
 
 	return nil
+}
+
+// ------------------------------------------------------------
+
+func NewErrorPIndexImpl(indexType, indexParams,
+	path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	return nil, nil, fmt.Errorf("ErrorPIndex-NEW")
+}
+
+func OpenErrorPIndexImpl(indexType, path string, restart func()) (
+	cbgt.PIndexImpl, cbgt.Dest, error) {
+	return nil, nil, fmt.Errorf("ErrorPIndex-OPEN")
 }
 
 // ------------------------------------------------------------

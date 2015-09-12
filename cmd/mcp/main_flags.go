@@ -27,6 +27,7 @@ type Flags struct {
 	DryRun        bool
 	FavorMinNodes bool
 	Help          bool
+	IndexTypes    string
 	RemoveNodes   string
 	Server        string
 	Steps         string
@@ -95,6 +96,9 @@ func initFlags(flags *Flags) map[string][]string {
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")
+	s(&flags.IndexTypes,
+		[]string{"indexTypes"}, "INDEX-TYPES", "",
+		"comma-separated list of additional index types.")
 	s(&flags.RemoveNodes,
 		[]string{"removeNodes", "r"}, "UUID-LIST", "",
 		"optional, comma-separated list of node UUID's to remove.")
@@ -107,7 +111,7 @@ func initFlags(flags *Flags) map[string][]string {
 		[]string{"steps"}, "STEPS", "",
 		"advanced: comma-separated list of mcp steps wanted;"+
 			"\ndefaults to all the normal mcp steps;"+
-			"\nexample: 'rebalance,unregister,planner'")
+			"\nexample: 'rebalance,unregister,planner'.")
 	i(&flags.Verbose,
 		[]string{"verbose"}, "INTEGER", 3,
 		"optional level of logging verbosity; higher is more verbose.")
