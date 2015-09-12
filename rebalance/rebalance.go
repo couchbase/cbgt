@@ -375,6 +375,16 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	}
 	r.m.Unlock()
 
+	// Skip indexDef's with no instantiatable pindexImplType, such
+	// as index aliases.
+	pindexImplType, exists := cbgt.PIndexImplTypes[indexDef.Type]
+	if !exists ||
+		pindexImplType == nil ||
+		pindexImplType.New == nil ||
+		pindexImplType.Open == nil {
+		return false, nil
+	}
+
 	partitionModel, begMap, endMap, err := r.calcBegEndMaps(indexDef)
 	if err != nil {
 		return false, err
