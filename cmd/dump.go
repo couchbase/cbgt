@@ -12,12 +12,28 @@
 
 // +build !windows
 
-package main
+package cmd
 
 import (
+	"os"
+	"os/signal"
+	"runtime/pprof"
 	"syscall"
+
+	log "github.com/couchbase/clog"
 )
 
-func dumpOnSignalForPlatform() {
-	dumpOnSignal(syscall.SIGUSR2)
+func DumpOnSignalForPlatform() {
+	DumpOnSignal(syscall.SIGUSR2)
+}
+
+func DumpOnSignal(signals ...os.Signal) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, signals...)
+	for _ = range c {
+		log.Printf("dump: goroutine...")
+		pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
+		log.Printf("dump: heap...")
+		pprof.Lookup("heap").WriteTo(os.Stderr, 1)
+	}
 }

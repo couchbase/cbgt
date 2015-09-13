@@ -17,10 +17,8 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"os/signal"
 	"path"
 	"runtime"
-	"runtime/pprof"
 	"sort"
 	"strings"
 	"time"
@@ -59,7 +57,7 @@ func main() {
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	go dumpOnSignalForPlatform()
+	go cmd.DumpOnSignalForPlatform()
 
 	MainWelcome(flagAliases)
 
@@ -511,15 +509,4 @@ func MainWelcome(flagAliases map[string][]string) {
 		}
 	})
 	log.Printf("  GOMAXPROCS=%d", runtime.GOMAXPROCS(-1))
-}
-
-func dumpOnSignal(signals ...os.Signal) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, signals...)
-	for _ = range c {
-		log.Printf("dump: goroutine...")
-		pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
-		log.Printf("dump: heap...")
-		pprof.Lookup("heap").WriteTo(os.Stderr, 1)
-	}
 }

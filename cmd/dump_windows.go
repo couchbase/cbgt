@@ -12,13 +12,13 @@
 
 // +build windows !darwin !freebsd !linux !openbsd !netbsd
 
-package main
+package cmd
 
 import (
 	log "github.com/couchbase/clog"
 )
 
-func dumpOnSignalForPlatform() {
+func DumpOnSignalForPlatform() {
 	// No-op for windows.
 }
 

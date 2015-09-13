@@ -9,7 +9,7 @@
 //  express or implied. See the License for the specific language
 //  governing permissions and limitations under the License.
 
-package main
+package cmd
 
 import (
 	"testing"
@@ -17,5 +17,5 @@ import (
 
 func TestDump(t *testing.T) {
 	// I guess we just make sure this doesn't crash.
-	go dumpOnSignalForPlatform()
+	go DumpOnSignalForPlatform()
 }
