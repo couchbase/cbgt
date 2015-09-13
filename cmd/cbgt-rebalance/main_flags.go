@@ -83,9 +83,9 @@ func initFlags(flags *Flags) map[string][]string {
 			"\n       'couchbase:http://my-cfg-bucket@127.0.0.1:8091';"+
 			"\n* metakv"+
 			"\n     - manages a cluster configuration in metakv store;"+
-			"\n       environment variable CBAUTH_REVRPC_URL needs to be set"+
-			"\n       for metakv; for example:"+
-			"\n       'export CBAUTH_REVRPC_URL=http://user:password@localhost:9000/mcp'.")
+			"\n       environment variable CBAUTH_REVRPC_URL needs"+
+			"\n       to be set; for example:"+
+			"\n       'export CBAUTH_REVRPC_URL=http://user:password@localhost:9000/cbgt-rebalance'.")
 	b(&flags.DryRun,
 		[]string{"dryRun", "noChanges", "n"}, "", false,
 		"no actual changes will be executed.")
@@ -109,8 +109,8 @@ func initFlags(flags *Flags) map[string][]string {
 			"\nyour datasource server: 'http://localhost:8091'.")
 	s(&flags.Steps,
 		[]string{"steps"}, "STEPS", "",
-		"advanced: comma-separated list of mcp steps wanted;"+
-			"\ndefaults to all the normal mcp steps;"+
+		"advanced: comma-separated list of cbgt-rebalance steps wanted;"+
+			"\ndefaults to all the normal cbgt-rebalance steps;"+
 			"\nexample: 'rebalance,unregister,planner'.")
 	i(&flags.Verbose,
 		[]string{"verbose"}, "INTEGER", 3,
@@ -126,7 +126,7 @@ func initFlags(flags *Flags) map[string][]string {
 
 		base := path.Base(os.Args[0])
 
-		fmt.Fprintf(os.Stderr, "%s: couchbase mcp\n", base)
+		fmt.Fprintf(os.Stderr, "%s: couchbase cbgt-rebalance\n", base)
 		fmt.Fprintf(os.Stderr, "\nUsage: %s [flags]\n", base)
 		fmt.Fprintf(os.Stderr, "\nFlags:\n")
 
@@ -159,13 +159,13 @@ func initFlags(flags *Flags) map[string][]string {
 		fmt.Fprintf(os.Stderr, examples)
 		fmt.Fprintf(os.Stderr, "\nSee also:"+
 			" http://github.com"+
-			"/couchbaselabs/cbgt/tree/master/cmd/mcp\n\n")
+			"/couchbaselabs/cbgt/tree/master/cmd/cbgt-rebalance\n\n")
 	}
 
 	return flagAliases
 }
 
 const examples = `
-  Example where mcp's configuration is kept in a couchbase "cfg-bucket":
-    ./mcp -cfg=couchbase:http://cfg-bucket@CB_HOST:8091
+  Example where cbgt's configuration is kept in a couchbase "cfg-bucket":
+    ./cbgt-rebalance -cfg=couchbase:http://cfg-bucket@CB_HOST:8091
 `

@@ -59,7 +59,7 @@ func main() {
 
 	go cmd.DumpOnSignalForPlatform()
 
-	MainWelcome(flagAliases)
+	cmd.LogFlags(flagAliases)
 
 	// ----------------------------------------------
 
@@ -498,15 +498,4 @@ func NewErrorPIndexImpl(indexType, indexParams,
 func OpenErrorPIndexImpl(indexType, path string, restart func()) (
 	cbgt.PIndexImpl, cbgt.Dest, error) {
 	return nil, nil, fmt.Errorf("ErrorPIndex-OPEN")
-}
-
-// ------------------------------------------------------------
-
-func MainWelcome(flagAliases map[string][]string) {
-	flag.VisitAll(func(f *flag.Flag) {
-		if flagAliases[f.Name] != nil {
-			log.Printf("  -%s=%q\n", f.Name, f.Value)
-		}
-	})
-	log.Printf("  GOMAXPROCS=%d", runtime.GOMAXPROCS(-1))
 }
