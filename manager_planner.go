@@ -306,7 +306,7 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
-		warnings := BlancePlanPIndexes(indexDef,
+		warnings := BlancePlanPIndexes("", indexDef,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
 			nodeWeights, nodeHierarchy)
@@ -456,7 +456,8 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 
 // BlancePlanPIndexes invokes the blance library's generic
 // PlanNextMap() algorithm to create a new pindex layout plan.
-func BlancePlanPIndexes(indexDef *IndexDef,
+func BlancePlanPIndexes(mode string,
+	indexDef *IndexDef,
 	planPIndexesForIndex map[string]*PlanPIndex,
 	planPIndexesPrev *PlanPIndexes,
 	nodeUUIDsAll []string,
@@ -469,9 +470,13 @@ func BlancePlanPIndexes(indexDef *IndexDef,
 	// First, reconstruct previous blance map from planPIndexesPrev.
 	blancePrevMap := BlanceMap(planPIndexesForIndex, planPIndexesPrev)
 
-	// TODO: Leverage blance's partition weight & state stickiness features.
+	// TODO: Leverage blance's partition weight features.
 	partitionWeights := map[string]int(nil)
+
 	stateStickiness := map[string]int(nil)
+	if mode == "failover" {
+		stateStickiness = map[string]int{"primary": 100000}
+	}
 
 	blanceNextMap, warnings := blance.PlanNextMap(blancePrevMap,
 		nodeUUIDsAll, nodeUUIDsToRemove, nodeUUIDsToAdd,

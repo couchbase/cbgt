@@ -492,7 +492,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	}
 
 	// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
-	warnings := cbgt.BlancePlanPIndexes(indexDef,
+	warnings := cbgt.BlancePlanPIndexes("", indexDef,
 		endPlanPIndexesForIndex, r.begPlanPIndexes,
 		r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 		r.nodeWeights, r.nodeHierarchy)
