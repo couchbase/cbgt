@@ -8,6 +8,5 @@
 .project
 .settings
 .DS_Store
+/cbgt-*
 /data
-/mcp
-/monitor
