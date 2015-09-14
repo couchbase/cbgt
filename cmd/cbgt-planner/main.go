@@ -65,48 +65,26 @@ func main() {
 	if steps == nil || steps["unregister"] {
 		log.Printf("main: step unregister")
 
-		err := unregisterNodes(cfg, nodesToRemove, flags.DryRun)
-		if err != nil {
-			log.Fatalf("main: unregisterNodes, err: %v", err)
-			return
+		if !flags.DryRun {
+			err := cbgt.UnregisterNodes(cfg, cbgt.VERSION, nodesToRemove)
+			if err != nil {
+				log.Fatalf("%v", err)
+				return
+			}
 		}
 	}
 
 	if steps == nil || steps["planner"] {
 		log.Printf("main: step planner")
 
-		changed, err := cbgt.Plan(cfg, cbgt.VERSION, "", flags.Server)
-		if err != nil {
-			log.Fatalf("main: plan, changed: %v, err: %v", changed, err)
-			return
-		}
-	}
-
-	log.Printf("main: done")
-}
-
-// ------------------------------------------------------------
-
-func unregisterNodes(cfg cbgt.Cfg, nodes []string, dryRun bool) error {
-	for _, node := range nodes {
-		log.Printf("main: unregistering, node: %s", node)
-
-		if dryRun {
-			continue
-		}
-
-		for _, kind := range []string{
-			cbgt.NODE_DEFS_WANTED,
-			cbgt.NODE_DEFS_KNOWN,
-		} {
-			err := cbgt.CfgRemoveNodeDef(cfg, kind, node, cbgt.VERSION)
+		if !flags.DryRun {
+			_, err := cbgt.Plan(cfg, cbgt.VERSION, "", flags.Server)
 			if err != nil {
-				return fmt.Errorf("unregistering,"+
-					" node: %s, kind: %s, err: %v",
-					node, kind, err)
+				log.Fatalf("%v", err)
+				return
 			}
 		}
 	}
 
-	return nil
+	log.Printf("main: done")
 }

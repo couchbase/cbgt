@@ -13,6 +13,7 @@ package cbgt
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	"github.com/couchbaselabs/blance"
@@ -311,6 +312,23 @@ func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
 	_, err = CfgSetNodeDefs(cfg, kind, nodeDefs, cas)
 
 	return err
+}
+
+// ------------------------------------------------------------------------
+
+func UnregisterNodes(cfg Cfg, version string, nodeUUIDs []string) error {
+	for _, nodeUUID := range nodeUUIDs {
+		for _, kind := range []string{NODE_DEFS_WANTED, NODE_DEFS_KNOWN} {
+			err := CfgRemoveNodeDef(cfg, kind, nodeUUID, version)
+			if err != nil {
+				return fmt.Errorf("defs: UnregisterNodes,"+
+					" nodeUUID: %s, kind: %s, err: %v",
+					nodeUUID, kind, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // ------------------------------------------------------------------------
