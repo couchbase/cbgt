@@ -32,8 +32,6 @@ import (
 	"github.com/couchbaselabs/cbgt/rebalance"
 )
 
-var VERSION = "v0.0.0"
-
 func main() {
 	flag.Parse()
 
@@ -44,7 +42,7 @@ func main() {
 
 	if flags.Version {
 		fmt.Printf("%s main: %s, data: %s\n",
-			path.Base(os.Args[0]), VERSION, cbgt.VERSION)
+			path.Base(os.Args[0]), cbgt.VERSION, cbgt.VERSION)
 		os.Exit(0)
 	}
 
@@ -53,7 +51,7 @@ func main() {
 	}
 
 	log.Printf("main: %s started (%s/%s)",
-		os.Args[0], VERSION, cbgt.VERSION)
+		os.Args[0], cbgt.VERSION, cbgt.VERSION)
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
@@ -63,20 +61,8 @@ func main() {
 
 	// ----------------------------------------------
 
-	// User may have informed us about application specific index
-	// types, which we need to register (albeit with fake
-	// implementations) because there's a cbgt.CalcPlan() safety check
-	// which skips any unknown, unregistered index types.
 	if flags.IndexTypes != "" {
-		for _, indexType := range strings.Split(flags.IndexTypes, ",") {
-			if cbgt.PIndexImplTypes[indexType] == nil {
-				cbgt.RegisterPIndexImplType(indexType,
-					&cbgt.PIndexImplType{
-						New:  NewErrorPIndexImpl,
-						Open: OpenErrorPIndexImpl,
-					})
-			}
-		}
+		cmd.RegisterIndexTypes(strings.Split(flags.IndexTypes, ","))
 	}
 
 	// ----------------------------------------------

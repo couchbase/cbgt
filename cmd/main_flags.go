@@ -13,9 +13,12 @@ package cmd
 
 import (
 	"flag"
+	"fmt"
 	"runtime"
 
 	log "github.com/couchbase/clog"
+
+	"github.com/couchbaselabs/cbgt"
 )
 
 func LogFlags(flagAliases map[string][]string) {
@@ -25,4 +28,32 @@ func LogFlags(flagAliases map[string][]string) {
 		}
 	})
 	log.Printf("  GOMAXPROCS=%d", runtime.GOMAXPROCS(-1))
+}
+
+// --------------------------------------------------
+
+// The user may have informed the cmd about application specific index
+// types, which we need to register (albeit with fake, "error-only"
+// implementations) because the cbgt's planner (cbgt.CalcPlan()) has
+// safety checks which skips any unknown, unregistered index types.
+func RegisterIndexTypes(indexTypes []string) {
+	newErrorPIndexImpl := func(indexType, indexParams,
+		path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+		return nil, nil, fmt.Errorf("ErrorPIndex-NEW")
+	}
+
+	openErrorPIndexImpl := func(indexType, path string, restart func()) (
+		cbgt.PIndexImpl, cbgt.Dest, error) {
+		return nil, nil, fmt.Errorf("ErrorPIndex-OPEN")
+	}
+
+	for _, indexType := range indexTypes {
+		if cbgt.PIndexImplTypes[indexType] == nil {
+			cbgt.RegisterPIndexImplType(indexType,
+				&cbgt.PIndexImplType{
+					New:  newErrorPIndexImpl,
+					Open: openErrorPIndexImpl,
+				})
+		}
+	}
 }
