@@ -14,12 +14,30 @@ package cmd
 import (
 	"flag"
 	"fmt"
+	"math/rand"
+	"os"
 	"runtime"
+	"time"
 
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
 )
+
+func MainCommon(version string, flagAliases map[string][]string) {
+	if os.Getenv("GOMAXPROCS") == "" {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	}
+
+	log.Printf("main: %s started (%s/%s)",
+		os.Args[0], version, cbgt.VERSION)
+
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	go DumpOnSignalForPlatform()
+
+	LogFlags(flagAliases)
+}
 
 func LogFlags(flagAliases map[string][]string) {
 	flag.VisitAll(func(f *flag.Flag) {

@@ -15,13 +15,10 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"path"
-	"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/couchbaselabs/blance"
 
@@ -46,18 +43,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if os.Getenv("GOMAXPROCS") == "" {
-		runtime.GOMAXPROCS(runtime.NumCPU())
-	}
-
-	log.Printf("main: %s started (%s/%s)",
-		os.Args[0], cbgt.VERSION, cbgt.VERSION)
-
-	rand.Seed(time.Now().UTC().UnixNano())
-
-	go cmd.DumpOnSignalForPlatform()
-
-	cmd.LogFlags(flagAliases)
+	cmd.MainCommon(cbgt.VERSION, flagAliases)
 
 	// ----------------------------------------------
 
