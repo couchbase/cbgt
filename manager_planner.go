@@ -118,7 +118,7 @@ func Plan(cfg Cfg, version, uuid, server string) (bool, error) {
 		return false, err
 	}
 
-	planPIndexes, err := CalcPlan(indexDefs, nodeDefs,
+	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
 		planPIndexesPrev, version, server)
 	if err != nil {
 		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
@@ -261,7 +261,7 @@ func PlannerGetPlanPIndexes(cfg Cfg, version string) (
 }
 
 // Split logical indexes into PIndexes and assign PIndexes to nodes.
-func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
+func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	planPIndexesPrev *PlanPIndexes, version, server string) (
 	*PlanPIndexes, error) {
 	// This simple planner assigns at most MaxPartitionsPerPIndex
@@ -306,7 +306,7 @@ func CalcPlan(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
-		warnings := BlancePlanPIndexes("", indexDef,
+		warnings := BlancePlanPIndexes(mode, indexDef,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
 			nodeWeights, nodeHierarchy)
