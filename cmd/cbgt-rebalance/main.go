@@ -73,28 +73,13 @@ func main() {
 		}
 	}
 
-	if steps == nil || steps["unregister"] {
-		log.Printf("main: step unregister")
+	// ------------------------------------------------
 
-		if !flags.DryRun {
-			err := cbgt.UnregisterNodes(cfg, cbgt.VERSION, nodesToRemove)
-			if err != nil {
-				log.Fatalf("%v", err)
-				return
-			}
-		}
-	}
-
-	if steps == nil || steps["planner"] {
-		log.Printf("main: step planner")
-
-		if !flags.DryRun {
-			_, err := cbgt.Plan(cfg, cbgt.VERSION, "", flags.Server)
-			if err != nil {
-				log.Fatalf("%v", err)
-				return
-			}
-		}
+	err = cmd.PlannerSteps(steps, cfg, cbgt.VERSION,
+		flags.Server, nodesToRemove, flags.DryRun)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return
 	}
 
 	log.Printf("main: done")
