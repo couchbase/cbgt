@@ -1030,3 +1030,63 @@ func TestRegisterUnwanted(t *testing.T) {
 		t.Errorf("expected mgr to not be in nodeDefsWanted")
 	}
 }
+
+func TestUnregisterNodes(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+
+	uuid := NewUUID()
+
+	cfg := NewCfgMem()
+
+	err := UnregisterNodes(cfg, VERSION, []string{uuid})
+	if err != nil {
+		t.Errorf("expected no err when removing unknown uuid")
+	}
+
+	m := NewManager(VERSION, cfg, uuid, nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil)
+	err = m.Start("wanted")
+	if err != nil {
+		t.Errorf("expected Manager.Start() to work, err: %v", err)
+	}
+	nd, cas, err := CfgGetNodeDefs(cfg, NODE_DEFS_KNOWN)
+	if err != nil || cas == 0 || nd == nil {
+		t.Errorf("expected node defs known, %v, %d, %v", nd, cas, err)
+	}
+	if len(nd.NodeDefs) != 1 || nd.NodeDefs[m.uuid] == nil {
+		t.Errorf("expected mgr to be in nodeDefsKnown")
+	}
+	nd, cas, err = CfgGetNodeDefs(cfg, NODE_DEFS_WANTED)
+	if err != nil || cas == 0 || nd == nil {
+		t.Errorf("expected node defs known, %v, %d, %v", nd, cas, err)
+	}
+	if len(nd.NodeDefs) != 1 || nd.NodeDefs[m.uuid] == nil {
+		t.Errorf("expected mgr to be in nodeDefsWanted")
+	}
+
+	err = UnregisterNodes(cfg, VERSION, []string{uuid})
+	if err != nil {
+		t.Errorf("expected no err")
+	}
+
+	nd, cas, err = CfgGetNodeDefs(cfg, NODE_DEFS_KNOWN)
+	if err != nil || cas == 0 || nd == nil {
+		t.Errorf("expected node defs known, %v, %d, %v", nd, cas, err)
+	}
+	if len(nd.NodeDefs) != 0 || nd.NodeDefs[m.uuid] != nil {
+		t.Errorf("expected no mgr to be in nodeDefsKnown")
+	}
+	nd, cas, err = CfgGetNodeDefs(cfg, NODE_DEFS_WANTED)
+	if err != nil || cas == 0 || nd == nil {
+		t.Errorf("expected node defs wanted")
+	}
+	if len(nd.NodeDefs) != 0 || nd.NodeDefs[m.uuid] != nil {
+		t.Errorf("expected mgr to not be in nodeDefsWanted")
+	}
+
+	err = UnregisterNodes(cfg, VERSION, []string{uuid})
+	if err != nil {
+		t.Errorf("expected no err when removing already removed uuid")
+	}
+}
