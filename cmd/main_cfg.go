@@ -27,10 +27,12 @@ var ErrorBindHttp = errors.New("main_cfg:" +
 	"  (non-loopback, non-127.0.0.1/localhost, non-0.0.0.0)\n" +
 	"  so that this node can be clustered with other nodes.")
 
+// MainCfg connects to a Cfg provider as a server peer (e.g., as a
+// cbgt.Manager).
 func MainCfg(baseName, connect, bindHttp,
 	register, dataDir string) (cbgt.Cfg, error) {
 	// TODO: One day, the default cfg provider should not be simple.
-	// TODO: One day, cfg provider lookup should be table driven.
+	// TODO: One day, Cfg provider lookup should be table driven.
 	var cfg cbgt.Cfg
 	var err error
 	switch {
@@ -47,6 +49,8 @@ func MainCfg(baseName, connect, bindHttp,
 	}
 	return cfg, err
 }
+
+// ------------------------------------------------
 
 func MainCfgSimple(baseName, connect, bindHttp, register, dataDir string) (
 	cbgt.Cfg, error) {
@@ -111,5 +115,34 @@ func MainCfgMetaKv(baseName, urlStr, bindHttp, register, dataDir string) (
 		}
 		err = cfg.Load()
 	}
+	return cfg, err
+}
+
+// ------------------------------------------------
+
+// MainCfgClient helper function connects to a Cfg provider as a
+// client (not as a known cbgt.Manager server or peer).  This is
+// useful, for example, for tool developers as opposed to server
+// developers.
+func MainCfgClient(baseName, cfgConnect string) (cbgt.Cfg, error) {
+	bindHttp := "<NO-BIND-HTTP>"
+	register := "unchanged"
+	dataDir := "<NO-DATA-DIR>"
+
+	cfg, err := MainCfg(baseName, cfgConnect,
+		bindHttp, register, dataDir)
+	if err == ErrorBindHttp {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("main: could not start cfg,"+
+			" cfgConnect: %s, err: %v\n"+
+			"  Please check that your -cfg/-cfgConnect parameter (%q)\n"+
+			"  is correct and/or that your configuration provider\n"+
+			"  is available.",
+			cfgConnect, err, cfgConnect)
+	}
+
 	return cfg, err
 }

@@ -45,34 +45,15 @@ func main() {
 
 	cmd.MainCommon(cbgt.VERSION, flagAliases)
 
-	// ----------------------------------------------
+	cfg, err := cmd.MainCfgClient(path.Base(os.Args[0]), flags.CfgConnect)
+	if err != nil {
+		log.Fatalf("%v", err)
+		return
+	}
 
 	if flags.IndexTypes != "" {
 		cmd.RegisterIndexTypes(strings.Split(flags.IndexTypes, ","))
 	}
-
-	// ----------------------------------------------
-
-	bindHttp := "<NO-BIND-HTTP>"
-	register := "unchanged"
-	dataDir := "<NO-DATA-DIR>"
-
-	cfg, err := cmd.MainCfg("mcp", flags.CfgConnect,
-		bindHttp, register, dataDir)
-	if err != nil {
-		if err == cmd.ErrorBindHttp {
-			log.Fatalf("%v", err)
-			return
-		}
-		log.Fatalf("main: could not start cfg, cfgConnect: %s, err: %v\n"+
-			"  Please check that your -cfg/-cfgConnect parameter (%q)\n"+
-			"  is correct and/or that your configuration provider\n"+
-			"  is available.",
-			flags.CfgConnect, err, flags.CfgConnect)
-		return
-	}
-
-	// ----------------------------------------------
 
 	nodesToRemove := []string(nil)
 	if len(flags.RemoveNodes) > 0 {
@@ -83,6 +64,8 @@ func main() {
 	if flags.Steps != "" {
 		steps = cbgt.StringsToMap(strings.Split(flags.Steps, ","))
 	}
+
+	// ------------------------------------------------
 
 	if steps == nil || steps["rebalance"] {
 		log.Printf("main: step rebalance")
