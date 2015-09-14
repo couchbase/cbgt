@@ -17,10 +17,20 @@ import (
 	"github.com/couchbaselabs/cbgt"
 )
 
+// PlannerSteps helps command-line tools implement the planner steps:
+// * "unregister" - unregisters nodesToRemove from the cfg.
+// * "planner" - runs the planner to calculate a new plan into the cfg.
+//
+// The default steps are "unregister" and "planner".
+//
+// An additional composite step, "FAILOVER" (fully capitalized), is
+// used to process the nodesToRemove as nodes to be failover'ed.
+// "FAILOVER" is comprised of the more basic "unregister" and
+// "failover" steps.
 func PlannerSteps(steps map[string]bool,
 	cfg cbgt.Cfg, version, server string, nodesToRemove []string,
 	dryRun bool) error {
-	if steps == nil || steps["unregister"] {
+	if steps == nil || steps["unregister"] || steps["FAILOVER"] {
 		log.Printf("planner: step unregister")
 
 		if !dryRun {
@@ -41,6 +51,26 @@ func PlannerSteps(steps map[string]bool,
 			}
 		}
 	}
+
+	if steps["failover"] || steps["FAILOVER"] {
+		log.Printf("planner: step failover")
+
+		if !dryRun {
+			err := Failover(cfg, cbgt.VERSION, nodesToRemove)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// ------------------------------------------------------
+
+func Failover(cfg cbgt.Cfg, version string,
+	nodesToFailover []string) error {
+	// TODO.
 
 	return nil
 }
