@@ -497,8 +497,6 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 		r.nodeWeights, r.nodeHierarchy)
 
-	// TODO: handle blance ffwd plan warnings better?
-
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
 	for _, warning := range warnings {
