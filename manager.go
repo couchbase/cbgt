@@ -310,7 +310,7 @@ func (mgr *Manager) SaveNodeDef(kind string, force bool) error {
 
 		nodeDefs.UUID = NewUUID()
 		nodeDefs.NodeDefs[mgr.uuid] = nodeDef
-		nodeDefs.ImplVersion = mgr.version // TODO: ImplVersion bump?
+		nodeDefs.ImplVersion = mgr.version
 
 		_, err = CfgSetNodeDefs(mgr.cfg, kind, nodeDefs, cas)
 		if err != nil {
