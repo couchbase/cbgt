@@ -119,10 +119,13 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 					planPIndexCalc, exists :=
 						planPIndexesCalc.PlanPIndexes[planPIndexName]
 					if exists && planPIndexCalc != nil {
+					PROMOTE_CALC:
 						for nodeCalc, ppnCalc := range planPIndexCalc.Nodes {
 							if ppnCalc.Priority <= 0 &&
 								!mapNodesFailover[nodeCalc] {
 								planPIndex.Nodes[nodeCalc] = ppnCalc
+								promoted = nodeCalc
+								break PROMOTE_CALC
 							}
 						}
 					}
