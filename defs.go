@@ -307,7 +307,7 @@ func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
 	delete(nodeDefs.NodeDefs, uuid)
 
 	nodeDefs.UUID = NewUUID()
-	nodeDefs.ImplVersion = version // TODO: ImplVersion bump?
+	nodeDefs.ImplVersion = version
 
 	_, err = CfgSetNodeDefs(cfg, kind, nodeDefs, cas)
 
