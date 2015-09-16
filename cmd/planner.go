@@ -12,7 +12,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	log "github.com/couchbase/clog"
@@ -69,8 +68,6 @@ func PlannerSteps(steps map[string]bool,
 	return nil
 }
 
-// ------------------------------------------------------
-
 // Failover promotes replicas to primary for the remaining nodes.
 func Failover(cfg cbgt.Cfg, version string, server string,
 	nodesFailover []string) (bool, error) {
@@ -90,7 +87,7 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 		return false, fmt.Errorf("planner: failover CalcPlan, err: %v", err)
 	}
 
-	planPIndexesNext := copyPlanPIndexes(planPIndexesPrev, version)
+	planPIndexesNext := cbgt.CopyPlanPIndexes(planPIndexesPrev, version)
 	for planPIndexName, planPIndex := range planPIndexesNext.PlanPIndexes {
 		for node, planPIndexNode := range planPIndex.Nodes {
 			if !mapNodesFailover[node] {
@@ -150,14 +147,4 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 	}
 
 	return true, nil
-}
-
-func copyPlanPIndexes(p *cbgt.PlanPIndexes,
-	version string) *cbgt.PlanPIndexes {
-	r := cbgt.NewPlanPIndexes(version)
-	j, _ := json.Marshal(p)
-	json.Unmarshal(j, r)
-	r.UUID = cbgt.NewUUID()
-	r.ImplVersion = version
-	return r
 }

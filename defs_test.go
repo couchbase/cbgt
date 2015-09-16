@@ -177,6 +177,16 @@ func TestSamePlanPIndexes(t *testing.T) {
 	if SamePlanPIndexes(b, a) {
 		t.Errorf("expected not same, a: %v, b: %v", a, b)
 	}
+
+	ca := CopyPlanPIndexes(a, "v1")
+	if !SamePlanPIndexes(a, ca) {
+		t.Errorf("expected same, a: %v, ca: %v", a, ca)
+	}
+
+	cb := CopyPlanPIndexes(b, "v2")
+	if !SamePlanPIndexes(b, cb) {
+		t.Errorf("expected same, b: %v, cb: %v", b, cb)
+	}
 }
 
 func TestSamePlanPIndex(t *testing.T) {

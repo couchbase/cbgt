@@ -346,6 +346,18 @@ func NewPlanPIndexes(version string) *PlanPIndexes {
 	}
 }
 
+// CopyPlanPIndexes returns a copy of the given planPIndexes, albeit
+// with a new UUID and given version.
+func CopyPlanPIndexes(planPIndexes *PlanPIndexes,
+	version string) *PlanPIndexes {
+	r := NewPlanPIndexes(version)
+	j, _ := json.Marshal(planPIndexes)
+	json.Unmarshal(j, r)
+	r.UUID = NewUUID()
+	r.ImplVersion = version
+	return r
+}
+
 // Retrieves PlanPIndexes from a Cfg provider.
 func CfgGetPlanPIndexes(cfg Cfg) (*PlanPIndexes, uint64, error) {
 	v, cas, err := cfg.Get(PLAN_PINDEXES_KEY, 0)
