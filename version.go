@@ -16,12 +16,12 @@ import (
 )
 
 // The cbgt.VERSION tracks persistence versioning (schema/format of
-// persisted data and configuration).  The main.VERSION that's part of
-// an executable command, in contrast, is an overall "product"
-// version.  For example, we might introduce new UI-only features or
-// fix a UI typo, in which case we'd bump the main.VERSION number;
-// but, if the persisted data/config format was unchanged, then the
-// cbgt.VERSION number should remain unchanged.
+// persisted data and configuration).  The main.VERSION from "git
+// describe" that's part of an executable command, in contrast, is an
+// overall "product" version.  For example, we might introduce new
+// UI-only features or fix a UI typo, in which case we'd bump the
+// main.VERSION number; but, if the persisted data/config format was
+// unchanged, then the cbgt.VERSION number should remain unchanged.
 //
 // NOTE: You *must* update cbgt.VERSION if you change what's stored in
 // the Cfg (such as the JSON/struct definitions or the planning
