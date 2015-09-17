@@ -1,0 +1,78 @@
+# v0.3.0
+
+- api: shorter API names to init static/rest router
+- api: optional pagesHandler param for InitStaticFileRouter
+- api: deprecated/renamed Manager.StartRegister to Register, issue: 22
+- api: use nodeUUID instead of nodeAddr/HostPort in web admin UI
+- api: fix VersionGTE comparison bug
+- api: added Manager.Stop() API
+- api: refactored out BlanceMap() API
+- api: refactored out BlancePartitionModel() API
+- api: exposed Manager.StartCfg() API
+- api: node and cluster monitoring API's
+- api: exposed RESTCfg struct
+- api: CfgRemoveNodeDef, issue 26
+- api: exposed CasePlanFrozen API
+- api: exposed PlannerGetPlan API
+- api: allow uuid to be optional in PlannerGetNodeDefs API
+- api: added FeedPartitionSeqsFunc to FeedType registration
+- api: issue 27: propagate DCP errors to Cfg subscribers
+- api: DEPRECATE: CfgCB.SetKeyPrefix; and NewCfgCBEx API
+- api: added StructChanges() helper API
+- api: cbgt.CopyPlanPIndexes func
+- api: cbgt.UnregisterNodes func
+- api: cmd.MainCfgClient helper func
+- api: cmd.MainCommon helper func
+- api: cmd.LogFlags helper func
+- api: BlancePlanPIndexes takes mode param for failover
+- api: exposed cbgt.Plan() API
+- api: removed unused FileService / FileLike code
+- api: exposed Rebalancer struct
+- api: CouchbasePartitionSeqs func to return current vbucket uuid/seq's
+- api: CouchbaseBucket helper func
+- auth: auth fixes to work with CB 3.x
+- auth: Merge pull request #15 from nimishzynga/cbauth1
+- build: added release instructions to Makefile
+- cfg: BREAKING Cfg storage format change for NodeDefs[uuid]
+- cfg: CfgCB parses url for user/pswd, issue 24
+- cfg: Merge pull request #23 from nimishzynga/master
+- cfg: issue 14 - propagate cfgKey during Refresh()
+- cfg: Adding cbauth and metakv in cbgt
+- diag: allow for nil assetDir for diag REST
+- diag: retrieves from staticx/dist
+- janitor: CalcFeedsDelta handles changed feeds correctly
+- monitor: fix: issue 42: more checks for stopCh closings
+- monitor: added ability to disable stats/diag monitoring
+- planner: break PROMOTE_CALC loop during failover promotion
+- planner: implement cbgt-planner FAILOVER
+- planner: cmd.PlannerSteps helper func
+- planner: cbgt-planner cmd-line tool
+- planner: added indexTypes cmd-line param to cbgt-planner/rebalance
+- planner: fix: pindex safety checks if no New/Open funcs (alias case)
+- planner: added -r/RemoveNodes cmd-line param
+- planner: add log verbose cmd-line flag
+- planner: cmd-line dry-run flag
+- rebalance: cbgt-rebalance cmd-line tool
+- rebalance: cbgt-rebalance skips uninstantiated indexTypes like aliases
+- rebalance: option to FavorMinNodes
+- rebalance: node removal has precendence over additions
+- rebalance: emit progress table only if changed
+- rebalance: emit graph markers for easy log searchability
+- rebalance: emit pindex promotion/demotions
+- rebalance: compute avg pct reached across sourcePartitions for a pindex/node
+- rebalance: tracks wantSeqs vs currSeqs
+- rebalance: faster rebalance via early seq check
+- rebalance: writes in right version when updating planPIndexes
+- rebalance: assignPIndex lock coverage increased
+- rebalance: log beg/end plans as json
+- rebalance: stops rebalance on node monitoring error
+- rebalance: added ErrorNotPausable/Resumable
+- rebalance: added Pause/ResumeNewAssignments to rebalancer
+- rebalance: indent logging
+- test: more test coverage
+- test: faster unit test with better fake IP address
+- test: issue 31: fix data race by avoiding HttpGet global
+- test: issue 32: fix some unit test data races via locking
+- test: metakv cmd test (disabled due to log spam)
+- web-UI: fix: issue 177, edit/clone index copies advanced params again
+- web-UI: display nodes list ordered by their hostPort
