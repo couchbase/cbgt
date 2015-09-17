@@ -22,3 +22,19 @@ coverage:
 	cat coverage-rebalance.out | grep -v "mode: count" >> coverage.out
 	go tool cover -html=coverage.out
 
+# To release a new version of the cbgt library...
+#
+#   git grep v0.2.0 # Look for old version strings.
+#   git grep v0.2   # Look for old version strings.
+#   # Edit/update files, if any.
+#   # Ensure bindata_assetfs.go is up-to-date, by running...
+#   make build
+#   # Then, run tests...
+#   go test ./...
+#   # Then, run a diff against the previous version...
+#   git log --pretty=format:%s v0.2.0...
+#   # Then, update the CHANGES.md file based on diff.
+#   git commit -m "v0.3.0"
+#   git push
+#   git tag -a "v0.3.0" -m "v0.3.0"
+#   git push --tags
