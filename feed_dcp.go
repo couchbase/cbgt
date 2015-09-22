@@ -97,12 +97,15 @@ type DCPFeed struct {
 	pf         DestPartitionFunc
 	dests      map[string]Dest
 	disable    bool
+	stopAfter  map[string]UUIDSeq // May be nil.
 	bds        cbdatasource.BucketDataSource
 
-	m       sync.Mutex
+	m       sync.Mutex // Protects the fields that follow.
 	closed  bool
 	lastErr error
 	stats   *DestStats
+
+	stopAfterReached map[string]bool // May be nil.
 }
 
 // DCPFeedParams are DCP data-source/feed specific connection
@@ -175,8 +178,15 @@ func NewDCPFeed(name, indexName, url, poolName,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool) (*DCPFeed, error) {
 	params := NewDCPFeedParams()
+	stopAfter := StopAfterSourceParams{}
+
 	if paramsStr != "" {
 		err := json.Unmarshal([]byte(paramsStr), params)
+		if err != nil {
+			return nil, err
+		}
+
+		err = json.Unmarshal([]byte(paramsStr), &stopAfter)
 		if err != nil {
 			return nil, err
 		}
@@ -240,6 +250,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 		pf:         pf,
 		dests:      dests,
 		disable:    disable,
+		stopAfter:  stopAfter.StopAfterPartitionSeqs,
 		stats:      NewDestStats(),
 	}
 
@@ -309,6 +320,51 @@ func (t *DCPFeed) Stats(w io.Writer) error {
 
 // --------------------------------------------------------
 
+// handleStopAfter checks and maintains the optional stopAfter and
+// stopAfterReached tracking maps, which are used for so-called
+// "one-time indexing", where we close the feed after reaching a
+// certain point (when all partitions have reached their stopAfter
+// sequence numbers).  Returns true if we've reached the stopAfter
+// point.
+func (r *DCPFeed) handleStopAfter(partition string, seq uint64) bool {
+	if len(r.stopAfter) <= 0 || seq <= 0 {
+		return false
+	}
+
+	uuidSeq, exists := r.stopAfter[partition]
+	if !exists {
+		return false
+	}
+
+	reached := false
+
+	// TODO: check UUID still matches?
+	if seq >= uuidSeq.Seq {
+		reached = true
+
+		allDone := false
+
+		r.m.Lock()
+
+		if r.stopAfterReached == nil {
+			r.stopAfterReached = map[string]bool{}
+		}
+		r.stopAfterReached[partition] = true
+
+		allDone = len(r.stopAfterReached) >= len(r.stopAfter)
+
+		r.m.Unlock()
+
+		if allDone {
+			go r.Close()
+		}
+	}
+
+	return reached
+}
+
+// --------------------------------------------------------
+
 func (r *DCPFeed) OnError(err error) {
 	// TODO: Check the type of the error if it's something
 	// serious / not-recoverable / needs user attention.
@@ -328,7 +384,7 @@ func (r *DCPFeed) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	return Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, key)
-		if err != nil {
+		if err != nil || r.handleStopAfter(partition, seq) {
 			return err
 		}
 
@@ -348,7 +404,7 @@ func (r *DCPFeed) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	return Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, key)
-		if err != nil {
+		if err != nil || r.handleStopAfter(partition, seq) {
 			return err
 		}
 
@@ -368,7 +424,7 @@ func (r *DCPFeed) SnapshotStart(vbucketId uint16,
 	return Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, nil)
-		if err != nil {
+		if err != nil || r.handleStopAfter(partition, 0) {
 			return err
 		}
 
@@ -380,7 +436,7 @@ func (r *DCPFeed) SetMetaData(vbucketId uint16, value []byte) error {
 	return Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, nil)
-		if err != nil {
+		if err != nil || r.handleStopAfter(partition, 0) {
 			return err
 		}
 
@@ -393,7 +449,7 @@ func (r *DCPFeed) GetMetaData(vbucketId uint16) (
 	err = Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, nil)
-		if err != nil {
+		if err != nil || r.handleStopAfter(partition, 0) {
 			return err
 		}
 
@@ -409,7 +465,7 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	return Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, nil)
-		if err != nil {
+		if err != nil || r.handleStopAfter(partition, 0) {
 			return err
 		}
 
@@ -439,9 +495,11 @@ func ParseOpaqueToUUID(b []byte) string {
 	if err != nil {
 		return ""
 	}
+
 	flogLen := len(vmd.FailOverLog)
 	if flogLen < 1 || len(vmd.FailOverLog[flogLen-1]) < 1 {
 		return ""
 	}
+
 	return fmt.Sprintf("%d", vmd.FailOverLog[flogLen-1][0])
 }

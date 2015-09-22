@@ -104,10 +104,22 @@ func DataSourcePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 
 // ------------------------------------------------------------------------
 
+// StopAfterSourceParams defines optional fields for the sourceParams
+// of a feed that allows for "one-time indexing" behavior.  The
+// "stopAfterPartitionSeqs" field allows the user to define sequence
+// numbers per partition that the index must reach before stopping.
+type StopAfterSourceParams struct {
+	// Keyed by source partition.
+	StopAfterPartitionSeqs map[string]UUIDSeq `json:"stopAfterPartitionSeqs"`
+}
+
 // DataSourcePrepParams parses and validates the sourceParams,
-// possibly transforming it by filling out the
-// "stopAfterPartitionSeqs" field if it had a string value of
-// "currentPartitionSeqs".  Returns the transformed sourceParams.
+// possibly transforming it.  One transform is if the
+// "stopAfterPartitionSeqs" field in the sourceParams if it had a
+// string value of "currentPartitionSeqs", then the
+// stopAfterPartitionSeqs will be transformed into a
+// StopAfterPartitionSeqs map[string]UUIDSeq.  DataSourcePrepParams
+// returns the transformed sourceParams.
 func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 	server string) (string, error) {
 	_, err := DataSourcePartitions(sourceType, sourceName, sourceUUID,
