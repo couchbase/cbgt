@@ -12,6 +12,7 @@
 package cbgt
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 )
@@ -85,15 +86,82 @@ func RegisterFeedType(sourceType string, f *FeedType) {
 	FeedTypes[sourceType] = f
 }
 
+// ------------------------------------------------------------------------
+
 // DataSourcePartitions is a helper function that returns the data
 // source partitions for a named data source or feed type.
 func DataSourcePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	server string) ([]string, error) {
 	feedType, exists := FeedTypes[sourceType]
 	if !exists || feedType == nil {
-		return nil, fmt.Errorf("feed: unknown sourceType: %s", sourceType)
+		return nil, fmt.Errorf("feed: DataSourcePartitions"+
+			" unknown sourceType: %s", sourceType)
 	}
 
 	return feedType.Partitions(sourceType, sourceName, sourceUUID,
 		sourceParams, server)
+}
+
+// ------------------------------------------------------------------------
+
+// DataSourcePrepParams parses and validates the sourceParams,
+// possibly transforming it by filling out the
+// "stopAfterPartitionSeqs" field if it had a string value of
+// "currentPartitionSeqs".  Returns the transformed sourceParams.
+func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
+	server string) (string, error) {
+	_, err := DataSourcePartitions(sourceType, sourceName, sourceUUID,
+		sourceParams, server)
+	if err != nil {
+		return "", err
+	}
+
+	if sourceParams == "" {
+		return "", nil
+	}
+
+	feedType, exists := FeedTypes[sourceType]
+	if !exists || feedType == nil {
+		return "", fmt.Errorf("feed: DataSourcePrepParams"+
+			" unknown sourceType: %s", sourceType)
+	}
+
+	if feedType.PartitionSeqs == nil {
+		return sourceParams, nil
+	}
+
+	var sourceParamsMap map[string]interface{}
+	err = json.Unmarshal([]byte(sourceParams), &sourceParamsMap)
+	if err != nil {
+		return "", fmt.Errorf("feed: DataSourcePrepParams"+
+			" json parse sourceParams: %s, err: %v",
+			sourceParams, err)
+	}
+
+	if sourceParamsMap != nil {
+		v, exists := sourceParamsMap["stopAfterPartitionSeqs"]
+		if exists {
+			stopAfterPartitionSeqs, ok := v.(string)
+			if ok && stopAfterPartitionSeqs == "currentPartitionSeqs" {
+				partitionSeqs, err := feedType.PartitionSeqs(
+					sourceType, sourceName, sourceUUID,
+					sourceParams, server)
+				if err != nil {
+					return "", fmt.Errorf("feed: DataSourcePrepParams"+
+						" PartitionSeqs, err: %v", err)
+				}
+
+				sourceParamsMap["stopAfterPartitionSeqs"] = partitionSeqs
+
+				j, err := json.Marshal(sourceParamsMap)
+				if err != nil {
+					return "", err
+				}
+
+				sourceParams = string(j)
+			}
+		}
+	}
+
+	return sourceParams, nil
 }
