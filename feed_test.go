@@ -472,4 +472,49 @@ func TestDataSourcePrepParams(t *testing.T) {
 	if err != nil || a != "{}" {
 		t.Errorf("expected {} data source params to ok")
 	}
+
+	saw_testFeedPartitions := 0
+	saw_testFeedPartitionSeqs := 0
+
+	testFeedPartitions := func(sourceType,
+		sourceName, sourceUUID, sourceParams,
+		serverIn string,
+	) (
+		partitions []string, err error,
+	) {
+		saw_testFeedPartitions++
+		return nil, nil
+	}
+
+	testFeedPartitionSeqs := func(sourceType, sourceName, sourceUUID,
+		sourceParams, serverIn string,
+	) (
+		map[string]UUIDSeq, error,
+	) {
+		saw_testFeedPartitionSeqs++
+		return nil, nil
+	}
+
+	RegisterFeedType("testFeed", &FeedType{
+		Partitions:    testFeedPartitions,
+		PartitionSeqs: testFeedPartitionSeqs,
+	})
+
+	sourceParams := `{"foo":"hoo","stopAfterPartitionSeqs":"currentPartitionSeqs"}`
+	a, err = DataSourcePrepParams("testFeed",
+		"sourceName", "sourceUUID", sourceParams, "serverURL")
+	if err != nil {
+		t.Errorf("expected no err")
+	}
+	if a == sourceParams {
+		t.Errorf("expected transformed data source params")
+	}
+	if saw_testFeedPartitions != 1 {
+		t.Errorf("expected 1 saw_testFeedPartitions call, got: %d",
+			saw_testFeedPartitions)
+	}
+	if saw_testFeedPartitionSeqs != 1 {
+		t.Errorf("expected 1 saw_testFeedPartitionSeqs call, got: %d",
+			saw_testFeedPartitionSeqs)
+	}
 }
