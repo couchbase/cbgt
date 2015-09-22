@@ -130,24 +130,35 @@ func OpenPIndexImpl(indexType, path string, restart func()) (
 // type for a given index.
 func PIndexImplTypeForIndex(cfg Cfg, indexName string) (
 	*PIndexImplType, error) {
+	_, pindexImplType, err := GetIndexDef(cfg, indexName)
+
+	return pindexImplType, err
+}
+
+// GetIndexDef retrieves the IndexDef and PIndexImplType for an index.
+func GetIndexDef(cfg Cfg, indexName string) (
+	*IndexDef, *PIndexImplType, error) {
 	indexDefs, _, err := CfgGetIndexDefs(cfg)
 	if err != nil || indexDefs == nil {
-		return nil, fmt.Errorf("pindex_impl: could not get indexDefs,"+
+		return nil, nil, fmt.Errorf("pindex_impl: could not get indexDefs,"+
 			" indexName: %s, err: %v",
 			indexName, err)
 	}
+
 	indexDef := indexDefs.IndexDefs[indexName]
 	if indexDef == nil {
-		return nil, fmt.Errorf("pindex_impl: no indexDef,"+
+		return nil, nil, fmt.Errorf("pindex_impl: no indexDef,"+
 			" indexName: %s", indexName)
 	}
+
 	pindexImplType := PIndexImplTypes[indexDef.Type]
 	if pindexImplType == nil {
-		return nil, fmt.Errorf("pindex_impl: no pindexImplType,"+
+		return nil, nil, fmt.Errorf("pindex_impl: no pindexImplType,"+
 			" indexName: %s, indexDef.Type: %s",
 			indexName, indexDef.Type)
 	}
-	return pindexImplType, nil
+
+	return indexDef, pindexImplType, nil
 }
 
 // ------------------------------------------------
