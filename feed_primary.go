@@ -102,7 +102,7 @@ func PrimaryFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), dsp)
 		if err != nil {
-			return nil, fmt.Errorf("feed_primary: DataSourcePartitions/dest"+
+			return nil, fmt.Errorf("feed_primary: PrimaryFeedPartitions"+
 				" could not parse sourceParams: %s, err: %v", sourceParams, err)
 		}
 	}
