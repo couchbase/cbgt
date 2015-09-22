@@ -453,3 +453,23 @@ func TestCouchbasePartitions(t *testing.T) {
 		}
 	}
 }
+
+func TestDataSourcePrepParams(t *testing.T) {
+	a, err := DataSourcePrepParams("a fake source type",
+		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+	if err == nil || a != "" {
+		t.Errorf("expected fake data source type to error")
+	}
+
+	a, err = DataSourcePrepParams("primary",
+		"sourceName", "sourceUUID", "", "serverURL")
+	if err != nil || a != "" {
+		t.Errorf("expected empty data source params to ok")
+	}
+
+	a, err = DataSourcePrepParams("primary",
+		"sourceName", "sourceUUID", "{}", "serverURL")
+	if err != nil || a != "{}" {
+		t.Errorf("expected {} data source params to ok")
+	}
+}
