@@ -57,6 +57,7 @@ type Manager struct {
 	dataDir   string
 	server    string // The default datasource that will be indexed.
 	stopCh    chan struct{}
+	options   map[string]string
 
 	m         sync.Mutex
 	feeds     map[string]Feed    // Key is Feed.Name().
@@ -129,6 +130,19 @@ type ManagerEventHandlers interface {
 func NewManager(version string, cfg Cfg, uuid string, tags []string,
 	container string, weight int, extras, bindHttp, dataDir, server string,
 	meh ManagerEventHandlers) *Manager {
+	return NewManagerEx(version, cfg, uuid, tags, container, weight, extras,
+		bindHttp, dataDir, server, meh, nil)
+}
+
+// NewManagerEx returns a new, ready-to-be-started Manager instance,
+// with additional options.
+func NewManagerEx(version string, cfg Cfg, uuid string, tags []string,
+	container string, weight int, extras, bindHttp, dataDir, server string,
+	meh ManagerEventHandlers, options map[string]string) *Manager {
+	if options == nil {
+		options = map[string]string{}
+	}
+
 	return &Manager{
 		startTime: time.Now(),
 		version:   version,
@@ -143,6 +157,7 @@ func NewManager(version string, cfg Cfg, uuid string, tags []string,
 		dataDir:   dataDir,
 		server:    server,
 		stopCh:    make(chan struct{}),
+		options:   options,
 		feeds:     make(map[string]Feed),
 		pindexes:  make(map[string]*PIndex),
 		plannerCh: make(chan *workReq),
