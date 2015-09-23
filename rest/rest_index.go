@@ -16,6 +16,9 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
+
+	log "github.com/couchbase/clog"
 
 	"github.com/couchbaselabs/cbgt"
 )
@@ -184,10 +187,24 @@ func (h *CountHandler) ServeHTTP(
 // QueryHandler is a REST handler for querying an index.
 type QueryHandler struct {
 	mgr *cbgt.Manager
+
+	slowQueryLogTimeout time.Duration
 }
 
 func NewQueryHandler(mgr *cbgt.Manager) *QueryHandler {
-	return &QueryHandler{mgr: mgr}
+	slowQueryLogTimeout := time.Duration(0)
+	slowQueryLogTimeoutV := mgr.Options()["slowQueryLogTimeout"]
+	if slowQueryLogTimeoutV != "" {
+		d, err := time.ParseDuration(slowQueryLogTimeoutV)
+		if err == nil {
+			slowQueryLogTimeout = d
+		}
+	}
+
+	return &QueryHandler{
+		mgr:                 mgr,
+		slowQueryLogTimeout: slowQueryLogTimeout,
+	}
 }
 
 func (h *QueryHandler) RESTOpts(opts map[string]string) {
@@ -223,6 +240,8 @@ func (h *QueryHandler) RESTOpts(opts map[string]string) {
 
 func (h *QueryHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
+	startTime := time.Now()
+
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
 		ShowError(w, req, "index name is required", 400)
@@ -249,6 +268,16 @@ func (h *QueryHandler) ServeHTTP(
 	}
 
 	err = pindexImplType.Query(h.mgr, indexName, indexUUID, requestBody, w)
+
+	if h.slowQueryLogTimeout > time.Duration(0) {
+		d := time.Since(startTime)
+		if d > h.slowQueryLogTimeout {
+			log.Printf("slow-query:"+
+				" index: %s, query: %s, duration: %v, err: %v",
+				indexName, string(requestBody), d, err)
+		}
+	}
+
 	if err != nil {
 		if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
 			rv := struct {
