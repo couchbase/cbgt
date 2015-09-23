@@ -1065,6 +1065,10 @@ func TestUnregisterNodes(t *testing.T) {
 		t.Errorf("expected mgr to be in nodeDefsWanted")
 	}
 
+	if len(m.Options()) != 0 {
+		t.Errorf("expected no options")
+	}
+
 	err = UnregisterNodes(cfg, VERSION, []string{uuid})
 	if err != nil {
 		t.Errorf("expected no err")

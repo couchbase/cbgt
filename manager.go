@@ -610,6 +610,11 @@ func (mgr *Manager) DataDir() string {
 	return mgr.dataDir
 }
 
+// Returns the (read-only) options of a Manager.
+func (mgr *Manager) Options() map[string]string {
+	return mgr.options
+}
+
 // Copies the current manager stats to the dst manager stats.
 func (mgr *Manager) StatsCopyTo(dst *ManagerStats) {
 	mgr.stats.AtomicCopyTo(dst)
