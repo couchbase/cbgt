@@ -300,7 +300,8 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			SplitIndexDefIntoPlanPIndexes(indexDef, server, planPIndexes)
 		if err != nil {
 			log.Printf("planner: could not SplitIndexDefIntoPlanPIndexes,"+
-				" indexDef: %#v, server: %s, err: %v", indexDef, server, err)
+				" indexDef.Name: %s, server: %s, err: %v",
+				indexDef.Name, server, err)
 			continue // Keep planning the other IndexDefs.
 		}
 
@@ -314,8 +315,7 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 
 		for _, warning := range warnings {
 			log.Printf("planner: indexDef.Name: %s,"+
-				" PlanNextMap warning: %s, indexDef: %#v",
-				indexDef.Name, warning, indexDef)
+				" PlanNextMap warning: %s", indexDef.Name, warning)
 		}
 	}
 
@@ -404,7 +404,8 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 		server)
 	if err != nil {
 		return nil, fmt.Errorf("planner: could not get partitions,"+
-			" indexDef: %#v, server: %s, err: %v", indexDef, server, err)
+			" indexDef.Name: %s, server: %s, err: %v",
+			indexDef.Name, server, err)
 	}
 
 	planPIndexesForIndex := map[string]*PlanPIndex{}

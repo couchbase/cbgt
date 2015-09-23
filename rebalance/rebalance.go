@@ -203,14 +203,16 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	r.Log("rebalance: nodesToRemove: %#v", nodesToRemove)
 	r.Log("rebalance: nodeWeights: %#v", nodeWeights)
 	r.Log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
-	r.Log("rebalance: begIndexDefs: %#v", begIndexDefs)
-	r.Log("rebalance: begNodeDefs: %#v", begNodeDefs)
+
+	// r.Log("rebalance: begIndexDefs: %#v", begIndexDefs)
+	// r.Log("rebalance: begNodeDefs: %#v", begNodeDefs)
+
 	r.Log("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
 
-	begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
-
-	r.Log("rebalance: begPlanPIndexes: %s, cas: %v",
-		begPlanPIndexesJSON, begPlanPIndexesCAS)
+	// begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
+	//
+	// r.Log("rebalance: begPlanPIndexes: %s, cas: %v",
+	// 	begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// TODO: Prepopulate currStates so that we can double-check that
 	// our state transitions in assignPartition are valid.
@@ -485,8 +487,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	if err != nil {
 		r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
-			" indexDef: %#v, server: %s, err: %v",
-			indexDef.Name, indexDef, r.server, err)
+			" server: %s, err: %v", indexDef.Name, r.server, err)
 
 		return partitionModel, begMap, endMap, err
 	}
@@ -501,8 +502,8 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 	for _, warning := range warnings {
 		r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
-			" BlancePlanPIndexes warning: %q, indexDef: %#v",
-			indexDef.Name, warning, indexDef)
+			" BlancePlanPIndexes warning: %q",
+			indexDef.Name, warning)
 	}
 
 	j, _ := json.Marshal(r.endPlanPIndexes)
@@ -825,11 +826,11 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 
 						r.Log("rebalance:"+
 							" waitAssignPIndexDone sample error,"+
-							" uuid mismatch, indexDef: %#v,"+
-							" indexDef: %#v, sourcePartition: %s,"+
-							" node: %s, state: %q, op: %s,"+
-							" uuidSeqWant: %+v, sample: %#v",
-							indexDef, sourcePartition, node,
+							" uuid mismatch, index: %s,"+
+							" sourcePartition: %s, node: %s,"+
+							" state: %q, op: %s, uuidSeqWant: %+v,"+
+							" sample: %#v",
+							indexDef.Name, sourcePartition, node,
 							state, op, uuidSeqWant, sample)
 
 						continue
