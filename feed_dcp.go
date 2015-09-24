@@ -187,7 +187,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 		}
 
 		stopAfterSourceParams := StopAfterSourceParams{}
-		err = json.Unmarshal([]byte(paramsStr), &stopAfter)
+		err = json.Unmarshal([]byte(paramsStr), &stopAfterSourceParams)
 		if err != nil {
 			return nil, err
 		}
