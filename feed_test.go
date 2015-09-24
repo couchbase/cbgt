@@ -500,7 +500,7 @@ func TestDataSourcePrepParams(t *testing.T) {
 		PartitionSeqs: testFeedPartitionSeqs,
 	})
 
-	sourceParams := `{"foo":"hoo","stopAfterPartitionSeqs":"currentPartitionSeqs"}`
+	sourceParams := `{"foo":"hoo","markPartitionSeqs":"currentPartitionSeqs"}`
 	a, err = DataSourcePrepParams("testFeed",
 		"sourceName", "sourceUUID", sourceParams, "serverURL")
 	if err != nil {

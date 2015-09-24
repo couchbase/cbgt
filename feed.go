@@ -80,6 +80,18 @@ type UUIDSeq struct {
 	Seq  uint64
 }
 
+// StopAfterSourceParams defines optional fields for the sourceParams
+// that can stop the data source feed (i.e., index ingest) if the seqs
+// per partition have been reached.  It can be used, for example, to
+// help with "one-time indexing" behavior.
+type StopAfterSourceParams struct {
+	// Valid values: "", "markReached".
+	StopAfter string `json:"stopAfter"`
+
+	// Keyed by source partition.
+	MarkPartitionSeqs map[string]UUIDSeq `json:"markPartitionSeqs"`
+}
+
 // RegisterFeedType is invoked at init/startup time to register a
 // FeedType.
 func RegisterFeedType(sourceType string, f *FeedType) {
@@ -104,21 +116,11 @@ func DataSourcePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 
 // ------------------------------------------------------------------------
 
-// StopAfterSourceParams defines optional fields for the sourceParams
-// of a feed that allows for "one-time indexing" behavior.  The
-// "stopAfterPartitionSeqs" field allows the user to define sequence
-// numbers per partition that the index must reach before stopping.
-type StopAfterSourceParams struct {
-	// Keyed by source partition.
-	StopAfterPartitionSeqs map[string]UUIDSeq `json:"stopAfterPartitionSeqs"`
-}
-
 // DataSourcePrepParams parses and validates the sourceParams,
 // possibly transforming it.  One transform is if the
-// "stopAfterPartitionSeqs" field in the sourceParams if it had a
-// string value of "currentPartitionSeqs", then the
-// stopAfterPartitionSeqs will be transformed into a
-// StopAfterPartitionSeqs map[string]UUIDSeq.  DataSourcePrepParams
+// "markPartitionSeqs" field in the sourceParams has a string value of
+// "currentPartitionSeqs", then the markPartitionSeqs will be
+// transformed into a map[string]UUIDSeq.  DataSourcePrepParams
 // returns the transformed sourceParams.
 func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 	server string) (string, error) {
@@ -151,10 +153,10 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 	}
 
 	if sourceParamsMap != nil {
-		v, exists := sourceParamsMap["stopAfterPartitionSeqs"]
+		v, exists := sourceParamsMap["markPartitionSeqs"]
 		if exists {
-			stopAfterPartitionSeqs, ok := v.(string)
-			if ok && stopAfterPartitionSeqs == "currentPartitionSeqs" {
+			markPartitionSeqs, ok := v.(string)
+			if ok && markPartitionSeqs == "currentPartitionSeqs" {
 				partitionSeqs, err := feedType.PartitionSeqs(
 					sourceType, sourceName, sourceUUID,
 					sourceParams, server)
@@ -163,7 +165,7 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 						" PartitionSeqs, err: %v", err)
 				}
 
-				sourceParamsMap["stopAfterPartitionSeqs"] = partitionSeqs
+				sourceParamsMap["markPartitionSeqs"] = partitionSeqs
 
 				j, err := json.Marshal(sourceParamsMap)
 				if err != nil {

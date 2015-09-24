@@ -178,7 +178,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool) (*DCPFeed, error) {
 	params := NewDCPFeedParams()
-	stopAfter := StopAfterSourceParams{}
+	var stopAfter map[string]UUIDSeq
 
 	if paramsStr != "" {
 		err := json.Unmarshal([]byte(paramsStr), params)
@@ -186,9 +186,14 @@ func NewDCPFeed(name, indexName, url, poolName,
 			return nil, err
 		}
 
+		stopAfterSourceParams := StopAfterSourceParams{}
 		err = json.Unmarshal([]byte(paramsStr), &stopAfter)
 		if err != nil {
 			return nil, err
+		}
+
+		if stopAfterSourceParams.StopAfter == "markReached" {
+			stopAfter = stopAfterSourceParams.MarkPartitionSeqs
 		}
 	}
 
@@ -250,7 +255,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 		pf:         pf,
 		dests:      dests,
 		disable:    disable,
-		stopAfter:  stopAfter.StopAfterPartitionSeqs,
+		stopAfter:  stopAfter,
 		stats:      NewDestStats(),
 	}
 
