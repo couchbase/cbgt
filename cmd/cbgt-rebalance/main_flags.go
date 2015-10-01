@@ -159,7 +159,7 @@ func initFlags(flags *Flags) map[string][]string {
 		fmt.Fprintf(os.Stderr, examples)
 		fmt.Fprintf(os.Stderr, "\nSee also:"+
 			" http://github.com"+
-			"/couchbaselabs/cbgt/tree/master/cmd/cbgt-rebalance\n\n")
+			"/couchbase/cbgt/tree/master/cmd/cbgt-rebalance\n\n")
 	}
 
 	return flagAliases

@@ -21,9 +21,9 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/blance"
-	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/rest/monitor"
+	"github.com/couchbase/blance"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/rest/monitor"
 )
 
 var ErrorNotPausable = errors.New("not pausable")

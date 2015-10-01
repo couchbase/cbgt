@@ -21,7 +21,7 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 func MainCommon(version string, flagAliases map[string][]string) {

@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 // MainUUID is a helper function for cmd-line tool developers, that

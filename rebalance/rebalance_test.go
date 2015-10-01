@@ -21,11 +21,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/couchbaselabs/blance"
+	"github.com/couchbase/blance"
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 func TestRebalance(t *testing.T) {

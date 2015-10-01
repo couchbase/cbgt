@@ -12,7 +12,7 @@ package rest
 import (
 	"net/http"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 // ManagerMetaHandler is a REST handler that returns metadata about a

@@ -20,7 +20,7 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 // ListIndexHandler is a REST handler for list indexes.

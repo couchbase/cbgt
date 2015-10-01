@@ -18,7 +18,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 var ErrorBindHttp = errors.New("main_cfg:" +

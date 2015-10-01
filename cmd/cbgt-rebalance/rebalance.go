@@ -16,10 +16,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/couchbaselabs/blance"
+	"github.com/couchbase/blance"
 
-	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/rebalance"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/rebalance"
 )
 
 func runRebalance(cfg cbgt.Cfg, server string, nodesToRemove []string,

@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbaselabs/blance"
+	"github.com/couchbase/blance"
 )
 
 // NOTE: You *must* update VERSION if the planning algorithm or config

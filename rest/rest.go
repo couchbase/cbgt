@@ -27,7 +27,7 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 var StartTime = time.Now()

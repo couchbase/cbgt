@@ -20,8 +20,8 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/cmd"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/cmd"
 )
 
 func main() {

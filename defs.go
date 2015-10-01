@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/couchbaselabs/blance"
+	"github.com/couchbase/blance"
 )
 
 // JSON/struct definitions of what the Manager stores in the Cfg.

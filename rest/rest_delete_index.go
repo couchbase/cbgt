@@ -17,7 +17,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 // DeleteIndexHandler is a REST handler that processes an index

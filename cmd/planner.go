@@ -16,7 +16,7 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
+	"github.com/couchbase/cbgt"
 )
 
 // PlannerSteps helps command-line tools implement the planner steps:

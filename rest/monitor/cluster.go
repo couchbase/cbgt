@@ -23,8 +23,8 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbaselabs/cbgt"
-	"github.com/couchbaselabs/cbgt/rest"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/rest"
 )
 
 // A MonitorCluster struct holds all the tracking information for the
