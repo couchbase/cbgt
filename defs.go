@@ -83,6 +83,12 @@ type PlanParams struct {
 	// and/or any indexDef.
 	NodePlanParams map[string]map[string]*NodePlanParam `json:"nodePlanParams"`
 
+	// PIndexWeights allows users to specify an optional weight for a
+	// PIndex, where weights default to 1.  In a range-partitioned
+	// index, for example, some index partitions (or PIndexes) may
+	// have more entries (higher weight) than other index partitions.
+	PIndexWeights map[string]int `json:"pindexWeights"`
+
 	// PlanFrozen means the planner should not change the previous
 	// plan for an index, even if as nodes join or leave and even if
 	// there was no previous plan.  Defaults to false (allow

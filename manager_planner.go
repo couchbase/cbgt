@@ -19,8 +19,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	log "github.com/couchbase/clog"
 	"github.com/couchbase/blance"
+	log "github.com/couchbase/clog"
 )
 
 // NOTE: You *must* update VERSION if the planning algorithm or config
@@ -471,8 +471,7 @@ func BlancePlanPIndexes(mode string,
 	// First, reconstruct previous blance map from planPIndexesPrev.
 	blancePrevMap := BlanceMap(planPIndexesForIndex, planPIndexesPrev)
 
-	// TODO: Leverage blance's partition weight features.
-	partitionWeights := map[string]int(nil)
+	partitionWeights := indexDef.PlanParams.PIndexWeights
 
 	stateStickiness := map[string]int(nil)
 	if mode == "failover" {
