@@ -30,7 +30,7 @@ const VERSION = "4.1.0"
 const VERSION_KEY = "version"
 
 // Returns true if a given version is modern enough to modify the Cfg.
-// Older versions (which are running with older JSON/struct defintions
+// Older versions (which are running with older JSON/struct definitions
 // or planning algorithms) will see false from their CheckVersion()'s.
 func CheckVersion(cfg Cfg, myVersion string) (bool, error) {
 	for cfg != nil {
