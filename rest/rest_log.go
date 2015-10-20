@@ -35,13 +35,15 @@ func NewLogGetHandler(
 func (h *LogGetHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(`{"messages":[`))
-	for i, message := range h.mr.Messages() {
-		buf, err := json.Marshal(string(message))
-		if err == nil {
-			if i > 0 {
-				w.Write(cbgt.JsonComma)
+	if h.mr != nil {
+		for i, message := range h.mr.Messages() {
+			buf, err := json.Marshal(string(message))
+			if err == nil {
+				if i > 0 {
+					w.Write(cbgt.JsonComma)
+				}
+				w.Write(buf)
 			}
-			w.Write(buf)
 		}
 	}
 	w.Write([]byte(`],"events":[`))
