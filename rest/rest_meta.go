@@ -49,6 +49,8 @@ type MetaDescIndex struct {
 
 	QuerySamples interface{} `json:"querySamples"`
 	QueryHelp    string      `json:"queryHelp"`
+
+	UI map[string]string `json:"ui"`
 }
 
 func (h *ManagerMetaHandler) ServeHTTP(
@@ -82,6 +84,7 @@ func (h *ManagerMetaHandler) ServeHTTP(
 			CanCount:  t.Count != nil,
 			CanQuery:  t.Query != nil,
 			QueryHelp: t.QueryHelp,
+			UI:        t.UI,
 		}
 
 		if t.QuerySamples != nil {

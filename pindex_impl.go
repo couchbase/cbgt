@@ -87,6 +87,10 @@ type PIndexImplType struct {
 	// Optional, allows pindex implementaiton to add more information
 	// to the REST /api/managerMeta output.
 	MetaExtra func(map[string]interface{})
+
+	// Optional, allows pindex implementation to specify advanced UI
+	// implementations and information.
+	UI map[string]string
 }
 
 // PIndexImplTypes is a global registry of pindex type backends or

@@ -161,13 +161,13 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
                     meta &&
                     meta.indexTypes &&
                     meta.indexTypes[data.indexDef.type] &&
-                    meta.indexTypes[data.indexDef.type].canCount
+                    meta.indexTypes[data.indexDef.type].canCount;
 
                 $scope.indexCanQuery =
                     meta &&
                     meta.indexTypes &&
                     meta.indexTypes[data.indexDef.type] &&
-                    meta.indexTypes[data.indexDef.type].canQuery
+                    meta.indexTypes[data.indexDef.type].canQuery;
 
                 $scope.indexCanWrite =
                     !data.indexDef ||
@@ -176,6 +176,7 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
                     !data.indexDef.planParams.nodePlanParams[''] ||
                     !data.indexDef.planParams.nodePlanParams[''][''] ||
                     data.indexDef.planParams.nodePlanParams[''][''].canWrite;
+
                 $scope.indexCanRead =
                     !data.indexDef ||
                     !data.indexDef.planParams ||
@@ -183,10 +184,25 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
                     !data.indexDef.planParams.nodePlanParams[''] ||
                     !data.indexDef.planParams.nodePlanParams[''][''] ||
                     data.indexDef.planParams.nodePlanParams[''][''].canRead;
+
                 $scope.indexPlanFrozen =
                     data.indexDef &&
                     data.indexDef.planParams &&
                     data.indexDef.planParams.planFrozen;
+
+                $scope.indexUI =
+                    (meta &&
+                     meta.indexTypes &&
+                     meta.indexTypes[data.indexDef.type] &&
+                     meta.indexTypes[data.indexDef.type].ui);
+                if ($scope.indexUI &&
+                    $scope.indexUI.controllerInitName &&
+                    typeof(window[$scope.indexUI.controllerInitName]) == "function") {
+                    window[$scope.indexUI.controllerInitName](
+                        "view", data.indexDef.params, $scope.indexUI,
+                        $scope, $http, $route, $routeParams,
+                        $location, $log, $sce);
+                }
             }).
             error(function(data, code) {
                 $scope.errorMessage = errorMessage(data, code);
@@ -355,7 +371,7 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
     };
 }
 
-function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
+function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
     $scope.advancedFields = {
         "store": true
     };
@@ -384,7 +400,7 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     $http.get('/api/managerMeta').
     success(function(data) {
-        $scope.meta = data;
+        var meta = $scope.meta = data;
 
         var sourceTypesArr = []
         for (var k in data.sourceTypes) {
@@ -419,6 +435,16 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                 $scope.paramNumLines[j] =
                     $scope.newIndexParams[k][j].split("\n").length + 1;
             }
+
+            var indexUI = data.indexTypes[k].ui;
+            if (indexUI &&
+                indexUI.controllerInitName &&
+                typeof(window[indexUI.controllerInitName]) == "function") {
+                window[indexUI.controllerInitName](
+                    "create", null, indexUI,
+                    $scope, $http, $route, $routeParams,
+                    $location, $log, $sce);
+            }
         }
         indexTypesArr.sort(compareCategoryLabel);
         $scope.indexTypesArr = indexTypesArr;
@@ -428,7 +454,8 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.paramNumLines["planParams"] =
             $scope.newPlanParams.split("\n").length + 1;
 
-        if (origIndexName && origIndexName.length > 0) {
+        if (origIndexName &&
+            origIndexName.length > 0) {
             $http.get('/api/index/' + origIndexName).
             success(function(data) {
                 $scope.newIndexName = data.indexDef.name;
@@ -458,6 +485,20 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                 $scope.prevIndexUUID = "";
                 if ($scope.isEdit) {
                     $scope.prevIndexUUID = data.indexDef.uuid;
+                }
+
+                $scope.indexUI =
+                    meta &&
+                    meta.indexTypes &&
+                    meta.indexTypes[data.indexDef.type] &&
+                    meta.indexTypes[data.indexDef.type].ui;
+                if ($scope.indexUI &&
+                    $scope.indexUI.controllerInitName &&
+                    typeof(window[$scope.indexUI.controllerInitName]) == "function") {
+                    window[$scope.indexUI.controllerInitName](
+                        "edit", data.indexDef.params, $scope.indexUI,
+                        $scope, $http, $route, $routeParams,
+                        $location, $log, $sce);
                 }
             }).
             error(function(data, code) {
@@ -522,6 +563,15 @@ function IndexNewCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             !$scope.isEdit &&
             !$scope.isClone) {
             indexParamsObj.mapping = fixupMapping(bleveMapping);
+        }
+
+        if ($scope.indexUI &&
+            $scope.indexUI.controllerDoneName &&
+            typeof(window[$scope.indexUI.controllerDoneName]) == "function") {
+            window[$scope.indexUI.controllerDoneName](
+                "done", indexParamsObj, $scope.indexUI,
+                $scope, $http, $route, $routeParams,
+                $location, $log, $sce);
         }
 
         if (sourceParams[sourceType]) {
