@@ -459,6 +459,72 @@ func TestHandlersForEmptyManager(t *testing.T) {
 				`error`: true,
 			},
 		},
+		{
+			Desc:   "create a blackhole index",
+			Path:   "/api/index/bh0",
+			Method: "PUT",
+			Params: url.Values{
+				"indexType":  []string{"blackhole"},
+				"sourceType": []string{"nil"},
+			},
+			Body:   nil,
+			Status: 200,
+		},
+		{
+			Desc:   "create a blackhole index via body",
+			Path:   "/api/index/bh1",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","sourceType":"nil"}`),
+			Status: 200,
+		},
+		{
+			Desc:   "create a blackhole index, bad params",
+			Path:   "/api/index/bh2",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","params":666,"sourceType":"nil"}`),
+			Status: 400,
+			ResponseMatch: map[string]bool{
+				`cannot unmarshal number into Go value`: true,
+			},
+		},
+		{
+			Desc:   "create a blackhole index, bad params",
+			Path:   "/api/index/bh2",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","params":"hi","sourceType":"nil"}`),
+			Status: 200,
+		},
+		{
+			Desc:   "create a blackhole index, bad params",
+			Path:   "/api/index/bh3",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","params":{},"sourceType":"nil"}`),
+			Status: 200,
+		},
+		{
+			Desc:   "create a blackhole index, bad sourceParams",
+			Path:   "/api/index/bh2s",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","sourceParams":666,"sourceType":"nil"}`),
+			Status: 400,
+			ResponseMatch: map[string]bool{
+				`cannot unmarshal number into Go value`: true,
+			},
+		},
+		{
+			Desc:   "create a blackhole index, bad sourceParams",
+			Path:   "/api/index/bh2s",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","sourceParams":"hi","sourceType":"nil"}`),
+			Status: 200,
+		},
+		{
+			Desc:   "create a blackhole index, bad sourceParams",
+			Path:   "/api/index/bh3s",
+			Method: "PUT",
+			Body:   []byte(`{"type":"blackhole","sourceParams":{},"sourceType":"nil"}`),
+			Status: 200,
+		},
 	}
 
 	testRESTHandlers(t, tests, router)

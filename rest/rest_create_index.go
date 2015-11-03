@@ -24,6 +24,17 @@ import (
 	"github.com/couchbase/cbgt"
 )
 
+// An IndexDefNested overrides IndexDef with Params and SourceParams
+// fields that are JSON nested objects instead of strings, for
+// easier-to-use API.
+type IndexDefNested struct {
+	cbgt.IndexDef
+
+	Params map[string]interface{} `json:"params"`
+
+	SourceParams map[string]interface{} `json:"sourceParams"`
+}
+
 // CreateIndexHandler is a REST handler that processes an index
 // creation request.
 type CreateIndexHandler struct {
@@ -140,13 +151,27 @@ func (h *CreateIndexHandler) ServeHTTP(
 	}
 
 	var indexDef cbgt.IndexDef
+
 	if len(requestBody) > 0 {
 		err := json.Unmarshal(requestBody, &indexDef)
 		if err != nil {
-			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
-				" could not unmarshal json, indexName: %s, err: %v",
-				indexName, err), 400)
-			return
+			var indexDefNested IndexDefNested
+
+			err = json.Unmarshal(requestBody, &indexDefNested)
+			if err != nil {
+				ShowError(w, req, fmt.Sprintf("rest_create_index:"+
+					" could not unmarshal json, indexName: %s, err: %v",
+					indexName, err), 400)
+				return
+			}
+
+			indexDef = indexDefNested.IndexDef
+
+			jp, _ := json.Marshal(indexDefNested.Params)
+			indexDef.Params = string(jp)
+
+			js, _ := json.Marshal(indexDefNested.SourceParams)
+			indexDef.SourceParams = string(js)
 		}
 	}
 
