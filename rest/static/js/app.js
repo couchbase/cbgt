@@ -8,7 +8,6 @@ angular.module('myApp', [
   'myApp.directives',
   'myApp.controllers',
   'expvar',
-  'angularTreeview',
   'ui.sortable',
   'ui.bootstrap.transition',
   'ui.bootstrap.modal',
