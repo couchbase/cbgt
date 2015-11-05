@@ -56,7 +56,7 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.refreshIndexNames();
 }
 
-function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
+function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $uibModal) {
 
     $scope.errorMessage = null;
     $scope.errorMessageFull = null;
@@ -201,7 +201,7 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
                     window[$scope.indexUI.controllerInitName](
                         "view", data.indexDef.params, $scope.indexUI,
                         $scope, $http, $route, $routeParams,
-                        $location, $log, $sce);
+                        $location, $log, $sce, $uibModal);
                 }
             }).
             error(function(data, code) {
@@ -370,7 +370,7 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
     };
 }
 
-function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
+function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $uibModal) {
     $scope.advancedFields = {
         "store": true
     };
@@ -442,7 +442,7 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 window[indexUI.controllerInitName](
                     "create", null, indexUI,
                     $scope, $http, $route, $routeParams,
-                    $location, $log, $sce);
+                    $location, $log, $sce, $uibModal);
             }
         }
         indexTypesArr.sort(compareCategoryLabel);
@@ -561,7 +561,7 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             window[$scope.indexUI.controllerDoneName](
                 "done", indexParamsObj, $scope.indexUI,
                 $scope, $http, $route, $routeParams,
-                $location, $log, $sce);
+                $location, $log, $sce, $uibModal);
         }
 
         if (sourceParams[sourceType]) {

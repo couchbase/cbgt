@@ -34,7 +34,7 @@
       </select>
     </div>
   </div>
-  <div ng-if="newIndexType && indexTemplates &&indexTemplates[newIndexType]">
+  <div ng-if="newIndexType && indexTemplates && indexTemplates[newIndexType]">
     <div ng-include="indexTemplates[newIndexType]"/>
   </div>
   <div ng-show="newIndexType && newIndexType != 'blackhole' && (!indexTemplates || !indexTemplates[newIndexType])"
