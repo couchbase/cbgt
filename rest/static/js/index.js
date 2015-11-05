@@ -252,8 +252,7 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce) {
                 for (var k in data[aa]) {
                     var kk = data[aa][k];
                     // The j is category of stats, like basic,
-                    // bleveKVStoreStats, pindexStoreStats,
-                    // bucketDataSourceStats, destStats.
+                    // pindexStoreStats, bucketDataSourceStats, destStats, etc.
                     for (var j in kk) {
                         if (j == "partitions") { // Skip partition seq's/uuid's.
                             continue
@@ -511,8 +510,7 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
     $scope.putIndex = function(indexName, indexType, indexParams,
                                sourceType, sourceName,
                                sourceUUID, sourceParams,
-                               planParams, prevIndexUUID,
-                               bleveMapping) {
+                               planParams, prevIndexUUID) {
         $scope.errorFields = {};
         $scope.errorMessage = null;
         $scope.errorMessageFull = null;
@@ -555,14 +553,6 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                     "error: could not JSON parse index parameter: " + k;
                 return
             }
-        }
-
-        // Special case for bleve/http/mapping UI editor.
-        if (indexType == "bleve" &&
-            bleveMapping != null &&
-            !$scope.isEdit &&
-            !$scope.isClone) {
-            indexParamsObj.mapping = fixupMapping(bleveMapping);
         }
 
         if ($scope.indexUI &&
@@ -693,30 +683,4 @@ function compareTime(a, b) { // More recent first.
         return -1;
     }
     return 0;
-}
-
-function fixupEmptyFields(m) { // Originally from bleve-explorer.
-	var keepFields = [];
-	for (var fieldIndex in m.fields) {
-		if (m.fields[fieldIndex].type !== '') {
-			keepFields.push(m.fields[fieldIndex]);
-		}
-	}
-	m.fields = keepFields;
-
-	for (var propertyName in m.properties) {
-		fixupEmptyFields(m.properties[propertyName]);
-	}
-}
-
-function fixupMapping(m) { // Originally from bleve-explorer.
-	var newMapping = JSON.parse(JSON.stringify(m));
-    if (newMapping.default_mapping) {
-	    fixupEmptyFields(newMapping.default_mapping);
-	    for (var typeName in newMapping.types) {
-		    fixupEmptyFields(newmapping.types[typeName]);
-	    }
-    }
-
-	return newMapping;
 }

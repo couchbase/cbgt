@@ -34,12 +34,10 @@
       </select>
     </div>
   </div>
-  <div ng-if="newIndexType && newIndexType == 'bleve' && !isEdit && !isClone"
-       class="bleveMapping">
-    <div ng-controller="MappingCtrl"
-         ng-include="'/static/partials/mapping/mapping.html'"/>
+  <div ng-if="newIndexType && indexTemplates &&indexTemplates[newIndexType]">
+    <div ng-include="indexTemplates[newIndexType]"/>
   </div>
-  <div ng-show="newIndexType && newIndexType != 'blackhole' && !(newIndexType == 'bleve' && !isEdit && !isClone)"
+  <div ng-show="newIndexType && newIndexType != 'blackhole' && (!indexTemplates || !indexTemplates[newIndexType])"
        ng-repeat="(indexType, p) in newIndexParams">
     <div class="form-group"
          ng-repeat="(k, v) in p"
@@ -148,8 +146,5 @@ form input.advanced {
 }
 form .newIndexSubmit {
   margin-top: 20px;
-}
-.bleveMapping .alert {
-  display: none;
 }
 </style>
