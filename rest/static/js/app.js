@@ -1,15 +1,14 @@
 'use strict';
 
 // Declare app level module which depends on filters, and services
-angular.module('myApp', [
+angular.module('cbgtApp', [
   'ngRoute',
-  'myApp.filters',
-  'myApp.services',
-  'myApp.directives',
-  'myApp.controllers',
+  'cbgtApp.filters',
+  'cbgtApp.services',
+  'cbgtApp.directives',
+  'cbgtApp.controllers',
   'expvar',
   'ui.sortable',
-  'ui.bootstrap.transition',
   'ui.bootstrap.modal',
   'ui.bootstrap.tabs'
 ]).

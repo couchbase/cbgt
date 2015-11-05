@@ -2,7 +2,7 @@
 
 /* Controllers */
 
-angular.module('myApp.controllers', []);
+angular.module('cbgtApp.controllers', []);
 
 function errorMessage(errorMessageFull, code) {
     console.log("errorMessageFull", errorMessageFull, code);
