@@ -7,8 +7,10 @@ var cbgtApp = angular.module('cbgtApp', [
   'cbgtApp.services',
   'cbgtApp.directives',
   'expvar',
+  'ui.bootstrap',
   'ui.bootstrap.modal',
-  'ui.bootstrap.tabs'
+  'ui.bootstrap.tabs',
+  'ui.tree'
 ]);
 
 cbgtApp.config(['$routeProvider', '$locationProvider',
