@@ -20,6 +20,14 @@
   <dd>{{indexDef.uuid}}</dd>
   <dt>Index Type:</dt>
   <dd>{{indexDef.type}}</dd>
+  <div ng-if="indexTemplates && indexTemplates[indexDef.type]">
+    <dt></dt>
+    <dd>
+      <div class="indexViewer {{indexDef.type}}">
+        <div ng-include="indexTemplates[indexDef.type]"/>
+      </div>
+    </dd>
+  </div>
   <dt>Source Type:</dt>
   <dd>{{indexDef.sourceType}}</dd>
   <dt>Source Name:</dt>
