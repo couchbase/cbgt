@@ -34,8 +34,14 @@
       </select>
     </div>
   </div>
-  <div ng-if="newIndexType && indexTemplates && indexTemplates[newIndexType]">
-    <div ng-include="indexTemplates[newIndexType]"/>
+  <div ng-if="newIndexType && indexTemplates && indexTemplates[newIndexType]"
+       class="form-group">
+    <label class="col-sm-2 control-label"></label>
+    <div class="col-sm-8">
+      <div class="indexEditor {{newIndexType}}">
+        <div ng-include="indexTemplates[newIndexType]"/>
+      </div>
+    </div>
   </div>
   <div ng-show="newIndexType && newIndexType != 'blackhole' && (!indexTemplates || !indexTemplates[newIndexType])"
        ng-repeat="(indexType, p) in newIndexParams">
