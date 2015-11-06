@@ -56,10 +56,6 @@ cbgtApp.config(['$routeProvider', '$locationProvider',
                       {templateUrl: '/static/partials/logs.html',
                        controller: 'LogsCtrl'});
 
-  $routeProvider.when('/debug/',
-                      {templateUrl: '/static/partials/debug.html',
-                       controller: 'DebugCtrl'});
-
   $routeProvider.otherwise({redirectTo: '/indexes'});
 
   $locationProvider.html5Mode(true);
