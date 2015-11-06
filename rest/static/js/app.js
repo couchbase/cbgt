@@ -1,18 +1,18 @@
 'use strict';
 
 // Declare app level module which depends on filters, and services
-angular.module('cbgtApp', [
+var cbgtApp = angular.module('cbgtApp', [
   'ngRoute',
   'cbgtApp.filters',
   'cbgtApp.services',
   'cbgtApp.directives',
-  'cbgtApp.controllers',
   'expvar',
-  'ui.sortable',
   'ui.bootstrap.modal',
   'ui.bootstrap.tabs'
-]).
-config(['$routeProvider', '$locationProvider', function($routeProvider, $locationProvider) {
+]);
+
+cbgtApp.config(['$routeProvider', '$locationProvider',
+ function($routeProvider, $locationProvider) {
   $routeProvider.when('/indexes/',
                       {templateUrl: '/static/partials/index/list.html',
                        controller: 'IndexesCtrl'});
@@ -59,5 +59,6 @@ config(['$routeProvider', '$locationProvider', function($routeProvider, $locatio
                        controller: 'DebugCtrl'});
 
   $routeProvider.otherwise({redirectTo: '/indexes'});
+
   $locationProvider.html5Mode(true);
 }]);
