@@ -22,7 +22,7 @@ function NodeCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         return ('#1' + v1 + v2 + v2);
     }
 
-    $scope.cfgGet = function(name, mapping) {
+    $scope.cfgGet = function() {
         $scope.resultCfg = null;
         $scope.resultCfgJSON = null;
         $scope.nodeDefsKnownArrOrderByHostPort = [];

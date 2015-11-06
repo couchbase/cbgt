@@ -3,7 +3,7 @@ function LogsCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 	$scope.errorMessage = null;
 	$scope.logMessages = "";
 
-	$scope.updateLogs = function(name, mapping) {
+	$scope.updateLogs = function() {
 		$scope.clearErrorMessage();
 		$scope.clearLogMessages();
 		$http.get('/api/log').success(function(data) {

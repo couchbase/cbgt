@@ -15,7 +15,7 @@ function ManageCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         });
     };
 
-    $scope.cfgGet = function(name, mapping) {
+    $scope.cfgGet = function() {
         $scope.resultCfg = null;
         $scope.resultCfgJSON = null;
         $http.get('/api/cfg').success(function(data) {
