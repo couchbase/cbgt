@@ -190,16 +190,16 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
                     data.indexDef.planParams &&
                     data.indexDef.planParams.planFrozen;
 
-                $scope.indexUI =
+                var indexUI =
                     (meta &&
                      meta.indexTypes &&
                      meta.indexTypes[data.indexDef.type] &&
                      meta.indexTypes[data.indexDef.type].ui);
-                if ($scope.indexUI &&
-                    $scope.indexUI.controllerInitName &&
-                    typeof(window[$scope.indexUI.controllerInitName]) == "function") {
-                    window[$scope.indexUI.controllerInitName](
-                        "view", data.indexDef.params, $scope.indexUI,
+                if (indexUI &&
+                    indexUI.controllerInitName &&
+                    typeof(window[indexUI.controllerInitName]) == "function") {
+                    window[indexUI.controllerInitName](
+                        "view", data.indexDef.params, indexUI,
                         $scope, $http, $route, $routeParams,
                         $location, $log, $sce, $uibModal);
                 }
@@ -486,18 +486,18 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                     $scope.prevIndexUUID = data.indexDef.uuid;
                 }
 
-                $scope.indexUI =
+                var indexUI =
                     meta &&
                     meta.indexTypes &&
                     meta.indexTypes[data.indexDef.type] &&
                     meta.indexTypes[data.indexDef.type].ui;
-                if ($scope.indexUI &&
-                    $scope.indexUI.controllerInitName &&
-                    typeof(window[$scope.indexUI.controllerInitName]) == "function") {
-                    window[$scope.indexUI.controllerInitName](
-                        "edit", data.indexDef.params, $scope.indexUI,
+                if (indexUI &&
+                    indexUI.controllerInitName &&
+                    typeof(window[indexUI.controllerInitName]) == "function") {
+                    window[indexUI.controllerInitName](
+                        "edit", JSON.parse(data.indexDef.params), indexUI,
                         $scope, $http, $route, $routeParams,
-                        $location, $log, $sce);
+                        $location, $log, $sce, $uibModal);
                 }
             }).
             error(function(data, code) {
@@ -555,13 +555,20 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             }
         }
 
-        if ($scope.indexUI &&
-            $scope.indexUI.controllerDoneName &&
-            typeof(window[$scope.indexUI.controllerDoneName]) == "function") {
-            window[$scope.indexUI.controllerDoneName](
-                "done", indexParamsObj, $scope.indexUI,
+        var indexUI =
+            $scope.meta &&
+            $scope.meta.indexTypes &&
+            $scope.meta.indexTypes[indexType] &&
+            $scope.meta.indexTypes[indexType].ui;
+        if (indexUI &&
+            indexUI.controllerDoneName &&
+            typeof(window[indexUI.controllerDoneName]) == "function") {
+            if (window[indexUI.controllerDoneName](
+                "done", indexParamsObj, indexUI,
                 $scope, $http, $route, $routeParams,
-                $location, $log, $sce, $uibModal);
+                $location, $log, $sce, $uibModal)) {
+                return // Possibly due to validation error.
+            }
         }
 
         if (sourceParams[sourceType]) {
