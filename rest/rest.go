@@ -103,32 +103,35 @@ func NewRESTRouter(versionMain string, mgr *cbgt.Manager,
 	assetDir func(name string) ([]string, error),
 	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
+	prefix := mgr.Options()["urlPrefix"]
+
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 
-	r = InitStaticRouter(r,
+	r = InitStaticRouterEx(r,
 		staticDir, staticETag, []string{
-			"/indexes",
-			"/nodes",
-			"/monitor",
-			"/manage",
-			"/logs",
-			"/debug",
-		}, nil)
+			prefix + "/indexes",
+			prefix + "/nodes",
+			prefix + "/monitor",
+			prefix + "/manage",
+			prefix + "/logs",
+			prefix + "/debug",
+		}, nil, mgr)
 
 	return InitRESTRouter(r, versionMain, mgr,
 		staticDir, staticETag, mr, assetDir, asset)
 }
 
-// InitRESTRouter initializes a mux.Router with REST API
-// routes.
+// InitRESTRouter initializes a mux.Router with REST API routes.
 func InitRESTRouter(r *mux.Router, versionMain string,
 	mgr *cbgt.Manager, staticDir, staticETag string,
 	mr *cbgt.MsgRing,
 	assetDir func(name string) ([]string, error),
 	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
-	PIndexTypesInitRouter(r, "manager.before")
+	prefix := mgr.Options()["urlPrefix"]
+
+	PIndexTypesInitRouter(r, "manager.before", mgr)
 
 	meta := map[string]RESTMeta{}
 	handle := func(path string, method string, h http.Handler,
@@ -136,15 +139,15 @@ func InitRESTRouter(r *mux.Router, versionMain string,
 		if a, ok := h.(RESTOpts); ok {
 			a.RESTOpts(opts)
 		}
-		meta[path+" "+RESTMethodOrds[method]+method] =
-			RESTMeta{path, method, opts}
-		r.Handle(path, h).Methods(method)
+		meta[prefix+path+" "+RESTMethodOrds[method]+method] =
+			RESTMeta{prefix + path, method, opts}
+		r.Handle(prefix+path, h).Methods(method)
 	}
 	handleFunc := func(path string, method string, h http.HandlerFunc,
 		opts map[string]string) {
-		meta[path+" "+RESTMethodOrds[method]+method] =
-			RESTMeta{path, method, opts}
-		r.HandleFunc(path, h).Methods(method)
+		meta[prefix+path+" "+RESTMethodOrds[method]+method] =
+			RESTMeta{prefix + path, method, opts}
+		r.HandleFunc(prefix+path, h).Methods(method)
 	}
 
 	handle("/api/index", "GET", NewListIndexHandler(mgr),
@@ -278,6 +281,13 @@ func InitRESTRouter(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
+	handle("/api/manager", "GET", NewManagerHandler(mgr),
+		map[string]string{
+			"_category":          "Node|Node configuration",
+			"_about":             `Returns runtime config information about this node.`,
+			"version introduced": "0.4.0",
+		})
+
 	handle("/api/managerKick", "POST", NewManagerKickHandler(mgr),
 		map[string]string{
 			"_category": "Node|Node configuration",
@@ -388,17 +398,18 @@ func InitRESTRouter(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
-	PIndexTypesInitRouter(r, "manager.after")
+	PIndexTypesInitRouter(r, "manager.after", mgr)
 
 	return r, meta, nil
 }
 
 // PIndexTypesInitRouter initializes a mux.Router with the REST API
 // routes provided by registered pindex types.
-func PIndexTypesInitRouter(r *mux.Router, phase string) {
+func PIndexTypesInitRouter(r *mux.Router, phase string,
+	mgr *cbgt.Manager) {
 	for _, t := range cbgt.PIndexImplTypes {
 		if t.InitRouter != nil {
-			t.InitRouter(r, phase)
+			t.InitRouter(r, phase, mgr)
 		}
 	}
 }

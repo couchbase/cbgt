@@ -18,6 +18,8 @@ import (
 	"github.com/gorilla/mux"
 
 	log "github.com/couchbase/clog"
+
+	"github.com/couchbase/cbgt"
 )
 
 // AssetFS returns the assetfs.AssetFS "filesystem" that holds static
@@ -32,7 +34,21 @@ func AssetFS() *assetfs.AssetFS {
 // InitStaticRouter adds static HTTP resource routes to a router.
 func InitStaticRouter(r *mux.Router, staticDir, staticETag string,
 	pages []string, pagesHandler http.Handler) *mux.Router {
-	PIndexTypesInitRouter(r, "static.before")
+	return InitStaticRouterEx(r, staticDir, staticETag,
+		pages, pagesHandler, nil)
+}
+
+// InitStaticRouterEx is like InitStaticRouter, but with optional
+// manager parameter for more options.
+func InitStaticRouterEx(r *mux.Router, staticDir, staticETag string,
+	pages []string, pagesHandler http.Handler,
+	mgr *cbgt.Manager) *mux.Router {
+	prefix := ""
+	if mgr != nil {
+		prefix = mgr.Options()["urlPrefix"]
+	}
+
+	PIndexTypesInitRouter(r, "static.before", mgr)
 
 	var s http.FileSystem
 	if staticDir != "" {
@@ -46,11 +62,14 @@ func InitStaticRouter(r *mux.Router, staticDir, staticETag string,
 		s = AssetFS()
 	}
 
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/",
-		ETagFileHandler{http.FileServer(s), staticETag}))
+	r.PathPrefix(prefix + "/static/").Handler(
+		http.StripPrefix(prefix+"/static/",
+			ETagFileHandler{http.FileServer(s), staticETag}))
+
 	// Bootstrap UI insists on loading templates from this path.
-	r.PathPrefix("/template/").Handler(http.StripPrefix("/template/",
-		ETagFileHandler{http.FileServer(s), staticETag}))
+	r.PathPrefix(prefix + "/template/").Handler(
+		http.StripPrefix(prefix+"/template/",
+			ETagFileHandler{http.FileServer(s), staticETag}))
 
 	// If client ask for any of the pages, redirect.
 	for _, p := range pages {
@@ -61,10 +80,12 @@ func InitStaticRouter(r *mux.Router, staticDir, staticETag string,
 		}
 	}
 
-	r.Handle("/index.html", http.RedirectHandler("/static/index.html", 302))
-	r.Handle("/", http.RedirectHandler("/static/index.html", 302))
+	r.Handle(prefix+"/index.html",
+		http.RedirectHandler(prefix+"/static/index.html", 302))
+	r.Handle(prefix+"/",
+		http.RedirectHandler(prefix+"/static/index.html", 302))
 
-	PIndexTypesInitRouter(r, "static.after")
+	PIndexTypesInitRouter(r, "static.after", mgr)
 
 	return r
 }

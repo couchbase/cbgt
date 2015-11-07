@@ -202,3 +202,37 @@ func (h *CfgRefreshHandler) ServeHTTP(
 		Status string `json:"status"`
 	}{Status: "ok"})
 }
+
+// ---------------------------------------------------
+
+// ManagerHandler is a REST handler that returns runtime config
+// information about a manager/node.
+type ManagerHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewManagerHandler(mgr *cbgt.Manager) *ManagerHandler {
+	return &ManagerHandler{mgr: mgr}
+}
+
+func (h *ManagerHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	r := map[string]interface{}{
+		"status": "ok",
+		"mgr": map[string]interface{}{
+			"startTime": h.mgr.StartTime(),
+			"version":   h.mgr.Version(),
+			"uuid":      h.mgr.UUID(),
+			"tags":      h.mgr.Tags(),
+			"container": h.mgr.Container(),
+			"weight":    h.mgr.Weight(),
+			"extras":    h.mgr.Extras(),
+			"bindHttp":  h.mgr.BindHttp(),
+			"dataDir":   h.mgr.DataDir(),
+			"server":    h.mgr.Server(),
+			"options":   h.mgr.Options(),
+		},
+	}
+
+	MustEncode(w, r)
+}

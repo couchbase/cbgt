@@ -584,6 +584,11 @@ func (mgr *Manager) ParsePIndexPath(pindexPath string) (string, bool) {
 
 // ---------------------------------------------------------------
 
+// Returns the start time of a Manager.
+func (mgr *Manager) StartTime() time.Time {
+	return mgr.startTime
+}
+
 // Returns the version of a Manager.
 func (mgr *Manager) Version() string {
 	return mgr.version
@@ -599,15 +604,46 @@ func (mgr *Manager) UUID() string {
 	return mgr.uuid
 }
 
+// Returns the configured tags of a Manager, which should be
+// treated as immutable / read-only.
+func (mgr *Manager) Tags() []string {
+	return mgr.tags
+}
+
 // Returns the configured tags map of a Manager, which should be
 // treated as immutable / read-only.
 func (mgr *Manager) TagsMap() map[string]bool {
 	return mgr.tagsMap
 }
 
+// Returns the configured container of a Manager.
+func (mgr *Manager) Container() string {
+	return mgr.container
+}
+
+// Returns the configured weight of a Manager.
+func (mgr *Manager) Weight() int {
+	return mgr.weight
+}
+
+// Returns the configured extras of a Manager.
+func (mgr *Manager) Extras() string {
+	return mgr.extras
+}
+
+// Returns the configured bindHttp of a Manager.
+func (mgr *Manager) BindHttp() string {
+	return mgr.bindHttp
+}
+
 // Returns the configured data dir of a Manager.
 func (mgr *Manager) DataDir() string {
 	return mgr.dataDir
+}
+
+// Returns the configured server of a Manager.
+func (mgr *Manager) Server() string {
+	return mgr.server
 }
 
 // Returns the (read-only) options of a Manager.
