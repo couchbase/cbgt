@@ -20,6 +20,12 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                 $scope.indexDefs = data.indexDefs.indexDefs;
                 for (var indexName in data.indexDefs.indexDefs) {
                     indexNames.push(indexName);
+
+                    var indexDef = data.indexDefs.indexDefs[indexName];
+                    if (indexDef &&
+                        typeof(indexDef.params) == "string") {
+                        indexDef.paramsObj = JSON.parse(indexDef.params);
+                    }
                 }
             }
             indexNames.sort();
