@@ -34,9 +34,7 @@
 </table>
 
 <div ng-if="!indexNames.length"
-     class="indexWelcome">
-  <h1>Welcome</h1>
-  <div>Please define your first index with the New Index button.</div>
+     ng-include="'/static/partials/index/start.html'">
 </div>
 
 <div class="input-group">
@@ -46,9 +44,3 @@
     </button>
   </a>
 </div>
-
-<style>
-.indexWelcome h1, .indexWelcome div {
-  margin-bottom: 20px;
-}
-</style>
