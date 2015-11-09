@@ -6,19 +6,24 @@ var indexStatsLabels = {
 }
 
 function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
-
+    $scope.data = null;
     $scope.indexNames = [];
     $scope.errorMessage = null;
     $scope.errorMessageFull = null;
 
     $scope.refreshIndexNames = function() {
         $http.get('/api/index').success(function(data) {
+            $scope.data = data;
+
             var indexNames = [];
             if (data.indexDefs) {
+                $scope.indexDefs = data.indexDefs.indexDefs;
                 for (var indexName in data.indexDefs.indexDefs) {
                     indexNames.push(indexName);
                 }
             }
+            indexNames.sort();
+
             $scope.indexNames = indexNames;
         }).
         error(function(data, code) {
