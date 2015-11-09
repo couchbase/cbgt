@@ -380,9 +380,9 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
     $scope.errorMessageFull = null;
 
     $scope.newIndexName = "";
-    $scope.newIndexType = "";
+    $scope.newIndexType = $routeParams.indexType || "";
     $scope.newIndexParams = {};
-    $scope.newSourceType = "";
+    $scope.newSourceType = $routeParams.sourceType || "";
     $scope.newSourceName = "";
     $scope.newSourceUUID = "";
     $scope.newSourceParams = {};
