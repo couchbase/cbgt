@@ -15,6 +15,5 @@ cbgtApp.controller({
     'NodeCtrl': NodeCtrl,
     'MonitorCtrl': MonitorCtrl,
     'ManageCtrl': ManageCtrl,
-    'LogsCtrl': LogsCtrl,
-    'DebugCtrl': DebugCtrl
+    'LogsCtrl': LogsCtrl
 });
