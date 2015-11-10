@@ -12,6 +12,7 @@ cbgtApp.controller({
     'IndexesCtrl': IndexesCtrl,
     'IndexNewCtrl': IndexNewCtrl,
     'IndexCtrl': IndexCtrl,
+    'QueryCtrl': QueryCtrl,
     'NodeCtrl': NodeCtrl,
     'MonitorCtrl': MonitorCtrl,
     'ManageCtrl': ManageCtrl,
