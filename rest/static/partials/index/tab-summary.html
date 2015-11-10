@@ -23,7 +23,7 @@
   <div ng-if="indexTemplates && indexTemplates[indexDef.type]">
     <dt></dt>
     <dd>
-      <div class="indexViewer {{indexDef.type}}">
+      <div class="indexViewer {{indexDef.type}}" data-nodrag>
         <div ng-include="indexTemplates[indexDef.type]"/>
       </div>
     </dd>
