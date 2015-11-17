@@ -227,11 +227,11 @@ func CouchbaseParseSourceName(
 // -------------------------------------------------
 
 type CbAuthHandler struct {
-	Hostport string
+	HostPort string
 }
 
 func (ah *CbAuthHandler) GetSaslCredentials() (string, string, error) {
-	u, p, err := cbauth.GetMemcachedServiceAuth(ah.Hostport)
+	u, p, err := cbauth.GetMemcachedServiceAuth(ah.HostPort)
 	if err != nil {
 		return "", "", err
 	}
@@ -239,7 +239,7 @@ func (ah *CbAuthHandler) GetSaslCredentials() (string, string, error) {
 }
 
 func (ah *CbAuthHandler) GetCredentials() (string, string, error) {
-	u, p, err := cbauth.GetHTTPServiceAuth(ah.Hostport)
+	u, p, err := cbauth.GetHTTPServiceAuth(ah.HostPort)
 	if err != nil {
 		return "", "", err
 	}
@@ -249,7 +249,7 @@ func (ah *CbAuthHandler) GetCredentials() (string, string, error) {
 func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
 	u, err := url.Parse(s)
 	if err == nil {
-		return &CbAuthHandler{Hostport: u.Host}, nil
+		return &CbAuthHandler{HostPort: u.Host}, nil
 	}
 	return nil, err
 }
