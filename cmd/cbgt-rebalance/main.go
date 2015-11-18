@@ -22,6 +22,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
+	"github.com/couchbase/cbgt/rebalance"
 )
 
 func main() {
@@ -65,8 +66,8 @@ func main() {
 	if steps == nil || steps["rebalance"] {
 		log.Printf("main: step rebalance")
 
-		err := runRebalance(cfg, flags.Server, nodesToRemove,
-			flags.FavorMinNodes, flags.DryRun, flags.Verbose)
+		err := rebalance.RunRebalance(cfg, flags.Server, nodesToRemove,
+			flags.FavorMinNodes, flags.DryRun, flags.Verbose, nil)
 		if err != nil {
 			log.Fatalf("%v", err)
 			return

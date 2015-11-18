@@ -1,0 +1,163 @@
+//  Copyright (c) 2015 Couchbase, Inc.
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the
+//  License. You may obtain a copy of the License at
+//    http://www.apache.org/licenses/LICENSE-2.0
+//  Unless required by applicable law or agreed to in writing,
+//  software distributed under the License is distributed on an "AS
+//  IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+//  express or implied. See the License for the specific language
+//  governing permissions and limitations under the License.
+
+package rebalance
+
+import (
+	"bytes"
+	"fmt"
+)
+
+// ProgressTableString implements the ProgressToString func signature
+// by generating a tabular representation of the progress.
+func ProgressTableString(maxNodeLen, maxPIndexLen int,
+	seenNodes map[string]bool,
+	seenNodesSorted []string,
+	seenPIndexes map[string]bool,
+	seenPIndexesSorted []string,
+	progressEntries map[string]map[string]map[string]*ProgressEntry) string {
+	var b bytes.Buffer
+
+	WriteProgressTable(&b, maxNodeLen, maxPIndexLen,
+		seenNodes,
+		seenNodesSorted,
+		seenPIndexes,
+		seenPIndexesSorted,
+		progressEntries)
+
+	return b.String()
+}
+
+// WriteProgressTable writes progress entries in tabular format to a
+// bytes buffer.
+func WriteProgressTable(b *bytes.Buffer,
+	maxNodeLen, maxPIndexLen int,
+	seenNodes map[string]bool,
+	seenNodesSorted []string,
+	seenPIndexes map[string]bool,
+	seenPIndexesSorted []string,
+	progressEntries map[string]map[string]map[string]*ProgressEntry,
+) {
+	written, _ := b.Write([]byte("%%%"))
+	for i := written; i < maxPIndexLen; i++ {
+		b.WriteByte(' ')
+	}
+	b.WriteByte(' ')
+
+	for i, seenNode := range seenNodesSorted {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+
+		// TODO: Emit node human readable ADDR:PORT.
+		b.Write([]byte(seenNode))
+	}
+	b.WriteByte('\n')
+
+	for _, seenPIndex := range seenPIndexesSorted {
+		b.Write([]byte(" %                  "))
+		b.Write([]byte(seenPIndex))
+
+		for _, seenNode := range seenNodesSorted {
+			b.WriteByte(' ')
+
+			sourcePartitions, exists :=
+				progressEntries[seenPIndex]
+			if !exists || sourcePartitions == nil {
+				WriteProgressCell(b, nil, nil, maxNodeLen)
+				continue
+			}
+
+			nodes, exists := sourcePartitions[""]
+			if !exists || nodes == nil {
+				WriteProgressCell(b, nil, nil, maxNodeLen)
+				continue
+			}
+
+			pe, exists := nodes[seenNode]
+			if !exists || pe == nil {
+				WriteProgressCell(b, nil, nil, maxNodeLen)
+				continue
+			}
+
+			WriteProgressCell(b, pe, sourcePartitions, maxNodeLen)
+		}
+
+		b.WriteByte('\n')
+	}
+}
+
+var opMap = map[string]string{
+	"":        ".",
+	"add":     "+",
+	"del":     "-",
+	"promote": "P",
+	"demote":  "D",
+}
+
+// WriteProgressCell writes a cell in a progress table to a buffer.
+func WriteProgressCell(b *bytes.Buffer,
+	pe *ProgressEntry,
+	sourcePartitions map[string]map[string]*ProgressEntry,
+	maxNodeLen int) {
+	written := 0
+
+	totPct := 0.0 // To compute average pct.
+	numPct := 0
+
+	if pe != nil {
+		written, _ = fmt.Fprintf(b, "%d ", pe.Move)
+
+		if sourcePartitions != nil {
+			n, _ := b.Write([]byte(opMap[pe.StateOp.Op]))
+			written = written + n
+
+			for sourcePartition, nodes := range sourcePartitions {
+				if sourcePartition == "" {
+					continue
+				}
+
+				pex := nodes[pe.Node]
+				if pex == nil || pex.WantUUIDSeq.UUID == "" {
+					continue
+				}
+
+				if pex.WantUUIDSeq.Seq <= pex.CurrUUIDSeq.Seq {
+					totPct = totPct + 1.0
+					numPct = numPct + 1
+					continue
+				}
+
+				n := pex.CurrUUIDSeq.Seq - pex.InitUUIDSeq.Seq
+				d := pex.WantUUIDSeq.Seq - pex.InitUUIDSeq.Seq
+				if d > 0 {
+					pct := float64(n) / float64(d)
+					totPct = totPct + pct
+					numPct = numPct + 1
+				}
+			}
+		}
+	} else {
+		b.Write([]byte("  ."))
+		written = 3
+	}
+
+	if numPct > 0 {
+		avgPct := totPct / float64(numPct)
+
+		n, _ := fmt.Fprintf(b, " %.1f%%", avgPct*100.0)
+		written = written + n
+	}
+
+	for i := written; i < maxNodeLen; i++ {
+		b.WriteByte(' ')
+	}
+}
