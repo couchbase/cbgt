@@ -12,23 +12,37 @@
 package cbgt
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/couchbase/cbauth/metakv"
 	log "github.com/couchbase/clog"
+	"hash/crc32"
 	"math"
+	"sort"
+	"strings"
 	"sync"
 )
 
 const (
-	BASE_CFG_PATH = "/cbgt/cfg/"
-	CAS_FORCE     = math.MaxUint64
+	BASE_CFG_PATH            = "/cbgt/cfg/"
+	CFG_NODEDEFS_WANTED_PATH = "/cbgt/nodedefs/wanted/"
+	CFG_NODEDEFS_KNOWN_PATH  = "/cbgt/nodedefs/known/"
+	CAS_FORCE                = math.MaxUint64
 )
 
+var splitKeys map[string]string = map[string]string{
+	CfgNodeDefsKey(NODE_DEFS_WANTED): CFG_NODEDEFS_WANTED_PATH,
+	CfgNodeDefsKey(NODE_DEFS_KNOWN):  CFG_NODEDEFS_KNOWN_PATH,
+}
+
 type CfgMetaKv struct {
-	m        sync.Mutex
-	path     string
-	cancelCh chan struct{}
-	rev      interface{}
-	cfgMem   *CfgMem
+	uuid        string
+	m           sync.Mutex
+	path        string
+	cancelCh    chan struct{}
+	rev         interface{}
+	nodeDefKeys map[string]int
+	cfgMem      *CfgMem
 }
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
@@ -38,6 +52,7 @@ func NewCfgMetaKv() (*CfgMetaKv, error) {
 		path:     BASE_CFG_PATH,
 		cancelCh: make(chan struct{}),
 		cfgMem:   NewCfgMem(),
+		uuid:     NewUUID(),
 	}
 	go func() {
 		for {
@@ -57,27 +72,84 @@ func (c *CfgMetaKv) Get(key string, cas uint64) (
 	[]byte, uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
+	if splitRequired(key) {
+		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
+		tmp := &NodeDefs{}
+		m, err := metakv.ListAllChildren(splitKeys[key])
+		if err != nil {
+			return nil, 0, err
+		}
+		uuids := []string{}
+		for _, v := range m {
+			err = json.Unmarshal(v.Value, tmp)
+			if err != nil {
+				return nil, 0, err
+			}
+			for k1, v1 := range tmp.NodeDefs {
+				rv.NodeDefs[k1] = v1
+			}
+			uuids = append(uuids, tmp.UUID)
+			rv.ImplVersion = tmp.ImplVersion
+		}
+		rv.UUID = getCksum(uuids)
+		data, _ := json.Marshal(rv)
+		return data, 0, nil
+	}
 	return c.cfgMem.Get(key, cas)
+}
+
+func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
+	uint64, error) {
+	var err error
+	if cache {
+		rev, err := c.cfgMem.GetRev(key, cas)
+		if err != nil {
+			return 0, err
+		}
+		if rev == nil {
+			err = metakv.Add(c.makeKey(key), val)
+		} else {
+			err = metakv.Set(c.makeKey(key), val, rev)
+		}
+		if err == nil {
+			cas, err = c.cfgMem.Set(key, val, CAS_FORCE)
+			if err != nil {
+				return 0, err
+			}
+		}
+	} else {
+		return 0, metakv.Set(c.makeKey(key), val, nil)
+	}
+	return cas, err
 }
 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
+	log.Printf("setting key %v", key)
 	c.m.Lock()
 	defer c.m.Unlock()
-	rev, err := c.cfgMem.GetRev(key, cas)
-	if err != nil {
-		return 0, err
-	}
-	if rev == nil {
-		err = metakv.Add(c.makeKey(key), val)
-	} else {
-		err = metakv.Set(c.makeKey(key), val, rev)
-	}
-	if err == nil {
-		cas, err = c.cfgMem.Set(key, val, CAS_FORCE)
+	var err error
+	if splitRequired(key) {
+		// split the keys
+		nd := &NodeDefs{}
+		err = json.Unmarshal(val, nd)
 		if err != nil {
 			return 0, err
 		}
+		for k, v := range nd.NodeDefs {
+			n := &NodeDefs{
+				UUID:        nd.UUID,
+				NodeDefs:    make(map[string]*NodeDef),
+				ImplVersion: nd.ImplVersion,
+			}
+			n.NodeDefs[k] = v
+			k = key + "_" + k
+			val, _ = json.Marshal(n)
+			log.Printf("splitted key %v", k)
+			cas, err = c.SetKey(k, val, cas, false)
+		}
+	} else {
+		cas, err = c.SetKey(key, val, cas, true)
 	}
 	return cas, err
 }
@@ -89,6 +161,10 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 }
 
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
+	var err error
+	if splitRequired(key) {
+		return metakv.RecursiveDelete(splitKeys[key])
+	}
 	rev, err := c.cfgMem.GetRev(key, cas)
 	if err != nil {
 		return err
@@ -113,11 +189,27 @@ func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) e
 		// key got deleted
 		return c.delUnlocked(key, 0)
 	}
+	log.Printf("callback got key %v", key)
 	cas, err := c.cfgMem.Set(key, value, CAS_FORCE)
 	if err == nil {
 		c.cfgMem.SetRev(key, cas, rev)
 	}
 	return err
+}
+
+func getCksum(uuids []string) string {
+	sort.Strings(uuids)
+	d, _ := json.Marshal(uuids)
+	return fmt.Sprint(crc32.ChecksumIEEE(d))
+}
+
+func splitRequired(key string) bool {
+	for k, _ := range splitKeys {
+		if strings.HasPrefix(key, k) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
@@ -139,10 +231,30 @@ func (c *CfgMetaKv) DelConf() {
 	metakv.RecursiveDelete(c.path)
 }
 
-func (c *CfgMetaKv) makeKey(k string) string {
-	return c.path + k
+func (c *CfgMetaKv) makeKey(key string) string {
+	for k, v := range splitKeys {
+		if strings.HasPrefix(key, k) {
+			return v + key
+		}
+	}
+	return c.path + key
 }
 
 func (c *CfgMetaKv) getMetaKey(k string) string {
 	return k[len(c.path):]
+}
+
+// for testing
+func (c *CfgMetaKv) getAllKeys(k string) ([]string, error) {
+	g := []string{}
+	if splitRequired(k) {
+		m, err := metakv.ListAllChildren(splitKeys[k])
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range m {
+			g = append(g, v.Path)
+		}
+	}
+	return g, nil
 }
