@@ -322,6 +322,8 @@ func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
 
 // ------------------------------------------------------------------------
 
+// UnregisterNodes removes the given nodes (by their UUID) from the
+// nodes wanted & known cfg entries.
 func UnregisterNodes(cfg Cfg, version string, nodeUUIDs []string) error {
 	for _, nodeUUID := range nodeUUIDs {
 		for _, kind := range []string{NODE_DEFS_WANTED, NODE_DEFS_KNOWN} {

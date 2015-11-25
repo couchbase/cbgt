@@ -106,7 +106,9 @@ func initFlags(flags *Flags) map[string][]string {
 		[]string{"steps"}, "STEPS", "",
 		"advanced: comma-separated list of cbgt-planner steps wanted;"+
 			"\ndefaults to all the normal cbgt-planner steps;"+
-			"\nexample: 'unregister,planner'.")
+			"\nexamples: 'unregister,planner';"+
+			"\n          'NODES-REMOVE-ALL,unregister';"+
+			"\n          'FAILOVER'.")
 	i(&flags.Verbose,
 		[]string{"verbose"}, "INTEGER", 3,
 		"optional level of logging verbosity; higher is more verbose.")

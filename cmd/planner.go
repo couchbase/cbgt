@@ -20,23 +20,51 @@ import (
 )
 
 // PlannerSteps helps command-line tools implement the planner steps:
-// * "unregister" - unregisters nodesToRemove from the cfg.
+// * "unregister" - unregisters nodesRemove from the cfg.
 // * "planner" - runs the planner to save a new plan into the cfg.
 //
 // The default steps are "unregister" and "planner".
 //
 // An additional composite step, "FAILOVER" (fully capitalized), is
-// used to process the nodesToRemove as nodes to be failover'ed.
+// used to process the nodesRemove as nodes to be failover'ed.
 // "FAILOVER" is comprised of the lower-level steps of "unregister"
 // and "failover" (all lowercase).
+//
+// The "NODES-REMOVE-ALL" step populates the nodesRemove with
+// every known and wanted node.  This can have a lot of impact, and
+// was meant to be used for cluster cleanup/purging situations.
 func PlannerSteps(steps map[string]bool,
-	cfg cbgt.Cfg, version, server string, nodesToRemove []string,
+	cfg cbgt.Cfg, version, server string, nodesRemove []string,
 	dryRun bool) error {
+	if steps["NODES-REMOVE-ALL"] {
+		nodesRemove = nil
+
+		nodesSeen := map[string]bool{}
+		for _, kind := range []string{
+			cbgt.NODE_DEFS_WANTED,
+			cbgt.NODE_DEFS_KNOWN,
+		} {
+			nodeDefs, _, err := cbgt.CfgGetNodeDefs(cfg, kind)
+			if err != nil {
+				return err
+			}
+
+			for _, nodeDef := range nodeDefs.NodeDefs {
+				if !nodesSeen[nodeDef.UUID] {
+					nodesSeen[nodeDef.UUID] = true
+					nodesRemove = append(nodesRemove, nodeDef.UUID)
+				}
+			}
+		}
+	}
+
+	log.Printf("planner: nodesRemove: %#v", nodesRemove)
+
 	if steps == nil || steps["unregister"] || steps["FAILOVER"] {
 		log.Printf("planner: step unregister")
 
 		if !dryRun {
-			err := cbgt.UnregisterNodes(cfg, cbgt.VERSION, nodesToRemove)
+			err := cbgt.UnregisterNodes(cfg, cbgt.VERSION, nodesRemove)
 			if err != nil {
 				return err
 			}
@@ -58,7 +86,7 @@ func PlannerSteps(steps map[string]bool,
 		log.Printf("planner: step failover")
 
 		if !dryRun {
-			_, err := Failover(cfg, cbgt.VERSION, server, nodesToRemove)
+			_, err := Failover(cfg, cbgt.VERSION, server, nodesRemove)
 			if err != nil {
 				return err
 			}
