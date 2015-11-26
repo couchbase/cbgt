@@ -3,7 +3,6 @@ default: build
 build: gen-bindata
 	go build ./...
 	go build ./cmd/cbgt-rebalance
-	go build ./cmd/cbgt-planner
 
 gen-bindata:
 	(cd rest; \
