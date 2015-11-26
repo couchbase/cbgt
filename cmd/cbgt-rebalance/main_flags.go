@@ -20,8 +20,6 @@ import (
 	"strings"
 )
 
-const DEFAULT_DATA_DIR = "data"
-
 type Flags struct {
 	CfgConnect    string
 	DryRun        bool
