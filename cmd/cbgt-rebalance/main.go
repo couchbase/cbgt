@@ -77,7 +77,7 @@ func main() {
 	// ------------------------------------------------
 
 	err = cmd.PlannerSteps(steps, cfg, cbgt.VERSION,
-		flags.Server, nodesToRemove, flags.DryRun)
+		flags.Server, nodesToRemove, flags.DryRun, nil)
 	if err != nil {
 		log.Fatalf("%v", err)
 		return

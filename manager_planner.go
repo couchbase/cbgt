@@ -107,11 +107,18 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 		return false, fmt.Errorf("planner: skipped due to nil cfg")
 	}
 
-	return Plan(mgr.cfg, mgr.version, mgr.uuid, mgr.server)
+	return Plan(mgr.cfg, mgr.version, mgr.uuid, mgr.server, nil)
 }
 
+// A PlannerFilter callback func should return true if the plans for
+// an indexDef should be updated during CalcPlan(), and should return
+// false if the plans for the indexDef should be remain untouched.
+type PlannerFilter func(indexDef *IndexDef,
+	planPIndexesPrev, planPIndexes *PlanPIndexes) bool
+
 // Plan runs the planner once.
-func Plan(cfg Cfg, version, uuid, server string) (bool, error) {
+func Plan(cfg Cfg, version, uuid, server string,
+	plannerFilter PlannerFilter) (bool, error) {
 	indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
 		PlannerGetPlan(cfg, version, uuid)
 	if err != nil {
@@ -119,7 +126,7 @@ func Plan(cfg Cfg, version, uuid, server string) (bool, error) {
 	}
 
 	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
-		planPIndexesPrev, version, server)
+		planPIndexesPrev, version, server, plannerFilter)
 	if err != nil {
 		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
 	}
@@ -262,7 +269,8 @@ func PlannerGetPlanPIndexes(cfg Cfg, version string) (
 
 // Split logical indexes into PIndexes and assign PIndexes to nodes.
 func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
-	planPIndexesPrev *PlanPIndexes, version, server string) (
+	planPIndexesPrev *PlanPIndexes, version, server string,
+	plannerFilter PlannerFilter) (
 	*PlanPIndexes, error) {
 	// This simple planner assigns at most MaxPartitionsPerPIndex
 	// number of partitions onto a PIndex.  And then uses blance to
@@ -282,6 +290,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		// If the plan is frozen, CasePlanFrozen clones the previous
 		// plan for this index.
 		if CasePlanFrozen(indexDef, planPIndexesPrev, planPIndexes) {
+			continue
+		}
+
+		// Skip if the plannerFilter returns false.
+		if plannerFilter != nil &&
+			!plannerFilter(indexDef, planPIndexesPrev, planPIndexes) {
 			continue
 		}
 

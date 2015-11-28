@@ -35,7 +35,7 @@ import (
 // was meant to be used for cluster cleanup/purging situations.
 func PlannerSteps(steps map[string]bool,
 	cfg cbgt.Cfg, version, server string, nodesRemove []string,
-	dryRun bool) error {
+	dryRun bool, plannerFilter cbgt.PlannerFilter) error {
 	if steps["NODES-REMOVE-ALL"] {
 		nodesRemove = nil
 
@@ -75,7 +75,7 @@ func PlannerSteps(steps map[string]bool,
 		log.Printf("planner: step planner")
 
 		if !dryRun {
-			_, err := cbgt.Plan(cfg, cbgt.VERSION, "", server)
+			_, err := cbgt.Plan(cfg, cbgt.VERSION, "", server, plannerFilter)
 			if err != nil {
 				return err
 			}
@@ -110,7 +110,7 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 	}
 
 	planPIndexesCalc, err := cbgt.CalcPlan("failover",
-		indexDefs, nodeDefs, planPIndexesPrev, version, server)
+		indexDefs, nodeDefs, planPIndexesPrev, version, server, nil)
 	if err != nil {
 		return false, fmt.Errorf("planner: failover CalcPlan, err: %v", err)
 	}
