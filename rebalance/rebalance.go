@@ -198,20 +198,20 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		stopCh:              stopCh,
 	}
 
-	r.Log("rebalance: nodesAll: %#v", nodesAll)
-	r.Log("rebalance: nodesToAdd: %#v", nodesToAdd)
-	r.Log("rebalance: nodesToRemove: %#v", nodesToRemove)
-	r.Log("rebalance: nodeWeights: %#v", nodeWeights)
-	r.Log("rebalance: nodeHierarchy: %#v", nodeHierarchy)
+	r.Logf("rebalance: nodesAll: %#v", nodesAll)
+	r.Logf("rebalance: nodesToAdd: %#v", nodesToAdd)
+	r.Logf("rebalance: nodesToRemove: %#v", nodesToRemove)
+	r.Logf("rebalance: nodeWeights: %#v", nodeWeights)
+	r.Logf("rebalance: nodeHierarchy: %#v", nodeHierarchy)
 
-	// r.Log("rebalance: begIndexDefs: %#v", begIndexDefs)
-	// r.Log("rebalance: begNodeDefs: %#v", begNodeDefs)
+	// r.Logf("rebalance: begIndexDefs: %#v", begIndexDefs)
+	// r.Logf("rebalance: begNodeDefs: %#v", begNodeDefs)
 
-	r.Log("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
+	r.Logf("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
 
 	// begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
 	//
-	// r.Log("rebalance: begPlanPIndexes: %s, cas: %v",
+	// r.Logf("rebalance: begPlanPIndexes: %s, cas: %v",
 	// 	begPlanPIndexesJSON, begPlanPIndexesCAS)
 
 	// TODO: Prepopulate currStates so that we can double-check that
@@ -296,7 +296,7 @@ func (r *Rebalancer) Visit(visitor VisitFunc) {
 
 // --------------------------------------------------------
 
-func (r *Rebalancer) Log(fmt string, v ...interface{}) {
+func (r *Rebalancer) Logf(fmt string, v ...interface{}) {
 	if r.options.Verbose < 0 {
 		return
 	}
@@ -329,12 +329,12 @@ LOOP:
 		default:
 		}
 
-		r.Log("=====================================")
-		r.Log("runRebalanceIndexes: %d of %d", i, n)
+		r.Logf("=====================================")
+		r.Logf("runRebalanceIndexes: %d of %d", i, n)
 
 		_, err := r.rebalanceIndex(stopCh, indexDef)
 		if err != nil {
-			r.Log("run: indexDef.Name: %s, err: %#v",
+			r.Logf("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 
 			break
@@ -364,13 +364,13 @@ LOOP:
 func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	indexDef *cbgt.IndexDef) (
 	changed bool, err error) {
-	r.Log(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
+	r.Logf(" rebalanceIndex: indexDef.Name: %s", indexDef.Name)
 
 	r.m.Lock()
 	if cbgt.CasePlanFrozen(indexDef, r.begPlanPIndexes, r.endPlanPIndexes) {
 		r.m.Unlock()
 
-		r.Log("  plan frozen: indexDef.Name: %s,"+
+		r.Logf("  plan frozen: indexDef.Name: %s,"+
 			" cloned previous plan", indexDef.Name)
 
 		return false, nil
@@ -398,7 +398,7 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 		err := r.assignPIndex(stopCh, stopCh2,
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
-			r.Log("rebalance: assignPartitionFunc, err: %v", err)
+			r.Logf("rebalance: assignPartitionFunc, err: %v", err)
 
 			r.progressCh <- RebalanceProgress{Error: err}
 			r.Stop() // Stop the rebalance.
@@ -438,10 +438,10 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 
 		progressChanges := cbgt.StructChanges(lastProgress, progress)
 
-		r.Log("   index: %s, #%d %+v",
+		r.Logf("   index: %s, #%d %+v",
 			indexDef.Name, numProgress, progressChanges)
 
-		r.Log("     progress: %+v", progress)
+		r.Logf("     progress: %+v", progress)
 
 		r.progressCh <- RebalanceProgress{
 			Error:                firstErr,
@@ -485,7 +485,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	endPlanPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
 		indexDef, r.server, r.endPlanPIndexes)
 	if err != nil {
-		r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
 			" server: %s, err: %v", indexDef.Name, r.server, err)
 
@@ -501,13 +501,13 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
 	for _, warning := range warnings {
-		r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
+		r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q",
 			indexDef.Name, warning)
 	}
 
 	j, _ := json.Marshal(r.endPlanPIndexes)
-	r.Log("  calcBegEndMaps: indexDef.Name: %s,"+
+	r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 		" endPlanPIndexes: %s", indexDef.Name, j)
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
@@ -524,7 +524,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // synchronously change the pindex/node/state/op for an index.
 func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 	index, pindex, node, state, op string) error {
-	r.Log("  assignPIndex: index: %s,"+
+	r.Logf("  assignPIndex: index: %s,"+
 		" pindex: %s, node: %s, state: %q, op: %s",
 		index, pindex, node, state, op)
 
@@ -824,7 +824,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 					if sample.Error != nil {
 						sampleErr = sample.Error
 
-						r.Log("rebalance:"+
+						r.Logf("rebalance:"+
 							" waitAssignPIndexDone sample error,"+
 							" uuid mismatch, index: %s,"+
 							" sourcePartition: %s, node: %s,"+
@@ -867,7 +867,7 @@ func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 	uuidSeqCurr, exists :=
 		r.getUUIDSeq(r.currSeqs, pindex, sourcePartition, node)
 
-	r.Log("      uuidSeqReached,"+
+	r.Logf("      uuidSeqReached,"+
 		" index: %s, pindex: %s, sourcePartition: %s,"+
 		" node: %s, uuidSeqWant: %+v, exists: %v",
 		index, pindex, sourcePartition, node,
@@ -994,10 +994,10 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 				return
 			}
 
-			r.Log("      monitor: %s, node: %s", s.Kind, s.UUID)
+			r.Logf("      monitor: %s, node: %s", s.Kind, s.UUID)
 
 			if s.Error != nil {
-				r.Log("rebalance: runMonitor, s.Error: %#v", s.Error)
+				r.Logf("rebalance: runMonitor, s.Error: %#v", s.Error)
 
 				r.progressCh <- RebalanceProgress{Error: s.Error}
 				r.Stop() // Stop the rebalance.
@@ -1016,7 +1016,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 
 				err := json.Unmarshal(s.Data, &m)
 				if err != nil {
-					r.Log("rebalance: runMonitor json, err: %#v", err)
+					r.Logf("rebalance: runMonitor json, err: %#v", err)
 
 					r.progressCh <- RebalanceProgress{Error: err}
 					r.Stop() // Stop the rebalance.
@@ -1031,7 +1031,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 						if !uuidSeqPrevExists ||
 							uuidSeqPrev.UUID != uuidSeq.UUID ||
 							uuidSeqPrev.Seq != uuidSeq.Seq {
-							r.Log("    monitor, node: %s,"+
+							r.Logf("    monitor, node: %s,"+
 								" pindex: %s, sourcePartition: %s,"+
 								" uuidSeq: %+v, uuidSeqPrev: %+v",
 								s.UUID, pindex, sourcePartition,

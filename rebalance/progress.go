@@ -120,7 +120,7 @@ func ReportProgress(r *Rebalancer,
 
 	for progress := range r.ProgressCh() {
 		if progress.Error != nil {
-			r.Log("progress: error, progress: %+v", progress)
+			r.Logf("progress: error, progress: %+v", progress)
 
 			if firstError == nil {
 				firstError = progress.Error
@@ -140,7 +140,7 @@ func ReportProgress(r *Rebalancer,
 			seenPIndexesSorted,
 			progressEntries)
 		if currEmit != lastEmit {
-			r.Log("%s", currEmit)
+			r.Logf("%s", currEmit)
 		}
 
 		lastEmit = currEmit
