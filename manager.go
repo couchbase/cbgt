@@ -444,25 +444,36 @@ func (mgr *Manager) registerPIndex(pindex *PIndex) error {
 		return fmt.Errorf("manager: registered pindex exists, name: %s",
 			pindex.Name)
 	}
+
 	mgr.pindexes[pindex.Name] = pindex
 	if mgr.meh != nil {
 		mgr.meh.OnRegisterPIndex(pindex)
 	}
+
 	return nil
 }
 
-func (mgr *Manager) unregisterPIndex(name string) *PIndex {
+// unregisterPIndex takes an optional pindexToMatch, which the caller
+// can use for an exact pindex unregistration.
+func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex {
 	mgr.m.Lock()
 	defer mgr.m.Unlock()
 
 	pindex, ok := mgr.pindexes[name]
 	if ok {
+		if pindexToMatch != nil &&
+			pindexToMatch != pindex {
+			return nil
+		}
+
 		delete(mgr.pindexes, name)
 		if mgr.meh != nil {
 			mgr.meh.OnUnregisterPIndex(pindex)
 		}
+
 		return pindex
 	}
+
 	return nil
 }
 

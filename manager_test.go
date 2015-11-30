@@ -275,7 +275,7 @@ func TestManagerRegisterPIndex(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected NewPIndex() to work")
 	}
-	px := m.unregisterPIndex(p.Name)
+	px := m.unregisterPIndex(p.Name, nil)
 	if px != nil {
 		t.Errorf("expected unregisterPIndex() on newborn manager to fail")
 	}
@@ -314,7 +314,7 @@ func TestManagerRegisterPIndex(t *testing.T) {
 		t.Errorf("wrong pindex in current pindexes")
 	}
 
-	px = m.unregisterPIndex(p.Name)
+	px = m.unregisterPIndex(p.Name, pc)
 	if px == nil {
 		t.Errorf("expected first unregisterPIndex() to work")
 	}
@@ -324,7 +324,7 @@ func TestManagerRegisterPIndex(t *testing.T) {
 	meh.lastPIndex = nil
 	meh.lastCall = ""
 
-	px = m.unregisterPIndex(p.Name)
+	px = m.unregisterPIndex(p.Name, nil)
 	if px != nil {
 		t.Errorf("expected second unregisterPIndex() to fail")
 	}

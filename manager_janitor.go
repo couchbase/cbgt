@@ -418,7 +418,10 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 		}
 	}
 
-	pindexUnreg := mgr.unregisterPIndex(pindex.Name)
+	// We provide an exact pindex to match when calling
+	// unregisterPIndex to handle the case there was a race, where a
+	// new pindex was started before we could shutdown the old pindex.
+	pindexUnreg := mgr.unregisterPIndex(pindex.Name, pindex)
 	if pindexUnreg != nil && pindexUnreg != pindex {
 		return fmt.Errorf("janitor: unregistered pindex during stopPIndex,"+
 			" pindex: %#v, pindexUnreg: %#v", pindex, pindexUnreg)
