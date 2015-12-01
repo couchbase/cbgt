@@ -6,10 +6,10 @@
        ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
     <i class="glyphicon glyphicon-unchecked"
        ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeUUID]"></i>
-    <a href="/nodes/{{nodeUUID}}">{{nodeUUID}}</a>
+    <a href="{{static_base}}/nodes/{{nodeUUID}}">{{nodeUUID}}</a>
     &nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;
-    <a href="http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}">
-      <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}
+    <a href="http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}{{static_base}}">
+      <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{resultCfg.nodeDefsKnown.nodeDefs[nodeUUID].hostPort}}{{static_base}}
     </a>
   </dd>
   <br/>

@@ -15,7 +15,7 @@
 		<th></th>
 	</tr>
 	<tr ng-repeat="indexName in indexNames">
-		<td><a href="/indexes/{{indexName}}">{{indexName}}</a></td>
+		<td><a href="{{static_base}}/indexes/{{indexName}}">{{indexName}}</a></td>
 		<td style="white-space: nowrap;">
 			<button ng-click="editIndex(indexName)"
 			         type="button" class="btn btn-default btn-sm">
@@ -34,11 +34,11 @@
 </table>
 
 <div ng-if="!indexNames.length"
-     ng-include="'/static/partials/index/start.html'">
+     ng-include="static_base + '/static/partials/index/start.html'">
 </div>
 
 <div class="input-group">
-  <a href="/indexes/_new">
+  <a href="{{static_base}}/indexes/_new">
     <button class="btn btn-primary" type="submit">
       <i class="glyphicon glyphicon-plus"></i> New Index
     </button>

@@ -1,6 +1,6 @@
 <ol class="breadcrumb">
   <li><span class="glyphicon glyphicon-book"></li>
-  <li><a href="/indexes">Indexes</a></li>
+  <li><a href="{{static_base}}/indexes">Indexes</a></li>
   <li>{{indexName}}</li>
 </ol>
 
@@ -12,6 +12,6 @@
   {{errorMessage}}
 </div>
 
-<div ng-include src="'/static/partials/index/tabs.html'"/>
+<div ng-include src="static_base + '/static/partials/index/tabs.html'"/>
 
-<div ng-include src="tabPath"/>
+<div ng-include src="static_base + tabPath"/>

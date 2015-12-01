@@ -19,7 +19,7 @@
          ng-if="resultCfg.nodeDefsWanted.nodeDefs[nodeDef.uuid]"></i>
       <i class="glyphicon glyphicon-unchecked"
          ng-if="!resultCfg.nodeDefsWanted.nodeDefs[nodeDef.uuid]"></i>
-      <a href="/nodes/{{nodeDef.uuid}}">{{nodeDef.hostPort}}</a> ({{nodeDef.uuid}})
+      <a href="{{static_base}}/nodes/{{nodeDef.uuid}}">{{nodeDef.hostPort}}</a> ({{nodeDef.uuid}})
     </td>
     <td>
       <ul class="nodeDefContainer">
@@ -32,8 +32,8 @@
       </ul>
     </td>
     <td>
-      <a href="http://{{nodeDef.hostPort}}">
-        <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{nodeDef.hostPort}}
+      <a href="http://{{nodeDef.hostPort}}{{static_base}}">
+        <i class="glyphicon glyphicon-link"></i>&nbsp;http://{{nodeDef.hostPort}}{{static_base}}
       </a>
     </td>
   </tr>

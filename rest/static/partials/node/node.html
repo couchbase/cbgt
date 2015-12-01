@@ -1,6 +1,6 @@
 <ol class="breadcrumb">
   <li><span class="glyphicon glyphicon-align-left"></li>
-  <li><a href="/nodes">Nodes</a></li>
+  <li><a href="{{static_base}}/nodes">Nodes</a></li>
   <li>{{nodeUUID}}</li>
 </ol>
 
@@ -12,6 +12,6 @@
   {{errorMessage}}
 </div>
 
-<div ng-include src="'/static/partials/node/tabs.html'"/>
+<div ng-include src="static_base + '/static/partials/node/tabs.html'"/>
 
-<div ng-include src="tabPath"/>
+<div ng-include src="static_base + tabPath"/>

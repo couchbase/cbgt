@@ -24,7 +24,7 @@
     <dt></dt>
     <dd>
       <div class="indexViewer {{indexDef.type}}" data-nodrag>
-        <div ng-include="indexTemplates[indexDef.type]"/>
+        <div ng-include="static_base + indexTemplates[indexDef.type]"/>
       </div>
     </dd>
   </div>
@@ -46,7 +46,7 @@
       </input>
 
       <pre ng-show="curlDetails">curl -XPUT -H "Content-Type: application/json" \
- http://{{hostPort}}/api/index/{{indexName}} \
+ http://{{hostPort}}{{api_base}}/api/index/{{indexName}} \
  -d '{{indexDefStr}}'</pre>
 
       <pre ng-show="!curlDetails"

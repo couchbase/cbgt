@@ -2,7 +2,7 @@
 
 <ol class="breadcrumb">
   <li><span class="glyphicon glyphicon-book"></li>
-  <li><a href="/indexes">Indexes</a></li>
+  <li><a href="{{static_base}}/indexes">Indexes</a></li>
   <li ng-show="isEdit">{{newIndexName}}</li>
   <li ng-show="!isEdit">New Index</li>
 </ol>
@@ -39,7 +39,7 @@
     <label class="col-sm-2 control-label"></label>
     <div class="col-sm-8">
       <div class="indexEditor {{newIndexType}}">
-        <div ng-include="indexTemplates[newIndexType]"/>
+        <div ng-include="static_base + indexTemplates[newIndexType]"/>
       </div>
     </div>
   </div>
@@ -116,7 +116,7 @@
         Show advanced settings
       </input>
       <br/>
-      <a href="/indexes/">
+      <a href="{{static_base}}/indexes/">
         <button class="btn btn-cancel">Cancel</button>
       </a>
       <button ng-click="putIndex(newIndexName, newIndexType, newIndexParams, newSourceType, newSourceName, newSourceUUID, newSourceParams, newPlanParams, prevIndexUUID)"
