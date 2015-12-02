@@ -93,6 +93,10 @@ type ManagerStats struct {
 	TotIndexControl   uint64
 	TotIndexControlOk uint64
 
+	TotPlannerOpStart           uint64
+	TotPlannerOpRes             uint64
+	TotPlannerOpErr             uint64
+	TotPlannerOpDone            uint64
 	TotPlannerNOOP              uint64
 	TotPlannerNOOPOk            uint64
 	TotPlannerKick              uint64
@@ -102,7 +106,12 @@ type ManagerStats struct {
 	TotPlannerKickOk            uint64
 	TotPlannerUnknownErr        uint64
 	TotPlannerSubscriptionEvent uint64
+	TotPlannerStop              uint64
 
+	TotJanitorOpStart           uint64
+	TotJanitorOpRes             uint64
+	TotJanitorOpErr             uint64
+	TotJanitorOpDone            uint64
 	TotJanitorNOOP              uint64
 	TotJanitorNOOPOk            uint64
 	TotJanitorKick              uint64
@@ -113,6 +122,7 @@ type ManagerStats struct {
 	TotJanitorRemovePIndex      uint64
 	TotJanitorUnknownErr        uint64
 	TotJanitorSubscriptionEvent uint64
+	TotJanitorStop              uint64
 }
 
 // MANAGER_MAX_EVENTS limits the number of events tracked by a Manager

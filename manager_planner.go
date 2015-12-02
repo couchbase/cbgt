@@ -66,9 +66,16 @@ func (mgr *Manager) PlannerLoop() {
 	for {
 		select {
 		case <-mgr.stopCh:
+			atomic.AddUint64(&mgr.stats.TotPlannerStop, 1)
 			return
+
 		case m := <-mgr.plannerCh:
+			atomic.AddUint64(&mgr.stats.TotPlannerOpStart, 1)
+
+			log.Printf("planner: awakes, op: %v, msg: %s", m.op, m.msg)
+
 			var err error
+
 			if m.op == WORK_KICK {
 				atomic.AddUint64(&mgr.stats.TotPlannerKickStart, 1)
 				changed, err := mgr.PlannerOnce(m.msg)
@@ -89,12 +96,18 @@ func (mgr *Manager) PlannerLoop() {
 				err = fmt.Errorf("planner: unknown op: %s, m: %#v", m.op, m)
 				atomic.AddUint64(&mgr.stats.TotPlannerUnknownErr, 1)
 			}
+
+			atomic.AddUint64(&mgr.stats.TotPlannerOpRes, 1)
+
 			if m.resCh != nil {
 				if err != nil {
+					atomic.AddUint64(&mgr.stats.TotPlannerOpErr, 1)
 					m.resCh <- err
 				}
 				close(m.resCh)
 			}
+
+			atomic.AddUint64(&mgr.stats.TotPlannerOpDone, 1)
 		}
 	}
 }

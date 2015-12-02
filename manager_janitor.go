@@ -65,11 +65,16 @@ func (mgr *Manager) JanitorLoop() {
 	for {
 		select {
 		case <-mgr.stopCh:
+			atomic.AddUint64(&mgr.stats.TotJanitorStop, 1)
 			return
+
 		case m := <-mgr.janitorCh:
-			log.Printf("janitor: awakes, reason: %s", m.msg)
+			atomic.AddUint64(&mgr.stats.TotJanitorOpStart, 1)
+
+			log.Printf("janitor: awakes, op: %v, msg: %s", m.op, m.msg)
 
 			var err error
+
 			if m.op == WORK_KICK {
 				atomic.AddUint64(&mgr.stats.TotJanitorKickStart, 1)
 				err = mgr.JanitorOnce(m.msg)
@@ -93,12 +98,18 @@ func (mgr *Manager) JanitorLoop() {
 				err = fmt.Errorf("janitor: unknown op: %s, m: %#v", m.op, m)
 				atomic.AddUint64(&mgr.stats.TotJanitorUnknownErr, 1)
 			}
+
+			atomic.AddUint64(&mgr.stats.TotJanitorOpRes, 1)
+
 			if m.resCh != nil {
 				if err != nil {
+					atomic.AddUint64(&mgr.stats.TotJanitorOpErr, 1)
 					m.resCh <- err
 				}
 				close(m.resCh)
 			}
+
+			atomic.AddUint64(&mgr.stats.TotJanitorOpDone, 1)
 		}
 	}
 }
