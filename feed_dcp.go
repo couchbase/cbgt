@@ -153,8 +153,8 @@ type DCPFeedParams struct {
 // values.
 func NewDCPFeedParams() *DCPFeedParams {
 	return &DCPFeedParams{
-		ClusterManagerSleepMaxMS: 20000,
-		DataManagerSleepMaxMS:    20000,
+		ClusterManagerSleepMaxMS: 2000,
+		DataManagerSleepMaxMS:    2000,
 	}
 }
 
