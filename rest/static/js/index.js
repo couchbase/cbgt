@@ -24,7 +24,12 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                     var indexDef = data.indexDefs.indexDefs[indexName];
                     if (indexDef &&
                         typeof(indexDef.params) == "string") {
-                        indexDef.paramsObj = JSON.parse(indexDef.params);
+                        try {
+                            indexDef.paramsObj = JSON.parse(indexDef.params);
+                        } catch (e) {
+                            console.log("refreshIndexNames / JSON.parse",
+                                        indexDef.params, e);
+                        }
                     }
                 }
             }
@@ -136,6 +141,8 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
                         data.indexDef.params = JSON.parse(data.indexDef.params);
                     }
                 } catch (e) {
+                    console.log("loadIndexDetails JSON.parse(data.indexDef.params)",
+                                data.indexDef.params, e);
                 }
 
                 try {
@@ -143,6 +150,8 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
                         data.indexDef.sourceParams = JSON.parse(data.indexDef.sourceParams);
                     }
                 } catch (e) {
+                    console.log("loadIndexDetails JSON.parse(data.indexDef.sourceParams)",
+                                data.indexDef.sourceParams, e);
                 }
 
                 $scope.indexParamsStr = JSON.stringify(data.indexDef.params, undefined, 2);
@@ -474,8 +483,13 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 }
 
                 $scope.newIndexType = data.indexDef.type;
-                $scope.newIndexParams[data.indexDef.type] =
-                    JSON.parse(data.indexDef.params);
+                try {
+                    $scope.newIndexParams[data.indexDef.type] =
+                        JSON.parse(data.indexDef.params);
+                } catch (e) {
+                    console.log("IndexNewCtrl / JSON.parse(data.indexDef.params)",
+                                data.indexDef.params, e);
+                }
                 for (var j in $scope.newIndexParams[data.indexDef.type]) {
                     $scope.newIndexParams[data.indexDef.type][j] =
                         JSON.stringify($scope.newIndexParams[data.indexDef.type][j],
@@ -505,8 +519,15 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 if (indexUI &&
                     indexUI.controllerInitName &&
                     typeof(window[indexUI.controllerInitName]) == "function") {
+                    var j = null;
+                    try {
+                        j = JSON.parse(data.indexDef.params);
+                    } catch (e) {
+                        console.log("IndexNewCtrl, JSON.parse(data.indexDef.params)",
+                                    data.indexDef.params, e);
+                    }
                     window[indexUI.controllerInitName](
-                        "edit", JSON.parse(data.indexDef.params), indexUI,
+                        "edit", j, indexUI,
                         $scope, $http, $route, $routeParams,
                         $location, $log, $sce, $uibModal);
                 }
