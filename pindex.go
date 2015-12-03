@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 )
 
 const PINDEX_META_FILENAME string = "PINDEX_META"
@@ -42,10 +43,22 @@ type PIndex struct {
 	Dest             Dest       `json:"-"` // Transient, not persisted.
 
 	sourcePartitionsMap map[string]bool // Non-persisted memoization.
+
+	m      sync.Mutex
+	closed bool
 }
 
 // Close down a pindex, optionally removing its stored files.
 func (p *PIndex) Close(remove bool) error {
+	p.m.Lock()
+	if p.closed {
+		p.m.Unlock()
+		return nil
+	}
+
+	p.closed = true
+	p.m.Unlock()
+
 	if p.Dest != nil {
 		err := p.Dest.Close()
 		if err != nil {
@@ -60,6 +73,18 @@ func (p *PIndex) Close(remove bool) error {
 	return nil
 }
 
+func restartPIndex(mgr *Manager, pindex *PIndex) {
+	pindex.m.Lock()
+	closed := pindex.closed
+	pindex.m.Unlock()
+
+	if !closed {
+		mgr.ClosePIndex(pindex)
+	}
+
+	mgr.Kick("restart-pindex")
+}
+
 // Creates a pindex, including its backend implementation structures,
 // and its files.
 func NewPIndex(mgr *Manager, name, uuid,
@@ -69,10 +94,7 @@ func NewPIndex(mgr *Manager, name, uuid,
 	var pindex *PIndex
 
 	restart := func() {
-		go func() {
-			mgr.ClosePIndex(pindex)
-			mgr.Kick("restart-pindex")
-		}()
+		go restartPIndex(mgr, pindex)
 	}
 
 	impl, dest, err := NewPIndexImpl(indexType, indexParams, path, restart)
@@ -140,10 +162,7 @@ func OpenPIndex(mgr *Manager, path string) (*PIndex, error) {
 	}
 
 	restart := func() {
-		go func() {
-			mgr.ClosePIndex(pindex)
-			mgr.Kick("restart-pindex")
-		}()
+		go restartPIndex(mgr, pindex)
 	}
 
 	impl, dest, err := OpenPIndexImpl(pindex.IndexType, path, restart)
