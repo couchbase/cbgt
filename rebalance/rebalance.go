@@ -316,6 +316,16 @@ func (r *Rebalancer) Logf(fmt string, v ...interface{}) {
 
 // --------------------------------------------------------
 
+// GetEndPlanPIndexes return value should be treated as immutable.
+func (r *Rebalancer) GetEndPlanPIndexes() *cbgt.PlanPIndexes {
+	r.m.Lock()
+	ppi := *r.endPlanPIndexes
+	r.m.Unlock()
+	return &ppi
+}
+
+// --------------------------------------------------------
+
 // rebalanceIndexes rebalances each index, one at a time.
 func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
