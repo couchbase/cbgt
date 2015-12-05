@@ -513,16 +513,17 @@ func BlancePlanPIndexes(mode string,
 
 	h := crc32.NewIEEE()
 	io.WriteString(h, indexDef.Name)
-	next := int(h.Sum32() % uint32(len(nodeUUIDsAll)))
+	next := sort.SearchStrings(nodeUUIDsAll, fmt.Sprintf("%x", h.Sum32()))
 
 	for range nodeUUIDsAll {
+		if next >= len(nodeUUIDsAll) {
+			next = 0
+		}
+
 		nodeUUIDsAllForIndex =
 			append(nodeUUIDsAllForIndex, nodeUUIDsAll[next])
 
 		next++
-		if next >= len(nodeUUIDsAll) {
-			next = 0
-		}
 	}
 
 	blanceNextMap, warnings := blance.PlanNextMap(blancePrevMap,
