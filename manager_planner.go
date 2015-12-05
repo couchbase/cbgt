@@ -114,7 +114,7 @@ func (mgr *Manager) PlannerLoop() {
 
 // PlannerOnce is the main body of a PlannerLoop.
 func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
-	log.Printf("planner: awakes, reason: %s", reason)
+	log.Printf("planner: once, reason: %s", reason)
 
 	if mgr.cfg == nil { // Can occur during testing.
 		return false, fmt.Errorf("planner: skipped due to nil cfg")
@@ -505,8 +505,28 @@ func BlancePlanPIndexes(mode string,
 		stateStickiness = map[string]int{"primary": 100000}
 	}
 
+	// Compute nodeUUIDsAllForIndex by rotating the nodeUUIDsAll based
+	// on a function of index name, so that multiple indexes will have
+	// layouts that favor different starting nodes, but whose
+	// computation is repeatable.
+	var nodeUUIDsAllForIndex []string
+
+	h := crc32.NewIEEE()
+	io.WriteString(h, indexDef.Name)
+	next := int(h.Sum32() % uint32(len(nodeUUIDsAll)))
+
+	for range nodeUUIDsAll {
+		nodeUUIDsAllForIndex =
+			append(nodeUUIDsAllForIndex, nodeUUIDsAll[next])
+
+		next++
+		if next >= len(nodeUUIDsAll) {
+			next = 0
+		}
+	}
+
 	blanceNextMap, warnings := blance.PlanNextMap(blancePrevMap,
-		nodeUUIDsAll, nodeUUIDsToRemove, nodeUUIDsToAdd,
+		nodeUUIDsAllForIndex, nodeUUIDsToRemove, nodeUUIDsToAdd,
 		model, modelConstraints,
 		partitionWeights,
 		stateStickiness,
