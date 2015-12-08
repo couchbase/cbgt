@@ -57,6 +57,7 @@ func main() {
 	mcp, err := mcp.StartMCP(cfg, flags.Server, mcp.MCPOptions{
 		DryRun:             flags.DryRun,
 		Verbose:            flags.Verbose,
+		FavorMinNodes:      flags.FavorMinNodes,
 		WaitForMemberNodes: flags.WaitForMemberNodes,
 	})
 	if err != nil {

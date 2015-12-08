@@ -60,9 +60,9 @@ type MCP struct {
 }
 
 type MCPOptions struct {
-	DryRun  bool
-	Verbose int
-
+	DryRun             bool
+	Verbose            int
+	FavorMinNodes      bool
 	WaitForMemberNodes int // Seconds to wait for member nodes.
 }
 
