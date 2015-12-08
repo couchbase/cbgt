@@ -96,6 +96,8 @@ func main() {
 							" ct (alias for changeTopology)\n" +
 							" stopChangeTopology $rev\n" +
 							" sct (alias for stopChangeTopology)\n" +
+							" indexDefsChanged\n" +
+							" idc (alias for indexDefsChanged)\n" +
 							" exit, quit, q")
 					} else if op == "getTopology" || op == "gt" {
 						topology := mcp.GetTopology()
@@ -142,6 +144,10 @@ func main() {
 
 							mcp.StopChangeTopology(interfaces.Rev(rev))
 						}
+					} else if op == "indexDefsChanged" || op == "idc" {
+						err = mcp.IndexDefsChanged()
+
+						log.Printf("err: %v", err)
 					} else if op == "quit" || op == "q" || op == "exit" {
 						log.Printf("bye")
 						os.Exit(0)

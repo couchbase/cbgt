@@ -145,7 +145,7 @@ func (mcp *MCP) run() {
 
 			if kind == "force" || kind == "force-indexDefs" ||
 				!reflect.DeepEqual(lastIndexDefs, indexDefs) {
-				err = mcp.indexDefsChanged(indexDefs)
+				err = mcp.IndexDefsChanged()
 				if err == nil {
 					lastIndexDefs = indexDefs
 				}
@@ -186,7 +186,7 @@ func (mcp *MCP) run() {
 // When the index definitions have changed, our approach is to run the
 // planner, but only for brand new indexes that don't have any
 // pindexes yet.
-func (mcp *MCP) indexDefsChanged(indexDefs *cbgt.IndexDefs) (err error) {
+func (mcp *MCP) IndexDefsChanged() (err error) {
 	plannerFilterNewIndexesOnly := func(indexDef *cbgt.IndexDef,
 		planPIndexesPrev, planPIndexes *cbgt.PlanPIndexes) bool {
 		copyPrevPlan := func() {
