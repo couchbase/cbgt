@@ -24,9 +24,8 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
-
-	"github.com/couchbase/cbgt-mcp/mcp"
-	"github.com/couchbase/cbgt-mcp/mcp/interfaces"
+	"github.com/couchbase/cbgt/mcp"
+	"github.com/couchbase/cbgt/mcp/interfaces"
 )
 
 func main() {

@@ -11,9 +11,8 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
+	"github.com/couchbase/cbgt/mcp/interfaces"
 	"github.com/couchbase/cbgt/rebalance"
-
-	"github.com/couchbase/cbgt-mcp/mcp/interfaces"
 )
 
 // An MCP might be in the midst of controlling a replan/rebalance,
