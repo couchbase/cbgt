@@ -22,6 +22,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
+	"github.com/couchbase/cbgt/mcp"
 	"github.com/couchbase/cbgt/rebalance"
 )
 
@@ -56,20 +57,28 @@ func main() {
 		nodesToRemove = strings.Split(flags.RemoveNodes, ",")
 	}
 
-	var steps map[string]bool
+	steps := map[string]bool{}
 	if flags.Steps != "" {
 		steps = cbgt.StringsToMap(strings.Split(flags.Steps, ","))
 	}
 
 	// ------------------------------------------------
 
-	if steps == nil || steps["rebalance"] {
-		log.Printf("main: step rebalance")
+	if steps != nil && steps["rebalance"] {
+		steps["rebalance_"] = true
+		steps["unregister"] = true
+		steps["planner"] = true
+	}
+
+	// ------------------------------------------------
+
+	if steps != nil && steps["rebalance_"] {
+		log.Printf("main: step rebalance_")
 
 		err := rebalance.RunRebalance(cfg, flags.Server, nodesToRemove,
 			flags.FavorMinNodes, flags.DryRun, flags.Verbose, nil)
 		if err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("main: RunRebalance, err: %v", err)
 			return
 		}
 	}
@@ -79,9 +88,37 @@ func main() {
 	err = cmd.PlannerSteps(steps, cfg, cbgt.VERSION,
 		flags.Server, nodesToRemove, flags.DryRun, nil)
 	if err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("main: PlannerSteps, err: %v", err)
 		return
 	}
+
+	// ------------------------------------------------
+
+	var m *mcp.MCP
+
+	if steps != nil && (steps["service"] || steps["prompt"]) {
+		m, err = mcp.StartMCP(cfg, flags.Server, mcp.MCPOptions{
+			DryRun:             flags.DryRun,
+			Verbose:            flags.Verbose,
+			FavorMinNodes:      flags.FavorMinNodes,
+			WaitForMemberNodes: flags.WaitForMemberNodes,
+		})
+		if err != nil {
+			log.Fatalf("main: StartMCP, err: %v", err)
+			return
+		}
+
+		if steps["prompt"] {
+			runMCPPrompt(m)
+		}
+
+		if steps["service"] {
+			// TODO: run a REST service here if bind addr provided,
+			// and/or, otherwise run as a revrpc service.
+		}
+	}
+
+	// ------------------------------------------------
 
 	log.Printf("main: done")
 }

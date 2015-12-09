@@ -31,6 +31,8 @@ type Flags struct {
 	Steps         string
 	Verbose       int
 	Version       bool
+
+	WaitForMemberNodes int // Seconds to wait for member nodes.
 }
 
 var flags Flags
@@ -76,14 +78,14 @@ func initFlags(flags *Flags) map[string][]string {
 		"required connection string to a configuration provider/server"+
 			"\nfor clustering multiple nodes:"+
 			"\n* couchbase:http://BUCKET_USER:BUCKET_PSWD@CB_HOST:CB_PORT"+
-			"\n     - manages a cluster configuration in a couchbase"+
-			"\n       3.x bucket; for example:"+
-			"\n       'couchbase:http://my-cfg-bucket@127.0.0.1:8091';"+
+			"\n   - manages a cluster configuration in a couchbase"+
+			"\n     3.x bucket; for example:"+
+			"\n     'couchbase:http://my-cfg-bucket@127.0.0.1:8091';"+
 			"\n* metakv"+
-			"\n     - manages a cluster configuration in metakv store;"+
-			"\n       environment variable CBAUTH_REVRPC_URL needs"+
-			"\n       to be set; for example:"+
-			"\n       'export CBAUTH_REVRPC_URL=http://user:password@localhost:9000/cbgt-rebalance'.")
+			"\n   - manages a cluster configuration in metakv store;"+
+			"\n     environment variable CBAUTH_REVRPC_URL needs"+
+			"\n     to be set; for example:"+
+			"\n     'export CBAUTH_REVRPC_URL=http://user:pswd@host:9000/cbgt-rebalance'.")
 	b(&flags.DryRun,
 		[]string{"dryRun", "noChanges", "n"}, "", false,
 		"no actual changes will be executed.")
@@ -106,16 +108,28 @@ func initFlags(flags *Flags) map[string][]string {
 			" example when using couchbase 3.x as"+
 			"\nyour datasource server: 'http://localhost:8091'.")
 	s(&flags.Steps,
-		[]string{"steps"}, "STEPS", "",
-		"advanced: comma-separated list of cbgt-rebalance steps wanted;"+
-			"\ndefaults to all the normal cbgt-rebalance steps;"+
-			"\nexample: 'rebalance,unregister,planner'.")
+		[]string{"steps"}, "STEPS", "rebalance",
+		"comma-separated list of processings steps;"+
+			"\ncommon steps:"+
+			"\n  rebalance  = alias for 'rebalance_,unregister,planner';"+
+			"\n  unregister = unregisters the nodes listed in removeNodes;"+
+			"\n  planner    = invokes the planner once;"+
+			"\n  service    = run as a long running service;"+
+			"\n  prompt     = run an interactive command-line prompt;"+
+			"\nadvanced, uncommon steps:"+
+			"\n  rebalance_ = orchestrated reassignment of pindexes to remaining nodes;"+
+			"\n  failover   = alias for 'unregister,failover_';"+
+			"\n  failover_  = failover the nodes listed in removeNodes;"+
+			"\n  NODES-REMOVE-ALL = dangerous! removeNodes populated with every node.")
 	i(&flags.Verbose,
 		[]string{"verbose"}, "INTEGER", 3,
 		"optional level of logging verbosity; higher is more verbose.")
 	b(&flags.Version,
 		[]string{"version", "v"}, "", false,
 		"print version string and exit.")
+	i(&flags.WaitForMemberNodes,
+		[]string{"waitForMemberNodes"}, "SECS", 30,
+		"seconds to wait for member nodes on service replan/rebalance.")
 
 	flag.Usage = func() {
 		if !flags.Help {

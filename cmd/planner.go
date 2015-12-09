@@ -22,21 +22,21 @@ import (
 // PlannerSteps helps command-line tools implement the planner steps:
 // * "unregister" - unregisters nodesRemove from the cfg.
 // * "planner" - runs the planner to save a new plan into the cfg.
+// * "failover" - a composite step, comprised of "unregister" and "failover_".
+// * "failover_" - processes the nodesRemove as nodes to be failover'ed.
 //
-// The default steps are "unregister" and "planner".
-//
-// An additional composite step, "FAILOVER" (fully capitalized), is
-// used to process the nodesRemove as nodes to be failover'ed.
-// "FAILOVER" is comprised of the lower-level steps of "unregister"
-// and "failover" (all lowercase).
-//
-// The "NODES-REMOVE-ALL" step populates the nodesRemove with
-// every known and wanted node.  This can have a lot of impact, and
-// was meant to be used for cluster cleanup/purging situations.
+// The "NODES-REMOVE-ALL" step overrides the nodesRemove with every
+// known and wanted node.  This can have a lot of impact, and was
+// meant to be used for cluster cleanup/purging situations.
 func PlannerSteps(steps map[string]bool,
 	cfg cbgt.Cfg, version, server string, nodesRemove []string,
 	dryRun bool, plannerFilter cbgt.PlannerFilter) error {
-	if steps["NODES-REMOVE-ALL"] {
+	if steps != nil && steps["failover"] {
+		steps["unregister"] = true
+		steps["failover_"] = true
+	}
+
+	if steps != nil && steps["NODES-REMOVE-ALL"] {
 		nodesRemove = nil
 
 		nodesSeen := map[string]bool{}
@@ -60,7 +60,7 @@ func PlannerSteps(steps map[string]bool,
 
 	log.Printf("planner: nodesRemove: %#v", nodesRemove)
 
-	if steps == nil || steps["unregister"] || steps["FAILOVER"] {
+	if steps != nil && steps["unregister"] {
 		log.Printf("planner: step unregister")
 
 		if !dryRun {
@@ -71,7 +71,7 @@ func PlannerSteps(steps map[string]bool,
 		}
 	}
 
-	if steps == nil || steps["planner"] {
+	if steps != nil && steps["planner"] {
 		log.Printf("planner: step planner")
 
 		if !dryRun {
@@ -82,8 +82,8 @@ func PlannerSteps(steps map[string]bool,
 		}
 	}
 
-	if steps["failover"] || steps["FAILOVER"] {
-		log.Printf("planner: step failover")
+	if steps != nil && steps["failover_"] {
+		log.Printf("planner: step failover_")
 
 		if !dryRun {
 			_, err := Failover(cfg, cbgt.VERSION, server, nodesRemove)

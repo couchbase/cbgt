@@ -232,7 +232,8 @@ func (mcp *MCP) IndexDefsChanged() (err error) {
 	}
 
 	go func() {
-		var steps map[string]bool
+		steps := map[string]bool{"planner": true}
+
 		var nodesToRemove []string
 
 		cmd.PlannerSteps(steps, mcp.cfg, cbgt.VERSION,
@@ -506,9 +507,11 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 
 		// 3) Run planner steps, like unregister and failover.
 		//
-		var steps map[string]bool
+		steps := map[string]bool{"unregister": true}
 		if failover {
-			steps = map[string]bool{"FAILOVER": true}
+			steps["failover_"] = true
+		} else {
+			steps["planner"] = true
 		}
 
 		err = cmd.PlannerSteps(steps, mcp.cfg, cbgt.VERSION,
