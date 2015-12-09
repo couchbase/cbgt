@@ -21,6 +21,7 @@ import (
 )
 
 type Flags struct {
+	BindHttp      string
 	CfgConnect    string
 	DryRun        bool
 	FavorMinNodes bool
@@ -73,6 +74,10 @@ func initFlags(flags *Flags) map[string][]string {
 		flagKinds[names[0]] = kind
 	}
 
+	s(&flags.BindHttp,
+		[]string{"bindHttp", "b"}, "ADDR:PORT", "0.0.0.0:8094",
+		"local address:port where cbgt-ctl will listen and"+
+			"\nserve REST API requests; default is '0.0.0.0:8094'.")
 	s(&flags.CfgConnect,
 		[]string{"cfgConnect", "cfg", "c"}, "CFG_CONNECT", "<MISSING>",
 		"required connection string to a configuration provider/server"+
@@ -115,6 +120,7 @@ func initFlags(flags *Flags) map[string][]string {
 			"\n  unregister = unregisters the nodes listed in removeNodes;"+
 			"\n  planner    = invokes the planner once;"+
 			"\n  service    = run as a long running service;"+
+			"\n  rest       = run as a REST service on the bindHttp ADDR:PORT;"+
 			"\n  prompt     = run an interactive command-line prompt;"+
 			"\nadvanced, uncommon steps:"+
 			"\n  rebalance_ = orchestrated reassignment of pindexes to remaining nodes;"+

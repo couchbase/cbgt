@@ -12,11 +12,15 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strings"
+
+	"github.com/gorilla/mux"
 
 	log "github.com/couchbase/clog"
 
@@ -94,10 +98,10 @@ func main() {
 
 	// ------------------------------------------------
 
-	var m *ctl.Ctl
+	var c *ctl.Ctl
 
-	if steps != nil && (steps["service"] || steps["prompt"]) {
-		m, err = ctl.StartCtl(cfg, flags.Server, ctl.CtlOptions{
+	if steps != nil && (steps["service"] || steps["rest"] || steps["prompt"]) {
+		c, err = ctl.StartCtl(cfg, flags.Server, ctl.CtlOptions{
 			DryRun:             flags.DryRun,
 			Verbose:            flags.Verbose,
 			FavorMinNodes:      flags.FavorMinNodes,
@@ -108,17 +112,64 @@ func main() {
 			return
 		}
 
-		if steps["prompt"] {
-			runCtlPrompt(m)
+		if steps["service"] {
+			// TODO.
 		}
 
-		if steps["service"] {
-			// TODO: run a REST service here if bind addr provided,
-			// and/or, otherwise run as a revrpc service.
+		if steps["rest"] {
+			bindHttp := flags.BindHttp
+			if bindHttp[0] == ':' {
+				bindHttp = "localhost" + bindHttp
+			}
+			if strings.HasPrefix(bindHttp, "0.0.0.0:") {
+				bindHttp = "localhost" + bindHttp[len("0.0.0.0"):]
+			}
+
+			http.Handle("/", newRestRouter(c))
+
+			go func() {
+				log.Printf("------------------------------------------------------------")
+				log.Printf("REST API is available: http://%s", bindHttp)
+				log.Printf("------------------------------------------------------------")
+
+				err := http.ListenAndServe(bindHttp, nil) // Blocks.
+				if err != nil {
+					log.Fatalf("main: listen, err: %v\n"+
+						"  Please check that your -bindHttp parameter (%q)\n"+
+						"  is correct and available.", err, bindHttp)
+				}
+			}()
 		}
+
+		if steps["prompt"] {
+			go runCtlPrompt(c)
+		}
+
+		<-make(chan struct{})
 	}
 
 	// ------------------------------------------------
 
 	log.Printf("main: done")
 }
+
+// ------------------------------------------------
+
+func newRestRouter(ctl *ctl.Ctl) *mux.Router {
+	r := mux.NewRouter()
+
+	r.HandleFunc("/api/getTopology",
+		func(w http.ResponseWriter, r *http.Request) {
+			topology := ctl.GetTopology()
+			b, _ := json.Marshal(topology)
+			w.Write(b)
+		}).Methods("GET")
+
+	// TODO: POST /api/changeTopology
+	// TODO: POST /api/stopChangeTopology
+	// TODO: POST /api/indexDefsChanged
+
+	return r
+}
+
+

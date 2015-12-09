@@ -581,11 +581,16 @@ func currentMemberNodes(cfg cbgt.Cfg) ([]interfaces.Node, error) {
 	var memberNodes []interfaces.Node
 
 	for _, nodeDef := range nodeDefsWanted.NodeDefs {
-		memberNodes = append(memberNodes, interfaces.Node{
+		memberNode := interfaces.Node{
 			UUID:       interfaces.UUID(nodeDef.UUID),
 			ServiceURL: interfaces.URL("http://" + nodeDef.HostPort),
-			ManagerURL: interfaces.URL("http://" + nodeDef.Extras),
-		})
+		}
+
+		if nodeDef.Extras != "" {
+			memberNode.ManagerURL = interfaces.URL("http://" + nodeDef.Extras)
+		}
+
+		memberNodes = append(memberNodes, memberNode)
 	}
 
 	return memberNodes, nil
