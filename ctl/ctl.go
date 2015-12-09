@@ -426,14 +426,12 @@ func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 				}
 
 				// Start rebalance and monitor progress.
-				favorMinNodes := false
-
 				r, err := rebalance.StartRebalance(cbgt.VERSION,
 					ctl.cfg,
 					ctl.server,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
-						FavorMinNodes: favorMinNodes,
+						FavorMinNodes: ctl.options.FavorMinNodes,
 						DryRun:        ctl.options.DryRun,
 						Verbose:       ctl.options.Verbose,
 					})
