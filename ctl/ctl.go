@@ -1,4 +1,4 @@
-package mcp
+package ctl
 
 import (
 	"fmt"
@@ -11,12 +11,12 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
-	"github.com/couchbase/cbgt/mcp/interfaces"
+	"github.com/couchbase/cbgt/ctl/interfaces"
 	"github.com/couchbase/cbgt/rebalance"
 )
 
-// An MCP might be in the midst of controlling a replan/rebalance,
-// where mcp.ctlDoneCh will be non-nil.
+// An Ctl might be in the midst of controlling a replan/rebalance,
+// where ctl.ctlDoneCh will be non-nil.
 //
 // If we're in the midst of a replan/rebalance, and another topology
 // change request comes in, we stop any existing work and then start
@@ -24,17 +24,17 @@ import (
 // will have the latest, wanted topology.  This might happen if some
 // stopChangeTopology request or signal got lost somewhere.
 //
-type MCP struct {
+type Ctl struct {
 	cfg        cbgt.Cfg
 	cfgEventCh chan cbgt.CfgEvent
 
 	server  string
-	options MCPOptions
+	options CtlOptions
 
-	doneCh chan struct{} // Closed by MCP when MCP is done.
-	initCh chan error    // Closed by MCP when MCP is initialized.
-	stopCh chan struct{} // Closed by app when MCP should stop.
-	kickCh chan string   // Written by app when it wants to kick the MCP.
+	doneCh chan struct{} // Closed by Ctl when Ctl is done.
+	initCh chan error    // Closed by Ctl when Ctl is initialized.
+	stopCh chan struct{} // Closed by app when Ctl should stop.
+	kickCh chan string   // Written by app when it wants to kick the Ctl.
 
 	// -----------------------------------
 	// The m protects the fields in this section.
@@ -59,7 +59,7 @@ type MCP struct {
 	lastActivities *interfaces.Activities
 }
 
-type MCPOptions struct {
+type CtlOptions struct {
 	DryRun             bool
 	Verbose            int
 	FavorMinNodes      bool
@@ -68,9 +68,9 @@ type MCPOptions struct {
 
 // ----------------------------------------------------
 
-func StartMCP(cfg cbgt.Cfg, server string, options MCPOptions) (
-	*MCP, error) {
-	mcp := &MCP{
+func StartCtl(cfg cbgt.Cfg, server string, options CtlOptions) (
+	*Ctl, error) {
+	ctl := &Ctl{
 		cfg:        cfg,
 		cfgEventCh: make(chan cbgt.CfgEvent),
 		server:     server,
@@ -81,63 +81,63 @@ func StartMCP(cfg cbgt.Cfg, server string, options MCPOptions) (
 		kickCh:     make(chan string),
 	}
 
-	go mcp.run()
+	go ctl.run()
 
-	return mcp, <-mcp.initCh
+	return ctl, <-ctl.initCh
 }
 
-func (mcp *MCP) Stop() error {
-	close(mcp.stopCh)
+func (ctl *Ctl) Stop() error {
+	close(ctl.stopCh)
 
-	<-mcp.doneCh
+	<-ctl.doneCh
 
 	return nil
 }
 
 // ----------------------------------------------------
 
-func (mcp *MCP) run() {
-	defer close(mcp.doneCh)
+func (ctl *Ctl) run() {
+	defer close(ctl.doneCh)
 
-	memberNodes, err := currentMemberNodes(mcp.cfg)
+	memberNodes, err := currentMemberNodes(ctl.cfg)
 	if err != nil {
-		mcp.initCh <- err
-		close(mcp.initCh)
+		ctl.initCh <- err
+		close(ctl.initCh)
 		return
 	}
 
-	planPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(mcp.cfg, cbgt.VERSION)
+	planPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
 	if err != nil {
-		mcp.initCh <- err
-		close(mcp.initCh)
+		ctl.initCh <- err
+		close(ctl.initCh)
 		return
 	}
 
-	mcp.m.Lock()
+	ctl.m.Lock()
 
-	mcp.revNum = 1
+	ctl.revNum = 1
 
-	mcp.memberNodes = memberNodes
+	ctl.memberNodes = memberNodes
 
 	if planPIndexes != nil {
-		mcp.prevWarnings = planPIndexes.Warnings
+		ctl.prevWarnings = planPIndexes.Warnings
 	}
 
-	mcp.m.Unlock()
+	ctl.m.Unlock()
 
 	// -----------------------------------------------------------
 
-	err = mcp.cfg.Subscribe(cbgt.INDEX_DEFS_KEY, mcp.cfgEventCh)
+	err = ctl.cfg.Subscribe(cbgt.INDEX_DEFS_KEY, ctl.cfgEventCh)
 	if err != nil {
-		mcp.initCh <- err
-		close(mcp.initCh)
+		ctl.initCh <- err
+		close(ctl.initCh)
 		return
 	}
 
 	var lastIndexDefs *cbgt.IndexDefs
 
 	kickIndexDefs := func(kind string) error {
-		indexDefs, _, err := cbgt.CfgGetIndexDefs(mcp.cfg)
+		indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
 		if err == nil && indexDefs != nil {
 			if lastIndexDefs == nil {
 				lastIndexDefs = indexDefs
@@ -145,7 +145,7 @@ func (mcp *MCP) run() {
 
 			if kind == "force" || kind == "force-indexDefs" ||
 				!reflect.DeepEqual(lastIndexDefs, indexDefs) {
-				err = mcp.IndexDefsChanged()
+				err = ctl.IndexDefsChanged()
 				if err == nil {
 					lastIndexDefs = indexDefs
 				}
@@ -157,25 +157,25 @@ func (mcp *MCP) run() {
 
 	err = kickIndexDefs("init")
 	if err != nil {
-		mcp.initCh <- err
-		close(mcp.initCh)
+		ctl.initCh <- err
+		close(ctl.initCh)
 		return
 	}
 
 	// -----------------------------------------------------------
 
-	close(mcp.initCh)
+	close(ctl.initCh)
 
 	for {
 		select {
-		case <-mcp.stopCh:
-			mcp.dispatchCtl("", "stop", nil)
+		case <-ctl.stopCh:
+			ctl.dispatchCtl("", "stop", nil)
 			return
 
-		case kind := <-mcp.kickCh:
+		case kind := <-ctl.kickCh:
 			kickIndexDefs(kind)
 
-		case <-mcp.cfgEventCh:
+		case <-ctl.cfgEventCh:
 			kickIndexDefs("cfgEvent")
 		}
 	}
@@ -186,7 +186,7 @@ func (mcp *MCP) run() {
 // When the index definitions have changed, our approach is to run the
 // planner, but only for brand new indexes that don't have any
 // pindexes yet.
-func (mcp *MCP) IndexDefsChanged() (err error) {
+func (ctl *Ctl) IndexDefsChanged() (err error) {
 	plannerFilterNewIndexesOnly := func(indexDef *cbgt.IndexDef,
 		planPIndexesPrev, planPIndexes *cbgt.PlanPIndexes) bool {
 		copyPrevPlan := func() {
@@ -215,7 +215,7 @@ func (mcp *MCP) IndexDefsChanged() (err error) {
 
 		// Split each indexDef into 1 or more PlanPIndexes.
 		planPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
-			indexDef, mcp.server, nil)
+			indexDef, ctl.server, nil)
 		if err != nil {
 			copyPrevPlan()
 			return false
@@ -236,16 +236,16 @@ func (mcp *MCP) IndexDefsChanged() (err error) {
 
 		var nodesToRemove []string
 
-		cmd.PlannerSteps(steps, mcp.cfg, cbgt.VERSION,
-			mcp.server, nodesToRemove, mcp.options.DryRun,
+		cmd.PlannerSteps(steps, ctl.cfg, cbgt.VERSION,
+			ctl.server, nodesToRemove, ctl.options.DryRun,
 			plannerFilterNewIndexesOnly)
 
 		planPIndexes, _, err :=
-			cbgt.PlannerGetPlanPIndexes(mcp.cfg, cbgt.VERSION)
+			cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
 		if err == nil && planPIndexes != nil {
-			mcp.m.Lock()
-			mcp.prevWarnings = planPIndexes.Warnings
-			mcp.m.Unlock()
+			ctl.m.Lock()
+			ctl.prevWarnings = planPIndexes.Warnings
+			ctl.m.Unlock()
 		}
 	}()
 
@@ -254,84 +254,84 @@ func (mcp *MCP) IndexDefsChanged() (err error) {
 
 // ----------------------------------------------------
 
-func (mcp *MCP) Activities() *interfaces.Activities {
-	mcp.mLast.Lock()
-	rv := *mcp.lastActivities
-	mcp.mLast.Unlock()
+func (ctl *Ctl) Activities() *interfaces.Activities {
+	ctl.mLast.Lock()
+	rv := *ctl.lastActivities
+	ctl.mLast.Unlock()
 
 	return &rv
 }
 
-func (mcp *MCP) GetTopology() *interfaces.Topology {
-	mcp.m.Lock()
-	rv := mcp.getTopologyUnlocked()
-	mcp.m.Unlock()
+func (ctl *Ctl) GetTopology() *interfaces.Topology {
+	ctl.m.Lock()
+	rv := ctl.getTopologyUnlocked()
+	ctl.m.Unlock()
 
 	return rv
 }
 
-func (mcp *MCP) getTopologyUnlocked() *interfaces.Topology {
+func (ctl *Ctl) getTopologyUnlocked() *interfaces.Topology {
 	return &interfaces.Topology{
-		Rev:                    interfaces.Rev(fmt.Sprintf("%d", mcp.revNum)),
-		MemberNodes:            mcp.memberNodes,
-		ChangeTopologyWarnings: mcp.prevWarnings,
-		ChangeTopologyErrors:   mcp.prevErrors,
-		ChangeTopology:         mcp.ctlChangeTopology,
+		Rev:                    interfaces.Rev(fmt.Sprintf("%d", ctl.revNum)),
+		MemberNodes:            ctl.memberNodes,
+		ChangeTopologyWarnings: ctl.prevWarnings,
+		ChangeTopologyErrors:   ctl.prevErrors,
+		ChangeTopology:         ctl.ctlChangeTopology,
 	}
 }
 
 // ----------------------------------------------------
 
-func (mcp *MCP) ChangeTopology(changeTopology *interfaces.ChangeTopology) (
+func (ctl *Ctl) ChangeTopology(changeTopology *interfaces.ChangeTopology) (
 	topology *interfaces.Topology, err error) {
-	return mcp.dispatchCtl(
+	return ctl.dispatchCtl(
 		changeTopology.Rev,
 		changeTopology.Mode,
 		changeTopology.MemberNodes)
 }
 
-func (mcp *MCP) StopChangeTopology(rev interfaces.Rev) {
-	mcp.dispatchCtl(rev, "stopChangeTopology", nil)
+func (ctl *Ctl) StopChangeTopology(rev interfaces.Rev) {
+	ctl.dispatchCtl(rev, "stopChangeTopology", nil)
 }
 
 // ----------------------------------------------------
 
-func (mcp *MCP) dispatchCtl(
+func (ctl *Ctl) dispatchCtl(
 	rev interfaces.Rev, mode string, memberNodes []interfaces.Node,
 ) (*interfaces.Topology, error) {
-	mcp.m.Lock()
-	err := mcp.dispatchCtlUnlocked(rev, mode, memberNodes)
-	topology := mcp.getTopologyUnlocked()
-	mcp.m.Unlock()
+	ctl.m.Lock()
+	err := ctl.dispatchCtlUnlocked(rev, mode, memberNodes)
+	topology := ctl.getTopologyUnlocked()
+	ctl.m.Unlock()
 
 	return topology, err
 }
 
-func (mcp *MCP) dispatchCtlUnlocked(
+func (ctl *Ctl) dispatchCtlUnlocked(
 	rev interfaces.Rev, mode string, memberNodes []interfaces.Node) error {
 	if rev != "" &&
-		rev != mcp.ctlRev &&
-		rev != interfaces.Rev(fmt.Sprintf("%d", mcp.revNum)) {
+		rev != ctl.ctlRev &&
+		rev != interfaces.Rev(fmt.Sprintf("%d", ctl.revNum)) {
 		return interfaces.ErrorWrongRev
 	}
 
-	if mcp.ctlStopCh != nil {
-		close(mcp.ctlStopCh)
-		mcp.ctlStopCh = nil
+	if ctl.ctlStopCh != nil {
+		close(ctl.ctlStopCh)
+		ctl.ctlStopCh = nil
 	}
 
-	ctlDoneCh := mcp.ctlDoneCh
+	ctlDoneCh := ctl.ctlDoneCh
 	if ctlDoneCh != nil {
-		// Release lock while waiting for done, so ctl can mutate mcp fields.
-		mcp.m.Unlock()
+		// Release lock while waiting for done, so ctl can mutate ctl fields.
+		ctl.m.Unlock()
 		<-ctlDoneCh
-		mcp.m.Lock()
+		ctl.m.Lock()
 	}
 
-	if mcp.ctlDoneCh == nil &&
+	if ctl.ctlDoneCh == nil &&
 		mode != "stop" &&
 		mode != "stopChangeTopology" {
-		return mcp.startCtlUnlocked(mode, memberNodes, nil)
+		return ctl.startCtlUnlocked(mode, memberNodes, nil)
 	}
 
 	return nil
@@ -339,7 +339,7 @@ func (mcp *MCP) dispatchCtlUnlocked(
 
 // ----------------------------------------------------
 
-func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
+func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 	indexDefs *cbgt.IndexDefs) error {
 	ctlDoneCh := make(chan struct{})
 	ctlStopCh := make(chan struct{})
@@ -357,7 +357,7 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 				// If there were no warnings, see if there were any
 				// warnings left in the plan.
 				planPIndexes, _, err :=
-					cbgt.PlannerGetPlanPIndexes(mcp.cfg, cbgt.VERSION)
+					cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
 				if err == nil {
 					if planPIndexes != nil {
 						ctlWarnings = planPIndexes.Warnings
@@ -372,24 +372,24 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 			if ctlErr != nil {
 				// If there was an error, grab the latest memberNodes
 				// rather than using the input memberNodes.
-				memberNodes, _ = currentMemberNodes(mcp.cfg)
+				memberNodes, _ = currentMemberNodes(ctl.cfg)
 			}
 
-			mcp.m.Lock()
+			ctl.m.Lock()
 
-			if ctlDoneCh == mcp.ctlDoneCh {
-				mcp.ctlDoneCh = nil
-				mcp.ctlStopCh = nil
-				mcp.ctlRev = ""
-				mcp.ctlChangeTopology = nil
+			if ctlDoneCh == ctl.ctlDoneCh {
+				ctl.ctlDoneCh = nil
+				ctl.ctlStopCh = nil
+				ctl.ctlRev = ""
+				ctl.ctlChangeTopology = nil
 			}
 
-			mcp.revNum++
-			mcp.memberNodes = memberNodes
-			mcp.prevWarnings = ctlWarnings
-			mcp.prevErrors = []error{ctlErr}
+			ctl.revNum++
+			ctl.memberNodes = memberNodes
+			ctl.prevWarnings = ctlWarnings
+			ctl.prevErrors = []error{ctlErr}
 
-			mcp.m.Unlock()
+			ctl.m.Unlock()
 
 			close(ctlDoneCh)
 		}()
@@ -401,9 +401,9 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 			wantedNodes = append(wantedNodes, string(memberNode.UUID))
 		}
 
-		nodesToRemove, err := mcp.waitForWantedNodes(wantedNodes)
+		nodesToRemove, err := ctl.waitForWantedNodes(wantedNodes)
 		if err != nil {
-			log.Printf("mcp: waitForWantedNodes, err: %v", err)
+			log.Printf("ctl: waitForWantedNodes, err: %v", err)
 			ctlErr = err
 			return
 		}
@@ -419,7 +419,7 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 			for {
 				// Retrieve the indexDefs before we do anything.
 				indexDefsStart, err :=
-					cbgt.PlannerGetIndexDefs(mcp.cfg, cbgt.VERSION)
+					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err != nil {
 					ctlErr = err
 					return
@@ -429,16 +429,16 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 				favorMinNodes := false
 
 				r, err := rebalance.StartRebalance(cbgt.VERSION,
-					mcp.cfg,
-					mcp.server,
+					ctl.cfg,
+					ctl.server,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
 						FavorMinNodes: favorMinNodes,
-						DryRun:        mcp.options.DryRun,
-						Verbose:       mcp.options.Verbose,
+						DryRun:        ctl.options.DryRun,
+						Verbose:       ctl.options.Verbose,
 					})
 				if err != nil {
-					log.Printf("mcp: StartRebalance, err: %v", err)
+					log.Printf("ctl: StartRebalance, err: %v", err)
 					ctlErr = err
 					return
 				}
@@ -454,7 +454,7 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 						seenPIndexesSorted []string,
 						progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 					) string {
-						// TODO: Update mcp activities based on progress.
+						// TODO: Update ctl activities based on progress.
 
 						return rebalance.ProgressTableString(
 							maxNodeLen, maxPIndexLen,
@@ -467,7 +467,7 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 
 					err = rebalance.ReportProgress(r, progressToString)
 					if err != nil {
-						log.Printf("mcp: ReportProgress, err: %v", err)
+						log.Printf("ctl: ReportProgress, err: %v", err)
 						progressDoneCh <- err
 					}
 				}()
@@ -489,7 +489,7 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 
 				// Repeat if the indexDefs had changed mid-rebalance.
 				indexDefsEnd, err :=
-					cbgt.PlannerGetIndexDefs(mcp.cfg, cbgt.VERSION)
+					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err != nil {
 					ctlErr = err
 					return
@@ -514,20 +514,20 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 			steps["planner"] = true
 		}
 
-		err = cmd.PlannerSteps(steps, mcp.cfg, cbgt.VERSION,
-			mcp.server, nodesToRemove, mcp.options.DryRun, nil)
+		err = cmd.PlannerSteps(steps, ctl.cfg, cbgt.VERSION,
+			ctl.server, nodesToRemove, ctl.options.DryRun, nil)
 		if err != nil {
-			log.Printf("mcp: PlannerSteps, err: %v", err)
+			log.Printf("ctl: PlannerSteps, err: %v", err)
 			ctlErr = err
 		}
 	}()
 
-	mcp.revNum++
+	ctl.revNum++
 
-	mcp.ctlDoneCh = ctlDoneCh
-	mcp.ctlStopCh = ctlStopCh
-	mcp.ctlRev = interfaces.Rev(fmt.Sprintf("%d", mcp.revNum))
-	mcp.ctlChangeTopology = &interfaces.ChangeTopology{
+	ctl.ctlDoneCh = ctlDoneCh
+	ctl.ctlStopCh = ctlStopCh
+	ctl.ctlRev = interfaces.Rev(fmt.Sprintf("%d", ctl.revNum))
+	ctl.ctlChangeTopology = &interfaces.ChangeTopology{
 		Mode:        mode,
 		MemberNodes: memberNodes,
 	}
@@ -539,8 +539,8 @@ func (mcp *MCP) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 
 // Waits for actual nodeDefsWanted in the cfg to be equal to or a
 // superset of wantedNodes, and returns the nodesToRemove.
-func (mcp *MCP) waitForWantedNodes(wantedNodes []string) ([]string, error) {
-	secs := mcp.options.WaitForMemberNodes
+func (ctl *Ctl) waitForWantedNodes(wantedNodes []string) ([]string, error) {
+	secs := ctl.options.WaitForMemberNodes
 	if secs <= 0 {
 		secs = 30
 	}
@@ -549,7 +549,7 @@ func (mcp *MCP) waitForWantedNodes(wantedNodes []string) ([]string, error) {
 
 	for i := 0; i < secs; i++ {
 		nodeDefsWanted, _, err :=
-			cbgt.CfgGetNodeDefs(mcp.cfg, cbgt.NODE_DEFS_WANTED)
+			cbgt.CfgGetNodeDefs(ctl.cfg, cbgt.NODE_DEFS_WANTED)
 		if err != nil {
 			return nil, err
 		}
@@ -566,7 +566,7 @@ func (mcp *MCP) waitForWantedNodes(wantedNodes []string) ([]string, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	return nil, fmt.Errorf("mcp: waitForWantedNodes"+
+	return nil, fmt.Errorf("ctl: waitForWantedNodes"+
 		" could not attain wantedNodes: %#v,"+
 		" only reached nodeDefWantedUUIDs: %#v",
 		wantedNodes, nodeDefWantedUUIDs)

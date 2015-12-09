@@ -68,13 +68,13 @@ type Topology struct {
 	MemberNodes []Node
 
 	// ChangeTopologyErrors holds the warnings from the last topology change
-	// of the service.  NOTE: If the service manager (i.e., MCP) restarts,
+	// of the service.  NOTE: If the service manager (i.e., Ctl) restarts,
 	// it may "forget" its previous ChangeTopologyWarnings field value (as
 	// perhaps it was only tracked in memory).
 	ChangeTopologyWarnings map[string][]string
 
 	// ChangeTopologyErrors holds the errors from the last topology change
-	// of the service.  NOTE: If the service manager (i.e., MCP) restarts,
+	// of the service.  NOTE: If the service manager (i.e., Ctl) restarts,
 	// it may "forget" its previous ChangeTopologyErrors field value (as
 	// perhaps it was only tracked in memory).
 	ChangeTopologyErrors []error

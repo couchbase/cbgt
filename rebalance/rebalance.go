@@ -469,13 +469,14 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	//
 	// _, err = cbgt.CfgSetPlanPIndexes(cfg, planPIndexesFFwd, cas)
 	// if err != nil {
-	//     return false, fmt.Errorf("mcp: could not save new plan,"+
+	//     return false, fmt.Errorf("rebalance: could not save new plan,"+
 	//     " perhaps a concurrent planner won, cas: %d, err: %v",
 	//     cas, err)
 	// }
 
 	// TODO: Propagate all errors better.
-	// TODO: compute proper change response.
+	// TODO: Compute proper change response.
+
 	return true, firstErr
 }
 

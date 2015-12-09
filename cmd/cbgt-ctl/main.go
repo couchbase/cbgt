@@ -22,7 +22,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
-	"github.com/couchbase/cbgt/mcp"
+	"github.com/couchbase/cbgt/ctl"
 	"github.com/couchbase/cbgt/rebalance"
 )
 
@@ -94,22 +94,22 @@ func main() {
 
 	// ------------------------------------------------
 
-	var m *mcp.MCP
+	var m *ctl.Ctl
 
 	if steps != nil && (steps["service"] || steps["prompt"]) {
-		m, err = mcp.StartMCP(cfg, flags.Server, mcp.MCPOptions{
+		m, err = ctl.StartCtl(cfg, flags.Server, ctl.CtlOptions{
 			DryRun:             flags.DryRun,
 			Verbose:            flags.Verbose,
 			FavorMinNodes:      flags.FavorMinNodes,
 			WaitForMemberNodes: flags.WaitForMemberNodes,
 		})
 		if err != nil {
-			log.Fatalf("main: StartMCP, err: %v", err)
+			log.Fatalf("main: StartCtl, err: %v", err)
 			return
 		}
 
 		if steps["prompt"] {
-			runMCPPrompt(m)
+			runCtlPrompt(m)
 		}
 
 		if steps["service"] {

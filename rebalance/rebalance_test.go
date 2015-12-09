@@ -233,23 +233,19 @@ func TestRebalance(t *testing.T) {
 				delete(mgrs, nodeToRemove)
 			}
 
-			// TODO: Perhaps one day, the MCP will unregister the node;
-			// for now, we unregister it "manually".
-			if true {
-				waitUntilEmptyCfgEventsNodeDefsWanted()
+			waitUntilEmptyCfgEventsNodeDefsWanted()
 
-				mgr, err := startNodeManager(nodeDir(nodeToRemove),
-					cfg, nodeToRemove, "unknown", test.params, server)
-				if err != nil || mgr == nil {
-					t.Errorf("expected no err, got: %#v", err)
-				}
-
-				mgr.Kick("kick")
-
-				waitUntilEmptyCfgEventsNodeDefsWanted()
-
-				mgr.Stop()
+			mgr, err := startNodeManager(nodeDir(nodeToRemove),
+				cfg, nodeToRemove, "unknown", test.params, server)
+			if err != nil || mgr == nil {
+				t.Errorf("expected no err, got: %#v", err)
 			}
+
+			mgr.Kick("kick")
+
+			waitUntilEmptyCfgEventsNodeDefsWanted()
+
+			mgr.Stop()
 		}
 
 		endIndexDefs, endNodeDefs, endPlanPIndexes, endPlanPIndexesCAS, err :=
@@ -388,7 +384,7 @@ func startNodeManager(testDir string, cfg cbgt.Cfg, node, register string,
 		uuid = params[node+".uuid"]
 	}
 
-	// No planner in tags because mcp provides the planner.
+	// No planner in tags as that will be controlled outside.
 	tags := []string{"feed", "pindex", "janitor", "queryer"}
 	if params["tags"] != "" {
 		tags = strings.Split(params["tags"], ",")

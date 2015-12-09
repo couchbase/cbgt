@@ -85,7 +85,7 @@ func initFlags(flags *Flags) map[string][]string {
 			"\n   - manages a cluster configuration in metakv store;"+
 			"\n     environment variable CBAUTH_REVRPC_URL needs"+
 			"\n     to be set; for example:"+
-			"\n     'export CBAUTH_REVRPC_URL=http://user:pswd@host:9000/cbgt-rebalance'.")
+			"\n     'export CBAUTH_REVRPC_URL=http://user:pswd@host:9000/cbgt-ctl'.")
 	b(&flags.DryRun,
 		[]string{"dryRun", "noChanges", "n"}, "", false,
 		"no actual changes will be executed.")
@@ -129,7 +129,7 @@ func initFlags(flags *Flags) map[string][]string {
 		"print version string and exit.")
 	i(&flags.WaitForMemberNodes,
 		[]string{"waitForMemberNodes"}, "SECS", 30,
-		"seconds to wait for member nodes on service replan/rebalance.")
+		"seconds to wait for member nodes during a service rebalance.")
 
 	flag.Usage = func() {
 		if !flags.Help {
@@ -138,7 +138,7 @@ func initFlags(flags *Flags) map[string][]string {
 
 		base := path.Base(os.Args[0])
 
-		fmt.Fprintf(os.Stderr, "%s: couchbase cbgt-rebalance\n", base)
+		fmt.Fprintf(os.Stderr, "%s: controller for couchbase cbgt cluster\n", base)
 		fmt.Fprintf(os.Stderr, "\nUsage: %s [flags]\n", base)
 		fmt.Fprintf(os.Stderr, "\nFlags:\n")
 
@@ -171,7 +171,7 @@ func initFlags(flags *Flags) map[string][]string {
 		fmt.Fprintf(os.Stderr, examples)
 		fmt.Fprintf(os.Stderr, "\nSee also:"+
 			" http://github.com"+
-			"/couchbase/cbgt/tree/master/cmd/cbgt-rebalance\n\n")
+			"/couchbase/cbgt/tree/master/cmd/cbgt-ctl\n\n")
 	}
 
 	return flagAliases
@@ -179,5 +179,5 @@ func initFlags(flags *Flags) map[string][]string {
 
 const examples = `
   Example where cbgt's configuration is kept in a couchbase "cfg-bucket":
-    ./cbgt-rebalance -cfg=couchbase:http://cfg-bucket@CB_HOST:8091
+    ./cbgt-ctl -cfg=couchbase:http://cfg-bucket@CB_HOST:8091
 `

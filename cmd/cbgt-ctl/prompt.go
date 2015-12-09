@@ -20,16 +20,16 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbase/cbgt/mcp"
-	"github.com/couchbase/cbgt/mcp/interfaces"
+	"github.com/couchbase/cbgt/ctl"
+	"github.com/couchbase/cbgt/ctl/interfaces"
 )
 
-func runMCPPrompt(mcp *mcp.MCP) {
+func runCtlPrompt(ctl *ctl.Ctl) {
 	reader := bufio.NewReader(os.Stdin)
 
 	i := 0
 	for {
-		fmt.Printf("mcp [%d]> ", i)
+		fmt.Printf("ctl [%d]> ", i)
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -53,7 +53,7 @@ func runMCPPrompt(mcp *mcp.MCP) {
 						" idc (alias for indexDefsChanged)\n" +
 						" exit, quit, q")
 				} else if op == "getTopology" || op == "gt" {
-					topology := mcp.GetTopology()
+					topology := ctl.GetTopology()
 					b, _ := json.Marshal(topology)
 					log.Printf("topology: %s", string(b))
 				} else if op == "changeTopology" || op == "ct" {
@@ -76,7 +76,7 @@ func runMCPPrompt(mcp *mcp.MCP) {
 						}
 
 						topology, err :=
-							mcp.ChangeTopology(&interfaces.ChangeTopology{
+							ctl.ChangeTopology(&interfaces.ChangeTopology{
 								Rev:         interfaces.Rev(rev),
 								Mode:        mode,
 								MemberNodes: memberNodes,
@@ -95,10 +95,10 @@ func runMCPPrompt(mcp *mcp.MCP) {
 
 						log.Printf("stopChangeTopology, rev: %s", rev)
 
-						mcp.StopChangeTopology(interfaces.Rev(rev))
+						ctl.StopChangeTopology(interfaces.Rev(rev))
 					}
 				} else if op == "indexDefsChanged" || op == "idc" {
-					err = mcp.IndexDefsChanged()
+					err = ctl.IndexDefsChanged()
 
 					log.Printf("err: %v", err)
 				} else if op == "quit" || op == "q" || op == "exit" {
