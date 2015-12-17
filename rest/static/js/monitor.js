@@ -4,7 +4,7 @@ function MonitorCtrl($scope, $http, $routeParams, $log, $sce, expvar) {
     $scope.monitoredIndexes = {};
 
     var tv = 1000;
-    var top = "/stats/";
+    var top = "/bleve/";
     var updateInterval = null;
     var isoDateFormatter = function(x) { return ISODateString(new Date(x*1000)); };
     var byteSizeFormatter = function(y) { return Humanize.fileSize(y); };
