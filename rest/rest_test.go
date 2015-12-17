@@ -372,7 +372,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Params:       nil,
 			Body:         nil,
 			Status:       400,
-			ResponseBody: []byte(`not an index`),
+			ResponseBody: []byte(`index not found`),
 		},
 		{
 			Desc:   "try to create a default index with no params",

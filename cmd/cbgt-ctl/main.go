@@ -171,5 +171,3 @@ func newRestRouter(ctl *ctl.Ctl) *mux.Router {
 
 	return r
 }
-
-

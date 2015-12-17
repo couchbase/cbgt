@@ -84,7 +84,7 @@ func (h *GetIndexHandler) ServeHTTP(
 
 	indexDef, exists := indexDefsByName[indexName]
 	if !exists || indexDef == nil {
-		ShowError(w, req, "not an index", 400)
+		ShowError(w, req, "index not found", 400)
 		return
 	}
 
