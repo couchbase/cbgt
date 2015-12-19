@@ -8,7 +8,7 @@
 //
 // And then...
 //
-//     CBAUTH_REVRPC_URL=http://localhost:9000 go test
+//     CBAUTH_REVRPC_URL=http://localhost:9000 go test -tags=metakv_test
 //
 package main
 
