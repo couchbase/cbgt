@@ -25,8 +25,8 @@ import (
 
 const (
 	BASE_CFG_PATH            = "/cbgt/cfg/"
-	CFG_NODEDEFS_WANTED_PATH = "/cbgt/nodedefs/wanted/"
-	CFG_NODEDEFS_KNOWN_PATH  = "/cbgt/nodedefs/known/"
+	CFG_NODEDEFS_WANTED_PATH = "/cbgt/nodeDefs/wanted/"
+	CFG_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
 	CAS_FORCE                = math.MaxUint64
 )
 
@@ -36,13 +36,12 @@ var splitKeys map[string]string = map[string]string{
 }
 
 type CfgMetaKv struct {
-	uuid        string
-	m           sync.Mutex
-	path        string
-	cancelCh    chan struct{}
-	rev         interface{}
-	nodeDefKeys map[string]int
-	cfgMem      *CfgMem
+	uuid     string
+	path     string
+	cancelCh chan struct{}
+
+	m      sync.Mutex // Protects the fields that follow.
+	cfgMem *CfgMem
 }
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
