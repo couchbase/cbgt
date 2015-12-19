@@ -88,8 +88,8 @@ func checkList(path string, body []byte) {
 func HandleRPC(w http.ResponseWriter) {
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		http.Error(w, "webserver doesn't support hijacking", 
-            http.StatusInternalServerError)
+		http.Error(w, "webserver doesn't support hijacking",
+			http.StatusInternalServerError)
 		return
 	}
 	_, bufrw, err := hj.Hijack()
@@ -97,9 +97,9 @@ func HandleRPC(w http.ResponseWriter) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-    // send a dummy response for rpc connect. We should not close the 
-    // connection else EOF error is thrown by cbauth client.
-    data := rpcBody
+	// send a dummy response for rpc connect. We should not close the
+	// connection else EOF error is thrown by cbauth client.
+	data := rpcBody
 	var header string = "HTTP/1.1 200 OK\r\n" +
 		"Server: Couchbase Server\r\n" +
 		"Content-Length: %d\r\n" +
