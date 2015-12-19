@@ -1,3 +1,15 @@
+// A fake or mock metakv server for dev/testing purposes.
+//
+// To use...
+//
+//     cd [cbgt main directory]
+//     go build ./cmd/metakv-mock
+//     ./metakv-mock
+//
+// And then...
+//
+//     CBAUTH_REVRPC_URL=http://localhost:9000 go test
+//
 package main
 
 import (
