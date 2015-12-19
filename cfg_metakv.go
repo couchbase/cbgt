@@ -53,17 +53,25 @@ func NewCfgMetaKv() (*CfgMetaKv, error) {
 		cfgMem:   NewCfgMem(),
 		uuid:     NewUUID(),
 	}
-	go func() {
-		for {
-			err := metakv.RunObserveChildren(cfg.path, cfg.metaKVCallback,
+
+	backoffStartSleepMS := 200
+	backoffFactor := float32(1.5)
+	backoffMaxSleepMS := 5000
+
+	go ExponentialBackoffLoop("cfg_metakv.RunObserveChildren",
+		func() int {
+			err := metakv.RunObserveChildren(cfg.prefix, cfg.metaKVCallback,
 				cfg.cancelCh)
 			if err == nil {
-				return
-			} else {
-				log.Printf("metakv notifier failed (%v)", err)
+				return -1 // Success, so stop the loop.
 			}
-		}
-	}()
+
+			log.Printf("cfg_metakv: RunObserveChildren, err: %v", err)
+
+			return 0 // No progress, so exponential backoff.
+		},
+		backoffStartSleepMS, backoffFactor, backoffMaxSleepMS)
+
 	return cfg, nil
 }
 
@@ -99,34 +107,34 @@ func (c *CfgMetaKv) Get(key string, cas uint64) (
 
 func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
 	uint64, error) {
-	var err error
 	if cache {
 		rev, err := c.cfgMem.GetRev(key, cas)
 		if err != nil {
 			return 0, err
 		}
+
 		if rev == nil {
 			err = metakv.Add(c.makeKey(key), val)
 		} else {
 			err = metakv.Set(c.makeKey(key), val, rev)
 		}
-		if err == nil {
-			cas, err = c.cfgMem.Set(key, val, CFG_CAS_FORCE)
-			if err != nil {
-				return 0, err
-			}
+		if err != nil {
+			return 0, err
 		}
-	} else {
-		return 0, metakv.Set(c.makeKey(key), val, nil)
+
+		return c.cfgMem.Set(key, val, CFG_CAS_FORCE)
 	}
-	return cas, err
+
+	return 0, metakv.Set(c.makeKey(key), val, nil)
 }
 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
-	log.Printf("setting key %v", key)
+	log.Printf("cfg_metakv: Set, key: %v, cas: %x", key, cas)
+
 	c.m.Lock()
 	defer c.m.Unlock()
+
 	var err error
 	if splitRequired(key) {
 		// split the keys
@@ -144,7 +152,7 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 			n.NodeDefs[k] = v
 			k = key + "_" + k
 			val, _ = json.Marshal(n)
-			log.Printf("splitted key %v", k)
+			log.Printf("cfg_metakv: Set split key: %v, k: %v", key, k)
 			cas, err = c.SetKey(k, val, cas, false)
 		}
 	} else {
@@ -155,8 +163,9 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
 	c.m.Lock()
-	defer c.m.Unlock()
-	return c.delUnlocked(key, cas)
+	err := c.delUnlocked(key, cas)
+	c.m.Unlock()
+	return err
 }
 
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
@@ -188,7 +197,7 @@ func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) e
 		// key got deleted
 		return c.delUnlocked(key, 0)
 	}
-	log.Printf("callback got key %v", key)
+	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v", path, key)
 	cas, err := c.cfgMem.Set(key, value, CFG_CAS_FORCE)
 	if err == nil {
 		c.cfgMem.SetRev(key, cas, rev)
