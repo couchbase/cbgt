@@ -14,20 +14,20 @@ package cbgt
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/cbauth/metakv"
-	log "github.com/couchbase/clog"
 	"hash/crc32"
-	"math"
 	"sort"
 	"strings"
 	"sync"
+
+	log "github.com/couchbase/clog"
+
+	"github.com/couchbase/cbauth/metakv"
 )
 
 const (
 	BASE_CFG_PATH            = "/cbgt/cfg/"
 	CFG_NODEDEFS_WANTED_PATH = "/cbgt/nodeDefs/wanted/"
 	CFG_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
-	CAS_FORCE                = math.MaxUint64
 )
 
 var splitKeys map[string]string = map[string]string{
@@ -111,7 +111,7 @@ func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
 			err = metakv.Set(c.makeKey(key), val, rev)
 		}
 		if err == nil {
-			cas, err = c.cfgMem.Set(key, val, CAS_FORCE)
+			cas, err = c.cfgMem.Set(key, val, CFG_CAS_FORCE)
 			if err != nil {
 				return 0, err
 			}
@@ -189,7 +189,7 @@ func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) e
 		return c.delUnlocked(key, 0)
 	}
 	log.Printf("callback got key %v", key)
-	cas, err := c.cfgMem.Set(key, value, CAS_FORCE)
+	cas, err := c.cfgMem.Set(key, value, CFG_CAS_FORCE)
 	if err == nil {
 		c.cfgMem.SetRev(key, cas, rev)
 	}

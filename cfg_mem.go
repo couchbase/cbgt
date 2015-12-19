@@ -13,7 +13,12 @@ package cbgt
 
 import (
 	"fmt"
+	"math"
 	"sync"
+)
+
+const (
+	CFG_CAS_FORCE = math.MaxUint64
 )
 
 // CfgMem is a local-only, memory-only implementation of Cfg
@@ -53,6 +58,7 @@ func (c *CfgMem) Get(key string, cas uint64) (
 	if cas != 0 && cas != entry.CAS {
 		return nil, 0, &CfgCASError{}
 	}
+
 	val := make([]byte, len(entry.Val))
 	copy(val, entry.Val)
 	return val, entry.CAS, nil
@@ -62,6 +68,7 @@ func (c *CfgMem) GetRev(key string, cas uint64) (
 	interface{}, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
+
 	entry, exists := c.Entries[key]
 	if exists {
 		if cas == 0 || cas == entry.CAS {
@@ -75,6 +82,7 @@ func (c *CfgMem) GetRev(key string, cas uint64) (
 func (c *CfgMem) SetRev(key string, cas uint64, rev interface{}) error {
 	c.m.Lock()
 	defer c.m.Unlock()
+
 	entry, exists := c.Entries[key]
 	if cas == 0 || (exists && cas == entry.CAS) {
 		entry.rev = rev
@@ -95,13 +103,14 @@ func (c *CfgMem) Set(key string, val []byte, cas uint64) (
 		if exists {
 			return 0, fmt.Errorf("cfg_mem: entry already exists, key: %s", key)
 		}
-	case cas == CAS_FORCE:
+	case cas == CFG_CAS_FORCE:
 		break
-	default: // cas != 0
+	default:
 		if !exists || cas != prevEntry.CAS {
 			return 0, &CfgCASError{}
 		}
 	}
+
 	nextEntry := &CfgMemEntry{
 		CAS: c.CASNext,
 		Val: make([]byte, len(val)),

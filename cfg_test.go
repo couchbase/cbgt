@@ -352,7 +352,7 @@ func TestCfgSimpleSubscribe(t *testing.T) {
 
 func TestCfgMemRev(t *testing.T) {
 	m := NewCfgMem()
-	cas, err := m.Set("key", []byte("val"), CAS_FORCE)
+	cas, err := m.Set("key", []byte("val"), CFG_CAS_FORCE)
 	if err != nil {
 		t.Errorf("expected no err")
 	}
