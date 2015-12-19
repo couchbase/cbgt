@@ -25,14 +25,14 @@ import (
 )
 
 const (
-	BASE_CFG_PATH            = "/cbgt/cfg/"
-	CFG_NODEDEFS_WANTED_PATH = "/cbgt/nodeDefs/wanted/"
-	CFG_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
+	CFG_METAKV_BASE_PATH            = "/cbgt/cfg/"
+	CFG_METAKV_NODEDEFS_WANTED_PATH = "/cbgt/nodeDefs/wanted/"
+	CFG_METAKV_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
 )
 
 var splitKeys map[string]string = map[string]string{
-	CfgNodeDefsKey(NODE_DEFS_WANTED): CFG_NODEDEFS_WANTED_PATH,
-	CfgNodeDefsKey(NODE_DEFS_KNOWN):  CFG_NODEDEFS_KNOWN_PATH,
+	CfgNodeDefsKey(NODE_DEFS_WANTED): CFG_METAKV_NODEDEFS_WANTED_PATH,
+	CfgNodeDefsKey(NODE_DEFS_KNOWN):  CFG_METAKV_NODEDEFS_KNOWN_PATH,
 }
 
 type CfgMetaKv struct {
@@ -48,7 +48,7 @@ type CfgMetaKv struct {
 // configuration file in the metakv.
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
-		path:     BASE_CFG_PATH,
+		path:     CFG_METAKV_BASE_PATH,
 		cancelCh: make(chan struct{}),
 		cfgMem:   NewCfgMem(),
 		uuid:     NewUUID(),
