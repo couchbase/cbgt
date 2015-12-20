@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"sort"
-	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -87,6 +86,7 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 		}
 
 		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
+
 		uuids := []string{}
 		for _, v := range m {
 			var childNodeDefs NodeDefs
@@ -95,15 +95,17 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 			if err != nil {
 				return nil, 0, err
 			}
+
 			for k1, v1 := range childNodeDefs.NodeDefs {
 				rv.NodeDefs[k1] = v1
 			}
-			uuids = append(uuids, childNodeDefs.UUID)
 
 			if rv.ImplVersion == "" ||
 				!VersionGTE(rv.ImplVersion, childNodeDefs.ImplVersion) {
 				rv.ImplVersion = childNodeDefs.ImplVersion
 			}
+
+			uuids = append(uuids, childNodeDefs.UUID)
 		}
 		rv.UUID = checkSumUUIDs(uuids)
 
@@ -121,57 +123,55 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	var err error
-
-	_, needSplit := cfgMetaKvSplitKeys[key]
+	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
 	if needSplit {
-		nd := &NodeDefs{}
-		err = json.Unmarshal(val, nd)
+		var nd NodeDefs
+
+		err := json.Unmarshal(val, &nd)
 		if err != nil {
 			return 0, err
 		}
 
 		for k, v := range nd.NodeDefs {
-			n := &NodeDefs{
-				UUID:        nd.UUID,
-				NodeDefs:    make(map[string]*NodeDef),
+			childNodeDefs := NodeDefs{
+				UUID:     nd.UUID,
+				NodeDefs: map[string]*NodeDef{
+					k: v,
+				},
 				ImplVersion: nd.ImplVersion,
 			}
-			n.NodeDefs[k] = v
-			k = key + "_" + k
-			val, _ = json.Marshal(n)
-			log.Printf("cfg_metakv: Set split key: %v, k: %v", key, k)
-			cas, err = c.SetKey(k, val, cas, false)
+
+			childPath := pathPrefix + k
+
+			log.Printf("cfg_metakv: Set split key: %v, childPath: %v",
+				key, childPath)
+
+			val, _ = json.Marshal(childNodeDefs)
+
+			err = metakv.Set(childPath, val, nil)
+			if err != nil {
+				return 0, err
+			}
 		}
 
 		return cas, err
 	}
 
-	return c.SetKey(key, val, cas, true)
-}
-
-// SetKey is a helper function.
-func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
-	uint64, error) {
-	if cache {
-		rev, err := c.cfgMem.GetRev(key, cas)
-		if err != nil {
-			return 0, err
-		}
-
-		if rev == nil {
-			err = metakv.Add(c.keyToPath(key), val)
-		} else {
-			err = metakv.Set(c.keyToPath(key), val, rev)
-		}
-		if err != nil {
-			return 0, err
-		}
-
-		return c.cfgMem.Set(key, val, CFG_CAS_FORCE)
+	rev, err := c.cfgMem.GetRev(key, cas)
+	if err != nil {
+		return 0, err
 	}
 
-	return 0, metakv.Set(c.keyToPath(key), val, nil)
+	if rev == nil {
+		err = metakv.Add(c.keyToPath(key), val)
+	} else {
+		err = metakv.Set(c.keyToPath(key), val, rev)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	return c.cfgMem.Set(key, val, CFG_CAS_FORCE)
 }
 
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
@@ -182,21 +182,22 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 }
 
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
-	var err error
-
 	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
 	if needSplit {
 		return metakv.RecursiveDelete(pathPrefix)
 	}
+
 	rev, err := c.cfgMem.GetRev(key, cas)
 	if err != nil {
 		return err
 	}
+
 	err = metakv.Delete(c.keyToPath(key), rev)
-	if err == nil {
-		return c.cfgMem.Del(key, 0)
+	if err != nil {
+		return err
 	}
-	return err
+
+	return c.cfgMem.Del(key, 0)
 }
 
 func (c *CfgMetaKv) Load() error {
@@ -204,28 +205,32 @@ func (c *CfgMetaKv) Load() error {
 	return nil
 }
 
-func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) error {
+func (c *CfgMetaKv) metaKVCallback(path string,
+	value []byte, rev interface{}) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
 	key := c.pathToKey(path)
-	if value == nil {
-		// key got deleted
+
+	if value == nil { // Deletion.
 		return c.delUnlocked(key, 0)
 	}
+
 	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v", path, key)
+
 	cas, err := c.cfgMem.Set(key, value, CFG_CAS_FORCE)
 	if err == nil {
 		c.cfgMem.SetRev(key, cas, rev)
 	}
+
 	return err
 }
 
 func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
 	c.m.Lock()
-	defer c.m.Unlock()
-
-	return c.cfgMem.Subscribe(key, ch)
+	err := c.cfgMem.Subscribe(key, ch)
+	c.m.Unlock()
+	return err
 }
 
 func (c *CfgMetaKv) Refresh() error {
@@ -241,11 +246,6 @@ func (c *CfgMetaKv) RemoveAllKeys() {
 }
 
 func (c *CfgMetaKv) keyToPath(key string) string {
-	for k, v := range cfgMetaKvSplitKeys {
-		if strings.HasPrefix(key, k) {
-			return v + key
-		}
-	}
 	return c.path + key
 }
 
