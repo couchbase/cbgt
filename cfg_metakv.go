@@ -221,7 +221,7 @@ func (c *CfgMetaKv) OnError(err error) {
 	log.Printf("cfg_metakv: OnError, err: %v", err)
 }
 
-func (c *CfgMetaKv) DelConf() {
+func (c *CfgMetaKv) RemoveAllKeys() {
 	metakv.RecursiveDelete(c.path)
 }
 

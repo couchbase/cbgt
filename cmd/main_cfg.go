@@ -109,9 +109,9 @@ func MainCfgMetaKv(baseName, urlStr, bindHttp, register, dataDir string) (
 	cbgt.Cfg, error) {
 	cfg, err := cbgt.NewCfgMetaKv()
 	if err == nil {
-		// for deleting the old key in internal testing
-		if urlStr == ":delete" {
-			cfg.DelConf()
+		// Useful for reseting internal testing.
+		if urlStr == ":removeAllKeys" {
+			cfg.RemoveAllKeys()
 		}
 		err = cfg.Load()
 	}
