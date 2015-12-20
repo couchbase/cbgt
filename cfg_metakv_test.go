@@ -57,7 +57,7 @@ func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
 		t.Errorf("error in setting nodedefs-wanted key to metakv")
 	}
 	//check if splitting happend.so take the keys directly from metakv.
-	l, _ := g.getChildrenKeys(splitKey)
+	l, _ := g.listChildPaths(splitKey)
 	if len(l) != 3 {
 		t.Errorf("incorrect keys %v", l)
 	}
@@ -85,7 +85,7 @@ func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
 	if err != nil {
 		t.Errorf("error in setting nodedefs-wanted key to metakv")
 	}
-	l, _ = g.getChildrenKeys(splitKey)
+	l, _ = g.listChildPaths(splitKey)
 	if len(l) != 4 {
 		t.Errorf("incorrect keys %v", l)
 	}

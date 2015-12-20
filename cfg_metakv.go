@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"sort"
+	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -40,30 +41,27 @@ import (
 // the entire "directory".
 
 const (
-	CFG_METAKV_PREFIX = "/cbgt/cfg/"
-	CFG_METAKV_NODEDEFS_WANTED_PATH = "/cbgt/nodeDefs/wanted/"
-	CFG_METAKV_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
+	CFG_METAKV_PREFIX = "/cbgt/cfg/" // Prefix of paths stored in metakv.
 )
 
-var cfgMetaKvSplitKeys map[string]string = map[string]string{
-	CfgNodeDefsKey(NODE_DEFS_WANTED): CFG_METAKV_NODEDEFS_WANTED_PATH,
-	CfgNodeDefsKey(NODE_DEFS_KNOWN):  CFG_METAKV_NODEDEFS_KNOWN_PATH,
+var cfgMetaKvSplitKeys map[string]bool = map[string]bool{
+	CfgNodeDefsKey(NODE_DEFS_WANTED): true,
+	CfgNodeDefsKey(NODE_DEFS_KNOWN):  true,
 }
 
 type CfgMetaKv struct {
-	uuid     string
-	prefix   string
-	cancelCh chan struct{}
+	prefix string
 
-	m      sync.Mutex // Protects the fields that follow.
-	cfgMem *CfgMem
+	m            sync.Mutex // Protects the fields that follow.
+	cfgMem       *CfgMem
+	cancelCh     chan struct{}
+	lastSplitCAS uint64
 }
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
 // configuration file in the metakv.
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
-		uuid:     NewUUID(),
 		prefix:   CFG_METAKV_PREFIX,
 		cancelCh: make(chan struct{}),
 		cfgMem:   NewCfgMem(),
@@ -94,9 +92,8 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
-	if needSplit {
-		m, err := metakv.ListAllChildren(pathPrefix)
+	if cfgMetaKvSplitKeys[key] {
+		m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
 		if err != nil {
 			return nil, 0, err
 		}
@@ -125,7 +122,11 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 		}
 		rv.UUID = checkSumUUIDs(uuids)
 
-		data, _ := json.Marshal(rv)
+		data, err := json.Marshal(rv)
+		if err != nil {
+			return nil, 0, err
+		}
+
 		return data, 0, nil
 	}
 
@@ -136,11 +137,12 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
 	log.Printf("cfg_metakv: Set, key: %v, cas: %x", key, cas)
 
+	path := c.keyToPath(key)
+
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
-	if needSplit {
+	if cfgMetaKvSplitKeys[key] {
 		var nd NodeDefs
 
 		err := json.Unmarshal(val, &nd)
@@ -150,19 +152,21 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 
 		for k, v := range nd.NodeDefs {
 			childNodeDefs := NodeDefs{
-				UUID:     nd.UUID,
-				NodeDefs: map[string]*NodeDef{
-					k: v,
-				},
+				UUID:        nd.UUID,
+				NodeDefs:    map[string]*NodeDef{},
 				ImplVersion: nd.ImplVersion,
 			}
+			childNodeDefs.NodeDefs[k] = v
 
-			childPath := pathPrefix + k
+			val, err = json.Marshal(childNodeDefs)
+			if err != nil {
+				return 0, err
+			}
+
+			childPath := path + "/" + k
 
 			log.Printf("cfg_metakv: Set split key: %v, childPath: %v",
 				key, childPath)
-
-			val, _ = json.Marshal(childNodeDefs)
 
 			err = metakv.Set(childPath, val, nil)
 			if err != nil {
@@ -170,7 +174,9 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 			}
 		}
 
-		return cas, err
+		casResult := c.lastSplitCAS + 1
+		c.lastSplitCAS = casResult
+		return casResult, err
 	}
 
 	rev, err := c.cfgMem.GetRev(key, cas)
@@ -179,9 +185,9 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	}
 
 	if rev == nil {
-		err = metakv.Add(c.keyToPath(key), val)
+		err = metakv.Add(path, val)
 	} else {
-		err = metakv.Set(c.keyToPath(key), val, rev)
+		err = metakv.Set(path, val, rev)
 	}
 	if err != nil {
 		return 0, err
@@ -198,9 +204,10 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 }
 
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
-	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
-	if needSplit {
-		return metakv.RecursiveDelete(pathPrefix)
+	path := c.keyToPath(key)
+
+	if cfgMetaKvSplitKeys[key] {
+		return metakv.RecursiveDelete(path + "/")
 	}
 
 	rev, err := c.cfgMem.GetRev(key, cas)
@@ -208,7 +215,7 @@ func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 		return err
 	}
 
-	err = metakv.Delete(c.keyToPath(key), rev)
+	err = metakv.Delete(path, rev)
 	if err != nil {
 		return err
 	}
@@ -228,11 +235,17 @@ func (c *CfgMetaKv) metaKVCallback(path string,
 
 	key := c.pathToKey(path)
 
+	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v", path, key)
+
+	for splitKey := range cfgMetaKvSplitKeys {
+		if strings.HasPrefix(key, splitKey) {
+			return c.cfgMem.Refresh()
+		}
+	}
+
 	if value == nil { // Deletion.
 		return c.delUnlocked(key, 0)
 	}
-
-	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v", path, key)
 
 	cas, err := c.cfgMem.Set(key, value, CFG_CAS_FORCE)
 	if err == nil {
@@ -250,13 +263,46 @@ func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
 }
 
 func (c *CfgMetaKv) Refresh() error {
+	/* TODO: Sketch implementation of Refresh...
+
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c2, err := NewCfgMetaKv()
+	if err != nil {
+		return err
+	}
+
+	err = c2.Load()
+	if err != nil {
+		return err
+	}
+
+	c2.m.Lock()
+
+	c.cfgMem.CASNext = c2.cfgMem.CASNext
+	c.cfgMem.Entries = c2.cfgMem.Entries
+
+	if c.lastSplitCAS < c2.lastSplitCAS {
+		c.lastSplitCAS = c2.lastSplitCAS
+	}
+
+	cancelCh := c.cancelCh
+	c.cancelCh = c2.cancelCh
+
+	c2.m.Unlock()
+
+	go close(cancelCh)
+
+	return c.cfgMem.Refresh()
+    */
+
 	return nil
 }
 
-func (c *CfgMetaKv) OnError(err error) {
-	log.Printf("cfg_metakv: OnError, err: %v", err)
-}
-
+// RemoveAllKeys removes all cfg entries from metakv, where the caller
+// should no longer use this CfgMetaKv instance, but instead create a
+// new instance.
 func (c *CfgMetaKv) RemoveAllKeys() {
 	metakv.RecursiveDelete(c.prefix)
 }
@@ -270,12 +316,11 @@ func (c *CfgMetaKv) pathToKey(k string) string {
 }
 
 // for testing
-func (c *CfgMetaKv) getChildrenKeys(key string) ([]string, error) {
+func (c *CfgMetaKv) listChildPaths(key string) ([]string, error) {
 	g := []string{}
 
-	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
-	if needSplit {
-		m, err := metakv.ListAllChildren(pathPrefix)
+	if cfgMetaKvSplitKeys[key] {
+		m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
 		if err != nil {
 			return nil, err
 		}
