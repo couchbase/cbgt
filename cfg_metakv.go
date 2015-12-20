@@ -30,7 +30,7 @@ const (
 	CFG_METAKV_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
 )
 
-var splitKeys map[string]string = map[string]string{
+var cfgMetaKvSplitKeys map[string]string = map[string]string{
 	CfgNodeDefsKey(NODE_DEFS_WANTED): CFG_METAKV_NODEDEFS_WANTED_PATH,
 	CfgNodeDefsKey(NODE_DEFS_KNOWN):  CFG_METAKV_NODEDEFS_KNOWN_PATH,
 }
@@ -79,10 +79,10 @@ func (c *CfgMetaKv) Get(key string, cas uint64) (
 	[]byte, uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
-	if splitRequired(key) {
+	if cfgMetaKvSplitKeyRequired(key) {
 		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
 		tmp := &NodeDefs{}
-		m, err := metakv.ListAllChildren(splitKeys[key])
+		m, err := metakv.ListAllChildren(cfgMetaKvSplitKeys[key])
 		if err != nil {
 			return nil, 0, err
 		}
@@ -98,7 +98,7 @@ func (c *CfgMetaKv) Get(key string, cas uint64) (
 			uuids = append(uuids, tmp.UUID)
 			rv.ImplVersion = tmp.ImplVersion
 		}
-		rv.UUID = getCksum(uuids)
+		rv.UUID = checkSumUUIDs(uuids)
 		data, _ := json.Marshal(rv)
 		return data, 0, nil
 	}
@@ -136,7 +136,7 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	defer c.m.Unlock()
 
 	var err error
-	if splitRequired(key) {
+	if cfgMetaKvSplitKeyRequired(key) {
 		// split the keys
 		nd := &NodeDefs{}
 		err = json.Unmarshal(val, nd)
@@ -170,8 +170,8 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 	var err error
-	if splitRequired(key) {
-		return metakv.RecursiveDelete(splitKeys[key])
+	if cfgMetaKvSplitKeyRequired(key) {
+		return metakv.RecursiveDelete(cfgMetaKvSplitKeys[key])
 	}
 	rev, err := c.cfgMem.GetRev(key, cas)
 	if err != nil {
@@ -192,6 +192,7 @@ func (c *CfgMetaKv) Load() error {
 func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) error {
 	c.m.Lock()
 	defer c.m.Unlock()
+
 	key := c.getMetaKey(path)
 	if value == nil {
 		// key got deleted
@@ -203,21 +204,6 @@ func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) e
 		c.cfgMem.SetRev(key, cas, rev)
 	}
 	return err
-}
-
-func getCksum(uuids []string) string {
-	sort.Strings(uuids)
-	d, _ := json.Marshal(uuids)
-	return fmt.Sprint(crc32.ChecksumIEEE(d))
-}
-
-func splitRequired(key string) bool {
-	for k, _ := range splitKeys {
-		if strings.HasPrefix(key, k) {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
@@ -240,7 +226,7 @@ func (c *CfgMetaKv) DelConf() {
 }
 
 func (c *CfgMetaKv) makeKey(key string) string {
-	for k, v := range splitKeys {
+	for k, v := range cfgMetaKvSplitKeys {
 		if strings.HasPrefix(key, k) {
 			return v + key
 		}
@@ -255,8 +241,8 @@ func (c *CfgMetaKv) getMetaKey(k string) string {
 // for testing
 func (c *CfgMetaKv) getAllKeys(k string) ([]string, error) {
 	g := []string{}
-	if splitRequired(k) {
-		m, err := metakv.ListAllChildren(splitKeys[k])
+	if cfgMetaKvSplitKeyRequired(k) {
+		m, err := metakv.ListAllChildren(cfgMetaKvSplitKeys[k])
 		if err != nil {
 			return nil, err
 		}
@@ -265,4 +251,19 @@ func (c *CfgMetaKv) getAllKeys(k string) ([]string, error) {
 		}
 	}
 	return g, nil
+}
+
+func cfgMetaKvSplitKeyRequired(key string) bool {
+	for k, _ := range cfgMetaKvSplitKeys {
+		if strings.HasPrefix(key, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkSumUUIDs(uuids []string) string {
+	sort.Strings(uuids)
+	d, _ := json.Marshal(uuids)
+	return fmt.Sprint(crc32.ChecksumIEEE(d))
 }
