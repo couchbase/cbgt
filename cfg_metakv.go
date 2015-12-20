@@ -50,21 +50,28 @@ var cfgMetaKvSplitKeys map[string]bool = map[string]bool{
 }
 
 type CfgMetaKv struct {
-	prefix string
+	prefix string // Prefix for paths stores in metakv.
 
 	m            sync.Mutex // Protects the fields that follow.
 	cfgMem       *CfgMem
 	cancelCh     chan struct{}
 	lastSplitCAS uint64
+	splitEntries map[string]CfgMetaKvEntry
+}
+
+type CfgMetaKvEntry struct {
+	cas  uint64
+	data []byte
 }
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
 // configuration file in the metakv.
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
-		prefix:   CFG_METAKV_PREFIX,
-		cancelCh: make(chan struct{}),
-		cfgMem:   NewCfgMem(),
+		prefix:       CFG_METAKV_PREFIX,
+		cancelCh:     make(chan struct{}),
+		cfgMem:       NewCfgMem(),
+		splitEntries: map[string]CfgMetaKvEntry{},
 	}
 
 	backoffStartSleepMS := 200
@@ -131,7 +138,15 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 			return nil, 0, err
 		}
 
-		return data, c.lastSplitCAS, nil
+		casResult := c.lastSplitCAS + 1
+		c.lastSplitCAS = casResult
+
+		c.splitEntries[key] = CfgMetaKvEntry{
+			cas:  casResult,
+			data: data,
+		}
+
+		return data, casResult, nil
 	}
 
 	return c.cfgMem.Get(key, cas)
@@ -147,8 +162,19 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	defer c.m.Unlock()
 
 	if cfgMetaKvSplitKeys[key] {
-		if cas != 0 && cas != c.lastSplitCAS {
+		curEntry := c.splitEntries[key]
+
+		if cas != 0 && cas != curEntry.cas {
 			return 0, &CfgCASError{}
+		}
+
+		var curNodeDefs NodeDefs
+
+		if curEntry.data != nil && len(curEntry.data) > 0 {
+			err := json.Unmarshal(curEntry.data, &curNodeDefs)
+			if err != nil {
+				return 0, err
+			}
 		}
 
 		var nd NodeDefs
@@ -158,27 +184,71 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 			return 0, err
 		}
 
+		// Analyze which children were added, removed, updated.
+		//
+		added := map[string]bool{}
+		removed := map[string]bool{}
+		updated := map[string]bool{}
+
 		for k, v := range nd.NodeDefs {
-			childNodeDefs := NodeDefs{
-				UUID:        nd.UUID,
-				NodeDefs:    map[string]*NodeDef{},
-				ImplVersion: nd.ImplVersion,
+			if curNodeDefs.NodeDefs == nil ||
+				curNodeDefs.NodeDefs[k] == nil {
+				added[k] = true
+			} else {
+				if curNodeDefs.NodeDefs[k].UUID != v.UUID {
+					updated[k] = true
+				}
 			}
-			childNodeDefs.NodeDefs[k] = v
+		}
 
-			val, err = json.Marshal(childNodeDefs)
-			if err != nil {
-				return 0, err
+		if curNodeDefs.NodeDefs != nil {
+			for k, _ := range curNodeDefs.NodeDefs {
+				if nd.NodeDefs[k] == nil {
+					removed[k] = true
+				}
 			}
+		}
 
-			childPath := path + "/" + k
+		// Update metakv with child entries.
+		//
+		if len(added) > 0 || len(updated) > 0 {
+			for k, v := range nd.NodeDefs {
+				childNodeDefs := NodeDefs{
+					UUID:        nd.UUID,
+					NodeDefs:    map[string]*NodeDef{},
+					ImplVersion: nd.ImplVersion,
+				}
+				childNodeDefs.NodeDefs[k] = v
 
-			log.Printf("cfg_metakv: Set split key: %v, childPath: %v",
-				key, childPath)
+				val, err = json.Marshal(childNodeDefs)
+				if err != nil {
+					return 0, err
+				}
 
-			err = metakv.Set(childPath, val, nil)
-			if err != nil {
-				return 0, err
+				childPath := path + "/" + k
+
+				log.Printf("cfg_metakv: Set split key: %v, childPath: %v",
+					key, childPath)
+
+				err = metakv.Set(childPath, val, nil)
+				if err != nil {
+					return 0, err
+				}
+			}
+		}
+
+		// Remove composite children entries from metakv only if
+		// caller was attempting removals only.  This should work as
+		// the caller usually has read-modify-write logic that only
+		// removes node defs and does not add/update node defs in the
+		// same read-modify-write code path.
+		//
+		if len(added) <= 0 && len(updated) <= 0 && len(removed) > 0 {
+			for nodeDefUUID := range removed {
+				err = metakv.Delete(path+"/"+nodeDefUUID, nil)
+				if err != nil {
+					return 0, err
+				}
 			}
 		}
 
@@ -303,7 +373,7 @@ func (c *CfgMetaKv) Refresh() error {
 	go close(cancelCh)
 
 	return c.cfgMem.Refresh()
-    */
+	*/
 
 	return nil
 }
