@@ -89,18 +89,24 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
 		uuids := []string{}
 		for _, v := range m {
-			var tmp NodeDefs
-			err = json.Unmarshal(v.Value, &tmp)
+			var childNodeDefs NodeDefs
+
+			err = json.Unmarshal(v.Value, &childNodeDefs)
 			if err != nil {
 				return nil, 0, err
 			}
-			for k1, v1 := range tmp.NodeDefs {
+			for k1, v1 := range childNodeDefs.NodeDefs {
 				rv.NodeDefs[k1] = v1
 			}
-			uuids = append(uuids, tmp.UUID)
-			rv.ImplVersion = tmp.ImplVersion
+			uuids = append(uuids, childNodeDefs.UUID)
+
+			if rv.ImplVersion == "" ||
+				!VersionGTE(rv.ImplVersion, childNodeDefs.ImplVersion) {
+				rv.ImplVersion = childNodeDefs.ImplVersion
+			}
 		}
 		rv.UUID = checkSumUUIDs(uuids)
+
 		data, _ := json.Marshal(rv)
 		return data, 0, nil
 	}
@@ -108,6 +114,43 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 	return c.cfgMem.Get(key, cas)
 }
 
+func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
+	uint64, error) {
+	log.Printf("cfg_metakv: Set, key: %v, cas: %x", key, cas)
+
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	var err error
+
+	_, needSplit := cfgMetaKvSplitKeys[key]
+	if needSplit {
+		nd := &NodeDefs{}
+		err = json.Unmarshal(val, nd)
+		if err != nil {
+			return 0, err
+		}
+
+		for k, v := range nd.NodeDefs {
+			n := &NodeDefs{
+				UUID:        nd.UUID,
+				NodeDefs:    make(map[string]*NodeDef),
+				ImplVersion: nd.ImplVersion,
+			}
+			n.NodeDefs[k] = v
+			k = key + "_" + k
+			val, _ = json.Marshal(n)
+			log.Printf("cfg_metakv: Set split key: %v, k: %v", key, k)
+			cas, err = c.SetKey(k, val, cas, false)
+		}
+
+		return cas, err
+	}
+
+	return c.SetKey(key, val, cas, true)
+}
+
+// SetKey is a helper function.
 func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
 	uint64, error) {
 	if cache {
@@ -129,41 +172,6 @@ func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
 	}
 
 	return 0, metakv.Set(c.keyToPath(key), val, nil)
-}
-
-func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
-	uint64, error) {
-	log.Printf("cfg_metakv: Set, key: %v, cas: %x", key, cas)
-
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	var err error
-
-	_, needSplit := cfgMetaKvSplitKeys[key]
-	if needSplit {
-		// split the keys
-		nd := &NodeDefs{}
-		err = json.Unmarshal(val, nd)
-		if err != nil {
-			return 0, err
-		}
-		for k, v := range nd.NodeDefs {
-			n := &NodeDefs{
-				UUID:        nd.UUID,
-				NodeDefs:    make(map[string]*NodeDef),
-				ImplVersion: nd.ImplVersion,
-			}
-			n.NodeDefs[k] = v
-			k = key + "_" + k
-			val, _ = json.Marshal(n)
-			log.Printf("cfg_metakv: Set split key: %v, k: %v", key, k)
-			cas, err = c.SetKey(k, val, cas, false)
-		}
-	} else {
-		cas, err = c.SetKey(key, val, cas, true)
-	}
-	return cas, err
 }
 
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
