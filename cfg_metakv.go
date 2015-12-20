@@ -48,10 +48,10 @@ type CfgMetaKv struct {
 // configuration file in the metakv.
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
+		uuid:     NewUUID(),
 		path:     CFG_METAKV_BASE_PATH,
 		cancelCh: make(chan struct{}),
 		cfgMem:   NewCfgMem(),
-		uuid:     NewUUID(),
 	}
 
 	backoffStartSleepMS := 200
@@ -75,17 +75,19 @@ func NewCfgMetaKv() (*CfgMetaKv, error) {
 	return cfg, nil
 }
 
-func (c *CfgMetaKv) Get(key string, cas uint64) (
-	[]byte, uint64, error) {
+func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
-	if cfgMetaKvSplitKeyRequired(key) {
-		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
-		tmp := &NodeDefs{}
-		m, err := metakv.ListAllChildren(cfgMetaKvSplitKeys[key])
+
+	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
+	if needSplit {
+		m, err := metakv.ListAllChildren(pathPrefix)
 		if err != nil {
 			return nil, 0, err
 		}
+
+		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
+		tmp := &NodeDefs{}
 		uuids := []string{}
 		for _, v := range m {
 			err = json.Unmarshal(v.Value, tmp)
@@ -102,6 +104,7 @@ func (c *CfgMetaKv) Get(key string, cas uint64) (
 		data, _ := json.Marshal(rv)
 		return data, 0, nil
 	}
+
 	return c.cfgMem.Get(key, cas)
 }
 
@@ -136,7 +139,9 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	defer c.m.Unlock()
 
 	var err error
-	if cfgMetaKvSplitKeyRequired(key) {
+
+	_, needSplit := cfgMetaKvSplitKeys[key]
+	if needSplit {
 		// split the keys
 		nd := &NodeDefs{}
 		err = json.Unmarshal(val, nd)
@@ -170,8 +175,10 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 	var err error
-	if cfgMetaKvSplitKeyRequired(key) {
-		return metakv.RecursiveDelete(cfgMetaKvSplitKeys[key])
+
+	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
+	if needSplit {
+		return metakv.RecursiveDelete(pathPrefix)
 	}
 	rev, err := c.cfgMem.GetRev(key, cas)
 	if err != nil {
@@ -239,10 +246,12 @@ func (c *CfgMetaKv) pathToKey(k string) string {
 }
 
 // for testing
-func (c *CfgMetaKv) getAllKeys(k string) ([]string, error) {
+func (c *CfgMetaKv) getChildrenKeys(key string) ([]string, error) {
 	g := []string{}
-	if cfgMetaKvSplitKeyRequired(k) {
-		m, err := metakv.ListAllChildren(cfgMetaKvSplitKeys[k])
+
+	pathPrefix, needSplit := cfgMetaKvSplitKeys[key]
+	if needSplit {
+		m, err := metakv.ListAllChildren(pathPrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -250,16 +259,8 @@ func (c *CfgMetaKv) getAllKeys(k string) ([]string, error) {
 			g = append(g, v.Path)
 		}
 	}
-	return g, nil
-}
 
-func cfgMetaKvSplitKeyRequired(key string) bool {
-	for k, _ := range cfgMetaKvSplitKeys {
-		if strings.HasPrefix(key, k) {
-			return true
-		}
-	}
-	return false
+	return g, nil
 }
 
 func checkSumUUIDs(uuids []string) string {
