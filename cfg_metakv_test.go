@@ -52,7 +52,7 @@ func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
 		ImplVersion: "2",
 	}
 	val, _ := json.Marshal(c)
-	_, err := g.Set(splitKey, val, 111)
+	cas, err := g.Set(splitKey, val, 0)
 	if err != nil {
 		t.Errorf("error in setting nodedefs-wanted key to metakv")
 	}
@@ -61,7 +61,7 @@ func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
 	if len(l) != 3 {
 		t.Errorf("incorrect keys %v", l)
 	}
-	val, cas, err := g.Get(splitKey, 111)
+	val, cas2, err := g.Get(splitKey, cas)
 	if err != nil {
 		t.Errorf("error in getting nodedefs-wanted key")
 	}
@@ -81,7 +81,7 @@ func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
 		ImplVersion: "2",
 	}
 	val, _ = json.Marshal(d)
-	_, err = g.Set(splitKey, val, cas)
+	cas3, err := g.Set(splitKey, val, cas2)
 	if err != nil {
 		t.Errorf("error in setting nodedefs-wanted key to metakv")
 	}
@@ -89,7 +89,7 @@ func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
 	if len(l) != 4 {
 		t.Errorf("incorrect keys %v", l)
 	}
-	val, _, err = g.Get(splitKey, cas)
+	val, _, err = g.Get(splitKey, cas3)
 	if err != nil {
 		t.Errorf("error in setting key")
 	}

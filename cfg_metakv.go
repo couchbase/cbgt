@@ -127,7 +127,7 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 			return nil, 0, err
 		}
 
-		return data, 0, nil
+		return data, c.lastSplitCAS, nil
 	}
 
 	return c.cfgMem.Get(key, cas)
@@ -143,6 +143,10 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	defer c.m.Unlock()
 
 	if cfgMetaKvSplitKeys[key] {
+		if cas != 0 && cas != c.lastSplitCAS {
+			return 0, &CfgCASError{}
+		}
+
 		var nd NodeDefs
 
 		err := json.Unmarshal(val, &nd)
