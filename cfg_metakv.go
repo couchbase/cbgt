@@ -114,9 +114,9 @@ func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
 		}
 
 		if rev == nil {
-			err = metakv.Add(c.makeKey(key), val)
+			err = metakv.Add(c.keyToPath(key), val)
 		} else {
-			err = metakv.Set(c.makeKey(key), val, rev)
+			err = metakv.Set(c.keyToPath(key), val, rev)
 		}
 		if err != nil {
 			return 0, err
@@ -125,7 +125,7 @@ func (c *CfgMetaKv) SetKey(key string, val []byte, cas uint64, cache bool) (
 		return c.cfgMem.Set(key, val, CFG_CAS_FORCE)
 	}
 
-	return 0, metakv.Set(c.makeKey(key), val, nil)
+	return 0, metakv.Set(c.keyToPath(key), val, nil)
 }
 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
@@ -177,7 +177,7 @@ func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 	if err != nil {
 		return err
 	}
-	err = metakv.Delete(c.makeKey(key), rev)
+	err = metakv.Delete(c.keyToPath(key), rev)
 	if err == nil {
 		return c.cfgMem.Del(key, 0)
 	}
@@ -193,7 +193,7 @@ func (c *CfgMetaKv) metaKVCallback(path string, value []byte, rev interface{}) e
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	key := c.getMetaKey(path)
+	key := c.pathToKey(path)
 	if value == nil {
 		// key got deleted
 		return c.delUnlocked(key, 0)
@@ -225,7 +225,7 @@ func (c *CfgMetaKv) DelConf() {
 	metakv.RecursiveDelete(c.path)
 }
 
-func (c *CfgMetaKv) makeKey(key string) string {
+func (c *CfgMetaKv) keyToPath(key string) string {
 	for k, v := range cfgMetaKvSplitKeys {
 		if strings.HasPrefix(key, k) {
 			return v + key
@@ -234,7 +234,7 @@ func (c *CfgMetaKv) makeKey(key string) string {
 	return c.path + key
 }
 
-func (c *CfgMetaKv) getMetaKey(k string) string {
+func (c *CfgMetaKv) pathToKey(k string) string {
 	return k[len(c.path):]
 }
 
