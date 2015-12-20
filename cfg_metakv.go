@@ -90,8 +90,12 @@ func NewCfgMetaKv() (*CfgMetaKv, error) {
 
 func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 	c.m.Lock()
-	defer c.m.Unlock()
+	data, cas, err := c.getUnlocked(key, cas)
+	c.m.Unlock()
+	return data, cas, err
+}
 
+func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) {
 	if cfgMetaKvSplitKeys[key] {
 		m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
 		if err != nil {
