@@ -23,8 +23,24 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 )
 
+// The values stored in a Cfg are normally atomic, but CfgMetaKv has
+// an exception for values related to NodeDefs.  In CfgMetaKv,
+// NodeDefs are handled in "composite" fashion, where CfgMetaKv will
+// split a NodeDefs value into zero or more child NodeDef values, each
+// stored into metakv using a shared path prefix (so, similar to
+// having a file-per-NodeDef in a shared directory).
+//
+// This allows concurrent, racing nodes to register their own entries
+// into a composite NodeDefs "directory".  This can happen when
+// multiple nodes are launched at nearly the same time, faster than
+// metakv can replicate in eventually consistent fashion.
+//
+// Eventually, metakv replication will occur, and a reader will see a
+// union of NodeDef values that CfgMetaKv reconstructs on the fly for
+// the entire "directory".
+
 const (
-	CFG_METAKV_BASE_PATH            = "/cbgt/cfg/"
+	CFG_METAKV_PREFIX = "/cbgt/cfg/"
 	CFG_METAKV_NODEDEFS_WANTED_PATH = "/cbgt/nodeDefs/wanted/"
 	CFG_METAKV_NODEDEFS_KNOWN_PATH  = "/cbgt/nodeDefs/known/"
 )
@@ -36,7 +52,7 @@ var cfgMetaKvSplitKeys map[string]string = map[string]string{
 
 type CfgMetaKv struct {
 	uuid     string
-	path     string
+	prefix   string
 	cancelCh chan struct{}
 
 	m      sync.Mutex // Protects the fields that follow.
@@ -48,7 +64,7 @@ type CfgMetaKv struct {
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
 		uuid:     NewUUID(),
-		path:     CFG_METAKV_BASE_PATH,
+		prefix:   CFG_METAKV_PREFIX,
 		cancelCh: make(chan struct{}),
 		cfgMem:   NewCfgMem(),
 	}
@@ -201,7 +217,7 @@ func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 }
 
 func (c *CfgMetaKv) Load() error {
-	metakv.IterateChildren(c.path, c.metaKVCallback)
+	metakv.IterateChildren(c.prefix, c.metaKVCallback)
 	return nil
 }
 
@@ -242,15 +258,15 @@ func (c *CfgMetaKv) OnError(err error) {
 }
 
 func (c *CfgMetaKv) RemoveAllKeys() {
-	metakv.RecursiveDelete(c.path)
+	metakv.RecursiveDelete(c.prefix)
 }
 
 func (c *CfgMetaKv) keyToPath(key string) string {
-	return c.path + key
+	return c.prefix + key
 }
 
 func (c *CfgMetaKv) pathToKey(k string) string {
-	return k[len(c.path):]
+	return k[len(c.prefix):]
 }
 
 // for testing
