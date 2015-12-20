@@ -87,10 +87,10 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 		}
 
 		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
-		tmp := &NodeDefs{}
 		uuids := []string{}
 		for _, v := range m {
-			err = json.Unmarshal(v.Value, tmp)
+			var tmp NodeDefs
+			err = json.Unmarshal(v.Value, &tmp)
 			if err != nil {
 				return nil, 0, err
 			}
