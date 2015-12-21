@@ -120,6 +120,7 @@ type ManagerStats struct {
 	TotJanitorKickOk            uint64
 	TotJanitorClosePIndex       uint64
 	TotJanitorRemovePIndex      uint64
+	TotJanitorLoadDataDir       uint64
 	TotJanitorUnknownErr        uint64
 	TotJanitorSubscriptionEvent uint64
 	TotJanitorStop              uint64
@@ -191,9 +192,16 @@ func (mgr *Manager) Start(register string) error {
 	}
 
 	if mgr.tagsMap == nil || mgr.tagsMap["pindex"] {
-		err := mgr.LoadDataDir()
-		if err != nil {
-			return err
+		mldd := mgr.options["managerLoadDataDir"]
+		if mldd == "sync" || mldd == "" {
+			err := mgr.LoadDataDir()
+			if err != nil {
+				return err
+			}
+		} else if mldd == "async" {
+			go func() {
+				mgr.janitorCh <- &workReq{op: JANITOR_LOAD_DATA_DIR}
+			}()
 		}
 	}
 
@@ -432,7 +440,7 @@ func (mgr *Manager) ClosePIndex(pindex *PIndex) error {
 		"api-ClosePIndex", pindex)
 }
 
-// ClosePIndex synchronously has the janitor remove a pindex.
+// RemovePIndex synchronously has the janitor remove a pindex.
 func (mgr *Manager) RemovePIndex(pindex *PIndex) error {
 	return syncWorkReq(mgr.janitorCh, JANITOR_REMOVE_PINDEX,
 		"api-RemovePIndex", pindex)

@@ -24,6 +24,7 @@ import (
 
 const JANITOR_CLOSE_PINDEX = "janitor_close_pindex"
 const JANITOR_REMOVE_PINDEX = "janitor_remove_pindex"
+const JANITOR_LOAD_DATA_DIR = "janitor_load_data_dir"
 
 // JanitorNOOP sends a synchronous NOOP to the manager's janitor, if any.
 func (mgr *Manager) JanitorNOOP(msg string) {
@@ -94,6 +95,9 @@ func (mgr *Manager) JanitorLoop() {
 			} else if m.op == JANITOR_REMOVE_PINDEX {
 				mgr.stopPIndex(m.obj.(*PIndex), true)
 				atomic.AddUint64(&mgr.stats.TotJanitorRemovePIndex, 1)
+			} else if m.op == JANITOR_LOAD_DATA_DIR {
+				mgr.LoadDataDir()
+				atomic.AddUint64(&mgr.stats.TotJanitorLoadDataDir, 1)
 			} else {
 				err = fmt.Errorf("janitor: unknown op: %s, m: %#v", m.op, m)
 				atomic.AddUint64(&mgr.stats.TotJanitorUnknownErr, 1)
