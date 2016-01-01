@@ -41,7 +41,9 @@ func ShowError(w http.ResponseWriter, r *http.Request,
 func MustEncode(w io.Writer, i interface{}) {
 	if headered, ok := w.(http.ResponseWriter); ok {
 		headered.Header().Set("Cache-Control", "no-cache")
-		headered.Header().Set("Content-type", "application/json")
+		if headered.Header().Get("Content-type") == "" {
+			headered.Header().Set("Content-type", "application/json")
+		}
 	}
 
 	e := json.NewEncoder(w)
@@ -129,6 +131,27 @@ func InitRESTRouter(r *mux.Router, versionMain string,
 	assetDir func(name string) ([]string, error),
 	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
+	return InitRESTRouterEx(r, versionMain, mgr, staticDir,
+		staticETag, mr, assetDir, asset, nil)
+}
+
+// InitRESTRouter initializes a mux.Router with REST API routes with
+// extra option.
+func InitRESTRouterEx(r *mux.Router, versionMain string,
+	mgr *cbgt.Manager, staticDir, staticETag string,
+	mr *cbgt.MsgRing,
+	assetDir func(name string) ([]string, error),
+	asset func(name string) ([]byte, error),
+	options map[string]interface{}) (
+	*mux.Router, map[string]RESTMeta, error) {
+	var authHandler func(http.Handler) http.Handler
+
+	if v, ok := options["auth"]; ok {
+		authHandler, ok = v.(func(http.Handler) http.Handler)
+		if !ok {
+			log.Printf("rest: auth function is not valid")
+		}
+	}
 	prefix := mgr.Options()["urlPrefix"]
 
 	PIndexTypesInitRouter(r, "manager.before", mgr)
@@ -139,6 +162,9 @@ func InitRESTRouter(r *mux.Router, versionMain string,
 		if a, ok := h.(RESTOpts); ok {
 			a.RESTOpts(opts)
 		}
+		if authHandler != nil {
+			h = authHandler(h)
+		}
 		meta[prefix+path+" "+RESTMethodOrds[method]+method] =
 			RESTMeta{prefix + path, method, opts}
 		r.Handle(prefix+path, h).Methods(method)
@@ -147,7 +173,11 @@ func InitRESTRouter(r *mux.Router, versionMain string,
 		opts map[string]string) {
 		meta[prefix+path+" "+RESTMethodOrds[method]+method] =
 			RESTMeta{prefix + path, method, opts}
-		r.HandleFunc(prefix+path, h).Methods(method)
+		if authHandler != nil {
+			r.Handle(prefix+path, authHandler(http.HandlerFunc(h))).Methods(method)
+			return
+		}
+		r.Handle(prefix+path, h).Methods(method)
 	}
 
 	handle("/api/index", "GET", NewListIndexHandler(mgr),
