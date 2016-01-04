@@ -125,7 +125,7 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 			}
 
 			if rv.ImplVersion == "" ||
-				!VersionGTE(rv.ImplVersion, childNodeDefs.ImplVersion) {
+				VersionGTE(childNodeDefs.ImplVersion, rv.ImplVersion) {
 				rv.ImplVersion = childNodeDefs.ImplVersion
 			}
 
