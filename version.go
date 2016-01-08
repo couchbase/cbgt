@@ -33,34 +33,54 @@ const VERSION_KEY = "version"
 // Older versions (which are running with older JSON/struct definitions
 // or planning algorithms) will see false from their CheckVersion()'s.
 func CheckVersion(cfg Cfg, myVersion string) (bool, error) {
+	tries := 0
 	for cfg != nil {
+		tries += 1
+		if tries > 100 {
+			return false, fmt.Errorf("version: CheckVersion too many tries")
+		}
+
 		clusterVersion, cas, err := cfg.Get(VERSION_KEY, 0)
 		if err != nil {
 			return false, err
 		}
+
 		if clusterVersion == nil {
 			// First time initialization, so save myVersion to cfg and
 			// retry in case there was a race.
 			_, err = cfg.Set(VERSION_KEY, []byte(myVersion), cas)
 			if err != nil {
+				if _, ok := err.(*CfgCASError); ok {
+					// Retry if it was a CAS mismatch due to
+					// multi-node startup races.
+					continue
+				}
 				return false, fmt.Errorf("version:"+
 					" could not save VERSION to cfg, err: %v", err)
 			}
 			continue
 		}
+
 		if VersionGTE(myVersion, string(clusterVersion)) == false {
 			return false, nil
 		}
+
 		if myVersion != string(clusterVersion) {
 			// Found myVersion is higher than clusterVersion so save
 			// myVersion to cfg and retry in case there was a race.
 			_, err = cfg.Set(VERSION_KEY, []byte(myVersion), cas)
 			if err != nil {
+				if _, ok := err.(*CfgCASError); ok {
+					// Retry if it was a CAS mismatch due to
+					// multi-node startup races.
+					continue
+				}
 				return false, fmt.Errorf("version:"+
 					" could not update VERSION in cfg, err: %v", err)
 			}
 			continue
 		}
+
 		return true, nil
 	}
 
