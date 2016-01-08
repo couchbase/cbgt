@@ -34,10 +34,11 @@ type CfgCB struct {
 	url    *url.URL
 	bucket string
 	b      *couchbase.Bucket
-	cfgMem *CfgMem
 	cfgKey string
 
 	options map[string]interface{}
+
+	subscriptions map[string][]chan<- CfgEvent // Keyed by key.
 
 	bds  cbdatasource.BucketDataSource
 	bdsm sync.Mutex
@@ -81,9 +82,10 @@ func NewCfgCBEx(urlStr, bucket string,
 		urlStr:  urlStr,
 		url:     url,
 		bucket:  bucket,
-		cfgMem:  NewCfgMem(),
 		cfgKey:  keyPrefix + "cfg",
 		options: options,
+
+		subscriptions: make(map[string][]chan<- CfgEvent),
 	}
 
 	b, err := c.getBucket() // TODO: Need to b.Close()?
@@ -111,29 +113,39 @@ func NewCfgCBEx(urlStr, bucket string,
 	return c, nil
 }
 
-// DEPRECATED: Please instead use the NewCfgCBEx() API with an options
-// map entry of "keyPrefix".
-//
-// The old docs for existing SetKeyPrefix users: SetKeyPrefix changes
-// the key prefix that the CfgCB will use as it reads/writes its
-// documents to the couchbase bucket (default key prefix is "").  Use
-// SetKeyPrefix with care, as you must arrange all nodes in the
-// cluster to use the same key prefix.  The SetKeyPrefix should be
-// used right after NewCfgCB.
-func (c *CfgCB) SetKeyPrefix(keyPrefix string) {
-	if c.options == nil {
-		c.options = map[string]interface{}{}
-	}
-	c.options["keyPrefix"] = keyPrefix
-	c.Refresh()
-}
-
 func (c *CfgCB) Get(key string, cas uint64) (
 	[]byte, uint64, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	return c.cfgMem.Get(key, cas)
+	bucket, err := c.getBucket()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	cfgBuf, _, cfgCAS, err := bucket.GetsRaw(c.cfgKey)
+	if err != nil && !gomemcached.IsNotFound(err) {
+		return nil, 0, err
+	}
+
+	if cas != 0 && cas != cfgCAS {
+		return nil, 0, &CfgCASError{}
+	}
+
+	cfgMem := NewCfgMem()
+	if cfgBuf != nil {
+		err = json.Unmarshal(cfgBuf, cfgMem)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
+	val, _, err := cfgMem.Get(key, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return val, cfgCAS, nil
 }
 
 func (c *CfgCB) Set(key string, val []byte, cas uint64) (
@@ -141,34 +153,92 @@ func (c *CfgCB) Set(key string, val []byte, cas uint64) (
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	cas, err := c.cfgMem.Set(key, val, cas)
+	bucket, err := c.getBucket()
 	if err != nil {
 		return 0, err
 	}
 
-	err = c.unlockedSave()
+	cfgBuf, _, cfgCAS, err := bucket.GetsRaw(c.cfgKey)
+	if err != nil && !gomemcached.IsNotFound(err) {
+		return 0, err
+	}
+
+	if cas != 0 && cas != cfgCAS {
+		return 0, &CfgCASError{}
+	}
+
+	cfgMem := NewCfgMem()
+	if cfgBuf != nil {
+		err = json.Unmarshal(cfgBuf, cfgMem)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	_, err = cfgMem.Set(key, val, CFG_CAS_FORCE)
 	if err != nil {
 		return 0, err
 	}
-	return cas, err
+
+	nextCAS, err := bucket.Cas(c.cfgKey, 0, cfgCAS, cfgMem)
+	if err != nil {
+		if res, ok := err.(*gomemcached.MCResponse); ok {
+			if res.Status == gomemcached.KEY_EEXISTS {
+				return 0, &CfgCASError{}
+			}
+		}
+		return 0, err
+	}
+
+	c.fireEvent(key, nextCAS, nil)
+
+	return nextCAS, err
 }
 
 func (c *CfgCB) Del(key string, cas uint64) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	err := c.cfgMem.Del(key, cas)
+	bucket, err := c.getBucket()
 	if err != nil {
 		return err
 	}
-	return c.unlockedSave()
-}
 
-func (c *CfgCB) Load() error {
-	c.m.Lock()
-	defer c.m.Unlock()
+	cfgBuf, _, cfgCAS, err := bucket.GetsRaw(c.cfgKey)
+	if err != nil && !gomemcached.IsNotFound(err) {
+		return err
+	}
 
-	return c.unlockedLoad()
+	if cas != 0 && cas != cfgCAS {
+		return &CfgCASError{}
+	}
+
+	cfgMem := NewCfgMem()
+	if cfgBuf != nil {
+		err = json.Unmarshal(cfgBuf, cfgMem)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = cfgMem.Del(key, 0)
+	if err != nil {
+		return err
+	}
+
+	nextCAS, err := bucket.Cas(c.cfgKey, 0, cfgCAS, cfgMem)
+	if err != nil {
+		if res, ok := err.(*gomemcached.MCResponse); ok {
+			if res.Status == gomemcached.KEY_EEXISTS {
+				return &CfgCASError{}
+			}
+		}
+		return err
+	}
+
+	c.fireEvent(key, nextCAS, nil)
+
+	return err
 }
 
 func (c *CfgCB) getBucket() (*couchbase.Bucket, error) {
@@ -182,70 +252,48 @@ func (c *CfgCB) getBucket() (*couchbase.Bucket, error) {
 	return c.b, nil
 }
 
-func (c *CfgCB) unlockedLoad() error {
-	bucket, err := c.getBucket()
-	if err != nil {
-		return err
+func (c *CfgCB) Subscribe(key string, ch chan CfgEvent) error {
+	c.m.Lock()
+
+	a, exists := c.subscriptions[key]
+	if !exists || a == nil {
+		a = make([]chan<- CfgEvent, 0)
 	}
+	c.subscriptions[key] = append(a, ch)
 
-	buf, err := bucket.GetRaw(c.cfgKey)
-	if err != nil && !gomemcached.IsNotFound(err) {
-		return err
-	}
-
-	cfgMem := NewCfgMem()
-	if buf != nil {
-		err = json.Unmarshal(buf, cfgMem)
-		if err != nil {
-			return err
-		}
-	}
-
-	cfgMemPrev := c.cfgMem
-	cfgMemPrev.m.Lock()
-	defer cfgMemPrev.m.Unlock()
-
-	cfgMem.subscriptions = cfgMemPrev.subscriptions
-
-	c.cfgMem = cfgMem
+	c.m.Unlock()
 
 	return nil
 }
 
-func (c *CfgCB) unlockedSave() error {
-	bucket, err := c.getBucket()
-	if err != nil {
-		return err
-	}
-
-	return bucket.Set(c.cfgKey, 0, c.cfgMem)
+func (c *CfgCB) FireEvent(key string, cas uint64, err error) {
+	c.m.Lock()
+	c.fireEvent(key, cas, err)
+	c.m.Unlock()
 }
 
-func (c *CfgCB) Subscribe(key string, ch chan CfgEvent) error {
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	return c.cfgMem.Subscribe(key, ch)
+func (c *CfgCB) fireEvent(key string, cas uint64, err error) {
+	for _, c := range c.subscriptions[key] {
+		go func(c chan<- CfgEvent) {
+			c <- CfgEvent{
+				Key: key, CAS: cas, Error: err,
+			}
+		}(c)
+	}
 }
 
 func (c *CfgCB) Refresh() error {
 	c.m.Lock()
-	defer c.m.Unlock()
-
-	c2, err := NewCfgCBEx(c.urlStr, c.bucket, c.options)
-	if err != nil {
-		return err
+	for key, cs := range c.subscriptions {
+		event := CfgEvent{Key: key}
+		for _, c := range cs {
+			go func(c chan<- CfgEvent, event CfgEvent) {
+				c <- event
+			}(c, event)
+		}
 	}
-
-	err = c2.Load()
-	if err != nil {
-		return err
-	}
-
-	c.cfgMem.CASNext = c2.cfgMem.CASNext
-	c.cfgMem.Entries = c2.cfgMem.Entries
-
-	return c.cfgMem.Refresh()
+	c.m.Unlock()
+	return nil
 }
 
 // ----------------------------------------------------------------
@@ -267,17 +315,14 @@ func (r *CfgCB) OnError(err error) {
 	log.Printf("cfg_cb: OnError, err: %v", err)
 
 	go func() {
-		r.cfgMem.FireEvent("", 0, err)
+		r.FireEvent("", 0, err)
 	}()
 }
 
 func (r *CfgCB) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	if string(key) == r.cfgKey {
-		go func() {
-			r.Load()
-			r.cfgMem.Refresh()
-		}()
+		go r.Refresh()
 	}
 	r.updateSeq(vbucketId, seq)
 	return nil
@@ -286,10 +331,7 @@ func (r *CfgCB) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 func (r *CfgCB) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	if string(key) == r.cfgKey {
-		go func() {
-			r.Load()
-			r.cfgMem.Refresh()
-		}()
+		go r.Refresh()
 	}
 	r.updateSeq(vbucketId, seq)
 	return nil
@@ -302,12 +344,13 @@ func (r *CfgCB) SnapshotStart(vbucketId uint16,
 
 func (r *CfgCB) SetMetaData(vbucketId uint16, value []byte) error {
 	r.bdsm.Lock()
-	defer r.bdsm.Unlock()
 
 	if r.meta == nil {
 		r.meta = make(map[uint16][]byte)
 	}
 	r.meta[vbucketId] = value
+
+	r.bdsm.Unlock()
 
 	return nil
 }
@@ -315,7 +358,6 @@ func (r *CfgCB) SetMetaData(vbucketId uint16, value []byte) error {
 func (r *CfgCB) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
 	r.bdsm.Lock()
-	defer r.bdsm.Unlock()
 
 	value = []byte(nil)
 	if r.meta != nil {
@@ -325,6 +367,8 @@ func (r *CfgCB) GetMetaData(vbucketId uint16) (
 	if r.seqs != nil {
 		lastSeq = r.seqs[vbucketId]
 	}
+
+	r.bdsm.Unlock()
 
 	return value, lastSeq, nil
 }

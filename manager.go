@@ -81,8 +81,10 @@ type ManagerStats struct {
 	TotKick uint64
 
 	TotSaveNodeDef       uint64
+	TotSaveNodeDefNil    uint64
 	TotSaveNodeDefGetErr uint64
 	TotSaveNodeDefSetErr uint64
+	TotSaveNodeDefRetry  uint64
 	TotSaveNodeDefSame   uint64
 	TotSaveNodeDefOk     uint64
 
@@ -309,7 +311,7 @@ func (mgr *Manager) SaveNodeDef(kind string, force bool) error {
 	atomic.AddUint64(&mgr.stats.TotSaveNodeDef, 1)
 
 	if mgr.cfg == nil {
-		atomic.AddUint64(&mgr.stats.TotSaveNodeDefOk, 1)
+		atomic.AddUint64(&mgr.stats.TotSaveNodeDefNil, 1)
 		return nil // Occurs during testing.
 	}
 
@@ -351,6 +353,7 @@ func (mgr *Manager) SaveNodeDef(kind string, force bool) error {
 				// Retry if it was a CAS mismatch, as perhaps
 				// multiple nodes are all racing to register themselves,
 				// such as in a full datacenter power restart.
+				atomic.AddUint64(&mgr.stats.TotSaveNodeDefRetry, 1)
 				continue
 			}
 			atomic.AddUint64(&mgr.stats.TotSaveNodeDefSetErr, 1)
@@ -364,7 +367,7 @@ func (mgr *Manager) SaveNodeDef(kind string, force bool) error {
 
 // ---------------------------------------------------------------
 
-// SaveNodeDef removes the NodeDef registrations in the Cfg system for
+// RemoveNodeDef removes the NodeDef registrations in the Cfg system for
 // this Manager node instance.
 func (mgr *Manager) RemoveNodeDef(kind string) error {
 	if mgr.cfg == nil {

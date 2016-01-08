@@ -97,11 +97,6 @@ func MainCfgCB(baseName, urlStr, bindHttp, register, dataDir string) (
 		return nil, err
 	}
 
-	err = cfg.Load()
-	if err != nil {
-		return nil, err
-	}
-
 	return cfg, nil
 }
 
