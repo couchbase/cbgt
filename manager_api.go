@@ -62,64 +62,80 @@ func (mgr *Manager) CreateIndex(sourceType,
 			sourceType, sourceName, sourceUUID, err)
 	}
 
-	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
-	if err != nil {
-		return fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
-	}
-	if indexDefs == nil {
-		indexDefs = NewIndexDefs(mgr.version)
-	}
-	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		return fmt.Errorf("manager_api: could not create index,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			indexDefs.ImplVersion, mgr.version)
-	}
+	tries := 0
 
-	prevIndex, exists := indexDefs.IndexDefs[indexName]
-	if prevIndexUUID == "" { // New index creation.
-		if exists || prevIndex != nil {
-			return fmt.Errorf("manager_api: index exists, indexName: %s",
-				indexName)
+	for {
+		tries += 1
+		if tries > 100 {
+			return fmt.Errorf("manager_api: CreateIndex,"+
+				" too many tries: %d", tries)
 		}
-	} else { // Update index definition.
-		if !exists || prevIndex == nil {
-			return fmt.Errorf("manager_api: index missing for update,"+
-				" indexName: %s", indexName)
+
+		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
+		if err != nil {
+			return fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
 		}
-		if prevIndex.UUID != prevIndexUUID {
-			return fmt.Errorf("manager_api:"+
-				" perhaps there was concurrent index definition update"+
-				" - mismatched index UUID,"+
-				" indexName: %s, prevIndex.UUID: %s, prevIndexUUID: %s",
-				indexName, prevIndex.UUID, prevIndexUUID)
+		if indexDefs == nil {
+			indexDefs = NewIndexDefs(mgr.version)
 		}
-	}
+		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+			return fmt.Errorf("manager_api: could not create index,"+
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				indexDefs.ImplVersion, mgr.version)
+		}
 
-	indexUUID := NewUUID()
+		prevIndex, exists := indexDefs.IndexDefs[indexName]
+		if prevIndexUUID == "" { // New index creation.
+			if exists || prevIndex != nil {
+				return fmt.Errorf("manager_api: index exists, indexName: %s",
+					indexName)
+			}
+		} else { // Update index definition.
+			if !exists || prevIndex == nil {
+				return fmt.Errorf("manager_api: index missing for update,"+
+					" indexName: %s", indexName)
+			}
+			if prevIndex.UUID != prevIndexUUID {
+				return fmt.Errorf("manager_api:"+
+					" perhaps there was concurrent index definition update"+
+					" - mismatched index UUID,"+
+					" indexName: %s, prevIndex.UUID: %s, prevIndexUUID: %s",
+					indexName, prevIndex.UUID, prevIndexUUID)
+			}
+		}
 
-	indexDef := &IndexDef{
-		Type:         indexType,
-		Name:         indexName,
-		UUID:         indexUUID,
-		Params:       indexParams,
-		SourceType:   sourceType,
-		SourceName:   sourceName,
-		SourceUUID:   sourceUUID,
-		SourceParams: sourceParams,
-		PlanParams:   planParams,
-	}
+		indexUUID := NewUUID()
 
-	indexDefs.UUID = indexUUID
-	indexDefs.IndexDefs[indexName] = indexDef
-	indexDefs.ImplVersion = mgr.version
+		indexDef := &IndexDef{
+			Type:         indexType,
+			Name:         indexName,
+			UUID:         indexUUID,
+			Params:       indexParams,
+			SourceType:   sourceType,
+			SourceName:   sourceName,
+			SourceUUID:   sourceUUID,
+			SourceParams: sourceParams,
+			PlanParams:   planParams,
+		}
 
-	// NOTE: If our ImplVersion is still too old due to a race, we
-	// expect a more modern planner to catch it later.
+		indexDefs.UUID = indexUUID
+		indexDefs.IndexDefs[indexName] = indexDef
+		indexDefs.ImplVersion = mgr.version
 
-	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
-	if err != nil {
-		return fmt.Errorf("manager_api: could not save indexDefs,"+
-			" err: %v", err)
+		// NOTE: If our ImplVersion is still too old due to a race, we
+		// expect a more modern planner to catch it later.
+
+		_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+		if err != nil {
+			if _, ok := err.(*CfgCASError); ok {
+				continue // Retry on CAS mismatch.
+			}
+
+			return fmt.Errorf("manager_api: could not save indexDefs,"+
+				" err: %v", err)
+		}
+
+		break // Success.
 	}
 
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
