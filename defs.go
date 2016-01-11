@@ -199,15 +199,15 @@ func NewIndexDefs(version string) *IndexDefs {
 func CfgGetIndexDefs(cfg Cfg) (*IndexDefs, uint64, error) {
 	v, cas, err := cfg.Get(INDEX_DEFS_KEY, 0)
 	if err != nil {
-		return nil, 0, err
+		return nil, cas, err
 	}
 	if v == nil {
-		return nil, 0, nil
+		return nil, cas, nil
 	}
 	rv := &IndexDefs{}
 	err = json.Unmarshal(v, rv)
 	if err != nil {
-		return nil, 0, err
+		return nil, cas, err
 	}
 	return rv, cas, nil
 }
@@ -271,15 +271,15 @@ func CfgNodeDefsKey(kind string) string {
 func CfgGetNodeDefs(cfg Cfg, kind string) (*NodeDefs, uint64, error) {
 	v, cas, err := cfg.Get(CfgNodeDefsKey(kind), 0)
 	if err != nil {
-		return nil, 0, err
+		return nil, cas, err
 	}
 	if v == nil {
-		return nil, 0, nil
+		return nil, cas, nil
 	}
 	rv := &NodeDefs{}
 	err = json.Unmarshal(v, rv)
 	if err != nil {
-		return nil, 0, err
+		return nil, cas, err
 	}
 	return rv, cas, nil
 }
@@ -370,15 +370,15 @@ func CopyPlanPIndexes(planPIndexes *PlanPIndexes,
 func CfgGetPlanPIndexes(cfg Cfg) (*PlanPIndexes, uint64, error) {
 	v, cas, err := cfg.Get(PLAN_PINDEXES_KEY, 0)
 	if err != nil {
-		return nil, 0, err
+		return nil, cas, err
 	}
 	if v == nil {
-		return nil, 0, nil
+		return nil, cas, nil
 	}
 	rv := &PlanPIndexes{}
 	err = json.Unmarshal(v, rv)
 	if err != nil {
-		return nil, 0, err
+		return nil, cas, err
 	}
 	return rv, cas, nil
 }
