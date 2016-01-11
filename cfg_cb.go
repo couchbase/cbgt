@@ -93,6 +93,11 @@ func NewCfgCBEx(urlStr, bucket string,
 		return nil, err
 	}
 
+	// The following Add() ensures that we don't see CAS number 0, to
+	// avoid situations where CAS number 0's alternate meaning of
+	// "don't care" can lead to startup race issues.
+	b.Add(c.cfgKey, 0, NewCfgMem())
+
 	bucketUUID := ""
 	vbucketIDs := []uint16{uint16(b.VBHash(c.cfgKey))}
 
