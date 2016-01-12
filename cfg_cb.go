@@ -38,6 +38,8 @@ type CfgCB struct {
 
 	options map[string]interface{}
 
+	logger func(format string, args ...interface{})
+
 	subscriptions map[string][]chan<- CfgEvent // Keyed by key.
 
 	bds  cbdatasource.BucketDataSource
@@ -71,10 +73,24 @@ func NewCfgCBEx(urlStr, bucket string,
 	}
 
 	keyPrefix := ""
+	logger := func(format string, args ...interface{}) {}
+
 	if options != nil {
 		v, exists := options["keyPrefix"]
 		if exists {
 			keyPrefix = v.(string)
+		}
+
+		loggeDebug, exists := options["loggerDebug"]
+		if exists && loggeDebug.(bool) {
+			logger = func(format string, args ...interface{}) {
+				log.Printf(format, args...)
+			}
+		}
+
+		loggerFunc, exists := options["loggerFunc"]
+		if exists && loggerFunc != nil {
+			logger = loggerFunc.(func(format string, args ...interface{}))
 		}
 	}
 
@@ -84,6 +100,7 @@ func NewCfgCBEx(urlStr, bucket string,
 		bucket:  bucket,
 		cfgKey:  keyPrefix + "cfg",
 		options: options,
+		logger:  logger,
 
 		subscriptions: make(map[string][]chan<- CfgEvent),
 	}
@@ -120,53 +137,53 @@ func NewCfgCBEx(urlStr, bucket string,
 
 func (c *CfgCB) Get(key string, cas uint64) (
 	[]byte, uint64, error) {
-	log.Printf("cfg_cb: Get, key: %s, cas: %d", key, cas)
+	c.logger("cfg_cb: Get, key: %s, cas: %d", key, cas)
 
 	c.m.Lock()
 	defer c.m.Unlock()
 
 	bucket, err := c.getBucket()
 	if err != nil {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, getBucket, err: %v", key, cas, err)
+		c.logger("cfg_cb: Get, key: %s, cas: %d, getBucket, err: %v", key, cas, err)
 
 		return nil, 0, err
 	}
 
 	cfgBuf, _, cfgCAS, err := bucket.GetsRaw(c.cfgKey)
 	if err != nil && !gomemcached.IsNotFound(err) {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, GetsRaw, err: %v", key, cas, err)
+		c.logger("cfg_cb: Get, key: %s, cas: %d, GetsRaw, err: %v", key, cas, err)
 
 		return nil, 0, err
 	}
 
 	if cas != 0 && cas != cfgCAS {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, CASError, cfgCAS: %d", key, cas, cfgCAS)
+		c.logger("cfg_cb: Get, key: %s, cas: %d, CASError, cfgCAS: %d", key, cas, cfgCAS)
 
 		return nil, 0, &CfgCASError{}
 	}
 
 	cfgMem := NewCfgMem()
 	if cfgBuf != nil {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
+		c.logger("cfg_cb: Get, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
 
 		err = json.Unmarshal(cfgBuf, cfgMem)
 		if err != nil {
-			log.Printf("cfg_cb: Get, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
+			c.logger("cfg_cb: Get, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
 
 			return nil, 0, err
 		}
 	} else {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, cfgBuf nil", key, cas)
+		c.logger("cfg_cb: Get, key: %s, cas: %d, cfgBuf nil", key, cas)
 	}
 
 	val, _, err := cfgMem.Get(key, 0)
 	if err != nil {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, cfgMem.Get() err: %v", key, cas, err)
+		c.logger("cfg_cb: Get, key: %s, cas: %d, cfgMem.Get() err: %v", key, cas, err)
 
 		return nil, 0, err
 	}
 
-	log.Printf("cfg_cb: Get, key: %s, cas: %d, cfgCAS: %d, val: %s", key, cas, cfgCAS, val)
+	c.logger("cfg_cb: Get, key: %s, cas: %d, cfgCAS: %d, val: %s", key, cas, cfgCAS, val)
 
 	return val, cfgCAS, nil
 }
@@ -178,53 +195,53 @@ func (c *CfgCB) Set(key string, val []byte, cas uint64) (
 
 	bucket, err := c.getBucket()
 	if err != nil {
-		log.Printf("cfg_cb: Set, key: %s, cas: %d, getBucket, err: %v", key, cas, err)
+		c.logger("cfg_cb: Set, key: %s, cas: %d, getBucket, err: %v", key, cas, err)
 
 		return 0, err
 	}
 
 	cfgBuf, _, cfgCAS, err := bucket.GetsRaw(c.cfgKey)
 	if err != nil && !gomemcached.IsNotFound(err) {
-		log.Printf("cfg_cb: Set, key: %s, cas: %d, GetsRaw, err: %v", key, cas, err)
+		c.logger("cfg_cb: Set, key: %s, cas: %d, GetsRaw, err: %v", key, cas, err)
 
 		return 0, err
 	}
 
 	if cas != 0 && cas != cfgCAS {
-		log.Printf("cfg_cb: Set, key: %s, cas: %d, CASError, cfgCAS: %d", key, cas, cfgCAS)
+		c.logger("cfg_cb: Set, key: %s, cas: %d, CASError, cfgCAS: %d", key, cas, cfgCAS)
 
 		return 0, &CfgCASError{}
 	}
 
 	cfgMem := NewCfgMem()
 	if cfgBuf != nil {
-		log.Printf("cfg_cb: Set, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
+		c.logger("cfg_cb: Set, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
 
 		err = json.Unmarshal(cfgBuf, cfgMem)
 		if err != nil {
-			log.Printf("cfg_cb: Set, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
+			c.logger("cfg_cb: Set, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
 
 			return 0, err
 		}
 	} else {
-		log.Printf("cfg_cb: Get, key: %s, cas: %d, cfgBuf nil", key, cas)
+		c.logger("cfg_cb: Get, key: %s, cas: %d, cfgBuf nil", key, cas)
 	}
 
 	_, err = cfgMem.Set(key, val, CFG_CAS_FORCE)
 	if err != nil {
-		log.Printf("cfg_cb: Set, key: %s, cas: %d, cfgMem.Set() err: %v", key, cas, err)
+		c.logger("cfg_cb: Set, key: %s, cas: %d, cfgMem.Set() err: %v", key, cas, err)
 
 		return 0, err
 	}
 
 	nextCAS, err := bucket.Cas(c.cfgKey, 0, cfgCAS, cfgMem)
 	if err != nil {
-		log.Printf("cfg_cb: Set, key: %s, cas: %d, cfgCAS: %d, Cas err: %v",
+		c.logger("cfg_cb: Set, key: %s, cas: %d, cfgCAS: %d, Cas err: %v",
 			key, cas, cfgCAS, err)
 
 		if res, ok := err.(*gomemcached.MCResponse); ok {
 			if res.Status == gomemcached.KEY_EEXISTS {
-				log.Printf("cfg_cb: Set, key: %s, cas: %d, cfgCAS: %d, Cas KEY_EEXISTS",
+				c.logger("cfg_cb: Set, key: %s, cas: %d, cfgCAS: %d, Cas KEY_EEXISTS",
 					key, cas, cfgCAS)
 
 				return 0, &CfgCASError{}
@@ -233,7 +250,7 @@ func (c *CfgCB) Set(key string, val []byte, cas uint64) (
 		return 0, err
 	}
 
-	log.Printf("cfg_cb: Set, key: %s, cas: %d, cfgCAS: %d, nextCAS: %d",
+	c.logger("cfg_cb: Set, key: %s, cas: %d, cfgCAS: %d, nextCAS: %d",
 		key, cas, cfgCAS, nextCAS)
 
 	c.fireEvent(key, nextCAS, nil)
@@ -247,53 +264,53 @@ func (c *CfgCB) Del(key string, cas uint64) error {
 
 	bucket, err := c.getBucket()
 	if err != nil {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, getBucket, err: %v", key, cas, err)
+		c.logger("cfg_cb: Del, key: %s, cas: %d, getBucket, err: %v", key, cas, err)
 
 		return err
 	}
 
 	cfgBuf, _, cfgCAS, err := bucket.GetsRaw(c.cfgKey)
 	if err != nil && !gomemcached.IsNotFound(err) {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, GetsRaw, err: %v", key, cas, err)
+		c.logger("cfg_cb: Del, key: %s, cas: %d, GetsRaw, err: %v", key, cas, err)
 
 		return err
 	}
 
 	if cas != 0 && cas != cfgCAS {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, CASError, cfgCAS: %d", key, cas, cfgCAS)
+		c.logger("cfg_cb: Del, key: %s, cas: %d, CASError, cfgCAS: %d", key, cas, cfgCAS)
 
 		return &CfgCASError{}
 	}
 
 	cfgMem := NewCfgMem()
 	if cfgBuf != nil {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
+		c.logger("cfg_cb: Del, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
 
 		err = json.Unmarshal(cfgBuf, cfgMem)
 		if err != nil {
-			log.Printf("cfg_cb: Del, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
+			c.logger("cfg_cb: Del, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
 
 			return err
 		}
 	} else {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, cfgBuf nil", key, cas)
+		c.logger("cfg_cb: Del, key: %s, cas: %d, cfgBuf nil", key, cas)
 	}
 
 	err = cfgMem.Del(key, 0)
 	if err != nil {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, cfgMem.Del() err: %v", key, cas, err)
+		c.logger("cfg_cb: Del, key: %s, cas: %d, cfgMem.Del() err: %v", key, cas, err)
 
 		return err
 	}
 
 	nextCAS, err := bucket.Cas(c.cfgKey, 0, cfgCAS, cfgMem)
 	if err != nil {
-		log.Printf("cfg_cb: Del, key: %s, cas: %d, cfgCAS: %d, Cas err: %v",
+		c.logger("cfg_cb: Del, key: %s, cas: %d, cfgCAS: %d, Cas err: %v",
 			key, cas, cfgCAS, err)
 
 		if res, ok := err.(*gomemcached.MCResponse); ok {
 			if res.Status == gomemcached.KEY_EEXISTS {
-				log.Printf("cfg_cb: Del, key: %s, cas: %d, cfgCAS: %d, Cas KEY_EEXISTS",
+				c.logger("cfg_cb: Del, key: %s, cas: %d, cfgCAS: %d, Cas KEY_EEXISTS",
 					key, cas, cfgCAS)
 
 				return &CfgCASError{}
@@ -302,7 +319,7 @@ func (c *CfgCB) Del(key string, cas uint64) error {
 		return err
 	}
 
-	log.Printf("cfg_cb: Del, key: %s, cas: %d, cfgCAS: %d, nextCAS: %d",
+	c.logger("cfg_cb: Del, key: %s, cas: %d, cfgCAS: %d, nextCAS: %d",
 		key, cas, cfgCAS, nextCAS)
 
 	c.fireEvent(key, nextCAS, nil)
