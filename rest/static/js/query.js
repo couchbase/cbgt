@@ -2,9 +2,8 @@ var lastQueryIndex = null;
 var lastQueryReq = null;
 var lastQueryRes = null;
 
-function prepQueryRequest(scope) {
+function PrepQueryRequest(scope) {
     return {
-        "q": scope.query,
         "indexName": scope.indexName,
         "size": scope.resultsPerPage,
         "from": (scope.page-1) * scope.resultsPerPage,
@@ -19,7 +18,6 @@ function prepQueryRequest(scope) {
 }
 
 function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
-
     $scope.query = null;
     $scope.queryHelp = null;
     $scope.queryHelpSafe = null;
@@ -64,9 +62,14 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     });
 
     function createQueryRequest() {
-        var req = prepQueryRequest($scope) || {};
-        var v = null;
+        var prepQueryRequestActual = $scope.prepQueryRequest;
+        if (!prepQueryRequestActual) {
+            prepQueryRequestActual = PrepQueryRequest;
+        }
 
+        var req = prepQueryRequestActual($scope) || {};
+
+        var v = null;
         try {
             v = JSON.parse($scope.consistencyVectors || "null");
         } finally {
@@ -260,5 +263,4 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             $location.search('q', lastQueryReq.q);
         }
     }
-
 }
