@@ -41,6 +41,10 @@ func (meh *TestMEH) OnUnregisterPIndex(pindex *PIndex) {
 	}
 }
 
+func (meh *TestMEH) OnFeedError(srcType string, r Feed,
+	err error) {
+}
+
 func TestPIndexPath(t *testing.T) {
 	m := NewManager(VERSION, nil, NewUUID(), nil,
 		"", 1, "", "", "dir", "svr", nil)
@@ -239,6 +243,48 @@ func TestManagerCreateDeleteIndex(t *testing.T) {
 	feeds, pindexes = m.CurrentMaps()
 	if len(feeds) != 0 || len(pindexes) != 0 {
 		t.Errorf("expected to be 0 feed and 0 pindex,"+
+			" got feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+}
+
+func TestManagerDeleteAllIndex(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+
+	cfg := NewCfgMem()
+	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil)
+	if err := m.Start("wanted"); err != nil {
+		t.Errorf("expected Manager.Start() to work, err: %v", err)
+	}
+	sourceParams := ""
+	if err := m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo1", "", PlanParams{}, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	if err := m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo2", "", PlanParams{}, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	if err := m.CreateIndex("primary", "default", "1234", sourceParams,
+		"blackhole", "foo3", "", PlanParams{}, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	m.PlannerNOOP("test")
+	m.JanitorNOOP("test")
+	feeds, pindexes := m.CurrentMaps()
+	if len(feeds) != 3 || len(pindexes) != 3 {
+		t.Errorf("expected to be 3 feeds and 3 pindexs,"+
+			" got feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	m.DeleteAllIndexFromSource("primary", "default", "123")
+	m.PlannerNOOP("test")
+	m.JanitorNOOP("test")
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 1 || len(pindexes) != 1 {
+		t.Errorf("expected to be 1 feed and 1 pindex,"+
 			" got feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}

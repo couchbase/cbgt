@@ -279,7 +279,8 @@ func TestTAPFeedBasics(t *testing.T) {
 func TestDCPFeedBasics(t *testing.T) {
 	df, err := NewDCPFeed("aaa", "bbb",
 		"url", "poolName", "bucketName", "bucketUUID", "",
-		BasicPartitionFunc, map[string]Dest{}, false, "")
+		BasicPartitionFunc, map[string]Dest{}, false, "",
+		nil)
 	if err != nil {
 		t.Errorf("expected NewDCPFeed to work")
 	}

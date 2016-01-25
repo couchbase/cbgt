@@ -65,7 +65,7 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	authType := mgr.Options()["authType"]
 	feed, err := NewDCPFeed(feedName, indexName, server, poolName,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
-		mgr.tagsMap != nil && !mgr.tagsMap["feed"], authType)
+		mgr.tagsMap != nil && !mgr.tagsMap["feed"], authType, mgr)
 	if err != nil {
 		return fmt.Errorf("feed_dcp:"+
 			" could not prepare DCP feed, server: %s,"+
@@ -102,6 +102,7 @@ type DCPFeed struct {
 	disable    bool
 	stopAfter  map[string]UUIDSeq // May be nil.
 	bds        cbdatasource.BucketDataSource
+	mgr        *Manager
 
 	m       sync.Mutex // Protects the fields that follow.
 	closed  bool
@@ -179,7 +180,7 @@ func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
 func NewDCPFeed(name, indexName, url, poolName,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
-	disable bool, authType string) (*DCPFeed, error) {
+	disable bool, authType string, mgr *Manager) (*DCPFeed, error) {
 	params := NewDCPFeedParams()
 	var stopAfter map[string]UUIDSeq
 
@@ -259,6 +260,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 		dests:      dests,
 		disable:    disable,
 		stopAfter:  stopAfter,
+		mgr:        mgr,
 		stats:      NewDestStats(),
 	}
 
@@ -383,6 +385,9 @@ func (r *DCPFeed) OnError(err error) {
 		r.name, r.bucketName, r.bucketUUID, err)
 
 	atomic.AddUint64(&r.stats.TotError, 1)
+	if r.mgr != nil && r.mgr.meh != nil {
+		go r.mgr.meh.OnFeedError("couchbase", r, err)
+	}
 
 	r.m.Lock()
 	r.lastErr = err
@@ -505,6 +510,43 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 
 		return dest.Rollback(partition, rollbackSeq)
 	}, r.stats.TimerRollback)
+}
+
+func (r *DCPFeed) VerifyBucketNotExists() bool {
+	urls := strings.Split(r.url, ";")
+	if len(urls) > 0 {
+		// checking with first server for bucket
+		authType := ""
+		if r.mgr != nil {
+			authType = r.mgr.Options()["authType"]
+		}
+		var auth couchbase.AuthHandler = r.params
+		if authType == "cbauth" {
+			cbAuthHandler, err := NewCbAuthHandler(urls[0])
+			params := NewDCPFeedParams()
+			params.AuthUser, params.AuthPassword, err =
+				cbAuthHandler.GetCredentials()
+			if err == nil {
+				auth = params
+			} else {
+				log.Printf("feed_dcp: verify bucket error: %v url: %s",
+					err, r.url)
+			}
+		}
+		bucket, err := cbdatasource.ConnectBucket(urls[0], r.poolName,
+			r.bucketName, auth)
+		if err == nil {
+			bucket.Close()
+		} else {
+			_, ok := err.(*couchbase.BucketNotFoundError)
+			return ok
+		}
+	}
+	return false
+}
+
+func (r *DCPFeed) GetBucketDetails() (name, uuid string) {
+	return r.bucketName, r.bucketUUID
 }
 
 // -------------------------------------------------------

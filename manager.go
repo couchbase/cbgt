@@ -88,12 +88,14 @@ type ManagerStats struct {
 	TotSaveNodeDefSame   uint64
 	TotSaveNodeDefOk     uint64
 
-	TotCreateIndex    uint64
-	TotCreateIndexOk  uint64
-	TotDeleteIndex    uint64
-	TotDeleteIndexOk  uint64
-	TotIndexControl   uint64
-	TotIndexControlOk uint64
+	TotCreateIndex           uint64
+	TotCreateIndexOk         uint64
+	TotDeleteIndex           uint64
+	TotDeleteIndexOk         uint64
+	TotIndexControl          uint64
+	TotIndexControlOk        uint64
+	TotDeleteIndexBucket     uint64
+	TotDeleteIndexBucketDone uint64
 
 	TotPlannerOpStart           uint64
 	TotPlannerOpRes             uint64
@@ -137,6 +139,7 @@ const MANAGER_MAX_EVENTS = 10
 type ManagerEventHandlers interface {
 	OnRegisterPIndex(pindex *PIndex)
 	OnUnregisterPIndex(pindex *PIndex)
+	OnFeedError(srcType string, r Feed, err error)
 }
 
 // NewManager returns a new, ready-to-be-started Manager instance.

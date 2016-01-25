@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"regexp"
 	"sync/atomic"
+
+	log "github.com/couchbase/clog"
 )
 
 // INDEX_NAME_REGEXP is used to validate index definition names.
@@ -261,4 +263,39 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 
 	atomic.AddUint64(&mgr.stats.TotIndexControlOk, 1)
 	return nil
+}
+
+// Delete all the index with a given sourcetype and sourcename
+func (mgr *Manager) DeleteAllIndexFromSource(sourceType, sourceName,
+	srcUUID string) (err error) {
+	atomic.AddUint64(&mgr.stats.TotDeleteIndexBucket, 1)
+
+	indexDefs, _, err := CfgGetIndexDefs(mgr.cfg)
+	if err != nil {
+		return err
+	}
+	if indexDefs == nil {
+		return fmt.Errorf("manager_api: no indexes," +
+			" index read/write control")
+	}
+	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+		return fmt.Errorf("manager_api: index read/write control,"+
+			" indexDefs.ImplVersion: %s > mgr.version: %s",
+			indexDefs.ImplVersion, mgr.version)
+	}
+	for indexName, indexDef := range indexDefs.IndexDefs {
+		if indexDef.SourceType == sourceType &&
+			indexDef.SourceName == sourceName {
+			if srcUUID != "" && srcUUID != indexDef.SourceUUID {
+				continue
+			}
+			log.Printf("manager_api: deleting index %s sourcetype"+
+				" %s sourcename %s", indexName, sourceType, sourceName)
+			if err = mgr.DeleteIndex(indexName); err != nil {
+				return
+			}
+			atomic.AddUint64(&mgr.stats.TotDeleteIndexBucketDone, 1)
+		}
+	}
+	return
 }
