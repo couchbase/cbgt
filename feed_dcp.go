@@ -35,6 +35,7 @@ func init() {
 		Start:         StartDCPFeed,
 		Partitions:    CouchbasePartitions,
 		PartitionSeqs: CouchbasePartitionSeqs,
+		Stats:         CouchbaseStats,
 		Public:        true,
 		Description: "general/couchbase" +
 			" - a Couchbase Server bucket will be the data source",
@@ -44,6 +45,7 @@ func init() {
 		Start:         StartDCPFeed,
 		Partitions:    CouchbasePartitions,
 		PartitionSeqs: CouchbasePartitionSeqs,
+		Stats:         CouchbaseStats,
 		Public:        false, // Won't be listed in /api/managerMeta output.
 		Description: "general/couchbase-dcp" +
 			" - a Couchbase Server bucket will be the data source," +

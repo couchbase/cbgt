@@ -357,8 +357,19 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			},
 		},
 		{
-			Desc:   "partition seqs stats when no feeds",
+			Desc:   "source partition seqs when no feeds",
 			Path:   "/api/stats/sourcePartitionSeqs/NOT-AN-INDEX",
+			Method: "GET",
+			Params: nil,
+			Body:   nil,
+			Status: 400,
+			ResponseMatch: map[string]bool{
+				`index not found`: true,
+			},
+		},
+		{
+			Desc:   "source stats when no feeds",
+			Path:   "/api/stats/sourceStats/NOT-AN-INDEX",
 			Method: "GET",
 			Params: nil,
 			Body:   nil,
@@ -489,8 +500,19 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Status: 200,
 		},
 		{
-			Desc:   "partition seqs stats on bh1",
+			Desc:   "source partition seqs on bh1",
 			Path:   "/api/stats/sourcePartitionSeqs/bh1",
+			Method: "GET",
+			Params: nil,
+			Body:   nil,
+			Status: 200,
+			ResponseMatch: map[string]bool{
+				`null`: true,
+			},
+		},
+		{
+			Desc:   "source stats on bh1",
+			Path:   "/api/stats/sourceStats/bh1",
 			Method: "GET",
 			Params: nil,
 			Body:   nil,

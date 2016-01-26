@@ -50,7 +50,8 @@ var FeedTypes = make(map[string]*FeedType) // Key is sourceType.
 type FeedType struct {
 	Start           FeedStartFunc
 	Partitions      FeedPartitionsFunc
-	PartitionSeqs   FeedPartitionSeqsFunc
+	PartitionSeqs   FeedPartitionSeqsFunc // Optional.
+	Stats           FeedStatsFunc         // Optional.
 	Public          bool
 	Description     string
 	StartSample     interface{}
@@ -79,6 +80,11 @@ type UUIDSeq struct {
 	UUID string
 	Seq  uint64
 }
+
+// Returns the current stats from a data source, if available,
+// where the result is dependent on the data source / feed type.
+type FeedStatsFunc func(sourceType, sourceName, sourceUUID,
+	sourceParams, server, statsKind string) (map[string]interface{}, error)
 
 // StopAfterSourceParams defines optional fields for the sourceParams
 // that can stop the data source feed (i.e., index ingest) if the seqs

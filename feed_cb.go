@@ -305,3 +305,45 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 
 	return rv, nil
 }
+
+// -------------------------------------------------
+
+// CouchbaseStats returns a map of server ID -> map of stat key to map
+// value, depending on the statsKind requested.a map keyed by stat
+// names, depending on the statsKind.  It implements the FeedStatsFunc
+// func signature.
+
+func CouchbaseStats(sourceType, sourceName, sourceUUID,
+	sourceParams, serverIn, statsKind string) (
+	map[string]interface{}, error) {
+	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
+		serverIn)
+	if err != nil {
+		return nil, err
+	}
+
+	nodesStats := bucket.GetStats(statsKind)
+
+	aggStats := map[string]int64{} // Calculate aggregates.
+	for _, nodeStats := range nodesStats {
+		for k, v := range nodeStats {
+			iv, err := strconv.ParseInt(v, 10, 64)
+			if err == nil {
+				aggStats[k] += iv
+			}
+		}
+	}
+
+	bucket.Close()
+
+	rv := map[string]interface{}{
+		"aggStats":   aggStats,
+		"nodesStats": nodesStats,
+	}
+
+	if statsKind == "" {
+		rv["docCount"] = aggStats["curr_items"]
+	}
+
+	return rv, nil
+}

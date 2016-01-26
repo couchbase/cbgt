@@ -85,3 +85,77 @@ func (h *SourcePartitionSeqsHandler) ServeHTTP(
 
 	MustEncode(w, partitionSeqs)
 }
+
+// ---------------------------------------------------
+
+// SourceStatsHandler is a REST handler for retrieving the
+// partition seqs from the data source for an index.
+type SourceStatsHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewSourceStatsHandler(mgr *cbgt.Manager) *SourceStatsHandler {
+	return &SourceStatsHandler{mgr: mgr}
+}
+
+func (h *SourceStatsHandler) RESTOpts(opts map[string]string) {
+	opts["param: indexName"] =
+		"required, string, URL path parameter\n\n" +
+			"The name of the index whose partition seqs should be retrieved."
+	opts["param: statsKind"] =
+		"optional, string\n\n" +
+			"Optional source-specific string for kind of stats wanted."
+}
+
+func (h *SourceStatsHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	indexName := IndexNameLookup(req)
+	if indexName == "" {
+		ShowError(w, req, "index name is required", 400)
+		return
+	}
+
+	_, indexDefsByName, err := h.mgr.GetIndexDefs(false)
+	if err != nil {
+		ShowError(w, req, "could not retrieve index defs", 500)
+		return
+	}
+
+	indexDef, exists := indexDefsByName[indexName]
+	if !exists || indexDef == nil {
+		ShowError(w, req, "index not found", 400)
+		return
+	}
+
+	indexUUID := req.FormValue("indexUUID")
+	if indexUUID != "" && indexUUID != indexDef.UUID {
+		ShowError(w, req, "wrong index UUID", 400)
+		return
+	}
+
+	if indexDef.SourceParams == "" {
+		MustEncode(w, nil)
+		return
+	}
+
+	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
+	if !exists || feedType == nil {
+		ShowError(w, req, "unknown source type", 500)
+		return
+	}
+
+	if feedType.Stats == nil {
+		MustEncode(w, nil)
+		return
+	}
+
+	stats, err := feedType.Stats(
+		indexDef.SourceType, indexDef.SourceName, indexDef.SourceUUID,
+		indexDef.SourceParams, h.mgr.Server(), req.FormValue("statsKind"))
+	if err != nil {
+		ShowError(w, req, "could not retreive stats", 500)
+		return
+	}
+
+	MustEncode(w, stats)
+}
