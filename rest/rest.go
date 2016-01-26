@@ -145,13 +145,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 	options map[string]interface{}) (
 	*mux.Router, map[string]RESTMeta, error) {
 	var authHandler func(http.Handler) http.Handler
-
 	if v, ok := options["auth"]; ok {
 		authHandler, ok = v.(func(http.Handler) http.Handler)
 		if !ok {
 			log.Printf("rest: auth function is not valid")
 		}
 	}
+
 	prefix := mgr.Options()["urlPrefix"]
 
 	PIndexTypesInitRouter(r, "manager.before", mgr)

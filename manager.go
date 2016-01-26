@@ -410,10 +410,10 @@ func (mgr *Manager) LoadDataDir() error {
 			continue // Skip the entry that doesn't match the naming pattern.
 		}
 
-		log.Printf("manager: opening pindex: %s", path)
+		log.Printf("manager: opening pindex path: %s", path)
 		pindex, err := OpenPIndex(mgr, path)
 		if err != nil {
-			log.Printf("manager: could not open pindex: %s, err: %v",
+			log.Printf("manager: could not open pindex path: %s, err: %v",
 				path, err)
 			continue
 		}
