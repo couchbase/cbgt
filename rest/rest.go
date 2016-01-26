@@ -428,6 +428,15 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
+	handle("/api/stats/sourcePartitionSeqs/{indexName}", "GET",
+		NewSourcePartitionSeqsHandler(mgr),
+		map[string]string{
+			"_category": "Indexing|Index monitoring",
+			"_about": `Returns data source partiton seqs
+                       for an index as JSON.`,
+			"version introduced": "4.2.0",
+		})
+
 	PIndexTypesInitRouter(r, "manager.after", mgr)
 
 	return r, meta, nil

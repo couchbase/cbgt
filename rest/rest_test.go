@@ -357,6 +357,17 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			},
 		},
 		{
+			Desc:   "partition seqs stats when no feeds",
+			Path:   "/api/stats/sourcePartitionSeqs/NOT-AN-INDEX",
+			Method: "GET",
+			Params: nil,
+			Body:   nil,
+			Status: 400,
+			ResponseMatch: map[string]bool{
+				`index not found`: true,
+			},
+		},
+		{
 			Desc:         "list empty indexes",
 			Path:         "/api/index",
 			Method:       "GET",
@@ -476,6 +487,17 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Method: "PUT",
 			Body:   []byte(`{"type":"blackhole","sourceType":"nil"}`),
 			Status: 200,
+		},
+		{
+			Desc:   "partition seqs stats on bh1",
+			Path:   "/api/stats/sourcePartitionSeqs/bh1",
+			Method: "GET",
+			Params: nil,
+			Body:   nil,
+			Status: 200,
+			ResponseMatch: map[string]bool{
+				`null`: true,
+			},
 		},
 		{
 			Desc:   "create a blackhole index, bad params",
