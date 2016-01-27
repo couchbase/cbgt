@@ -21,10 +21,9 @@ import (
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbase/cbgt/ctl"
-	"github.com/couchbase/cbgt/ctl/interfaces"
 )
 
-func runCtlPrompt(ctl *ctl.Ctl) {
+func runCtlPrompt(ctlInst *ctl.Ctl) {
 	reader := bufio.NewReader(os.Stdin)
 
 	i := 0
@@ -53,7 +52,7 @@ func runCtlPrompt(ctl *ctl.Ctl) {
 						" idc (alias for indexDefsChanged)\n" +
 						" exit, quit, q")
 				} else if op == "getTopology" || op == "gt" {
-					topology := ctl.GetTopology()
+					topology := ctlInst.GetTopology()
 					b, _ := json.Marshal(topology)
 					log.Printf("topology: %s", string(b))
 				} else if op == "changeTopology" || op == "ct" {
@@ -67,19 +66,11 @@ func runCtlPrompt(ctl *ctl.Ctl) {
 						log.Printf("changeTopology,"+
 							" rev: %s, mode: %s, memberNodeUUIDs: %#v",
 							rev, mode, memberNodeUUIDs)
-
-						var memberNodes []interfaces.Node
-						for _, memberNodeUUID := range memberNodeUUIDs {
-							memberNodes = append(memberNodes, interfaces.Node{
-								UUID: interfaces.UUID(memberNodeUUID),
-							})
-						}
-
 						topology, err :=
-							ctl.ChangeTopology(&interfaces.ChangeTopology{
-								Rev:         interfaces.Rev(rev),
-								Mode:        mode,
-								MemberNodes: memberNodes,
+							ctlInst.ChangeTopology(&ctl.CtlChangeTopology{
+								Rev:             []byte(rev),
+								Mode:            mode,
+								MemberNodeUUIDs: memberNodeUUIDs,
 							})
 
 						b, _ := json.Marshal(topology)
@@ -95,10 +86,10 @@ func runCtlPrompt(ctl *ctl.Ctl) {
 
 						log.Printf("stopChangeTopology, rev: %s", rev)
 
-						ctl.StopChangeTopology(interfaces.Rev(rev))
+						ctlInst.StopChangeTopology([]byte(rev))
 					}
 				} else if op == "indexDefsChanged" || op == "idc" {
-					err = ctl.IndexDefsChanged()
+					err = ctlInst.IndexDefsChanged()
 
 					log.Printf("err: %v", err)
 				} else if op == "quit" || op == "q" || op == "exit" {

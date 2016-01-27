@@ -1,6 +1,9 @@
 package ctl
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -11,9 +14,10 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
-	"github.com/couchbase/cbgt/ctl/interfaces"
 	"github.com/couchbase/cbgt/rebalance"
 )
+
+var ErrWrongRev = errors.New("wrong rev")
 
 // An Ctl might be in the midst of controlling a replan/rebalance,
 // where ctl.ctlDoneCh will be non-nil.
@@ -42,12 +46,12 @@ type Ctl struct {
 
 	revNum uint64
 
-	memberNodes []interfaces.Node // May be nil before initCh closed.
+	memberNodes []CtlNode // May be nil before initCh closed.
 
 	ctlDoneCh         chan struct{}
 	ctlStopCh         chan struct{}
-	ctlRev            interfaces.Rev
-	ctlChangeTopology *interfaces.ChangeTopology
+	ctlRev            []byte
+	ctlChangeTopology *CtlChangeTopology
 
 	prevWarnings map[string][]string // Keyed by index name.
 	prevErrors   []error             // Errors from previous ctl.
@@ -58,6 +62,61 @@ type CtlOptions struct {
 	Verbose            int
 	FavorMinNodes      bool
 	WaitForMemberNodes int // Seconds to wait for member nodes.
+}
+
+type CtlNode struct {
+	UUID string // Cluster manager assigned opaque UUID for a service on a node.
+
+	// URL of the node’s service manager (i.e., cbft's REST endpoint).
+	ServiceURL string
+
+	// URL of the node’s cluster manager (i.e., ns-server’s REST endpoint).
+	ManagerURL string
+}
+
+type CtlTopology struct {
+	// Rev is a CAS opaque identifier.  Any change to any CtlTopology
+	// field will mean a Rev change.
+	Rev []byte
+
+	// MemberNodes lists what the service thinks are the currently
+	// "confirmed in" service nodes in the system.  MemberNodes field
+	// can change during the midst of a topology change, but it is
+	// service specific on when and how MemberNodes will change and
+	// stabilize.
+	MemberNodes []CtlNode
+
+	// PrevWarnings holds the warnings from the previous operations
+	// and topology changes.  NOTE: If the service manager (i.e., Ctl)
+	// restarts, it may "forget" its previous PrevWarnings
+	// field value (as perhaps it was only tracked in memory).
+	PrevWarnings map[string][]string
+
+	// PrevErrors holds the errors from the previous operations and
+	// topology changes.  NOTE: If the service manager (i.e., Ctl)
+	// restarts, it may "forget" its previous PrevErrors field value
+	// (as perhaps it was only tracked in memory).
+	PrevErrors []error
+
+	// ChangeTopology will be non-nil when a service topology change
+	// is in progress.
+	ChangeTopology *CtlChangeTopology
+}
+
+type CtlChangeTopology struct {
+	Rev []byte // Works as CAS, so use the last Topology response’s Rev.
+
+	// Use Mode of "failover-hard" for hard failover.
+	// Use Mode of "failover-graceful" for graceful failover.
+	// Use Mode of "rebalance" for rebalance-style, clean and safe topology change.
+	Mode string
+
+	// The MemberNodeUUIDs are the service nodes that should remain in
+	// the service cluster after the topology change is finished.
+	// When Mode is a variant of failover, then there should not be
+	// any new nodes added to the MemberNodes (only service node
+	// removal is allowed on failover).
+	MemberNodeUUIDs []string
 }
 
 // ----------------------------------------------------
@@ -93,7 +152,7 @@ func (ctl *Ctl) Stop() error {
 func (ctl *Ctl) run() {
 	defer close(ctl.doneCh)
 
-	memberNodes, err := currentMemberNodes(ctl.cfg)
+	memberNodes, err := CurrentMemberNodes(ctl.cfg)
 	if err != nil {
 		ctl.initCh <- err
 		close(ctl.initCh)
@@ -163,7 +222,7 @@ func (ctl *Ctl) run() {
 	for {
 		select {
 		case <-ctl.stopCh:
-			ctl.dispatchCtl("", "stop", nil)
+			ctl.dispatchCtl(nil, "stop", nil)
 			return
 
 		case kind := <-ctl.kickCh:
@@ -248,57 +307,56 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) GetTopology() *interfaces.Topology {
+func (ctl *Ctl) GetTopology() *CtlTopology {
 	ctl.m.Lock()
-	rv := ctl.getTopologyUnlocked()
+	rv := ctl.getTopologyLOCKED()
 	ctl.m.Unlock()
 
 	return rv
 }
 
-func (ctl *Ctl) getTopologyUnlocked() *interfaces.Topology {
-	return &interfaces.Topology{
-		Rev:                    interfaces.Rev(fmt.Sprintf("%d", ctl.revNum)),
-		MemberNodes:            ctl.memberNodes,
-		ChangeTopologyWarnings: ctl.prevWarnings,
-		ChangeTopologyErrors:   ctl.prevErrors,
-		ChangeTopology:         ctl.ctlChangeTopology,
+func (ctl *Ctl) getTopologyLOCKED() *CtlTopology {
+	return &CtlTopology{
+		Rev:            []byte(fmt.Sprintf("%d", ctl.revNum)),
+		MemberNodes:    ctl.memberNodes,
+		PrevWarnings:   ctl.prevWarnings,
+		PrevErrors:     ctl.prevErrors,
+		ChangeTopology: ctl.ctlChangeTopology,
 	}
 }
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) ChangeTopology(changeTopology *interfaces.ChangeTopology) (
-	topology *interfaces.Topology, err error) {
+func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology) (
+	topology *CtlTopology, err error) {
 	return ctl.dispatchCtl(
 		changeTopology.Rev,
 		changeTopology.Mode,
-		changeTopology.MemberNodes)
+		changeTopology.MemberNodeUUIDs)
 }
 
-func (ctl *Ctl) StopChangeTopology(rev interfaces.Rev) {
+func (ctl *Ctl) StopChangeTopology(rev []byte) {
 	ctl.dispatchCtl(rev, "stopChangeTopology", nil)
 }
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) dispatchCtl(
-	rev interfaces.Rev, mode string, memberNodes []interfaces.Node,
-) (*interfaces.Topology, error) {
+func (ctl *Ctl) dispatchCtl(rev []byte, mode string, memberNodeUUIDs []string) (
+	*CtlTopology, error) {
 	ctl.m.Lock()
-	err := ctl.dispatchCtlUnlocked(rev, mode, memberNodes)
-	topology := ctl.getTopologyUnlocked()
+	err := ctl.dispatchCtlLOCKED(rev, mode, memberNodeUUIDs)
+	topology := ctl.getTopologyLOCKED()
 	ctl.m.Unlock()
 
 	return topology, err
 }
 
-func (ctl *Ctl) dispatchCtlUnlocked(
-	rev interfaces.Rev, mode string, memberNodes []interfaces.Node) error {
-	if rev != "" &&
-		rev != ctl.ctlRev &&
-		rev != interfaces.Rev(fmt.Sprintf("%d", ctl.revNum)) {
-		return interfaces.ErrorWrongRev
+func (ctl *Ctl) dispatchCtlLOCKED(
+	rev []byte, mode string, memberNodeUUIDs []string) error {
+	if len(rev) > 0 &&
+		!bytes.Equal(rev, ctl.ctlRev) &&
+		!bytes.Equal(rev, []byte(fmt.Sprintf("%d", ctl.revNum))) {
+		return ErrWrongRev
 	}
 
 	if ctl.ctlStopCh != nil {
@@ -317,7 +375,7 @@ func (ctl *Ctl) dispatchCtlUnlocked(
 	if ctl.ctlDoneCh == nil &&
 		mode != "stop" &&
 		mode != "stopChangeTopology" {
-		return ctl.startCtlUnlocked(mode, memberNodes, nil)
+		return ctl.startCtlLOCKED(mode, memberNodeUUIDs, nil)
 	}
 
 	return nil
@@ -325,7 +383,7 @@ func (ctl *Ctl) dispatchCtlUnlocked(
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
+func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 	indexDefs *cbgt.IndexDefs) error {
 	ctlDoneCh := make(chan struct{})
 	ctlStopCh := make(chan struct{})
@@ -355,10 +413,9 @@ func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 				}
 			}
 
-			if ctlErr != nil {
-				// If there was an error, grab the latest memberNodes
-				// rather than using the input memberNodes.
-				memberNodes, _ = currentMemberNodes(ctl.cfg)
+			memberNodes, err := CurrentMemberNodes(ctl.cfg)
+			if err != nil {
+				ctlErr = err
 			}
 
 			ctl.m.Lock()
@@ -366,7 +423,7 @@ func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 			if ctlDoneCh == ctl.ctlDoneCh {
 				ctl.ctlDoneCh = nil
 				ctl.ctlStopCh = nil
-				ctl.ctlRev = ""
+				ctl.ctlRev = nil
 				ctl.ctlChangeTopology = nil
 			}
 
@@ -382,12 +439,7 @@ func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 
 		// 1) Monitor cfg to wait for wanted nodes to appear.
 		//
-		var wantedNodes []string
-		for _, memberNode := range memberNodes {
-			wantedNodes = append(wantedNodes, string(memberNode.UUID))
-		}
-
-		nodesToRemove, err := ctl.waitForWantedNodes(wantedNodes)
+		nodesToRemove, err := ctl.waitForWantedNodes(memberNodeUUIDs)
 		if err != nil {
 			log.Printf("ctl: waitForWantedNodes, err: %v", err)
 			ctlErr = err
@@ -508,10 +560,10 @@ func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 
 	ctl.ctlDoneCh = ctlDoneCh
 	ctl.ctlStopCh = ctlStopCh
-	ctl.ctlRev = interfaces.Rev(fmt.Sprintf("%d", ctl.revNum))
-	ctl.ctlChangeTopology = &interfaces.ChangeTopology{
-		Mode:        mode,
-		MemberNodes: memberNodes,
+	ctl.ctlRev = []byte(fmt.Sprintf("%d", ctl.revNum))
+	ctl.ctlChangeTopology = &CtlChangeTopology{
+		Mode:            mode,
+		MemberNodeUUIDs: memberNodeUUIDs,
 	}
 
 	return nil
@@ -561,22 +613,36 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string, secs int) (
 
 // ----------------------------------------------------
 
-func currentMemberNodes(cfg cbgt.Cfg) ([]interfaces.Node, error) {
+func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 	nodeDefsWanted, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
 	if err != nil {
 		return nil, err
 	}
 
-	var memberNodes []interfaces.Node
+	var memberNodes []CtlNode
 
 	for _, nodeDef := range nodeDefsWanted.NodeDefs {
-		memberNode := interfaces.Node{
-			UUID:       interfaces.UUID(nodeDef.UUID),
-			ServiceURL: interfaces.URL("http://" + nodeDef.HostPort),
+		memberNode := CtlNode{
+			UUID:       nodeDef.UUID,
+			ServiceURL: "http://" + nodeDef.HostPort,
 		}
 
 		if nodeDef.Extras != "" {
-			memberNode.ManagerURL = interfaces.URL("http://" + nodeDef.Extras)
+			// Early versions of ns_server integration had a simple,
+			// non-JSON "host:port" format for nodeDef.Extras, which
+			// we use as default.
+			nsHostPort := nodeDef.Extras
+
+			var e struct {
+				NsHostPort string `json:"nsHostPort"`
+			}
+
+			err := json.Unmarshal([]byte(nodeDef.Extras), &e)
+			if err != nil {
+				nsHostPort = e.NsHostPort
+			}
+
+			memberNode.ManagerURL = "http://" + nsHostPort
 		}
 
 		memberNodes = append(memberNodes, memberNode)
