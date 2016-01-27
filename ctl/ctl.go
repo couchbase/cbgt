@@ -37,7 +37,6 @@ type Ctl struct {
 	doneCh chan struct{} // Closed by Ctl when Ctl is done.
 	initCh chan error    // Closed by Ctl when Ctl is initialized.
 	stopCh chan struct{} // Closed by app when Ctl should stop.
-	kickCh chan string   // Written by app when it wants to kick the Ctl.
 
 	// -----------------------------------
 	// The m protects the fields below.
@@ -135,7 +134,6 @@ func StartCtl(cfg cbgt.Cfg, server string, options CtlOptions) (
 		doneCh:     make(chan struct{}),
 		initCh:     make(chan error),
 		stopCh:     make(chan struct{}),
-		kickCh:     make(chan string),
 		revNum:     1,
 	}
 
@@ -229,9 +227,6 @@ func (ctl *Ctl) run() {
 		case <-ctl.stopCh:
 			ctl.dispatchCtl("", "stop", nil)
 			return
-
-		case kind := <-ctl.kickCh:
-			kickIndexDefs(kind)
 
 		case <-ctl.cfgEventCh:
 			kickIndexDefs("cfgEvent")
