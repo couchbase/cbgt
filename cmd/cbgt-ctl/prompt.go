@@ -71,7 +71,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 								Rev:             rev,
 								Mode:            mode,
 								MemberNodeUUIDs: memberNodeUUIDs,
-							})
+							}, nil)
 
 						b, _ := json.Marshal(topology)
 						log.Printf("topology: %s", string(b))

@@ -139,6 +139,17 @@ type CtlChangeTopology struct {
 	MemberNodeUUIDs []string
 }
 
+// CtlOnProgressFunc defines the callback func signature that's
+// invoked during change topology operations.
+type CtlOnProgressFunc func(
+	maxNodeLen, maxPIndexLen int,
+	seenNodes map[string]bool,
+	seenNodesSorted []string,
+	seenPIndexes map[string]bool,
+	seenPIndexesSorted []string,
+	progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
+) string
+
 // ----------------------------------------------------
 
 func StartCtl(cfg cbgt.Cfg, server string, options CtlOptions) (
@@ -242,7 +253,7 @@ func (ctl *Ctl) run() {
 	for {
 		select {
 		case <-ctl.stopCh:
-			ctl.dispatchCtl("", "stop", nil)
+			ctl.dispatchCtl("", "stop", nil, nil)
 			return
 
 		case <-ctl.cfgEventCh:
@@ -393,35 +404,39 @@ func (ctl *Ctl) getTopologyLOCKED() *CtlTopology {
 // there's no input error.  ChangeTopology also synchronously stops
 // any previous, inflight change topology operation, if any, before
 // kicking off the new change topology operation.
-func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology) (
-	topology *CtlTopology, err error) {
+func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology,
+	cb CtlOnProgressFunc) (topology *CtlTopology, err error) {
 	return ctl.dispatchCtl(
 		changeTopology.Rev,
 		changeTopology.Mode,
-		changeTopology.MemberNodeUUIDs)
+		changeTopology.MemberNodeUUIDs,
+		cb)
 }
 
 // StopChangeTopology synchronously stops a current change topology
 // operation.
 func (ctl *Ctl) StopChangeTopology(rev string) {
-	ctl.dispatchCtl(rev, "stopChangeTopology", nil)
+	ctl.dispatchCtl(rev, "stopChangeTopology", nil, nil)
 }
 
 // ----------------------------------------------------
 
 func (ctl *Ctl) dispatchCtl(rev string,
-	mode string, memberNodeUUIDs []string) (
+	mode string, memberNodeUUIDs []string, cb CtlOnProgressFunc) (
 	*CtlTopology, error) {
 	ctl.m.Lock()
-	err := ctl.dispatchCtlLOCKED(rev, mode, memberNodeUUIDs)
+	err := ctl.dispatchCtlLOCKED(rev, mode, memberNodeUUIDs, cb)
 	topology := ctl.getTopologyLOCKED()
 	ctl.m.Unlock()
 
 	return topology, err
 }
 
-func (ctl *Ctl) dispatchCtlLOCKED(rev string,
-	mode string, memberNodeUUIDs []string) error {
+func (ctl *Ctl) dispatchCtlLOCKED(
+	rev string,
+	mode string,
+	memberNodeUUIDs []string,
+	cb CtlOnProgressFunc) error {
 	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) {
 		return ErrWrongRev
 	}
@@ -442,7 +457,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(rev string,
 	if ctl.ctlDoneCh == nil &&
 		mode != "stop" &&
 		mode != "stopChangeTopology" {
-		return ctl.startCtlLOCKED(mode, memberNodeUUIDs, nil)
+		return ctl.startCtlLOCKED(mode, memberNodeUUIDs, cb)
 	}
 
 	return nil
@@ -450,8 +465,10 @@ func (ctl *Ctl) dispatchCtlLOCKED(rev string,
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
-	indexDefs *cbgt.IndexDefs) error {
+func (ctl *Ctl) startCtlLOCKED(
+	mode string,
+	memberNodeUUIDs []string,
+	ctlOnProgress CtlOnProgressFunc) error {
 	ctl.incRevNumLOCKED()
 
 	ctlDoneCh := make(chan struct{})
@@ -516,6 +533,10 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 			ctl.prevWarnings = ctlWarnings
 			ctl.prevErrs = ctlErrs
 
+			if ctlOnProgress != nil {
+				ctlOnProgress(0, 0, nil, nil, nil, nil, nil)
+			}
+
 			ctl.m.Unlock()
 
 			close(ctlDoneCh)
@@ -575,6 +596,15 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 						seenPIndexesSorted []string,
 						progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 					) string {
+						if ctlOnProgress != nil {
+							return ctlOnProgress(maxNodeLen, maxPIndexLen,
+								seenNodes,
+								seenNodesSorted,
+								seenPIndexes,
+								seenPIndexesSorted,
+								progressEntries)
+						}
+
 						return rebalance.ProgressTableString(
 							maxNodeLen, maxPIndexLen,
 							seenNodes,
