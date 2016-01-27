@@ -1,3 +1,18 @@
+// @author Couchbase <info@couchbase.com>
+// @copyright 2016 Couchbase, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package ctl
 
 import (
@@ -17,6 +32,7 @@ import (
 )
 
 var ErrWrongRev = errors.New("wrong rev")
+var ErrCanceled = errors.New("canceled")
 
 // An Ctl might be in the midst of controlling a replan/rebalance,
 // where ctl.ctlDoneCh will be non-nil.
@@ -42,7 +58,8 @@ type Ctl struct {
 	// The m protects the fields below.
 	m sync.Mutex
 
-	revNum uint64
+	revNum       uint64
+	revNumWaitCh chan struct{} // Closed when revNum changes.
 
 	memberNodes []CtlNode // May be nil before initCh closed.
 
@@ -171,7 +188,7 @@ func (ctl *Ctl) run() {
 
 	ctl.m.Lock()
 
-	ctl.revNum++
+	ctl.incRevNumLOCKED()
 
 	ctl.memberNodes = memberNodes
 
@@ -297,7 +314,7 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 			cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
 		if err == nil && planPIndexes != nil {
 			ctl.m.Lock()
-			ctl.revNum++
+			ctl.incRevNumLOCKED()
 			ctl.prevWarnings = planPIndexes.Warnings
 			ctl.m.Unlock()
 		}
@@ -308,6 +325,50 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 // ----------------------------------------------------
 
+// WaitGetTopology is like GetTopology() but will synchronously block
+// until there's a rev change.
+func (ctl *Ctl) WaitGetTopology(haveRev string, cancelCh <-chan struct{}) (
+	*CtlTopology, error) {
+	ctl.m.Lock()
+
+	for haveRev == fmt.Sprintf("%d", ctl.revNum) {
+		if ctl.revNumWaitCh == nil {
+			ctl.revNumWaitCh = make(chan struct{})
+		}
+		revNumWaitCh := ctl.revNumWaitCh // See also incRevNumLOCKED().
+
+		ctl.m.Unlock()
+		select {
+		case <-cancelCh:
+			return nil, ErrCanceled
+		case <-revNumWaitCh:
+			// FALLTHRU
+		}
+		ctl.m.Lock()
+	}
+
+	rv := ctl.getTopologyLOCKED()
+
+	ctl.m.Unlock()
+
+	return rv, nil
+}
+
+func (ctl *Ctl) incRevNumLOCKED() uint64 {
+	ctl.revNum += 1
+	rv := ctl.revNum
+
+	if ctl.revNumWaitCh != nil { // See WaitGetTopology().
+		close(ctl.revNumWaitCh)
+		ctl.revNumWaitCh = nil
+	}
+
+	return rv
+}
+
+// ----------------------------------------------------
+
+// GetTopology retrieves the current topology.
 func (ctl *Ctl) GetTopology() *CtlTopology {
 	ctl.m.Lock()
 	rv := ctl.getTopologyLOCKED()
@@ -328,6 +389,10 @@ func (ctl *Ctl) getTopologyLOCKED() *CtlTopology {
 
 // ----------------------------------------------------
 
+// ChangeTopology starts an asynchonous change topology operation, if
+// there's no input error.  ChangeTopology also synchronously stops
+// any previous, inflight change topology operation, if any, before
+// kicking off the new change topology operation.
 func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology) (
 	topology *CtlTopology, err error) {
 	return ctl.dispatchCtl(
@@ -336,6 +401,8 @@ func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology) (
 		changeTopology.MemberNodeUUIDs)
 }
 
+// StopChangeTopology synchronously stops a current change topology
+// operation.
 func (ctl *Ctl) StopChangeTopology(rev string) {
 	ctl.dispatchCtl(rev, "stopChangeTopology", nil)
 }
@@ -385,7 +452,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(rev string,
 
 func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 	indexDefs *cbgt.IndexDefs) error {
-	ctl.revNum++
+	ctl.incRevNumLOCKED()
 
 	ctlDoneCh := make(chan struct{})
 	ctl.ctlDoneCh = ctlDoneCh
@@ -430,7 +497,7 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 
 			ctl.m.Lock()
 
-			ctl.revNum++
+			ctl.incRevNumLOCKED()
 
 			ctl.memberNodes = memberNodes
 
@@ -456,7 +523,8 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 
 		// 1) Monitor cfg to wait for wanted nodes to appear.
 		//
-		nodesToRemove, err := ctl.waitForWantedNodes(memberNodeUUIDs)
+		nodesToRemove, err :=
+			ctl.waitForWantedNodes(memberNodeUUIDs, ctlStopCh)
 		if err != nil {
 			log.Printf("ctl: waitForWantedNodes, err: %v", err)
 			ctlErrs = append(ctlErrs, err)
@@ -580,20 +648,31 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 
 // Waits for actual nodeDefsWanted in the cfg to be equal to or a
 // superset of wantedNodes, and returns the nodesToRemove.
-func (ctl *Ctl) waitForWantedNodes(wantedNodes []string) ([]string, error) {
+func (ctl *Ctl) waitForWantedNodes(wantedNodes []string,
+	cancelCh <-chan struct{}) ([]string, error) {
 	secs := ctl.options.WaitForMemberNodes
 	if secs <= 0 {
 		secs = 30
 	}
 
-	return WaitForWantedNodes(ctl.cfg, wantedNodes, secs)
+	return WaitForWantedNodes(ctl.cfg, wantedNodes, cancelCh, secs)
 }
 
-func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string, secs int) (
+// WaitForWantedNodes blocks until the nodeDefsWanted in the cfg is
+// equal to or a superset of the provided wantedNodes, and returns the
+// "nodes to remove" (actualWantedNodes SET-DIFFERENCE wantedNodes).
+func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
+	cancelCh <-chan struct{}, secs int) (
 	[]string, error) {
 	var nodeDefWantedUUIDs []string
 
 	for i := 0; i < secs; i++ {
+		select {
+		case <-cancelCh:
+			return nil, ErrCanceled
+		default:
+		}
+
 		nodeDefsWanted, _, err :=
 			cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
 		if err != nil {
