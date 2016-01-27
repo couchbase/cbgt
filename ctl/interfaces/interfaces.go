@@ -24,37 +24,6 @@ type Node struct {
 	// TBD: Other fields.
 }
 
-type ActivityMessage struct {
-	DateTime string
-	Message  string
-}
-
-type Activities struct {
-	// Map of Node UUID -> resource name -> ActivityPct.
-	//
-	// The Node UUID may be "", when the activity is a cluster-wide activity.
-	//
-	// A resource name is a service specific string, and is allowed to be ""
-	// when an activity is general (perhaps like node shutdown).  For cbft,
-	// for example, the resource names might be full text index names.
-	Activities map[UUID]map[string]ActivityPct
-
-	// A subset of recent log or notification messages from the service.
-	Logs []ActivityMessage
-}
-
-type ActivityPct struct {
-	// Activity is a short, service-specific string like "compaction",
-	// "build", "deletion".  Some cluster manager relevant
-	// activities would include "topology-rebalance" and "topology-failover",
-	// which the cluster manager can use to display topology change progress.
-	Activity string
-
-	// 1.0 means 100% complete.  A negative value means the Pct field
-	// is not applicable or relevant for this Activity notification.
-	Pct float32
-}
-
 type Topology struct {
 	// Rev is a CAS opaque identifier.  Any change to any Topology
 	// field (including the ChangeTopology field) will mean a Rev change.

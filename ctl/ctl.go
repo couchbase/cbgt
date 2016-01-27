@@ -37,7 +37,7 @@ type Ctl struct {
 	kickCh chan string   // Written by app when it wants to kick the Ctl.
 
 	// -----------------------------------
-	// The m protects the fields in this section.
+	// The m protects the fields below.
 	m sync.Mutex
 
 	revNum uint64
@@ -51,12 +51,6 @@ type Ctl struct {
 
 	prevWarnings map[string][]string // Keyed by index name.
 	prevErrors   []error             // Errors from previous ctl.
-
-	// -----------------------------------
-	// The mLast protects the lastXxx fields in this section.
-	mLast sync.Mutex
-
-	lastActivities *interfaces.Activities
 }
 
 type CtlOptions struct {
@@ -254,14 +248,6 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) Activities() *interfaces.Activities {
-	ctl.mLast.Lock()
-	rv := *ctl.lastActivities
-	ctl.mLast.Unlock()
-
-	return &rv
-}
-
 func (ctl *Ctl) GetTopology() *interfaces.Topology {
 	ctl.m.Lock()
 	rv := ctl.getTopologyUnlocked()
@@ -452,8 +438,6 @@ func (ctl *Ctl) startCtlUnlocked(mode string, memberNodes []interfaces.Node,
 						seenPIndexesSorted []string,
 						progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 					) string {
-						// TODO: Update ctl activities based on progress.
-
 						return rebalance.ProgressTableString(
 							maxNodeLen, maxPIndexLen,
 							seenNodes,
@@ -543,11 +527,16 @@ func (ctl *Ctl) waitForWantedNodes(wantedNodes []string) ([]string, error) {
 		secs = 30
 	}
 
+	return WaitForWantedNodes(ctl.cfg, wantedNodes, secs)
+}
+
+func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string, secs int) (
+	[]string, error) {
 	var nodeDefWantedUUIDs []string
 
 	for i := 0; i < secs; i++ {
 		nodeDefsWanted, _, err :=
-			cbgt.CfgGetNodeDefs(ctl.cfg, cbgt.NODE_DEFS_WANTED)
+			cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
 		if err != nil {
 			return nil, err
 		}
@@ -564,7 +553,7 @@ func (ctl *Ctl) waitForWantedNodes(wantedNodes []string) ([]string, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	return nil, fmt.Errorf("ctl: waitForWantedNodes"+
+	return nil, fmt.Errorf("ctl: WaitForWantedNodes"+
 		" could not attain wantedNodes: %#v,"+
 		" only reached nodeDefWantedUUIDs: %#v",
 		wantedNodes, nodeDefWantedUUIDs)
