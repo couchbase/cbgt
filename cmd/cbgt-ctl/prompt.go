@@ -44,7 +44,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 					log.Printf("available commands:\n" +
 						" getTopology\n" +
 						" gt (alias for getTopology)\n" +
-						" changeTopology $rev $mode $memberNodesCSV\n" +
+						" changeTopology $rev $mode $memberNodeUUIDsCSV\n" +
 						" ct (alias for changeTopology)\n" +
 						" stopChangeTopology $rev\n" +
 						" sct (alias for stopChangeTopology)\n" +
@@ -68,7 +68,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 							rev, mode, memberNodeUUIDs)
 						topology, err :=
 							ctlInst.ChangeTopology(&ctl.CtlChangeTopology{
-								Rev:             []byte(rev),
+								Rev:             rev,
 								Mode:            mode,
 								MemberNodeUUIDs: memberNodeUUIDs,
 							})
@@ -86,7 +86,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 
 						log.Printf("stopChangeTopology, rev: %s", rev)
 
-						ctlInst.StopChangeTopology([]byte(rev))
+						ctlInst.StopChangeTopology(rev)
 					}
 				} else if op == "indexDefsChanged" || op == "idc" {
 					err = ctlInst.IndexDefsChanged()

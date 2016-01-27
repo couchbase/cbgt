@@ -1,7 +1,6 @@
 package ctl
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,20 +47,25 @@ type Ctl struct {
 
 	memberNodes []CtlNode // May be nil before initCh closed.
 
+	// The following ctlXxxx fields are all nil or non-nil together
+	// depending on whether a change topology is inflight.
+
 	ctlDoneCh         chan struct{}
 	ctlStopCh         chan struct{}
-	ctlRev            []byte
 	ctlChangeTopology *CtlChangeTopology
 
-	prevWarnings map[string][]string // Keyed by index name.
-	prevErrors   []error             // Errors from previous ctl.
+	// Warnings from previous operation, keyed by index name.
+	prevWarnings map[string][]string
+
+	// Errs from previous operation.
+	prevErrs []error
 }
 
 type CtlOptions struct {
 	DryRun             bool
 	Verbose            int
 	FavorMinNodes      bool
-	WaitForMemberNodes int // Seconds to wait for member nodes.
+	WaitForMemberNodes int // Seconds to wait for wanted member nodes to appear.
 }
 
 type CtlNode struct {
@@ -77,7 +81,7 @@ type CtlNode struct {
 type CtlTopology struct {
 	// Rev is a CAS opaque identifier.  Any change to any CtlTopology
 	// field will mean a Rev change.
-	Rev []byte
+	Rev string
 
 	// MemberNodes lists what the service thinks are the currently
 	// "confirmed in" service nodes in the system.  MemberNodes field
@@ -92,11 +96,11 @@ type CtlTopology struct {
 	// field value (as perhaps it was only tracked in memory).
 	PrevWarnings map[string][]string
 
-	// PrevErrors holds the errors from the previous operations and
+	// PrevErrs holds the errors from the previous operations and
 	// topology changes.  NOTE: If the service manager (i.e., Ctl)
-	// restarts, it may "forget" its previous PrevErrors field value
+	// restarts, it may "forget" its previous PrevErrs field value
 	// (as perhaps it was only tracked in memory).
-	PrevErrors []error
+	PrevErrs []error
 
 	// ChangeTopology will be non-nil when a service topology change
 	// is in progress.
@@ -104,7 +108,7 @@ type CtlTopology struct {
 }
 
 type CtlChangeTopology struct {
-	Rev []byte // Works as CAS, so use the last Topology response’s Rev.
+	Rev string // Works as CAS, so use the last Topology response’s Rev.
 
 	// Use Mode of "failover-hard" for hard failover.
 	// Use Mode of "failover-graceful" for graceful failover.
@@ -132,6 +136,7 @@ func StartCtl(cfg cbgt.Cfg, server string, options CtlOptions) (
 		initCh:     make(chan error),
 		stopCh:     make(chan struct{}),
 		kickCh:     make(chan string),
+		revNum:     1,
 	}
 
 	go ctl.run()
@@ -168,7 +173,7 @@ func (ctl *Ctl) run() {
 
 	ctl.m.Lock()
 
-	ctl.revNum = 1
+	ctl.revNum++
 
 	ctl.memberNodes = memberNodes
 
@@ -222,7 +227,7 @@ func (ctl *Ctl) run() {
 	for {
 		select {
 		case <-ctl.stopCh:
-			ctl.dispatchCtl(nil, "stop", nil)
+			ctl.dispatchCtl("", "stop", nil)
 			return
 
 		case kind := <-ctl.kickCh:
@@ -297,6 +302,7 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 			cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
 		if err == nil && planPIndexes != nil {
 			ctl.m.Lock()
+			ctl.revNum++
 			ctl.prevWarnings = planPIndexes.Warnings
 			ctl.m.Unlock()
 		}
@@ -317,10 +323,10 @@ func (ctl *Ctl) GetTopology() *CtlTopology {
 
 func (ctl *Ctl) getTopologyLOCKED() *CtlTopology {
 	return &CtlTopology{
-		Rev:            []byte(fmt.Sprintf("%d", ctl.revNum)),
+		Rev:            fmt.Sprintf("%d", ctl.revNum),
 		MemberNodes:    ctl.memberNodes,
 		PrevWarnings:   ctl.prevWarnings,
-		PrevErrors:     ctl.prevErrors,
+		PrevErrs:       ctl.prevErrs,
 		ChangeTopology: ctl.ctlChangeTopology,
 	}
 }
@@ -335,13 +341,14 @@ func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology) (
 		changeTopology.MemberNodeUUIDs)
 }
 
-func (ctl *Ctl) StopChangeTopology(rev []byte) {
+func (ctl *Ctl) StopChangeTopology(rev string) {
 	ctl.dispatchCtl(rev, "stopChangeTopology", nil)
 }
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) dispatchCtl(rev []byte, mode string, memberNodeUUIDs []string) (
+func (ctl *Ctl) dispatchCtl(rev string,
+	mode string, memberNodeUUIDs []string) (
 	*CtlTopology, error) {
 	ctl.m.Lock()
 	err := ctl.dispatchCtlLOCKED(rev, mode, memberNodeUUIDs)
@@ -351,11 +358,9 @@ func (ctl *Ctl) dispatchCtl(rev []byte, mode string, memberNodeUUIDs []string) (
 	return topology, err
 }
 
-func (ctl *Ctl) dispatchCtlLOCKED(
-	rev []byte, mode string, memberNodeUUIDs []string) error {
-	if len(rev) > 0 &&
-		!bytes.Equal(rev, ctl.ctlRev) &&
-		!bytes.Equal(rev, []byte(fmt.Sprintf("%d", ctl.revNum))) {
+func (ctl *Ctl) dispatchCtlLOCKED(rev string,
+	mode string, memberNodeUUIDs []string) error {
+	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) {
 		return ErrWrongRev
 	}
 
@@ -385,13 +390,25 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 
 func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 	indexDefs *cbgt.IndexDefs) error {
+	ctl.revNum++
+
 	ctlDoneCh := make(chan struct{})
+	ctl.ctlDoneCh = ctlDoneCh
+
 	ctlStopCh := make(chan struct{})
+	ctl.ctlStopCh = ctlStopCh
+
+	ctlChangeTopology := &CtlChangeTopology{
+		Rev:             fmt.Sprintf("%d", ctl.revNum),
+		Mode:            mode,
+		MemberNodeUUIDs: memberNodeUUIDs,
+	}
+	ctl.ctlChangeTopology = ctlChangeTopology
 
 	// The ctl goroutine.
 	//
 	go func() {
-		var ctlErr error
+		var ctlErrs []error
 		var ctlWarnings map[string][]string
 
 		// Cleanup ctl goroutine.
@@ -407,30 +424,35 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 						ctlWarnings = planPIndexes.Warnings
 					}
 				} else {
-					if ctlErr == nil {
-						ctlErr = err
-					}
+					ctlErrs = append(ctlErrs, err)
 				}
 			}
 
 			memberNodes, err := CurrentMemberNodes(ctl.cfg)
 			if err != nil {
-				ctlErr = err
+				ctlErrs = append(ctlErrs, err)
 			}
 
 			ctl.m.Lock()
 
-			if ctlDoneCh == ctl.ctlDoneCh {
+			ctl.revNum++
+
+			ctl.memberNodes = memberNodes
+
+			if ctl.ctlDoneCh == ctlDoneCh {
 				ctl.ctlDoneCh = nil
+			}
+
+			if ctl.ctlStopCh == ctlStopCh {
 				ctl.ctlStopCh = nil
-				ctl.ctlRev = nil
+			}
+
+			if ctl.ctlChangeTopology == ctlChangeTopology {
 				ctl.ctlChangeTopology = nil
 			}
 
-			ctl.revNum++
-			ctl.memberNodes = memberNodes
 			ctl.prevWarnings = ctlWarnings
-			ctl.prevErrors = []error{ctlErr}
+			ctl.prevErrs = ctlErrs
 
 			ctl.m.Unlock()
 
@@ -442,7 +464,7 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 		nodesToRemove, err := ctl.waitForWantedNodes(memberNodeUUIDs)
 		if err != nil {
 			log.Printf("ctl: waitForWantedNodes, err: %v", err)
-			ctlErr = err
+			ctlErrs = append(ctlErrs, err)
 			return
 		}
 
@@ -450,16 +472,16 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 		//
 		failover := strings.HasPrefix(mode, "failover")
 		if !failover {
-			// The rebalance loop handles the case if the index
-			// definitions had changed during the midst of the
-			// rebalance, in which case we run rebalance again.
+			// The loop handles the case if the index definitions had
+			// changed during the midst of the rebalance, in which
+			// case we run rebalance again.
 		REBALANCE_LOOP:
 			for {
 				// Retrieve the indexDefs before we do anything.
 				indexDefsStart, err :=
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err != nil {
-					ctlErr = err
+					ctlErrs = append(ctlErrs, err)
 					return
 				}
 
@@ -475,7 +497,7 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 					})
 				if err != nil {
 					log.Printf("ctl: StartRebalance, err: %v", err)
-					ctlErr = err
+					ctlErrs = append(ctlErrs, err)
 					return
 				}
 
@@ -514,7 +536,7 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 
 				case err = <-progressDoneCh:
 					if err != nil {
-						ctlErr = err
+						ctlErrs = append(ctlErrs, err)
 						return
 					}
 				}
@@ -525,7 +547,7 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 				indexDefsEnd, err :=
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err != nil {
-					ctlErr = err
+					ctlErrs = append(ctlErrs, err)
 					return
 				}
 
@@ -552,19 +574,9 @@ func (ctl *Ctl) startCtlLOCKED(mode string, memberNodeUUIDs []string,
 			ctl.server, nodesToRemove, ctl.options.DryRun, nil)
 		if err != nil {
 			log.Printf("ctl: PlannerSteps, err: %v", err)
-			ctlErr = err
+			ctlErrs = append(ctlErrs, err)
 		}
 	}()
-
-	ctl.revNum++
-
-	ctl.ctlDoneCh = ctlDoneCh
-	ctl.ctlStopCh = ctlStopCh
-	ctl.ctlRev = []byte(fmt.Sprintf("%d", ctl.revNum))
-	ctl.ctlChangeTopology = &CtlChangeTopology{
-		Mode:            mode,
-		MemberNodeUUIDs: memberNodeUUIDs,
-	}
 
 	return nil
 }
