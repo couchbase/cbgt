@@ -8,6 +8,7 @@ var indexStatsLabels = {
 function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.data = null;
     $scope.indexNames = [];
+    $scope.indexNamesReady = false;
     $scope.errorMessage = null;
     $scope.errorMessageFull = null;
 
@@ -36,6 +37,7 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             indexNames.sort();
 
             $scope.indexNames = indexNames;
+            $scope.indexNamesReady = true;
         }).
         error(function(data, code) {
             $scope.errorMessage = errorMessage(data, code);
