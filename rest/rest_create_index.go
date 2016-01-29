@@ -144,23 +144,10 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if len(requestBody) > 0 {
 		err := json.Unmarshal(requestBody, &indexDef)
 		if err != nil {
-			var indexDefNested cbgt.IndexDefNested
-
-			err = json.Unmarshal(requestBody, &indexDefNested)
-			if err != nil {
-				ShowError(w, req, fmt.Sprintf("rest_create_index:"+
-					" could not unmarshal json, indexName: %s, err: %v",
-					indexName, err), 400)
-				return
-			}
-
-			indexDef = indexDefNested.IndexDef
-
-			jp, _ := json.Marshal(indexDefNested.Params)
-			indexDef.Params = string(jp)
-
-			js, _ := json.Marshal(indexDefNested.SourceParams)
-			indexDef.SourceParams = string(js)
+			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
+				" could not unmarshal json, indexName: %s, err: %v",
+				indexName, err), 400)
+			return
 		}
 	}
 

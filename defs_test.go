@@ -13,6 +13,7 @@ package cbgt
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -298,5 +299,121 @@ func TestGetNodePlanParam(t *testing.T) {
 		},
 	}, "nodeUUID0", "indexDefName", "planPIndexName") == nil {
 		t.Errorf("expected not nil")
+	}
+}
+
+func TestIndexDefJSON(t *testing.T) {
+	id1 := IndexDef{}
+	b, err := json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	var id2 IndexDef
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+
+	id1.Params = `{"foo":"bar"}`
+	id1.SourceParams = `{"hey":[0,1,2],"ho":"there"}`
+	b, err = json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+
+	id1.Params = `null`
+	id1.SourceParams = `null`
+	b, err = json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+
+	id1.Params = ``
+	id1.SourceParams = ``
+	b, err = json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+}
+
+func TestPlanPIndexJSON(t *testing.T) {
+	id1 := PlanPIndex{}
+	b, err := json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	var id2 PlanPIndex
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+
+	id1.IndexParams = `{"foo":"bar"}`
+	id1.SourceParams = `{"hey":[0,1,2],"ho":"there"}`
+	b, err = json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+
+	id1.IndexParams = `null`
+	id2.SourceParams = `null`
+	b, err = json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
+	}
+
+	id1.IndexParams = ``
+	id1.SourceParams = ``
+	b, err = json.Marshal(id1)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	err = json.Unmarshal(b, &id2)
+	if err != nil {
+		t.Errorf("expected no err, got: %v", err)
+	}
+	if !reflect.DeepEqual(&id1, &id2) {
+		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
 	}
 }

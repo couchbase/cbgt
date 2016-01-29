@@ -47,15 +47,20 @@ type IndexDef struct {
 	// stored as part of SourceParams.
 }
 
-// An IndexDefNested overrides IndexDef with Params and SourceParams
-// fields that are JSON nested objects instead of strings, for
-// easier-to-use API.
-type IndexDefNested struct {
-	IndexDef
-
-	Params map[string]interface{} `json:"params"`
-
-	SourceParams map[string]interface{} `json:"sourceParams"`
+// An indexDefBase defines the stable, "non-envelopable" fields of an
+// IndexDef.
+//
+// IMPORTANT!  This must be manually kept in sync with the IndexDef
+// struct definition.  If you change IndexDef struct, you must change
+// this indexDefBase definition, too; and also see defs_json.go.
+type indexDefBase struct {
+	Type       string     `json:"type"` // Ex: "blackhole", etc.
+	Name       string     `json:"name"`
+	UUID       string     `json:"uuid"` // Like a revision id.
+	SourceType string     `json:"sourceType"`
+	SourceName string     `json:"sourceName"`
+	SourceUUID string     `json:"sourceUUID"`
+	PlanParams PlanParams `json:"planParams"`
 }
 
 // A PlanParams holds input parameters to the planner, that control
@@ -161,6 +166,26 @@ type PlanPIndex struct {
 	SourceName       string `json:"sourceName"`
 	SourceUUID       string `json:"sourceUUID"`
 	SourceParams     string `json:"sourceParams"` // Optional connection info.
+	SourcePartitions string `json:"sourcePartitions"`
+
+	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
+}
+
+// An planPIndexBase defines the stable, "non-envelopable" fields of a
+// PlanPIndex.
+//
+// IMPORTANT!  This must be manually kept in sync with the PlanPIndex
+// struct definition.  If you change PlanPIndex struct, you must change
+// this planPIndexBase definition, too; and also see defs_json.go.
+type planPIndexBase struct {
+	Name             string `json:"name"` // Stable & unique cluster wide.
+	UUID             string `json:"uuid"`
+	IndexType        string `json:"indexType"` // See IndexDef.Type.
+	IndexName        string `json:"indexName"` // See IndexDef.Name.
+	IndexUUID        string `json:"indexUUID"` // See IndefDef.UUID.
+	SourceType       string `json:"sourceType"`
+	SourceName       string `json:"sourceName"`
+	SourceUUID       string `json:"sourceUUID"`
 	SourcePartitions string `json:"sourcePartitions"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
