@@ -57,9 +57,9 @@ type Manager struct {
 	dataDir   string
 	server    string // The default datasource that will be indexed.
 	stopCh    chan struct{}
-	options   map[string]string
 
-	m         sync.Mutex
+	m         sync.Mutex // Protects the fields that follow.
+	options   map[string]string
 	feeds     map[string]Feed    // Key is Feed.Name().
 	pindexes  map[string]*PIndex // Key is PIndex.Name().
 	plannerCh chan *workReq      // Kicks planner that there's more work.
@@ -678,9 +678,26 @@ func (mgr *Manager) Server() string {
 	return mgr.server
 }
 
-// Returns the (read-only) options of a Manager.
+// Same as GetOptions(), for backwards compatibility.
 func (mgr *Manager) Options() map[string]string {
-	return mgr.options
+	return mgr.GetOptions()
+}
+
+// GetOptions returns the (read-only) options of a Manager.  Callers
+// must not modify the returned map.
+func (mgr *Manager) GetOptions() map[string]string {
+	mgr.m.Lock()
+	options := mgr.options
+	mgr.m.Unlock()
+	return options
+}
+
+// SetOptions replaces the options map with the provided map, which
+// should be considered immutable after this call.
+func (mgr *Manager) SetOptions(options map[string]string) {
+	mgr.m.Lock()
+	mgr.options = options
+	mgr.m.Unlock()
 }
 
 // Copies the current manager stats to the dst manager stats.
