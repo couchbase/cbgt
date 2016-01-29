@@ -47,6 +47,17 @@ type IndexDef struct {
 	// stored as part of SourceParams.
 }
 
+// An IndexDefNested overrides IndexDef with Params and SourceParams
+// fields that are JSON nested objects instead of strings, for
+// easier-to-use API.
+type IndexDefNested struct {
+	IndexDef
+
+	Params map[string]interface{} `json:"params"`
+
+	SourceParams map[string]interface{} `json:"sourceParams"`
+}
+
 // A PlanParams holds input parameters to the planner, that control
 // how the planner should split an index definition into one or more
 // index partitions, and how the planner should assign those index
