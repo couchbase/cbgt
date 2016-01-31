@@ -23,14 +23,9 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                     indexNames.push(indexName);
 
                     var indexDef = data.indexDefs.indexDefs[indexName];
-                    if (indexDef &&
-                        typeof(indexDef.params) == "string") {
-                        try {
-                            indexDef.paramsObj = JSON.parse(indexDef.params);
-                        } catch (e) {
-                            console.log("refreshIndexNames / JSON.parse",
-                                        indexDef.params, e);
-                        }
+                    if (indexDef) {
+                        indexDef.paramsObj =
+                            JSON.parse(JSON.stringify(indexDef.params));
                     }
                 }
             }
@@ -136,28 +131,14 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
             $http.get('/api/index/' + $scope.indexName).
             success(function(data) {
                 $scope.indexDef = data.indexDef
-                $scope.indexDefStr = JSON.stringify(data.indexDef, undefined, 2);
-
-                try {
-                    if (typeof(data.indexDef.params) == "string") {
-                        data.indexDef.params = JSON.parse(data.indexDef.params);
-                    }
-                } catch (e) {
-                    console.log("loadIndexDetails JSON.parse(data.indexDef.params)",
-                                data.indexDef.params, e);
-                }
-
-                try {
-                    if (typeof(data.indexDef.sourceParams) == "string") {
-                        data.indexDef.sourceParams = JSON.parse(data.indexDef.sourceParams);
-                    }
-                } catch (e) {
-                    console.log("loadIndexDetails JSON.parse(data.indexDef.sourceParams)",
-                                data.indexDef.sourceParams, e);
-                }
-
-                $scope.indexParamsStr = JSON.stringify(data.indexDef.params, undefined, 2);
-                $scope.planPIndexesStr = JSON.stringify(data.planPIndexes, undefined, 2);
+                $scope.indexDefStr =
+                    JSON.stringify(data.indexDef, undefined, 2);
+                $scope.indexParamsStr =
+                    JSON.stringify(data.indexDef.params, undefined, 2);
+                $scope.sourceParamsStr =
+                    JSON.stringify(data.indexDef.sourceParams, undefined, 2);
+                $scope.planPIndexesStr =
+                    JSON.stringify(data.planPIndexes, undefined, 2);
                 $scope.planPIndexes = data.planPIndexes;
                 if ($scope.planPIndexes) {
                     $scope.planPIndexes.sort(
@@ -485,13 +466,8 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 }
 
                 $scope.newIndexType = data.indexDef.type;
-                try {
-                    $scope.newIndexParams[data.indexDef.type] =
-                        JSON.parse(data.indexDef.params);
-                } catch (e) {
-                    console.log("IndexNewCtrl / JSON.parse(data.indexDef.params)",
-                                data.indexDef.params, e);
-                }
+                $scope.newIndexParams[data.indexDef.type] =
+                    JSON.parse(JSON.stringify(data.indexDef.params));
                 for (var j in $scope.newIndexParams[data.indexDef.type]) {
                     $scope.newIndexParams[data.indexDef.type][j] =
                         JSON.stringify($scope.newIndexParams[data.indexDef.type][j],
@@ -501,7 +477,8 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 $scope.newSourceName = data.indexDef.sourceName;
                 $scope.newSourceUUID = data.indexDef.sourceUUID;
                 $scope.newSourceParams[data.indexDef.sourceType] =
-                    data.indexDef.sourceParams;
+                    JSON.stringify(data.indexDef.sourceParams,
+                                   undefined, 2);
                 $scope.newPlanParams =
                     JSON.stringify(data.indexDef.planParams,
                                    undefined, 2);
@@ -521,15 +498,8 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 if (indexUI &&
                     indexUI.controllerInitName &&
                     typeof(window[indexUI.controllerInitName]) == "function") {
-                    var j = null;
-                    try {
-                        j = JSON.parse(data.indexDef.params);
-                    } catch (e) {
-                        console.log("IndexNewCtrl, JSON.parse(data.indexDef.params)",
-                                    data.indexDef.params, e);
-                    }
                     window[indexUI.controllerInitName](
-                        "edit", j, indexUI,
+                        "edit", data.indexDef.params, indexUI,
                         $scope, $http, $route, $routeParams,
                         $location, $log, $sce, $uibModal);
                 }
@@ -605,26 +575,15 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             }
         }
 
-        if (sourceParams[sourceType]) {
-            try {
-                var s = JSON.parse(sourceParams[sourceType]);
+        var sourceParamsObj = JSON.parse(sourceParams[sourceType] || "{}");
 
-                // NOTE: Special case to auto-fill-in authUser with bucket name.
-                // TODO: Doesn't handle bucket password, though.
-                if (sourceType == "couchbase" &&
-                    s &&
-                    s.authUser == "" &&
-                    s.authPassword == "") {
-                    s.authUser = sourceName;
-                    sourceParams[sourceType] = JSON.stringify(s);
-                }
-            } catch (e) {
-                $scope.errorFields["sourceParams"] = {};
-                $scope.errorFields["sourceParams"][sourceType] = true;
-                $scope.errorMessage =
-                    "error: could not JSON parse source params";
-                return
-            }
+        // NOTE: Special case to auto-fill-in authUser with bucket name.
+        // TODO: Doesn't handle bucket password, though.
+        if (sourceType == "couchbase" &&
+            sourceParamsObj &&
+            sourceParamsObj.authUser == "" &&
+            sourceParamsObj.authPassword == "") {
+            sourceParamsObj.authUser = sourceName;
         }
 
         try {
@@ -640,11 +599,11 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             params: {
                 indexName: indexName,
                 indexType: indexType,
-                indexParams: JSON.stringify(indexParamsObj),
+                indexParams: indexParamsObj,
                 sourceType: sourceType,
                 sourceName: sourceName,
                 sourceUUID: sourceUUID || "",
-                sourceParams: sourceParams[sourceType],
+                sourceParams: sourceParamsObj,
                 planParams: planParams,
                 prevIndexUUID: prevIndexUUID
             }
