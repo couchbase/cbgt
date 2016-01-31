@@ -73,9 +73,9 @@ func (def *IndexDef) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Implemention of json.Marshaler interface.  The IndexDef JSON format
-// is now the natural, nested JSON format (as opposed to the previous,
-// enveloped format).
+// Implemention of json.Marshaler interface.  The IndexDef JSON output
+// format is now the natural, nested JSON format (as opposed to the
+// previous, enveloped format).
 func (def *IndexDef) MarshalJSON() ([]byte, error) {
 	var idn IndexDefNested
 
@@ -132,9 +132,9 @@ func indexDefFromBase(base *indexDefBase, indexDef *IndexDef) {
 
 // -------------------------------------------------------------------
 
-// An PlanPIndexNested overrides PlanPIndex with Params and SourceParams
-// fields that are JSON nested objects instead of strings, for
-// easier-to-use API.
+// A PlanPIndexNested overrides PlanPIndex with IndexParams and
+// SourceParams fields that are JSON nested objects instead of
+// strings, for easier-to-use API.
 type PlanPIndexNested struct {
 	planPIndexBase
 
@@ -142,7 +142,7 @@ type PlanPIndexNested struct {
 	SourceParams map[string]interface{} `json:"sourceParams"`
 }
 
-// An PlanPIndexEnveloped overrides PlanPIndex with Params and
+// A PlanPIndexEnveloped overrides PlanPIndex with IndexParams and
 // SourceParams fields that are enveloped JSON (JSON encoded as
 // strings), for backwards compatibility.
 type PlanPIndexEnveloped struct {
@@ -155,8 +155,7 @@ type PlanPIndexEnveloped struct {
 // -------------------------------------------------------------------
 
 // Implemention of json.Unmarshaler interface, which accepts either
-// the new, natural, nested JSON format or the older, enveloped
-// format.
+// the new, nested JSON format or the older, enveloped format.
 func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 	// First, try the old, backwards compatible, enveloped format.
 	var ppie PlanPIndexEnveloped
@@ -190,9 +189,9 @@ func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Implemention of json.Marshaler interface.  The PlanPIndex JSON format
-// is now the natural, nested JSON format (as opposed to the previous,
-// enveloped format).
+// Implemention of json.Marshaler interface.  The PlanPIndex JSON
+// output format is now the natural, nested JSON format (as opposed to
+// the previous, enveloped format).
 func (ppi *PlanPIndex) MarshalJSON() ([]byte, error) {
 	var ppin PlanPIndexNested
 

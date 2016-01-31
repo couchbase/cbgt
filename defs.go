@@ -171,7 +171,7 @@ type PlanPIndex struct {
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
 }
 
-// An planPIndexBase defines the stable, "non-envelopable" fields of a
+// A planPIndexBase defines the stable, "non-envelopable" fields of a
 // PlanPIndex.
 //
 // IMPORTANT!  This must be manually kept in sync with the PlanPIndex
