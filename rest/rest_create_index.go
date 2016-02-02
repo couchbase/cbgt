@@ -96,7 +96,7 @@ func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
 			strings.Join(indexTypes, "\n* ")
 	opts["param: indexParams"] =
 		"optional (depends on the value of the indexType)," +
-			" string (JSON), form parameter\n\n" +
+			" JSON object, form parameter\n\n" +
 			strings.Join(indexParams, "\n\n")
 	opts["param: sourceType"] =
 		"required, string, form parameter\n\n" +
@@ -108,10 +108,10 @@ func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
 		"optional, string, form parameter"
 	opts["param: sourceParams"] =
 		"optional (depends on the value of the sourceType)," +
-			" string (JSON), form parameter\n\n" +
+			" JSON object, form parameter\n\n" +
 			strings.Join(sourceParams, "\n\n")
 	opts["param: planParams"] =
-		"optional, string (JSON), form parameter"
+		"optional, JSON object, form parameter"
 	opts["param: prevIndexUUID"] =
 		"optional, string, form parameter\n\n" +
 			"Intended for clients that want to check that they are not " +
