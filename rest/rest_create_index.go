@@ -112,7 +112,7 @@ func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
 			strings.Join(sourceParams, "\n\n")
 	opts["param: planParams"] =
 		"optional, JSON object, form parameter"
-	opts["param: prevIndexUUID"] =
+	opts["param: prevIndexUUID / indexUUID"] =
 		"optional, string, form parameter\n\n" +
 			"Intended for clients that want to check that they are not " +
 			"overwriting the index definition updates of concurrent clients."
@@ -213,7 +213,13 @@ func (h *CreateIndexHandler) ServeHTTP(
 		planParams = indexDef.PlanParams
 	}
 
-	prevIndexUUID := req.FormValue("prevIndexUUID") // Defaults to "".
+	prevIndexUUID := req.FormValue("prevIndexUUID")
+	if prevIndexUUID == "" {
+		prevIndexUUID = req.FormValue("indexUUID")
+		if prevIndexUUID == "" {
+			prevIndexUUID = indexDef.UUID
+		}
+	}
 
 	err = h.mgr.CreateIndex(sourceType, sourceName,
 		sourceUUID, sourceParams,
