@@ -139,7 +139,9 @@ func (h *CreateIndexHandler) ServeHTTP(
 		return
 	}
 
-	var indexDef cbgt.IndexDef
+	indexDef := cbgt.IndexDef{
+		PlanParams: cbgt.NewPlanParams(h.mgr),
+	}
 
 	if len(requestBody) > 0 {
 		err := json.Unmarshal(requestBody, &indexDef)
@@ -196,10 +198,11 @@ func (h *CreateIndexHandler) ServeHTTP(
 		sourceParams = indexDef.SourceParams
 	}
 
-	planParams := &cbgt.PlanParams{}
+	planParams := cbgt.NewPlanParams(h.mgr)
+
 	planParamsStr := req.FormValue("planParams")
 	if planParamsStr != "" {
-		err := json.Unmarshal([]byte(planParamsStr), planParams)
+		err := json.Unmarshal([]byte(planParamsStr), &planParams)
 		if err != nil {
 			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, err: %v",
@@ -207,7 +210,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 			return
 		}
 	} else {
-		planParams = &indexDef.PlanParams
+		planParams = indexDef.PlanParams
 	}
 
 	prevIndexUUID := req.FormValue("prevIndexUUID") // Defaults to "".
@@ -215,7 +218,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	err = h.mgr.CreateIndex(sourceType, sourceName,
 		sourceUUID, sourceParams,
 		indexType, indexName, string(indexParams),
-		*planParams, prevIndexUUID)
+		planParams, prevIndexUUID)
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",

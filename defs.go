@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/couchbase/blance"
 )
@@ -486,4 +487,34 @@ func PIndexMatchesPlan(pindex *PIndex, planPIndex *PlanPIndex) bool {
 		pindex.SourceParams == planPIndex.SourceParams &&
 		pindex.SourcePartitions == planPIndex.SourcePartitions
 	return same
+}
+
+// ------------------------------------------------------------------------
+
+func NewPlanParams(mgr *Manager) PlanParams {
+	return PlanParams{
+		MaxPartitionsPerPIndex: DefaultMaxPartitionsPerPIndex(mgr),
+	}
+}
+
+// ------------------------------------------------------------------------
+
+// DefaultMaxPartitionsPerPIndex retrieves the
+// defaultMaxPartitionsPerPIndex from the manager options, if
+// available.
+func DefaultMaxPartitionsPerPIndex(mgr *Manager) int {
+	maxPartitionsPerPIndex := 20
+
+	options := mgr.Options()
+	if options != nil {
+		v, ok := options["defaultMaxPartitionsPerPIndex"]
+		if ok {
+			i, err := strconv.Atoi(v)
+			if err == nil && i >= 0 {
+				maxPartitionsPerPIndex = i
+			}
+		}
+	}
+
+	return maxPartitionsPerPIndex
 }

@@ -11,7 +11,6 @@ package rest
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/couchbase/cbgt"
 )
@@ -56,18 +55,7 @@ type MetaDescIndex struct {
 
 func (h *ManagerMetaHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	maxPartitionsPerPIndex := 20
-
-	options := h.mgr.Options()
-	if options != nil {
-		v, ok := options["defaultMaxPartitionsPerPIndex"]
-		if ok {
-			i, err := strconv.Atoi(v)
-			if err == nil && i >= 0 {
-				maxPartitionsPerPIndex = i
-			}
-		}
-	}
+	maxPartitionsPerPIndex := cbgt.DefaultMaxPartitionsPerPIndex(h.mgr)
 
 	startSamples := map[string]interface{}{
 		"planParams": &cbgt.PlanParams{
