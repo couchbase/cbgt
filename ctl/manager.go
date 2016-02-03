@@ -309,14 +309,11 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		seenPIndexes map[string]bool,
 		seenPIndexesSorted []string,
 		progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
+		errs []error,
 	) string {
-		m.updateProgress(taskId, progressEntries)
+		m.updateProgress(taskId, progressEntries, errs)
 
 		if progressEntries == nil {
-			// TODO: When successful rebalance, need to remove the
-			// task, but when failed rebalance, leave the task but
-			// with a non-empty ErrorMessage.
-
 			return "DONE"
 		}
 
@@ -364,7 +361,9 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 
 func (m *CtlMgr) updateProgress(
 	taskId string,
-	p map[string]map[string]map[string]*rebalance.ProgressEntry) {
+	p map[string]map[string]map[string]*rebalance.ProgressEntry,
+	errs []error,
+) {
 	var progress float64
 
 	if p != nil {
@@ -394,7 +393,7 @@ func (m *CtlMgr) updateProgress(
 
 	for _, th := range m.tasks.taskHandles {
 		if th.task.Id == taskId {
-			if p != nil {
+			if p != nil || len(errs) > 0 {
 				revNum := m.allocRevNumLOCKED(0)
 
 				taskNext := *th.task // Copy.
@@ -402,6 +401,18 @@ func (m *CtlMgr) updateProgress(
 				taskNext.Progress = progress
 
 				// TODO: DetailedProgress.
+
+				taskNext.ErrorMessage = ""
+				for _, err := range errs {
+					if len(taskNext.ErrorMessage) > 0 {
+						taskNext.ErrorMessage = taskNext.ErrorMessage + "\n"
+					}
+					taskNext.ErrorMessage = taskNext.ErrorMessage + err.Error()
+				}
+
+				if p == nil {
+					taskNext.Status = service_api.TaskStatusFailed
+				}
 
 				taskHandlesNext = append(taskHandlesNext, &taskHandle{
 					startTime: th.startTime,

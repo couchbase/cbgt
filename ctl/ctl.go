@@ -148,6 +148,7 @@ type CtlOnProgressFunc func(
 	seenPIndexes map[string]bool,
 	seenPIndexesSorted []string,
 	progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
+	errs []error,
 ) string
 
 // ----------------------------------------------------
@@ -534,7 +535,7 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctl.prevErrs = ctlErrs
 
 			if ctlOnProgress != nil {
-				ctlOnProgress(0, 0, nil, nil, nil, nil, nil)
+				ctlOnProgress(0, 0, nil, nil, nil, nil, nil, ctlErrs)
 			}
 
 			ctl.m.Unlock()
@@ -602,7 +603,8 @@ func (ctl *Ctl) startCtlLOCKED(
 								seenNodesSorted,
 								seenPIndexes,
 								seenPIndexesSorted,
-								progressEntries)
+								progressEntries,
+								nil)
 						}
 
 						return rebalance.ProgressTableString(
