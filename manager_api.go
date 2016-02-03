@@ -97,10 +97,9 @@ func (mgr *Manager) CreateIndex(sourceType,
 			}
 			if prevIndex.UUID != prevIndexUUID {
 				return fmt.Errorf("manager_api:"+
-					" perhaps there was concurrent index definition update"+
-					" - mismatched index UUID,"+
-					" indexName: %s, prevIndex.UUID: %s, prevIndexUUID: %s",
-					indexName, prevIndex.UUID, prevIndexUUID)
+					" perhaps there was concurrent index definition update,"+
+					" current index UUID: %s, did not match input UUID: %s",
+					prevIndex.UUID, prevIndexUUID)
 			}
 		}
 
