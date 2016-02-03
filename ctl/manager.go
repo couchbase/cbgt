@@ -213,13 +213,13 @@ func (m *CtlMgr) PrepareTopologyChange(
 			startTime: time.Now(),
 			task: &service_api.Task{
 				Rev:              EncodeRev(revNum),
-				Id:               change.Id,
+				Id:               "prepare:" + change.Id,
 				Type:             service_api.TaskTypePrepared,
 				Status:           service_api.TaskStatusRunning,
 				IsCancelable:     true,
-				Progress:         100.0, // TODO.
+				Progress:         100.0, // Prepared born as 100.0 is ok.
 				DetailedProgress: nil,
-				Description:      "prepared topology change",
+				Description:      "prepare topology change",
 				ErrorMessage:     "",
 				Extra: map[string]interface{}{
 					"topologyChange": change,
@@ -238,7 +238,10 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
+	// Possible for caller to not care about current topology, but
+	// just wants to impose or force a topology change.
+	if len(change.CurrentTopologyRev) > 0 &&
+		string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
 		return service_api.ErrConflict
 	}
 
@@ -254,10 +257,6 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 		}
 
 		if th.task.Type == service_api.TaskTypePrepared {
-			if th.task.Id != change.Id {
-				return service_api.ErrConflict
-			}
-
 			th, err = m.startTopologyChangeTaskHandleLOCKED(change)
 			if err != nil {
 				return err
@@ -300,6 +299,8 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 			append(ctlChangeTopology.MemberNodeUUIDs, nodeUUID)
 	}
 
+	taskId := "rebalance:" + change.Id
+
 	// The progressEntries is a map of pindex ->
 	// source_partition -> node -> *rebalance.ProgressEntry.
 	onProgress := func(maxNodeLen, maxPIndexLen int,
@@ -309,9 +310,13 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		seenPIndexesSorted []string,
 		progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 	) string {
-		m.updateProgress(change.Id, progressEntries)
+		m.updateProgress(taskId, progressEntries)
 
 		if progressEntries == nil {
+			// TODO: When successful rebalance, need to remove the
+			// task, but when failed rebalance, leave the task but
+			// with a non-empty ErrorMessage.
+
 			return "DONE"
 		}
 
@@ -335,7 +340,7 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		startTime: time.Now(),
 		task: &service_api.Task{
 			Rev:              EncodeRev(revNum),
-			Id:               change.Id,
+			Id:               taskId,
 			Type:             service_api.TaskTypeRebalance,
 			Status:           service_api.TaskStatusRunning,
 			IsCancelable:     true,
