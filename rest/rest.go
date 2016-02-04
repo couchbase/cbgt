@@ -157,6 +157,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 	PIndexTypesInitRouter(r, "manager.before", mgr)
 
 	meta := map[string]RESTMeta{}
+
 	handle := func(path string, method string, h http.Handler,
 		opts map[string]string) {
 		if a, ok := h.(RESTOpts); ok {
@@ -165,19 +166,10 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 		if authHandler != nil {
 			h = authHandler(h)
 		}
-		meta[prefix+path+" "+RESTMethodOrds[method]+method] =
-			RESTMeta{prefix + path, method, opts}
-		r.Handle(prefix+path, h).Methods(method)
-	}
-	handleFunc := func(path string, method string, h http.HandlerFunc,
-		opts map[string]string) {
-		meta[prefix+path+" "+RESTMethodOrds[method]+method] =
-			RESTMeta{prefix + path, method, opts}
-		if authHandler != nil {
-			r.Handle(prefix+path, authHandler(http.HandlerFunc(h))).Methods(method)
-			return
-		}
-		r.Handle(prefix+path, h).Methods(method)
+		prefixPath := prefix + path
+		meta[prefixPath+" "+RESTMethodOrds[method]+method] =
+			RESTMeta{prefixPath, method, opts}
+		r.Handle(prefixPath, h).Methods(method).Name(prefixPath)
 	}
 
 	handle("/api/index", "GET", NewListIndexHandler(mgr),
@@ -348,8 +340,9 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
-	handleFunc("/api/runtime/args", "GET",
-		RESTGetRuntimeArgs, map[string]string{
+	handle("/api/runtime/args", "GET",
+		http.HandlerFunc(RESTGetRuntimeArgs),
+		map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Returns information on the node's command-line,
                        parameters, environment variables and
@@ -370,39 +363,44 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
-	handleFunc("/api/runtime/gc", "POST",
-		RESTPostRuntimeGC, map[string]string{
+	handle("/api/runtime/gc", "POST",
+		http.HandlerFunc(RESTPostRuntimeGC),
+		map[string]string{
 			"_category":          "Node|Node management",
 			"_about":             `Requests the node to perform a GC.`,
 			"version introduced": "0.0.1",
 		})
 
-	handleFunc("/api/runtime/profile/cpu", "POST",
-		RESTProfileCPU, map[string]string{
+	handle("/api/runtime/profile/cpu", "POST",
+		http.HandlerFunc(RESTProfileCPU),
+		map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Requests the node to capture local
                        cpu usage profiling information.`,
 			"version introduced": "0.0.1",
 		})
 
-	handleFunc("/api/runtime/profile/memory", "POST",
-		RESTProfileMemory, map[string]string{
+	handle("/api/runtime/profile/memory", "POST",
+		http.HandlerFunc(RESTProfileMemory),
+		map[string]string{
 			"_category": "Node|Node diagnostics",
 			"_about": `Requests the node to capture lcoal
                        memory usage profiling information.`,
 			"version introduced": "0.0.1",
 		})
 
-	handleFunc("/api/runtime/stats", "GET",
-		RESTGetRuntimeStats, map[string]string{
+	handle("/api/runtime/stats", "GET",
+		http.HandlerFunc(RESTGetRuntimeStats),
+		map[string]string{
 			"_category": "Node|Node monitoring",
 			"_about": `Returns information on the node's
                        low-level runtime stats as JSON.`,
 			"version introduced": "0.0.1",
 		})
 
-	handleFunc("/api/runtime/statsMem", "GET",
-		RESTGetRuntimeStatsMem, map[string]string{
+	handle("/api/runtime/statsMem", "GET",
+		http.HandlerFunc(RESTGetRuntimeStatsMem),
+		map[string]string{
 			"_category": "Node|Node monitoring",
 			"_about": `Returns information on the node's
                        low-level GC and memory related runtime stats as JSON.`,
