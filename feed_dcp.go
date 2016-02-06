@@ -62,9 +62,10 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	server, poolName, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
+	authType := mgr.Options()["authType"]
 	feed, err := NewDCPFeed(feedName, indexName, server, poolName,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
-		mgr.tagsMap != nil && !mgr.tagsMap["feed"])
+		mgr.tagsMap != nil && !mgr.tagsMap["feed"], authType)
 	if err != nil {
 		return fmt.Errorf("feed_dcp:"+
 			" could not prepare DCP feed, server: %s,"+
@@ -178,7 +179,7 @@ func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
 func NewDCPFeed(name, indexName, url, poolName,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
-	disable bool) (*DCPFeed, error) {
+	disable bool, authType string) (*DCPFeed, error) {
 	params := NewDCPFeedParams()
 	var stopAfter map[string]UUIDSeq
 
@@ -212,7 +213,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 	var auth couchbase.AuthHandler = params
 
 	if params.AuthUser == "" &&
-		params.AuthSaslUser == "" {
+		params.AuthSaslUser == "" && authType == "cbauth" {
 		for _, serverUrl := range urls {
 			cbAuthHandler, err := NewCbAuthHandler(serverUrl)
 			if err != nil {
