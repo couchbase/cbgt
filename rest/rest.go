@@ -97,6 +97,20 @@ var RESTMethodOrds = map[string]string{
 
 // -------------------------------------------------------
 
+// HandlerWithRESTMeta wrapper associates a http.Handler with
+// RESTMeta information.
+type HandlerWithRESTMeta struct {
+	h        http.Handler
+	RESTMeta *RESTMeta
+}
+
+func (h *HandlerWithRESTMeta) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	h.h.ServeHTTP(w, req)
+}
+
+// -------------------------------------------------------
+
 // NewRESTRouter creates a mux.Router initialized with the REST API
 // and web UI routes.  See also InitStaticRouter and InitRESTRouter if
 // you need finer control of the router initialization.
@@ -160,15 +174,20 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 
 	handle := func(path string, method string, h http.Handler,
 		opts map[string]string) {
+		opts["_path"] = path
 		if a, ok := h.(RESTOpts); ok {
 			a.RESTOpts(opts)
+		}
+		prefixPath := prefix + path
+		restMeta := RESTMeta{prefixPath, method, opts}
+		meta[prefixPath+" "+RESTMethodOrds[method]+method] = restMeta
+		h = &HandlerWithRESTMeta{
+			h:        h,
+			RESTMeta: &restMeta,
 		}
 		if authHandler != nil {
 			h = authHandler(h)
 		}
-		prefixPath := prefix + path
-		meta[prefixPath+" "+RESTMethodOrds[method]+method] =
-			RESTMeta{prefixPath, method, opts}
 		r.Handle(prefixPath, h).Methods(method).Name(prefixPath)
 	}
 
