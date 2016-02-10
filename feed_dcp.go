@@ -167,7 +167,11 @@ func (d *DCPFeedParams) GetCredentials() (string, string, string) {
 	return d.AuthUser, d.AuthPassword, d.AuthUser
 }
 
-func (d *DCPFeedParams) GetSaslCredentials() (string, string) {
+type DCPFeedParamsSasl struct {
+	DCPFeedParams
+}
+
+func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
 	return d.AuthSaslUser, d.AuthSaslPassword
 }
 
@@ -208,28 +212,27 @@ func NewDCPFeed(name, indexName, url, poolName,
 
 	var auth couchbase.AuthHandler = params
 
-	if authType == "cbauth" {
+	if params.AuthUser == "" &&
+		params.AuthSaslUser == "" && authType == "cbauth" {
 		for _, serverUrl := range urls {
 			cbAuthHandler, err := NewCbAuthHandler(serverUrl)
 			if err != nil {
 				continue
 			}
-			if params.AuthUser == "" {
-				params.AuthUser, params.AuthPassword, err =
-					cbAuthHandler.GetCredentials()
-				if err != nil {
-					continue
-				}
+			params.AuthUser, params.AuthPassword, err =
+				cbAuthHandler.GetCredentials()
+			if err != nil {
+				continue
 			}
-			if params.AuthSaslUser == "" {
-				params.AuthSaslUser, params.AuthSaslPassword, err =
-					cbAuthHandler.GetSaslCredentials()
-				if err != nil {
-					continue
-				}
+			params.AuthSaslUser, params.AuthSaslPassword, err =
+				cbAuthHandler.GetSaslCredentials()
+			if err != nil {
+				continue
 			}
 			break
 		}
+	} else if params.AuthSaslUser != "" {
+		auth = &DCPFeedParamsSasl{*params}
 	}
 
 	options := &cbdatasource.BucketDataSourceOptions{
