@@ -25,7 +25,7 @@ import (
 
 	"github.com/couchbase/cbgt/rebalance"
 
-	"github.com/couchbase/cbgt/ctl/service_api"
+	"github.com/couchbase/cbauth/service_api"
 )
 
 // CtlMgr implements the service_api.ServiceManager interface and
@@ -286,11 +286,11 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		Mode: "rebalance",
 	}
 
-	if change.Failover { // TODO: what about failover-graceful?
+	if len(change.EjectNodes) > 0 {
 		ctlChangeTopology.Mode = "failover-hard"
 	}
 
-	for _, node := range change.Nodes {
+	for _, node := range change.KeepNodes {
 		// TODO: What about node.RecoveryType?
 
 		nodeUUID := string(node.NodeInfo.NodeId)
