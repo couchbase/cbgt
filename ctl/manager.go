@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/couchbase/clog"
+
 	"github.com/couchbase/cbgt/rebalance"
 
 	"github.com/couchbase/cbauth/service_api"
@@ -67,21 +69,30 @@ func NewCtlMgr(nodeInfo *service_api.NodeInfo, ctl *Ctl) *CtlMgr {
 }
 
 func (m *CtlMgr) GetNodeInfo() (*service_api.NodeInfo, error) {
+	log.Printf("ctl/manager, GetNodeInfo")
+
 	return m.nodeInfo, nil
 }
 
 func (m *CtlMgr) Shutdown() error {
+	log.Printf("ctl/manager, Shutdown")
+
 	os.Exit(0)
 	return nil
 }
 
 func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 	cancelCh service_api.Cancel) (*service_api.TaskList, error) {
+	log.Printf("ctl/manager, GetTaskList, haveTasksRev: %v", haveTasksRev)
+
 	m.mu.Lock()
 
 	if len(haveTasksRev) > 0 {
 		haveTasksRevNum, err := DecodeRev(haveTasksRev)
 		if err != nil {
+			log.Printf("ctl/manager, GetTaskList, DecodeRev, haveTasksRev: %v,"+
+				" err: %v", haveTasksRev, err)
+
 			return nil, err
 		}
 
@@ -94,6 +105,8 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 			m.mu.Unlock()
 			select {
 			case <-cancelCh:
+				log.Printf("ctl/manager, GetTaskList, haveTasksRev: %v,"+
+					" cancelled", haveTasksRev)
 				return nil, ErrCanceled
 			case <-tasksWaitCh:
 				// FALLTHRU
@@ -106,11 +119,17 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 
 	m.mu.Unlock()
 
+	log.Printf("ctl/manager, GetTaskList, haveTasksRev: %v,"+
+		" done, rv: %#v", haveTasksRev, rv)
+
 	return rv, nil
 }
 
 func (m *CtlMgr) CancelTask(
 	taskId string, taskRev service_api.Revision) error {
+	log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v",
+		taskId, taskRev)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -122,10 +141,16 @@ func (m *CtlMgr) CancelTask(
 		task := taskHandle.task
 		if task.Id == taskId {
 			if taskRev != nil && !bytes.Equal(taskRev, task.Rev) {
+				log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
+					taskId, taskRev, service_api.ErrConflict)
+
 				return service_api.ErrConflict
 			}
 
 			if !task.IsCancelable {
+				log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
+					taskId, taskRev, service_api.ErrNotSupported)
+
 				return service_api.ErrNotSupported
 			}
 
@@ -140,6 +165,9 @@ func (m *CtlMgr) CancelTask(
 	}
 
 	if !canceled {
+		log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
+			taskId, taskRev, service_api.ErrNotFound)
+
 		return service_api.ErrNotFound
 	}
 
@@ -147,14 +175,23 @@ func (m *CtlMgr) CancelTask(
 		s.taskHandles = taskHandlesNext
 	})
 
+	log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, done",
+		taskId, taskRev)
+
 	return nil
 }
 
 func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
 	cancelCh service_api.Cancel) (*service_api.Topology, error) {
+	log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %v",
+		haveTopologyRev)
+
 	ctlTopology, err :=
 		m.ctl.WaitGetTopology(string(haveTopologyRev), cancelCh)
 	if err != nil {
+		log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %v, err: %v",
+			haveTopologyRev, err)
+
 		return nil, err
 	}
 
@@ -182,15 +219,23 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
 		rv.Messages = append(rv.Messages, fmt.Sprintf("error: %v", err))
 	}
 
+	log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %v, done, rv: %#v",
+		haveTopologyRev, rv)
+
 	return rv, nil
 }
 
 func (m *CtlMgr) PrepareTopologyChange(
 	change service_api.TopologyChange) error {
+	log.Printf("ctl/manager, PrepareTopologyChange, change: %v", change)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
+		log.Printf("ctl/manager, PrepareTopologyChange, rev check, err: %v",
+			service_api.ErrConflict)
+
 		return service_api.ErrConflict
 	}
 
@@ -200,6 +245,9 @@ func (m *CtlMgr) PrepareTopologyChange(
 			// NOTE: If there's an existing rebalance or preparation
 			// task, even if it's done, then treat as a conflict, as
 			// the caller should cancel them all first.
+			log.Printf("ctl/manager, PrepareTopologyChange, task type check,"+
+				" err: %v", service_api.ErrConflict)
+
 			return service_api.ErrConflict
 		}
 	}
@@ -231,10 +279,14 @@ func (m *CtlMgr) PrepareTopologyChange(
 		s.taskHandles = taskHandlesNext
 	})
 
+	log.Printf("ctl/manager, PrepareTopologyChange, done")
+
 	return nil
 }
 
 func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
+	log.Printf("ctl/manager, StartTopologyChange, change: %v", change)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -242,6 +294,9 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 	// just wants to impose or force a topology change.
 	if len(change.CurrentTopologyRev) > 0 &&
 		string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
+		log.Printf("ctl/manager, StartTopologyChange, rev check, err: %v",
+			service_api.ErrConflict)
+
 		return service_api.ErrConflict
 	}
 
@@ -253,12 +308,19 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 
 	for _, th := range m.tasks.taskHandles {
 		if th.task.Type == service_api.TaskTypeRebalance {
+			log.Printf("ctl/manager, StartTopologyChange,"+
+				" task rebalance check, err: %v",
+				service_api.ErrConflict)
+
 			return service_api.ErrConflict
 		}
 
 		if th.task.Type == service_api.TaskTypePrepared {
 			th, err = m.startTopologyChangeTaskHandleLOCKED(change)
 			if err != nil {
+				log.Printf("ctl/manager, StartTopologyChange,"+
+					" prepared, err: %v", err)
+
 				return err
 			}
 
@@ -275,6 +337,8 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 	m.updateTasksLOCKED(func(s *tasks) {
 		s.taskHandles = taskHandlesNext
 	})
+
+	log.Printf("ctl/manager, StartTopologyChange, started")
 
 	return nil
 }
