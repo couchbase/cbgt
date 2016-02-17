@@ -17,7 +17,6 @@ package ctl
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -29,10 +28,12 @@ import (
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
 	"github.com/couchbase/cbgt/rebalance"
+
+	"github.com/couchbase/cbauth/service_api"
 )
 
-var ErrWrongRev = errors.New("wrong rev")
-var ErrCanceled = errors.New("canceled")
+var ErrCtlWrongRev = service_api.ErrConflict
+var ErrCtlCanceled = service_api.ErrCanceled
 
 // An Ctl might be in the midst of controlling a replan/rebalance,
 // where ctl.ctlDoneCh will be non-nil.
@@ -352,7 +353,7 @@ func (ctl *Ctl) WaitGetTopology(haveRev string, cancelCh <-chan struct{}) (
 		ctl.m.Unlock()
 		select {
 		case <-cancelCh:
-			return nil, ErrCanceled
+			return nil, ErrCtlCanceled
 		case <-revNumWaitCh:
 			// FALLTHRU
 		}
@@ -439,7 +440,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 	memberNodeUUIDs []string,
 	cb CtlOnProgressFunc) error {
 	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) {
-		return ErrWrongRev
+		return ErrCtlWrongRev
 	}
 
 	if ctl.ctlStopCh != nil {
@@ -701,7 +702,7 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
 	for i := 0; i < secs; i++ {
 		select {
 		case <-cancelCh:
-			return nil, ErrCanceled
+			return nil, ErrCtlCanceled
 		default:
 		}
 

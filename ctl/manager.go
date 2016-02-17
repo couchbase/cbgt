@@ -107,7 +107,7 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 			case <-cancelCh:
 				log.Printf("ctl/manager, GetTaskList, haveTasksRev: %s,"+
 					" cancelled", haveTasksRev)
-				return nil, ErrCanceled
+				return nil, service_api.ErrCanceled
 			case <-tasksWaitCh:
 				// FALLTHRU
 			}
@@ -361,6 +361,7 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		ctlChangeTopology.Mode = "failover-hard"
 
 	default:
+		log.Printf("ctl/manager, unknown change.Type: %v", change.Type)
 		return nil, service_api.ErrNotSupported
 	}
 
@@ -474,6 +475,9 @@ func (m *CtlMgr) updateProgress(
 				taskNext.Rev = EncodeRev(revNum)
 				taskNext.Progress = progress
 
+				log.Printf("ctl/manager, revNum: %d, progress: %f",
+					revNum, progress)
+
 				// TODO: DetailedProgress.
 
 				taskNext.ErrorMessage = ""
@@ -484,7 +488,7 @@ func (m *CtlMgr) updateProgress(
 					taskNext.ErrorMessage = taskNext.ErrorMessage + err.Error()
 				}
 
-				if p == nil {
+				if p == nil && len(errs) > 0 {
 					taskNext.Status = service_api.TaskStatusFailed
 				}
 
