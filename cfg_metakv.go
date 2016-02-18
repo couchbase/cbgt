@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"sort"
-	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -69,8 +68,8 @@ type CfgMetaKvEntry struct {
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
 		prefix:       CFG_METAKV_PREFIX,
-		cancelCh:     make(chan struct{}),
 		cfgMem:       NewCfgMem(),
+		cancelCh:     make(chan struct{}),
 		splitEntries: map[string]CfgMetaKvEntry{},
 	}
 
@@ -149,7 +148,14 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 		return data, casResult, nil
 	}
 
-	return c.cfgMem.Get(key, cas)
+	path := c.keyToPath(key)
+
+	v, _, err := metakv.Get(path) // TODO: Handle rev.
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return v, 1, nil
 }
 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
@@ -257,21 +263,12 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 		return casResult, err
 	}
 
-	rev, err := c.cfgMem.GetRev(key, cas)
+	err := metakv.Set(path, val, nil) // TODO: Handle rev better.
 	if err != nil {
 		return 0, err
 	}
 
-	if rev == nil {
-		err = metakv.Add(path, val)
-	} else {
-		err = metakv.Set(path, val, rev)
-	}
-	if err != nil {
-		return 0, err
-	}
-
-	return c.cfgMem.Set(key, val, CFG_CAS_FORCE)
+	return 1, nil
 }
 
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
@@ -285,20 +282,12 @@ func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 	path := c.keyToPath(key)
 
 	if cfgMetaKvSplitKeys[key] {
+		delete(c.splitEntries, key)
+
 		return metakv.RecursiveDelete(path + "/")
 	}
 
-	rev, err := c.cfgMem.GetRev(key, cas)
-	if err != nil {
-		return err
-	}
-
-	err = metakv.Delete(path, rev)
-	if err != nil {
-		return err
-	}
-
-	return c.cfgMem.Del(key, 0)
+	return metakv.Delete(path, nil) // TODO: Handle rev better.
 }
 
 func (c *CfgMetaKv) Load() error {
@@ -313,24 +302,10 @@ func (c *CfgMetaKv) metaKVCallback(path string,
 
 	key := c.pathToKey(path)
 
-	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v", path, key)
+	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v,"+
+		" deletion: %t", path, key, value == nil)
 
-	for splitKey := range cfgMetaKvSplitKeys {
-		if strings.HasPrefix(key, splitKey) {
-			return c.cfgMem.Refresh()
-		}
-	}
-
-	if value == nil { // Deletion.
-		return c.delUnlocked(key, 0)
-	}
-
-	cas, err := c.cfgMem.Set(key, value, CFG_CAS_FORCE)
-	if err == nil {
-		c.cfgMem.SetRev(key, cas, rev)
-	}
-
-	return err
+	return c.cfgMem.Refresh()
 }
 
 func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
@@ -341,40 +316,6 @@ func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
 }
 
 func (c *CfgMetaKv) Refresh() error {
-	/* TODO: Sketch implementation of Refresh...
-
-	c.m.Lock()
-	defer c.m.Unlock()
-
-	c2, err := NewCfgMetaKv()
-	if err != nil {
-		return err
-	}
-
-	err = c2.Load()
-	if err != nil {
-		return err
-	}
-
-	c2.m.Lock()
-
-	c.cfgMem.CASNext = c2.cfgMem.CASNext
-	c.cfgMem.Entries = c2.cfgMem.Entries
-
-	if c.lastSplitCAS < c2.lastSplitCAS {
-		c.lastSplitCAS = c2.lastSplitCAS
-	}
-
-	cancelCh := c.cancelCh
-	c.cancelCh = c2.cancelCh
-
-	c2.m.Unlock()
-
-	go close(cancelCh)
-
-	return c.cfgMem.Refresh()
-	*/
-
 	return nil
 }
 
