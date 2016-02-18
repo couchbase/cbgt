@@ -39,9 +39,9 @@ import (
 // union of NodeDef values that CfgMetaKv reconstructs on the fly for
 // the entire "directory".
 
-const (
-	CFG_METAKV_PREFIX = "/cbgt/cfg/" // Prefix of paths stored in metakv.
-)
+// Prefix of paths stored in metakv, and should be immutable after
+// process init()'ialization.
+var CfgMetaKvPrefix = "/cbgt/cfg/"
 
 var cfgMetaKvSplitKeys map[string]bool = map[string]bool{
 	CfgNodeDefsKey(NODE_DEFS_WANTED): true,
@@ -67,7 +67,7 @@ type CfgMetaKvEntry struct {
 // configuration file in the metakv.
 func NewCfgMetaKv() (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
-		prefix:       CFG_METAKV_PREFIX,
+		prefix:       CfgMetaKvPrefix,
 		cfgMem:       NewCfgMem(),
 		cancelCh:     make(chan struct{}),
 		splitEntries: map[string]CfgMetaKvEntry{},
