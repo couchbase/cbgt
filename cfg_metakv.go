@@ -297,15 +297,16 @@ func (c *CfgMetaKv) Load() error {
 
 func (c *CfgMetaKv) metaKVCallback(path string,
 	value []byte, rev interface{}) error {
-	c.m.Lock()
-	defer c.m.Unlock()
-
 	key := c.pathToKey(path)
 
 	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v,"+
 		" deletion: %t", path, key, value == nil)
 
-	return c.cfgMem.Refresh()
+	c.m.Lock()
+	c.cfgMem.FireEvent(key, 1, nil)
+	c.m.Unlock()
+
+	return nil
 }
 
 func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
