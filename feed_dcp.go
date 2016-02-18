@@ -30,6 +30,9 @@ import (
 // protocol.
 const DEST_EXTRAS_TYPE_DCP = DestExtrasType(0x0002)
 
+// DCPFeedPrefix should be immutable after process init()'ialization.
+var DCPFeedPrefix string
+
 func init() {
 	RegisterFeedType("couchbase", &FeedType{
 		Start:         StartDCPFeed,
@@ -237,7 +240,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 	}
 
 	options := &cbdatasource.BucketDataSourceOptions{
-		Name: fmt.Sprintf("%s-%x", name, rand.Int31()),
+		Name: fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31()),
 		ClusterManagerBackoffFactor: params.ClusterManagerBackoffFactor,
 		ClusterManagerSleepInitMS:   params.ClusterManagerSleepInitMS,
 		ClusterManagerSleepMaxMS:    params.ClusterManagerSleepMaxMS,
