@@ -124,7 +124,8 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 		return false, fmt.Errorf("planner: skipped due to nil cfg")
 	}
 
-	return Plan(mgr.cfg, mgr.version, mgr.uuid, mgr.server, nil)
+	return Plan(mgr.cfg, mgr.version, mgr.uuid, mgr.server,
+		mgr.Options(), nil)
 }
 
 // A PlannerFilter callback func should return true if the plans for
@@ -134,7 +135,7 @@ type PlannerFilter func(indexDef *IndexDef,
 	planPIndexesPrev, planPIndexes *PlanPIndexes) bool
 
 // Plan runs the planner once.
-func Plan(cfg Cfg, version, uuid, server string,
+func Plan(cfg Cfg, version, uuid, server string, options map[string]string,
 	plannerFilter PlannerFilter) (bool, error) {
 	indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
 		PlannerGetPlan(cfg, version, uuid)
@@ -143,7 +144,7 @@ func Plan(cfg Cfg, version, uuid, server string,
 	}
 
 	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
-		planPIndexesPrev, version, server, plannerFilter)
+		planPIndexesPrev, version, server, options, plannerFilter)
 	if err != nil {
 		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
 	}
@@ -287,7 +288,7 @@ func PlannerGetPlanPIndexes(cfg Cfg, version string) (
 // Split logical indexes into PIndexes and assign PIndexes to nodes.
 func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	planPIndexesPrev *PlanPIndexes, version, server string,
-	plannerFilter PlannerFilter) (
+	options map[string]string, plannerFilter PlannerFilter) (
 	*PlanPIndexes, error) {
 	// This simple planner assigns at most MaxPartitionsPerPIndex
 	// number of partitions onto a PIndex.  And then uses blance to
@@ -327,8 +328,8 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		}
 
 		// Split each indexDef into 1 or more PlanPIndexes.
-		planPIndexesForIndex, err :=
-			SplitIndexDefIntoPlanPIndexes(indexDef, server, planPIndexes)
+		planPIndexesForIndex, err := SplitIndexDefIntoPlanPIndexes(
+			indexDef, server, options, planPIndexes)
 		if err != nil {
 			log.Printf("planner: could not SplitIndexDefIntoPlanPIndexes,"+
 				" indexDef.Name: %s, server: %s, err: %v",
@@ -426,13 +427,13 @@ func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 // the other PIndexes (such as having only a remainder of 4 partitions
 // rather than the usual 10 partitions per PIndex).
 func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
-	planPIndexesOut *PlanPIndexes) (
+	options map[string]string, planPIndexesOut *PlanPIndexes) (
 	map[string]*PlanPIndex, error) {
 	maxPartitionsPerPIndex := indexDef.PlanParams.MaxPartitionsPerPIndex
 
 	sourcePartitionsArr, err := DataSourcePartitions(indexDef.SourceType,
 		indexDef.SourceName, indexDef.SourceUUID, indexDef.SourceParams,
-		server)
+		server, options)
 	if err != nil {
 		return nil, fmt.Errorf("planner: could not get partitions,"+
 			" indexDef.Name: %s, server: %s, err: %v",

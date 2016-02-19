@@ -389,7 +389,7 @@ func (t *FilesFeed) Stats(w io.Writer) error {
 // FilesFeedPartitions returns the partitions, controlled by
 // FilesFeedParams.NumPartitions, for a FilesFeed instance.
 func FilesFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
-	server string) ([]string, error) {
+	server string, options map[string]string) ([]string, error) {
 	ffp := &FilesFeedParams{}
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), ffp)

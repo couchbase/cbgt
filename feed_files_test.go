@@ -173,7 +173,7 @@ func TestFilesFeedPartitions(t *testing.T) {
 	server := ""
 
 	partitions, err := FilesFeedPartitions(sourceType, sourceName,
-		sourceUUID, sourceParams, server)
+		sourceUUID, sourceParams, server, nil)
 	if err != nil {
 		t.Errorf("expected no err, err: %v", err)
 	}
@@ -182,13 +182,13 @@ func TestFilesFeedPartitions(t *testing.T) {
 	}
 
 	partitions, err = FilesFeedPartitions(sourceType, sourceName,
-		sourceUUID, "this}{is]not[json", server)
+		sourceUUID, "this}{is]not[json", server, nil)
 	if err == nil {
 		t.Errorf("expected err on bad JSON")
 	}
 
 	partitions, err = FilesFeedPartitions(sourceType, sourceName,
-		sourceUUID, `{"numPartitions":0}`, server)
+		sourceUUID, `{"numPartitions":0}`, server, nil)
 	if err != nil {
 		t.Errorf("expected no err, err: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestFilesFeedPartitions(t *testing.T) {
 	}
 
 	partitions, err = FilesFeedPartitions(sourceType, sourceName,
-		sourceUUID, `{"numPartitions":1}`, server)
+		sourceUUID, `{"numPartitions":1}`, server, nil)
 	if err != nil {
 		t.Errorf("expected no err, err: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestFilesFeedPartitions(t *testing.T) {
 	}
 
 	partitions, err = FilesFeedPartitions(sourceType, sourceName,
-		sourceUUID, `{"numPartitions":13}`, server)
+		sourceUUID, `{"numPartitions":13}`, server, nil)
 	if err != nil {
 		t.Errorf("expected no err, err: %v", err)
 	}

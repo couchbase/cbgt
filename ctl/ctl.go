@@ -48,8 +48,9 @@ type Ctl struct {
 	cfg        cbgt.Cfg
 	cfgEventCh chan cbgt.CfgEvent
 
-	server  string
-	options CtlOptions
+	server     string
+	optionsMgr map[string]string
+	optionsCtl CtlOptions
 
 	doneCh chan struct{} // Closed by Ctl when Ctl is done.
 	initCh chan error    // Closed by Ctl when Ctl is initialized.
@@ -154,13 +155,15 @@ type CtlOnProgressFunc func(
 
 // ----------------------------------------------------
 
-func StartCtl(cfg cbgt.Cfg, server string, options CtlOptions) (
+func StartCtl(cfg cbgt.Cfg, server string,
+	optionsMgr map[string]string, optionsCtl CtlOptions) (
 	*Ctl, error) {
 	ctl := &Ctl{
 		cfg:        cfg,
 		cfgEventCh: make(chan cbgt.CfgEvent),
 		server:     server,
-		options:    options,
+		optionsMgr: optionsMgr,
+		optionsCtl: optionsCtl,
 		doneCh:     make(chan struct{}),
 		initCh:     make(chan error),
 		stopCh:     make(chan struct{}),
@@ -298,7 +301,7 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 		// Split each indexDef into 1 or more PlanPIndexes.
 		planPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
-			indexDef, ctl.server, nil)
+			indexDef, ctl.server, ctl.optionsMgr, nil)
 		if err != nil {
 			copyPrevPlan()
 			return false
@@ -320,7 +323,7 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 		var nodesToRemove []string
 
 		cmd.PlannerSteps(steps, ctl.cfg, cbgt.VERSION,
-			ctl.server, nodesToRemove, ctl.options.DryRun,
+			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
 			plannerFilterNewIndexesOnly)
 
 		planPIndexes, _, err :=
@@ -576,13 +579,12 @@ func (ctl *Ctl) startCtlLOCKED(
 
 				// Start rebalance and monitor progress.
 				r, err := rebalance.StartRebalance(cbgt.VERSION,
-					ctl.cfg,
-					ctl.server,
+					ctl.cfg, ctl.server, ctl.optionsMgr,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
-						FavorMinNodes: ctl.options.FavorMinNodes,
-						DryRun:        ctl.options.DryRun,
-						Verbose:       ctl.options.Verbose,
+						FavorMinNodes: ctl.optionsCtl.FavorMinNodes,
+						DryRun:        ctl.optionsCtl.DryRun,
+						Verbose:       ctl.optionsCtl.Verbose,
 					})
 				if err != nil {
 					log.Printf("ctl: StartRebalance, err: %v", err)
@@ -674,7 +676,8 @@ func (ctl *Ctl) startCtlLOCKED(
 		}
 
 		err = cmd.PlannerSteps(steps, ctl.cfg, cbgt.VERSION,
-			ctl.server, nodesToRemove, ctl.options.DryRun, nil)
+			ctl.server, ctl.optionsMgr, nodesToRemove,
+			ctl.optionsCtl.DryRun, nil)
 		if err != nil {
 			log.Printf("ctl: PlannerSteps, err: %v", err)
 			ctlErrs = append(ctlErrs, err)
@@ -695,7 +698,7 @@ func errNothingToPlan(err error) bool {
 // superset of wantedNodes, and returns the nodesToRemove.
 func (ctl *Ctl) waitForWantedNodes(wantedNodes []string,
 	cancelCh <-chan struct{}) ([]string, error) {
-	secs := ctl.options.WaitForMemberNodes
+	secs := ctl.optionsCtl.WaitForMemberNodes
 	if secs <= 0 {
 		secs = 30
 	}

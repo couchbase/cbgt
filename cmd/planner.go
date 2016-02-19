@@ -29,8 +29,8 @@ import (
 // known and wanted node.  This can have a lot of impact, and was
 // meant to be used for cluster cleanup/purging situations.
 func PlannerSteps(steps map[string]bool,
-	cfg cbgt.Cfg, version, server string, nodesRemove []string,
-	dryRun bool, plannerFilter cbgt.PlannerFilter) error {
+	cfg cbgt.Cfg, version, server string, options map[string]string,
+	nodesRemove []string, dryRun bool, plannerFilter cbgt.PlannerFilter) error {
 	if steps != nil && steps["failover"] {
 		steps["unregister"] = true
 		steps["failover_"] = true
@@ -75,7 +75,8 @@ func PlannerSteps(steps map[string]bool,
 		log.Printf("planner: step planner")
 
 		if !dryRun {
-			_, err := cbgt.Plan(cfg, cbgt.VERSION, "", server, plannerFilter)
+			_, err :=
+				cbgt.Plan(cfg, cbgt.VERSION, "", server, options, plannerFilter)
 			if err != nil {
 				return err
 			}
@@ -86,7 +87,7 @@ func PlannerSteps(steps map[string]bool,
 		log.Printf("planner: step failover_")
 
 		if !dryRun {
-			_, err := Failover(cfg, cbgt.VERSION, server, nodesRemove)
+			_, err := Failover(cfg, cbgt.VERSION, server, options, nodesRemove)
 			if err != nil {
 				return err
 			}
@@ -98,7 +99,7 @@ func PlannerSteps(steps map[string]bool,
 
 // Failover promotes replicas to primary for the remaining nodes.
 func Failover(cfg cbgt.Cfg, version string, server string,
-	nodesFailover []string) (bool, error) {
+	options map[string]string, nodesFailover []string) (bool, error) {
 	mapNodesFailover := cbgt.StringsToMap(nodesFailover)
 
 	uuid := ""
@@ -110,7 +111,7 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 	}
 
 	planPIndexesCalc, err := cbgt.CalcPlan("failover",
-		indexDefs, nodeDefs, planPIndexesPrev, version, server, nil)
+		indexDefs, nodeDefs, planPIndexesPrev, version, server, options, nil)
 	if err != nil {
 		return false, fmt.Errorf("planner: failover CalcPlan, err: %v", err)
 	}

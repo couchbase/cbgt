@@ -89,9 +89,10 @@ type CBFeedParams struct {
 // CouchbasePartitions parses a sourceParams for a couchbase
 // data-source/feed.
 func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
-	serverIn string) (partitions []string, err error) {
+	serverIn string, options map[string]string) (
+	partitions []string, err error) {
 	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-		serverIn)
+		serverIn, options)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +116,9 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	return rv, nil
 }
 
-func CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-	serverIn string) (*couchbase.Bucket, error) {
+// CouchbaseBucket is a helper function to connect to a couchbase bucket.
+func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
+	options map[string]string) (*couchbase.Bucket, error) {
 	server, poolName, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
@@ -132,14 +134,19 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams,
 		}
 	}
 
-	if params.AuthUser == "" {
+	authType := ""
+	if options != nil {
+		authType = options["authType"]
+	}
+
+	if authType == "cbauth" {
 		auth, err := NewCbAuthHandler(server)
 		if err == nil {
 			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
 		}
 		if err != nil {
 			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
-				" failed in parsing credentials,"+
+				" could not retrieve cbauth credentials,"+
 				" server: %s, poolName: %s, bucketName: %s,"+
 				" sourceParams: %q, err: %v",
 				server, poolName, bucketName, sourceParams, err)
@@ -260,10 +267,11 @@ func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
 // with values of each vbucket's UUID / high_seqno.  It implements the
 // FeedPartitionsFunc func signature.
 func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
-	sourceParams, serverIn string) (
+	sourceParams, serverIn string,
+	options map[string]string) (
 	map[string]UUIDSeq, error) {
 	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-		serverIn)
+		serverIn, options)
 	if err != nil {
 		return nil, err
 	}
@@ -314,10 +322,11 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 // func signature.
 
 func CouchbaseStats(sourceType, sourceName, sourceUUID,
-	sourceParams, serverIn, statsKind string) (
+	sourceParams, serverIn string,
+	options map[string]string, statsKind string) (
 	map[string]interface{}, error) {
 	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-		serverIn)
+		serverIn, options)
 	if err != nil {
 		return nil, err
 	}

@@ -66,6 +66,7 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
 	authType := mgr.Options()["authType"]
+
 	feed, err := NewDCPFeed(feedName, indexName, server, poolName,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
 		mgr.tagsMap != nil && !mgr.tagsMap["feed"], authType, mgr)
@@ -184,7 +185,11 @@ func NewDCPFeed(name, indexName, url, poolName,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, authType string, mgr *Manager) (*DCPFeed, error) {
+	log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s",
+		name, indexName)
+
 	params := NewDCPFeedParams()
+
 	var stopAfter map[string]UUIDSeq
 
 	if paramsStr != "" {
@@ -216,9 +221,11 @@ func NewDCPFeed(name, indexName, url, poolName,
 
 	var auth couchbase.AuthHandler = params
 
-	if params.AuthUser == "" &&
-		params.AuthSaslUser == "" && authType == "cbauth" {
-		for _, serverUrl := range urls {
+	if authType == "cbauth" {
+		for i, serverUrl := range urls {
+			log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s, cbauth %d prep",
+				name, indexName, i)
+
 			cbAuthHandler, err := NewCbAuthHandler(serverUrl)
 			if err != nil {
 				continue
@@ -233,9 +240,18 @@ func NewDCPFeed(name, indexName, url, poolName,
 			if err != nil {
 				continue
 			}
+
+			log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s, cbauth %d ok",
+				name, indexName, i)
+
 			break
 		}
-	} else if params.AuthSaslUser != "" {
+	}
+
+	if params.AuthSaslUser != "" {
+		log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s, AuthSaslUser",
+			name, indexName)
+
 		auth = &DCPFeedParamsSasl{*params}
 	}
 
@@ -515,15 +531,19 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	}, r.stats.TimerRollback)
 }
 
+// VerifyBucketNotExists returns true if it's sure the bucket does not
+// exist.  A rejected auth, for example, results in false.
 func (r *DCPFeed) VerifyBucketNotExists() bool {
 	urls := strings.Split(r.url, ";")
 	if len(urls) > 0 {
-		// checking with first server for bucket
+		// checking with first server for bucket existence
+		var auth couchbase.AuthHandler = r.params
+
 		authType := ""
 		if r.mgr != nil {
 			authType = r.mgr.Options()["authType"]
 		}
-		var auth couchbase.AuthHandler = r.params
+
 		if authType == "cbauth" {
 			cbAuthHandler, err := NewCbAuthHandler(urls[0])
 			params := NewDCPFeedParams()
@@ -536,6 +556,7 @@ func (r *DCPFeed) VerifyBucketNotExists() bool {
 					err, r.url)
 			}
 		}
+
 		bucket, err := cbdatasource.ConnectBucket(urls[0], r.poolName,
 			r.bucketName, auth)
 		if err == nil {

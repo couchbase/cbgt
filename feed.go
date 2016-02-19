@@ -68,11 +68,13 @@ type FeedStartFunc func(mgr *Manager,
 // Each Feed or data-source type knows of the data partitions for a
 // data source.
 type FeedPartitionsFunc func(sourceType, sourceName, sourceUUID,
-	sourceParams, server string) ([]string, error)
+	sourceParams, server string,
+	options map[string]string) ([]string, error)
 
 // Returns the current partitions and their seq's.
 type FeedPartitionSeqsFunc func(sourceType, sourceName, sourceUUID,
-	sourceParams, server string) (map[string]UUIDSeq, error)
+	sourceParams, server string,
+	options map[string]string) (map[string]UUIDSeq, error)
 
 // A UUIDSeq associates a UUID (such as from a partition's UUID) with
 // a seq number.
@@ -84,7 +86,9 @@ type UUIDSeq struct {
 // Returns the current stats from a data source, if available,
 // where the result is dependent on the data source / feed type.
 type FeedStatsFunc func(sourceType, sourceName, sourceUUID,
-	sourceParams, server, statsKind string) (map[string]interface{}, error)
+	sourceParams, server string,
+	options map[string]string,
+	statsKind string) (map[string]interface{}, error)
 
 // StopAfterSourceParams defines optional fields for the sourceParams
 // that can stop the data source feed (i.e., index ingest) if the seqs
@@ -109,7 +113,7 @@ func RegisterFeedType(sourceType string, f *FeedType) {
 // DataSourcePartitions is a helper function that returns the data
 // source partitions for a named data source or feed type.
 func DataSourcePartitions(sourceType, sourceName, sourceUUID, sourceParams,
-	server string) ([]string, error) {
+	server string, options map[string]string) ([]string, error) {
 	feedType, exists := FeedTypes[sourceType]
 	if !exists || feedType == nil {
 		return nil, fmt.Errorf("feed: DataSourcePartitions"+
@@ -117,7 +121,7 @@ func DataSourcePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	}
 
 	return feedType.Partitions(sourceType, sourceName, sourceUUID,
-		sourceParams, server)
+		sourceParams, server, options)
 }
 
 // ------------------------------------------------------------------------
@@ -129,9 +133,9 @@ func DataSourcePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 // transformed into a map[string]UUIDSeq.  DataSourcePrepParams
 // returns the transformed sourceParams.
 func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
-	server string) (string, error) {
+	server string, options map[string]string) (string, error) {
 	_, err := DataSourcePartitions(sourceType, sourceName, sourceUUID,
-		sourceParams, server)
+		sourceParams, server, options)
 	if err != nil {
 		return "", err
 	}
@@ -165,7 +169,7 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 			if ok && markPartitionSeqs == "currentPartitionSeqs" {
 				partitionSeqs, err := feedType.PartitionSeqs(
 					sourceType, sourceName, sourceUUID,
-					sourceParams, server)
+					sourceParams, server, options)
 				if err != nil {
 					return "", fmt.Errorf("feed: DataSourcePrepParams"+
 						" PartitionSeqs, err: %v", err)

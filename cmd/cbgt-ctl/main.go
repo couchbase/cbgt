@@ -46,6 +46,8 @@ func main() {
 
 	cmd.MainCommon(cbgt.VERSION, flagAliases)
 
+	options := cmd.ParseOptions(flags.Options, "CBGTCTL_ENV_OPTIONS", nil)
+
 	cfg, err := cmd.MainCfgClient(path.Base(os.Args[0]), flags.CfgConnect)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -79,8 +81,9 @@ func main() {
 	if steps != nil && steps["rebalance_"] {
 		log.Printf("main: step rebalance_")
 
-		err := rebalance.RunRebalance(cfg, flags.Server, nodesToRemove,
-			flags.FavorMinNodes, flags.DryRun, flags.Verbose, nil)
+		err := rebalance.RunRebalance(cfg, flags.Server, options,
+			nodesToRemove, flags.FavorMinNodes,
+			flags.DryRun, flags.Verbose, nil)
 		if err != nil {
 			log.Fatalf("main: RunRebalance, err: %v", err)
 			return
@@ -90,7 +93,7 @@ func main() {
 	// ------------------------------------------------
 
 	err = cmd.PlannerSteps(steps, cfg, cbgt.VERSION,
-		flags.Server, nodesToRemove, flags.DryRun, nil)
+		flags.Server, options, nodesToRemove, flags.DryRun, nil)
 	if err != nil {
 		log.Fatalf("main: PlannerSteps, err: %v", err)
 		return
@@ -101,7 +104,7 @@ func main() {
 	var c *ctl.Ctl
 
 	if steps != nil && (steps["service"] || steps["rest"] || steps["prompt"]) {
-		c, err = ctl.StartCtl(cfg, flags.Server, ctl.CtlOptions{
+		c, err = ctl.StartCtl(cfg, flags.Server, options, ctl.CtlOptions{
 			DryRun:             flags.DryRun,
 			Verbose:            flags.Verbose,
 			FavorMinNodes:      flags.FavorMinNodes,

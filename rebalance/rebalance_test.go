@@ -189,7 +189,7 @@ func TestRebalance(t *testing.T) {
 			}
 		}
 
-		r, err := StartRebalance(cbgt.VERSION, cfg, ".",
+		r, err := StartRebalance(cbgt.VERSION, cfg, ".", nil,
 			nodesToRemove,
 			RebalanceOptions{
 				HttpGet: httpGet,

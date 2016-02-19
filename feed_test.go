@@ -71,49 +71,49 @@ func TestParsePartitionsToVBucketIds(t *testing.T) {
 
 func TestDataSourcePartitions(t *testing.T) {
 	a, err := DataSourcePartitions("a fake source type",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected fake data source type to error")
 	}
 
 	a, err = DataSourcePartitions("couchbase",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected couchbase source type to error on bad server url")
 	}
 
 	a, err = DataSourcePartitions("couchbase-dcp",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected couchbase source type to error on bad server url")
 	}
 
 	a, err = DataSourcePartitions("couchbase-tap",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected couchbase source type to error on bad server url")
 	}
 
 	a, err = DataSourcePartitions("nil",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err != nil || a != nil {
 		t.Errorf("expected nil source type to work, but have no partitions")
 	}
 
 	a, err = DataSourcePartitions("primary",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected dest source type to error on non-json server params")
 	}
 
 	a, err = DataSourcePartitions("primary",
-		"sourceName", "sourceUUID", "", "serverURL")
+		"sourceName", "sourceUUID", "", "serverURL", nil)
 	if err != nil || a == nil {
 		t.Errorf("expected dest source type to ok on empty server params")
 	}
 
 	a, err = DataSourcePartitions("primary",
-		"sourceName", "sourceUUID", "{}", "serverURL")
+		"sourceName", "sourceUUID", "{}", "serverURL", nil)
 	if err != nil || a == nil {
 		t.Errorf("expected dest source type to ok on empty JSON server params")
 	}
@@ -441,7 +441,7 @@ func TestCouchbasePartitions(t *testing.T) {
 
 	for _, test := range tests {
 		partitions, err := CouchbasePartitions(test.sourceType, test.sourceName,
-			test.sourceUUID, test.sourceParams, test.serverIn)
+			test.sourceUUID, test.sourceParams, test.serverIn, nil)
 		if (test.expErr && err == nil) ||
 			(!test.expErr && err != nil) {
 			t.Errorf("test err != expErr,"+
@@ -457,19 +457,19 @@ func TestCouchbasePartitions(t *testing.T) {
 
 func TestDataSourcePrepParams(t *testing.T) {
 	a, err := DataSourcePrepParams("a fake source type",
-		"sourceName", "sourceUUID", "sourceParams", "serverURL")
+		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != "" {
 		t.Errorf("expected fake data source type to error")
 	}
 
 	a, err = DataSourcePrepParams("primary",
-		"sourceName", "sourceUUID", "", "serverURL")
+		"sourceName", "sourceUUID", "", "serverURL", nil)
 	if err != nil || a != "" {
 		t.Errorf("expected empty data source params to ok")
 	}
 
 	a, err = DataSourcePrepParams("primary",
-		"sourceName", "sourceUUID", "{}", "serverURL")
+		"sourceName", "sourceUUID", "{}", "serverURL", nil)
 	if err != nil || a != "{}" {
 		t.Errorf("expected {} data source params to ok")
 	}
@@ -479,7 +479,7 @@ func TestDataSourcePrepParams(t *testing.T) {
 
 	testFeedPartitions := func(sourceType,
 		sourceName, sourceUUID, sourceParams,
-		serverIn string,
+		serverIn string, options map[string]string,
 	) (
 		partitions []string, err error,
 	) {
@@ -488,7 +488,7 @@ func TestDataSourcePrepParams(t *testing.T) {
 	}
 
 	testFeedPartitionSeqs := func(sourceType, sourceName, sourceUUID,
-		sourceParams, serverIn string,
+		sourceParams, serverIn string, options map[string]string,
 	) (
 		map[string]UUIDSeq, error,
 	) {
@@ -503,7 +503,7 @@ func TestDataSourcePrepParams(t *testing.T) {
 
 	sourceParams := `{"foo":"hoo","markPartitionSeqs":"currentPartitionSeqs"}`
 	a, err = DataSourcePrepParams("testFeed",
-		"sourceName", "sourceUUID", sourceParams, "serverURL")
+		"sourceName", "sourceUUID", sourceParams, "serverURL", nil)
 	if err != nil {
 		t.Errorf("expected no err")
 	}

@@ -27,6 +27,7 @@ type Flags struct {
 	FavorMinNodes bool
 	Help          bool
 	IndexTypes    string
+	Options       string
 	RemoveNodes   string
 	Server        string
 	Steps         string
@@ -104,6 +105,9 @@ func initFlags(flags *Flags) map[string][]string {
 	s(&flags.IndexTypes,
 		[]string{"indexTypes"}, "INDEX-TYPES", "",
 		"comma-separated list of additional index types.")
+	s(&flags.Options,
+		[]string{"options"}, "KEY=VALUE,...", "",
+		"optional comma-separated key=value pairs for advanced configurations.")
 	s(&flags.RemoveNodes,
 		[]string{"removeNodes", "r"}, "UUID-LIST", "",
 		"optional, comma-separated list of node UUID's to remove.")

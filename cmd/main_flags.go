@@ -17,6 +17,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	log "github.com/couchbase/clog"
@@ -74,4 +75,37 @@ func RegisterIndexTypes(indexTypes []string) {
 				})
 		}
 	}
+}
+
+// ParseOptions parses an options string and environment variable.
+// The optionKVs string is a comma-separated string formated as
+// "key=val,key=val,...".
+func ParseOptions(optionKVs string, envName string,
+	options map[string]string) map[string]string {
+	if options == nil {
+		options = map[string]string{}
+	}
+
+	if optionKVs != "" {
+		for _, kv := range strings.Split(optionKVs, ",") {
+			a := strings.Split(kv, "=")
+			if len(a) >= 2 {
+				options[a[0]] = a[1]
+			}
+		}
+	}
+
+	optionsEnv := os.Getenv(envName)
+	if optionsEnv != "" {
+		log.Printf(envName)
+		for _, kv := range strings.Split(optionsEnv, ",") {
+			a := strings.Split(kv, "=")
+			if len(a) >= 2 {
+				log.Printf("  %s", a[0])
+				options[a[0]] = a[1]
+			}
+		}
+	}
+
+	return options
 }

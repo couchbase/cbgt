@@ -97,7 +97,7 @@ type PrimarySourceParams struct {
 // PrimaryFeedPartitions generates partition strings based on a
 // PrimarySourceParams.NumPartitions parameter.
 func PrimaryFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
-	server string) ([]string, error) {
+	server string, options map[string]string) ([]string, error) {
 	dsp := &PrimarySourceParams{}
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), dsp)

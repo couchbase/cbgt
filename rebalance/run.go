@@ -19,10 +19,10 @@ import (
 
 // RunRebalance synchronously runs a rebalance and reports progress
 // until the rebalance is done or has errored.
-func RunRebalance(cfg cbgt.Cfg, server string, nodesToRemove []string,
-	favorMinNodes bool, dryRun bool, verbose int,
+func RunRebalance(cfg cbgt.Cfg, server string, options map[string]string,
+	nodesToRemove []string, favorMinNodes bool, dryRun bool, verbose int,
 	progressToString ProgressToString) error {
-	r, err := StartRebalance(cbgt.VERSION, cfg, server,
+	r, err := StartRebalance(cbgt.VERSION, cfg, server, options,
 		nodesToRemove,
 		RebalanceOptions{
 			FavorMinNodes: favorMinNodes,

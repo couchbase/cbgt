@@ -23,7 +23,7 @@ func init() {
 			return mgr.registerFeed(NewNILFeed(feedName, indexName, dests))
 		},
 		Partitions: func(sourceType, sourceName, sourceUUID, sourceParams,
-			server string) ([]string, error) {
+			server string, options map[string]string) ([]string, error) {
 			return nil, nil
 		},
 		Public: true,

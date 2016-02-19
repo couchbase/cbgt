@@ -57,10 +57,11 @@ type RebalanceLogFunc func(format string, v ...interface{})
 // A Rebalancer struct holds all the tracking information for the
 // Rebalance operation.
 type Rebalancer struct {
-	version    string   // See cbgt.Manager's version.
-	cfg        cbgt.Cfg // See cbgt.Manager's cfg.
-	server     string   // See cbgt.Manager's server.
-	options    RebalanceOptions
+	version    string            // See cbgt.Manager's version.
+	cfg        cbgt.Cfg          // See cbgt.Manager's cfg.
+	server     string            // See cbgt.Manager's server.
+	optionsMgr map[string]string // See cbgt.Manager's options.
+	optionsReb RebalanceOptions
 	progressCh chan RebalanceProgress
 
 	monitor             *monitor.MonitorNodes
@@ -122,8 +123,9 @@ type WantSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 // and orchestrating partition reassignments and the cbgt/rest/monitor
 // library to watch for progress and errors.
 func StartRebalance(version string, cfg cbgt.Cfg, server string,
+	optionsMgr map[string]string,
 	nodesToRemoveParam []string,
-	options RebalanceOptions) (
+	optionsReb RebalanceOptions) (
 	*Rebalancer, error) {
 	// TODO: Need timeouts on moves.
 	//
@@ -159,7 +161,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	monitorOptions := monitor.MonitorNodesOptions{
 		DiagSampleDisable: true,
-		HttpGet:           options.HttpGet,
+		HttpGet:           optionsReb.HttpGet,
 	}
 
 	monitorInst, err := monitor.StartMonitorNodes(urlUUIDs,
@@ -176,7 +178,8 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		version:             version,
 		cfg:                 cfg,
 		server:              server,
-		options:             options,
+		optionsMgr:          optionsMgr,
+		optionsReb:          optionsReb,
 		progressCh:          make(chan RebalanceProgress),
 		monitor:             monitorInst,
 		monitorDoneCh:       make(chan struct{}),
@@ -297,16 +300,16 @@ func (r *Rebalancer) Visit(visitor VisitFunc) {
 // --------------------------------------------------------
 
 func (r *Rebalancer) Logf(fmt string, v ...interface{}) {
-	if r.options.Verbose < 0 {
+	if r.optionsReb.Verbose < 0 {
 		return
 	}
 
-	if r.options.Verbose < len(fmt) &&
-		fmt[r.options.Verbose] == ' ' {
+	if r.optionsReb.Verbose < len(fmt) &&
+		fmt[r.optionsReb.Verbose] == ' ' {
 		return
 	}
 
-	f := r.options.Log
+	f := r.optionsReb.Log
 	if f == nil {
 		f = log.Printf
 	}
@@ -421,7 +424,7 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 		partitionModel,
 		blance.OrchestratorOptions{
 			// TODO: More options.
-			FavorMinNodes: r.options.FavorMinNodes,
+			FavorMinNodes: r.optionsReb.FavorMinNodes,
 		},
 		r.nodesAll,
 		begMap,
@@ -494,7 +497,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	// The endPlanPIndexesForIndex is a working data structure that's
 	// mutated as calcBegEndMaps progresses.
 	endPlanPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
-		indexDef, r.server, r.endPlanPIndexes)
+		indexDef, r.server, r.optionsMgr, r.endPlanPIndexes)
 	if err != nil {
 		r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" could not SplitIndexDefIntoPlanPIndexes,"+
@@ -576,7 +579,7 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		return err
 	}
 
-	if r.options.DryRun {
+	if r.optionsReb.DryRun {
 		r.m.Unlock()
 		return nil
 	}
@@ -787,7 +790,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 			feedType.PartitionSeqs(indexDef.SourceType,
 				indexDef.SourceName,
 				indexDef.SourceUUID,
-				indexDef.SourceParams, r.server)
+				indexDef.SourceParams, r.server, r.optionsMgr)
 		if err != nil {
 			return err
 		}
