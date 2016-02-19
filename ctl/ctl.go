@@ -567,7 +567,10 @@ func (ctl *Ctl) startCtlLOCKED(
 				indexDefsStart, err :=
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err != nil {
-					ctlErrs = append(ctlErrs, err)
+					if !errNothingToPlan(err) {
+						ctlErrs = append(ctlErrs, err)
+					}
+
 					return
 				}
 
@@ -583,7 +586,11 @@ func (ctl *Ctl) startCtlLOCKED(
 					})
 				if err != nil {
 					log.Printf("ctl: StartRebalance, err: %v", err)
-					ctlErrs = append(ctlErrs, err)
+
+					if !errNothingToPlan(err) {
+						ctlErrs = append(ctlErrs, err)
+					}
+
 					return
 				}
 
@@ -675,6 +682,11 @@ func (ctl *Ctl) startCtlLOCKED(
 	}()
 
 	return nil
+}
+
+func errNothingToPlan(err error) bool {
+	return err == cbgt.ErrPlannerEndedNoIndexDefs ||
+		err == cbgt.ErrPlannerEndedNoNodeDefs
 }
 
 // ----------------------------------------------------
