@@ -21,6 +21,8 @@ import (
 	"sync/atomic"
 
 	log "github.com/couchbase/clog"
+
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
@@ -178,6 +180,11 @@ type DCPFeedParamsSasl struct {
 
 func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
 	return d.AuthSaslUser, d.AuthSaslPassword
+}
+
+func (d *DCPFeedParamsSasl) ProvideServerCred(server string) (
+	user string, pswd string, err error) {
+	return cbauth.GetMemcachedServiceAuth(server)
 }
 
 // NewDCPFeed creates a new, ready-to-be-started DCP feed.
@@ -531,8 +538,9 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	}, r.stats.TimerRollback)
 }
 
-// VerifyBucketNotExists returns true if it's sure the bucket does not
-// exist.  A rejected auth, for example, results in false.
+// VerifyBucketNotExists returns true only if it's sure the bucket
+// does not exist.  A rejected auth or connection failure, for
+// example, results in false.
 func (r *DCPFeed) VerifyBucketNotExists() bool {
 	urls := strings.Split(r.url, ";")
 	if len(urls) > 0 {
@@ -546,26 +554,30 @@ func (r *DCPFeed) VerifyBucketNotExists() bool {
 
 		if authType == "cbauth" {
 			cbAuthHandler, err := NewCbAuthHandler(urls[0])
+			if err != nil {
+				return false
+			}
+
 			params := NewDCPFeedParams()
 			params.AuthUser, params.AuthPassword, err =
 				cbAuthHandler.GetCredentials()
-			if err == nil {
-				auth = params
-			} else {
-				log.Printf("feed_dcp: verify bucket error: %v url: %s",
-					err, r.url)
+			if err != nil {
+				return false
 			}
+
+			auth = params
 		}
 
 		bucket, err := cbdatasource.ConnectBucket(urls[0], r.poolName,
 			r.bucketName, auth)
-		if err == nil {
-			bucket.Close()
-		} else {
+		if err != nil {
 			_, ok := err.(*couchbase.BucketNotFoundError)
 			return ok
 		}
+
+		bucket.Close()
 	}
+
 	return false
 }
 

@@ -141,9 +141,11 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	if authType == "cbauth" {
 		auth, err := NewCbAuthHandler(server)
-		if err == nil {
-			params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
+		if err != nil {
+			return nil, err
 		}
+
+		params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
 		if err != nil {
 			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
 				" could not retrieve cbauth credentials,"+
@@ -233,6 +235,8 @@ func CouchbaseParseSourceName(
 
 // -------------------------------------------------
 
+// CbAuthHandler implements the couchbase.AuthHandler and
+// cbdatasource.ServerCredProvider interfaces.
 type CbAuthHandler struct {
 	HostPort string
 }
@@ -255,10 +259,11 @@ func (ah *CbAuthHandler) GetCredentials() (string, string, error) {
 
 func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
 	u, err := url.Parse(s)
-	if err == nil {
-		return &CbAuthHandler{HostPort: u.Host}, nil
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+
+	return &CbAuthHandler{HostPort: u.Host}, nil
 }
 
 // -------------------------------------------------
