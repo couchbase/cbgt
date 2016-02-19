@@ -226,20 +226,25 @@ func (ctl *Ctl) run() {
 	var lastIndexDefs *cbgt.IndexDefs
 
 	kickIndexDefs := func(kind string) error {
-		indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
-		if err == nil && indexDefs != nil {
-			if lastIndexDefs == nil {
-				lastIndexDefs = indexDefs
-			}
+		log.Printf("ctl: kickIndexDefs, kind: %s", kind)
 
-			if kind == "force" || kind == "force-indexDefs" ||
-				!reflect.DeepEqual(lastIndexDefs, indexDefs) {
-				err = ctl.IndexDefsChanged()
-				if err == nil {
-					lastIndexDefs = indexDefs
-				}
+		indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
+		if err != nil {
+			log.Printf("ctl: kickIndexDefs, kind: %s, CfgGetIndexDefs,"+
+				" err: %v", kind, err)
+			return err
+		}
+
+		if kind == "init" || kind == "force" || kind == "force-indexDefs" ||
+			!reflect.DeepEqual(lastIndexDefs, indexDefs) {
+			err = ctl.IndexDefsChanged()
+			if err != nil {
+				log.Printf("ctl: kickIndexDefs, kind: %s, IndexDefsChanged,"+
+					" err: %v", kind, err)
 			}
 		}
+
+		lastIndexDefs = indexDefs
 
 		return err
 	}

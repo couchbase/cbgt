@@ -317,7 +317,7 @@ func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
 }
 
 func (c *CfgMetaKv) Refresh() error {
-	return nil
+	return c.Load()
 }
 
 // RemoveAllKeys removes all cfg entries from metakv, where the caller
