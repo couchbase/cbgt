@@ -14,6 +14,7 @@ package cbgt
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -360,4 +361,35 @@ func CouchbaseStats(sourceType, sourceName, sourceUUID,
 	}
 
 	return rv, nil
+}
+
+// -------------------------------------------------
+
+// CBAuthHttpGet is a couchbase-specific http.Get(), for use in a
+// cbauth'ed environment.
+func CBAuthHttpGet(urlStrIn string) (resp *http.Response, err error) {
+	urlStr, err := CBAuthURL(urlStrIn)
+	if err != nil {
+		return nil, err
+	}
+
+	return http.Get(urlStr)
+}
+
+// CBAuthURL rewrites a URL with credentials, for use in a cbauth'ed
+// environment.
+func CBAuthURL(urlStr string) (string, error) {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return "", err
+	}
+
+	cbUser, cbPasswd, err := cbauth.GetHTTPServiceAuth(u.Host)
+	if err != nil {
+		return "", err
+	}
+
+	u.User = url.UserPassword(cbUser, cbPasswd)
+
+	return u.String(), nil
 }

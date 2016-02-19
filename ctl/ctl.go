@@ -18,6 +18,7 @@ package ctl
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -494,6 +495,19 @@ func (ctl *Ctl) startCtlLOCKED(
 	}
 	ctl.ctlChangeTopology = ctlChangeTopology
 
+	authType := ""
+	if ctl.optionsMgr != nil {
+		authType = ctl.optionsMgr["authType"]
+	}
+
+	httpGetWithAuth := func(urlStr string) (resp *http.Response, err error) {
+		if authType == "cbauth" {
+			return cbgt.CBAuthHttpGet(urlStr)
+		}
+
+		return http.Get(urlStr)
+	}
+
 	// The ctl goroutine.
 	//
 	go func() {
@@ -590,6 +604,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						FavorMinNodes: ctl.optionsCtl.FavorMinNodes,
 						DryRun:        ctl.optionsCtl.DryRun,
 						Verbose:       ctl.optionsCtl.Verbose,
+						HttpGet:       httpGetWithAuth,
 					})
 				if err != nil {
 					log.Printf("ctl: StartRebalance, err: %v", err)
