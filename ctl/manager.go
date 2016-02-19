@@ -28,14 +28,14 @@ import (
 
 	"github.com/couchbase/cbgt/rebalance"
 
-	"github.com/couchbase/cbauth/service_api"
+	"github.com/couchbase/cbauth/service"
 )
 
-// CtlMgr implements the service_api.ServiceManager interface and
-// provides the adapter or glue between ns-server's service_api API
+// CtlMgr implements the service.ServiceManager interface and
+// provides the adapter or glue between ns-server's service API
 // and cbgt's Ctl implementation.
 type CtlMgr struct {
-	nodeInfo *service_api.NodeInfo
+	nodeInfo *service.NodeInfo
 
 	ctl *Ctl
 
@@ -46,8 +46,8 @@ type CtlMgr struct {
 	tasks       tasks
 	tasksWaitCh chan struct{} // Closed when the tasks change.
 
-	lastTaskList service_api.TaskList
-	lastTopology service_api.Topology
+	lastTaskList service.TaskList
+	lastTopology service.Topology
 }
 
 type tasks struct {
@@ -57,13 +57,13 @@ type tasks struct {
 
 type taskHandle struct { // The taskHandle fields are immutable.
 	startTime time.Time
-	task      *service_api.Task
+	task      *service.Task
 	stop      func() // May be nil.
 }
 
 // ------------------------------------------------
 
-func NewCtlMgr(nodeInfo *service_api.NodeInfo, ctl *Ctl) *CtlMgr {
+func NewCtlMgr(nodeInfo *service.NodeInfo, ctl *Ctl) *CtlMgr {
 	return &CtlMgr{
 		nodeInfo:   nodeInfo,
 		ctl:        ctl,
@@ -72,7 +72,7 @@ func NewCtlMgr(nodeInfo *service_api.NodeInfo, ctl *Ctl) *CtlMgr {
 	}
 }
 
-func (m *CtlMgr) GetNodeInfo() (*service_api.NodeInfo, error) {
+func (m *CtlMgr) GetNodeInfo() (*service.NodeInfo, error) {
 	log.Printf("ctl/manager, GetNodeInfo")
 
 	return m.nodeInfo, nil
@@ -85,8 +85,8 @@ func (m *CtlMgr) Shutdown() error {
 	return nil
 }
 
-func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
-	cancelCh service_api.Cancel) (*service_api.TaskList, error) {
+func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
+	cancelCh service.Cancel) (*service.TaskList, error) {
 	m.mu.Lock()
 
 	if len(haveTasksRev) > 0 {
@@ -107,7 +107,7 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 			m.mu.Unlock()
 			select {
 			case <-cancelCh:
-				return nil, service_api.ErrCanceled
+				return nil, service.ErrCanceled
 
 			case <-tasksWaitCh:
 				// FALLTHRU
@@ -133,7 +133,7 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 }
 
 func (m *CtlMgr) CancelTask(
-	taskId string, taskRev service_api.Revision) error {
+	taskId string, taskRev service.Revision) error {
 	log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %s",
 		taskId, taskRev)
 
@@ -146,19 +146,19 @@ func (m *CtlMgr) CancelTask(
 
 	for _, taskHandle := range m.tasks.taskHandles {
 		task := taskHandle.task
-		if task.Id == taskId {
+		if task.ID == taskId {
 			if taskRev != nil && !bytes.Equal(taskRev, task.Rev) {
 				log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
-					taskId, taskRev, service_api.ErrConflict)
+					taskId, taskRev, service.ErrConflict)
 
-				return service_api.ErrConflict
+				return service.ErrConflict
 			}
 
 			if !task.IsCancelable {
 				log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
-					taskId, taskRev, service_api.ErrNotSupported)
+					taskId, taskRev, service.ErrNotSupported)
 
-				return service_api.ErrNotSupported
+				return service.ErrNotSupported
 			}
 
 			if taskHandle.stop != nil {
@@ -173,9 +173,9 @@ func (m *CtlMgr) CancelTask(
 
 	if !canceled {
 		log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
-			taskId, taskRev, service_api.ErrNotFound)
+			taskId, taskRev, service.ErrNotFound)
 
-		return service_api.ErrNotFound
+		return service.ErrNotFound
 	}
 
 	m.updateTasksLOCKED(func(s *tasks) {
@@ -188,12 +188,12 @@ func (m *CtlMgr) CancelTask(
 	return nil
 }
 
-func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
-	cancelCh service_api.Cancel) (*service_api.Topology, error) {
+func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
+	cancelCh service.Cancel) (*service.Topology, error) {
 	ctlTopology, err :=
 		m.ctl.WaitGetTopology(string(haveTopologyRev), cancelCh)
 	if err != nil {
-		if err != service_api.ErrCanceled {
+		if err != service.ErrCanceled {
 			log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %s,"+
 				" err: %v", haveTopologyRev, err)
 		}
@@ -201,13 +201,13 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
 		return nil, err
 	}
 
-	rv := &service_api.Topology{
-		Rev:   service_api.Revision([]byte(ctlTopology.Rev)),
-		Nodes: []service_api.NodeId{},
+	rv := &service.Topology{
+		Rev:   service.Revision([]byte(ctlTopology.Rev)),
+		Nodes: []service.NodeID{},
 	}
 
 	for _, ctlNode := range ctlTopology.MemberNodes {
-		rv.Nodes = append(rv.Nodes, service_api.NodeId(ctlNode.UUID))
+		rv.Nodes = append(rv.Nodes, service.NodeID(ctlNode.UUID))
 	}
 
 	// TODO: Need a proper IsBalanced computation.
@@ -241,7 +241,7 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
 }
 
 func (m *CtlMgr) PrepareTopologyChange(
-	change service_api.TopologyChange) error {
+	change service.TopologyChange) error {
 	log.Printf("ctl/manager, PrepareTopologyChange, change: %v", change)
 
 	m.mu.Lock()
@@ -252,21 +252,21 @@ func (m *CtlMgr) PrepareTopologyChange(
 	if len(change.CurrentTopologyRev) > 0 &&
 		string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
 		log.Printf("ctl/manager, PrepareTopologyChange, rev check, err: %v",
-			service_api.ErrConflict)
+			service.ErrConflict)
 
-		return service_api.ErrConflict
+		return service.ErrConflict
 	}
 
 	for _, taskHandle := range m.tasks.taskHandles {
-		if taskHandle.task.Type == service_api.TaskTypePrepared ||
-			taskHandle.task.Type == service_api.TaskTypeRebalance {
+		if taskHandle.task.Type == service.TaskTypePrepared ||
+			taskHandle.task.Type == service.TaskTypeRebalance {
 			// NOTE: If there's an existing rebalance or preparation
 			// task, even if it's done, then treat as a conflict, as
 			// the caller should cancel them all first.
 			log.Printf("ctl/manager, PrepareTopologyChange, task type check,"+
-				" err: %v", service_api.ErrConflict)
+				" err: %v", service.ErrConflict)
 
-			return service_api.ErrConflict
+			return service.ErrConflict
 		}
 	}
 
@@ -277,11 +277,11 @@ func (m *CtlMgr) PrepareTopologyChange(
 	taskHandlesNext = append(taskHandlesNext,
 		&taskHandle{
 			startTime: time.Now(),
-			task: &service_api.Task{
+			task: &service.Task{
 				Rev:              EncodeRev(revNum),
-				Id:               "prepare:" + change.Id,
-				Type:             service_api.TaskTypePrepared,
-				Status:           service_api.TaskStatusRunning,
+				ID:               "prepare:" + change.ID,
+				Type:             service.TaskTypePrepared,
+				Status:           service.TaskStatusRunning,
 				IsCancelable:     true,
 				Progress:         100.0, // Prepared born as 100.0 is ok.
 				DetailedProgress: nil,
@@ -302,7 +302,7 @@ func (m *CtlMgr) PrepareTopologyChange(
 	return nil
 }
 
-func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
+func (m *CtlMgr) StartTopologyChange(change service.TopologyChange) error {
 	log.Printf("ctl/manager, StartTopologyChange, change: %v", change)
 
 	m.mu.Lock()
@@ -313,9 +313,9 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 	if len(change.CurrentTopologyRev) > 0 &&
 		string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
 		log.Printf("ctl/manager, StartTopologyChange, rev check, err: %v",
-			service_api.ErrConflict)
+			service.ErrConflict)
 
-		return service_api.ErrConflict
+		return service.ErrConflict
 	}
 
 	var err error
@@ -325,15 +325,15 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 	var taskHandlesNext []*taskHandle
 
 	for _, th := range m.tasks.taskHandles {
-		if th.task.Type == service_api.TaskTypeRebalance {
+		if th.task.Type == service.TaskTypeRebalance {
 			log.Printf("ctl/manager, StartTopologyChange,"+
 				" task rebalance check, err: %v",
-				service_api.ErrConflict)
+				service.ErrConflict)
 
-			return service_api.ErrConflict
+			return service.ErrConflict
 		}
 
-		if th.task.Type == service_api.TaskTypePrepared {
+		if th.task.Type == service.TaskTypePrepared {
 			th, err = m.startTopologyChangeTaskHandleLOCKED(change)
 			if err != nil {
 				log.Printf("ctl/manager, StartTopologyChange,"+
@@ -349,7 +349,7 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 	}
 
 	if !started {
-		return service_api.ErrNotFound
+		return service.ErrNotFound
 	}
 
 	m.updateTasksLOCKED(func(s *tasks) {
@@ -362,33 +362,33 @@ func (m *CtlMgr) StartTopologyChange(change service_api.TopologyChange) error {
 }
 
 func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
-	change service_api.TopologyChange) (*taskHandle, error) {
+	change service.TopologyChange) (*taskHandle, error) {
 	ctlChangeTopology := &CtlChangeTopology{
 		Rev: string(change.CurrentTopologyRev),
 	}
 
 	switch change.Type {
-	case service_api.TopologyChangeTypeRebalance:
+	case service.TopologyChangeTypeRebalance:
 		ctlChangeTopology.Mode = "rebalance"
 
-	case service_api.TopologyChangeTypeFailover:
+	case service.TopologyChangeTypeFailover:
 		ctlChangeTopology.Mode = "failover-hard"
 
 	default:
 		log.Printf("ctl/manager, unknown change.Type: %v", change.Type)
-		return nil, service_api.ErrNotSupported
+		return nil, service.ErrNotSupported
 	}
 
 	for _, node := range change.KeepNodes {
 		// TODO: What about node.RecoveryType?
 
-		nodeUUID := string(node.NodeInfo.NodeId)
+		nodeUUID := string(node.NodeInfo.NodeID)
 
 		ctlChangeTopology.MemberNodeUUIDs =
 			append(ctlChangeTopology.MemberNodeUUIDs, nodeUUID)
 	}
 
-	taskId := "rebalance:" + change.Id
+	taskId := "rebalance:" + change.ID
 
 	// The progressEntries is a map of pindex ->
 	// source_partition -> node -> *rebalance.ProgressEntry.
@@ -424,14 +424,14 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 
 	th := &taskHandle{
 		startTime: time.Now(),
-		task: &service_api.Task{
+		task: &service.Task{
 			Rev:              EncodeRev(revNum),
-			Id:               taskId,
-			Type:             service_api.TaskTypeRebalance,
-			Status:           service_api.TaskStatusRunning,
+			ID:               taskId,
+			Type:             service.TaskTypeRebalance,
+			Status:           service.TaskStatusRunning,
 			IsCancelable:     true,
 			Progress:         0.0,
-			DetailedProgress: map[service_api.NodeId]float64{},
+			DetailedProgress: map[service.NodeID]float64{},
 			Description:      "topology change",
 			ErrorMessage:     "",
 			Extra: map[string]interface{}{
@@ -481,7 +481,7 @@ func (m *CtlMgr) updateProgress(
 	var taskHandlesNext []*taskHandle
 
 	for _, th := range m.tasks.taskHandles {
-		if th.task.Id == taskId {
+		if th.task.ID == taskId {
 			if p != nil || len(errs) > 0 {
 				revNum := m.allocRevNumLOCKED(0)
 
@@ -503,7 +503,7 @@ func (m *CtlMgr) updateProgress(
 				}
 
 				if p == nil && len(errs) > 0 {
-					taskNext.Status = service_api.TaskStatusFailed
+					taskNext.Status = service.TaskStatusFailed
 				}
 
 				taskHandlesNext = append(taskHandlesNext, &taskHandle{
@@ -529,10 +529,10 @@ func (m *CtlMgr) updateProgress(
 
 // ------------------------------------------------
 
-func (m *CtlMgr) getTaskListLOCKED() *service_api.TaskList {
-	rv := &service_api.TaskList{
+func (m *CtlMgr) getTaskListLOCKED() *service.TaskList {
+	rv := &service.TaskList{
 		Rev:   EncodeRev(m.tasks.revNum),
-		Tasks: []service_api.Task{},
+		Tasks: []service.Task{},
 	}
 
 	for _, taskHandle := range m.tasks.taskHandles {
@@ -568,10 +568,10 @@ func (m *CtlMgr) allocRevNumLOCKED(prevRevNum uint64) uint64 {
 
 // ------------------------------------------------
 
-func EncodeRev(revNum uint64) service_api.Revision {
+func EncodeRev(revNum uint64) service.Revision {
 	return []byte(fmt.Sprintf("%d", revNum))
 }
 
-func DecodeRev(b service_api.Revision) (uint64, error) {
+func DecodeRev(b service.Revision) (uint64, error) {
 	return strconv.ParseUint(string(b), 10, 64)
 }

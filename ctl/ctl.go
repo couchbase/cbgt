@@ -30,11 +30,11 @@ import (
 	"github.com/couchbase/cbgt/cmd"
 	"github.com/couchbase/cbgt/rebalance"
 
-	"github.com/couchbase/cbauth/service_api"
+	"github.com/couchbase/cbauth/service"
 )
 
-var ErrCtlWrongRev = service_api.ErrConflict
-var ErrCtlCanceled = service_api.ErrCanceled
+var ErrCtlWrongRev = service.ErrConflict
+var ErrCtlCanceled = service.ErrCanceled
 
 // An Ctl might be in the midst of controlling a replan/rebalance,
 // where ctl.ctlDoneCh will be non-nil.
