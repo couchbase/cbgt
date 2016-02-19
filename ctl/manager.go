@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -38,12 +39,15 @@ type CtlMgr struct {
 
 	ctl *Ctl
 
-	mu sync.Mutex
+	mu sync.Mutex // Protects the fields that follow.
 
 	revNumNext uint64 // The next rev num to use.
 
 	tasks       tasks
 	tasksWaitCh chan struct{} // Closed when the tasks change.
+
+	lastTaskList service_api.TaskList
+	lastTopology service_api.Topology
 }
 
 type tasks struct {
@@ -83,8 +87,6 @@ func (m *CtlMgr) Shutdown() error {
 
 func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 	cancelCh service_api.Cancel) (*service_api.TaskList, error) {
-	log.Printf("ctl/manager, GetTaskList, haveTasksRev: %s", haveTasksRev)
-
 	m.mu.Lock()
 
 	if len(haveTasksRev) > 0 {
@@ -105,9 +107,8 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 			m.mu.Unlock()
 			select {
 			case <-cancelCh:
-				log.Printf("ctl/manager, GetTaskList, haveTasksRev: %s,"+
-					" cancelled", haveTasksRev)
 				return nil, service_api.ErrCanceled
+
 			case <-tasksWaitCh:
 				// FALLTHRU
 			}
@@ -117,10 +118,16 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service_api.Revision,
 
 	rv := m.getTaskListLOCKED()
 
+	m.lastTaskList.Rev = rv.Rev
+	same := reflect.DeepEqual(&m.lastTaskList, rv)
+	m.lastTaskList = *rv
+
 	m.mu.Unlock()
 
-	log.Printf("ctl/manager, GetTaskList, haveTasksRev: %s,"+
-		" done, rv: %#v", haveTasksRev, rv)
+	if !same {
+		log.Printf("ctl/manager, GetTaskList, haveTasksRev: %s,"+
+			" changed, rv: %#v", haveTasksRev, rv)
+	}
 
 	return rv, nil
 }
@@ -183,14 +190,13 @@ func (m *CtlMgr) CancelTask(
 
 func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
 	cancelCh service_api.Cancel) (*service_api.Topology, error) {
-	log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %v",
-		haveTopologyRev)
-
 	ctlTopology, err :=
 		m.ctl.WaitGetTopology(string(haveTopologyRev), cancelCh)
 	if err != nil {
-		log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %v, err: %v",
-			haveTopologyRev, err)
+		if err != service_api.ErrCanceled {
+			log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %s,"+
+				" err: %v", haveTopologyRev, err)
+		}
 
 		return nil, err
 	}
@@ -216,12 +222,20 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service_api.Revision,
 		}
 	}
 
-	for err := range ctlTopology.PrevErrs {
+	for _, err := range ctlTopology.PrevErrs {
 		rv.Messages = append(rv.Messages, fmt.Sprintf("error: %v", err))
 	}
 
-	log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %v, done, rv: %#v",
-		haveTopologyRev, rv)
+	m.mu.Lock()
+	m.lastTopology.Rev = rv.Rev
+	same := reflect.DeepEqual(&m.lastTopology, rv)
+	m.lastTopology = *rv
+	m.mu.Unlock()
+
+	if !same {
+		log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %s,"+
+			" changed, rv: %#v", haveTopologyRev, rv)
+	}
 
 	return rv, nil
 }
