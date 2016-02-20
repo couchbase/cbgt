@@ -174,6 +174,8 @@ func (d *DCPFeedParams) GetCredentials() (string, string, string) {
 	return d.AuthUser, d.AuthPassword, d.AuthUser
 }
 
+// DCPFeedParamsSasl implements the cbdatasource.ServerCredProvider
+// interface.
 type DCPFeedParamsSasl struct {
 	DCPFeedParams
 }

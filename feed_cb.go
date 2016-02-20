@@ -236,8 +236,7 @@ func CouchbaseParseSourceName(
 
 // -------------------------------------------------
 
-// CbAuthHandler implements the couchbase.AuthHandler and
-// cbdatasource.ServerCredProvider interfaces.
+// CbAuthHandler implements the couchbase.AuthHandler interface.
 type CbAuthHandler struct {
 	HostPort string
 }
