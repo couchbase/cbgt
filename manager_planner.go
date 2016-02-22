@@ -687,7 +687,7 @@ func PlanPIndexName(indexDef *IndexDef, sourcePartitions string) string {
 	h := crc32.NewIEEE()
 	io.WriteString(h, sourcePartitions)
 	return indexDef.Name + "_" + indexDef.UUID + "_" +
-		fmt.Sprintf("%x", h.Sum32())
+		fmt.Sprintf("%08x", h.Sum32())
 }
 
 // --------------------------------------------------------
