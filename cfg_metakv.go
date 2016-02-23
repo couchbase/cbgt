@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"reflect"
 	"sort"
 	"sync"
 
@@ -49,7 +50,8 @@ var cfgMetaKvSplitKeys map[string]bool = map[string]bool{
 }
 
 type CfgMetaKv struct {
-	prefix string // Prefix for paths stores in metakv.
+	prefix   string // Prefix for paths stores in metakv.
+	nodeUUID string // The uuid for this node.
 
 	m            sync.Mutex // Protects the fields that follow.
 	cfgMem       *CfgMem
@@ -65,9 +67,10 @@ type CfgMetaKvEntry struct {
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
 // configuration file in the metakv.
-func NewCfgMetaKv() (*CfgMetaKv, error) {
+func NewCfgMetaKv(nodeUUID string) (*CfgMetaKv, error) {
 	cfg := &CfgMetaKv{
 		prefix:       CfgMetaKvPrefix,
+		nodeUUID:     nodeUUID,
 		cfgMem:       NewCfgMem(),
 		cancelCh:     make(chan struct{}),
 		splitEntries: map[string]CfgMetaKvEntry{},
@@ -160,7 +163,8 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
-	log.Printf("cfg_metakv: Set, key: %v, cas: %x", key, cas)
+	log.Printf("cfg_metakv: Set, key: %v, cas: %x, split: %t, nodeUUID: %s",
+		key, cas, cfgMetaKvSplitKeys[key], c.nodeUUID)
 
 	path := c.keyToPath(key)
 
@@ -171,6 +175,9 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 		curEntry := c.splitEntries[key]
 
 		if cas != 0 && cas != curEntry.cas {
+			log.Printf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
+				key, cas, curEntry.cas)
+
 			return 0, &CfgCASError{}
 		}
 
@@ -201,7 +208,7 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 				curNodeDefs.NodeDefs[k] == nil {
 				added[k] = true
 			} else {
-				if curNodeDefs.NodeDefs[k].UUID != v.UUID {
+				if !reflect.DeepEqual(curNodeDefs.NodeDefs[k], v) {
 					updated[k] = true
 				}
 			}
@@ -215,43 +222,61 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 			}
 		}
 
-		// Update metakv with child entries.
-		//
-		if len(added) > 0 || len(updated) > 0 {
-			for k, v := range nd.NodeDefs {
-				childNodeDefs := NodeDefs{
-					UUID:        nd.UUID,
-					NodeDefs:    map[string]*NodeDef{},
-					ImplVersion: nd.ImplVersion,
-				}
-				childNodeDefs.NodeDefs[k] = v
+		log.Printf("cfg_metakv: Set split, key: %v,"+
+			" added: %v, removed: %v, updated: %v",
+			key, added, removed, updated)
 
-				val, err = json.Marshal(childNodeDefs)
-				if err != nil {
-					return 0, err
-				}
+	LOOP:
+		for k, v := range nd.NodeDefs {
+			if c.nodeUUID != "" && c.nodeUUID != v.UUID {
+				// If we have a nodeUUID, only add/update our
+				// nodeDef, where other nodes will each add/update
+				// only their own nodeDef's.
+				log.Printf("cfg_metakv: Set split, key: %v,"+
+					" skipping other node UUID: %v, self nodeUUID: %s",
+					key, v.UUID, c.nodeUUID)
 
-				childPath := path + "/" + k
-
-				log.Printf("cfg_metakv: Set split key: %v, childPath: %v",
-					key, childPath)
-
-				err = metakv.Set(childPath, val, nil)
-				if err != nil {
-					return 0, err
-				}
+				continue LOOP
 			}
+
+			childNodeDefs := NodeDefs{
+				UUID:        nd.UUID,
+				NodeDefs:    map[string]*NodeDef{},
+				ImplVersion: nd.ImplVersion,
+			}
+			childNodeDefs.NodeDefs[k] = v
+
+			val, err = json.Marshal(childNodeDefs)
+			if err != nil {
+				return 0, err
+			}
+
+			childPath := path + "/" + k
+
+			log.Printf("cfg_metakv: Set split, key: %v, childPath: %v",
+				key, childPath)
+
+			err = metakv.Set(childPath, val, nil)
+			if err != nil {
+				return 0, err
+			}
+
+			break LOOP
 		}
 
 		// Remove composite children entries from metakv only if
 		// caller was attempting removals only.  This should work as
-		// the caller usually has read-modify-write logic that only
+		// the caller usually has read-compute-write logic that only
 		// removes node defs and does not add/update node defs in the
-		// same read-modify-write code path.
+		// same read-compute-write code path.
 		//
 		if len(added) <= 0 && len(updated) <= 0 && len(removed) > 0 {
 			for nodeDefUUID := range removed {
-				err = metakv.Delete(path+"/"+nodeDefUUID, nil)
+				childPath := path + "/" + nodeDefUUID
+
+				log.Printf("cfg_metakv: Set delete, childPath: %v", childPath)
+
+				err = metakv.Delete(childPath, nil)
 				if err != nil {
 					return 0, err
 				}
@@ -262,6 +287,8 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 		c.lastSplitCAS = casResult
 		return casResult, err
 	}
+
+	log.Printf("cfg_metakv: Set path: %v", path)
 
 	err := metakv.Set(path, val, nil) // TODO: Handle rev better.
 	if err != nil {

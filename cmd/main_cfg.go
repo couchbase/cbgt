@@ -31,6 +31,13 @@ var ErrorBindHttp = errors.New("main_cfg:" +
 // cbgt.Manager).
 func MainCfg(baseName, connect, bindHttp,
 	register, dataDir string) (cbgt.Cfg, error) {
+	return MainCfgEx(baseName, connect, bindHttp, register, dataDir, "", nil)
+}
+
+// MainCfgEx connects to a Cfg provider as a server peer (e.g., as a
+// cbgt.Manager), with more options.
+func MainCfgEx(baseName, connect, bindHttp,
+	register, dataDir, uuid string, options map[string]string) (cbgt.Cfg, error) {
 	// TODO: One day, the default cfg provider should not be simple.
 	// TODO: One day, Cfg provider lookup should be table driven.
 	var cfg cbgt.Cfg
@@ -43,7 +50,7 @@ func MainCfg(baseName, connect, bindHttp,
 			bindHttp, register, dataDir)
 	case strings.HasPrefix(connect, "metakv"):
 		cfg, err = MainCfgMetaKv(baseName, connect[len("metakv"):],
-			bindHttp, register, dataDir)
+			bindHttp, register, dataDir, uuid, options)
 	default:
 		err = fmt.Errorf("main_cfg1: unsupported cfg connect: %s", connect)
 	}
@@ -100,9 +107,10 @@ func MainCfgCB(baseName, urlStr, bindHttp, register, dataDir string) (
 	return cfg, nil
 }
 
-func MainCfgMetaKv(baseName, urlStr, bindHttp, register, dataDir string) (
+func MainCfgMetaKv(baseName, urlStr, bindHttp, register, dataDir, uuid string,
+	options map[string]string) (
 	cbgt.Cfg, error) {
-	cfg, err := cbgt.NewCfgMetaKv()
+	cfg, err := cbgt.NewCfgMetaKv(uuid)
 	if err == nil {
 		// Useful for reseting internal testing.
 		if urlStr == ":removeAllKeys" {
