@@ -30,6 +30,8 @@ func init() {
 	}
 }
 
+var ErrCouchbaseMismatchedBucketUUID = fmt.Errorf("mismatched-couchbase-bucket-UUID")
+
 // ParsePartitionsToVBucketIds is specific to couchbase
 // data-sources/feeds, converting a set of partition strings from a
 // dests map to vbucketId numbers.
@@ -80,13 +82,6 @@ func init() {
 
 // ----------------------------------------------------------------
 
-// CBFeedParams are common couchbase data-source/feed specific
-// connection parameters that may be part of a sourceParams JSON.
-type CBFeedParams struct {
-	AuthUser     string `json:"authUser"` // May be "" for no auth.
-	AuthPassword string `json:"authPassword"`
-}
-
 // CouchbasePartitions parses a sourceParams for a couchbase
 // data-source/feed.
 func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
@@ -117,54 +112,21 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	return rv, nil
 }
 
+// ----------------------------------------------------------------
+
 // CouchbaseBucket is a helper function to connect to a couchbase bucket.
 func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 	options map[string]string) (*couchbase.Bucket, error) {
 	server, poolName, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
-	params := CBFeedParams{}
-	if sourceParams != "" {
-		err := json.Unmarshal([]byte(sourceParams), &params)
-		if err != nil {
-			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
-				" failed sourceParams JSON to CBFeedParams,"+
-				" server: %s, poolName: %s, bucketName: %s,"+
-				" sourceParams: %q, err: %v",
-				server, poolName, bucketName, sourceParams, err)
-		}
+	auth, err := CBAuth(sourceName, sourceParams, options)
+	if err != nil {
+		return nil, fmt.Errorf("feed_cb: CouchbaseBucket, CBAuth,"+
+			" bucketName: %s, err: %v", bucketName, err)
 	}
 
-	authType := ""
-	if options != nil {
-		authType = options["authType"]
-	}
-
-	if authType == "cbauth" {
-		auth, err := NewCbAuthHandler(server)
-		if err != nil {
-			return nil, err
-		}
-
-		params.AuthUser, params.AuthPassword, err = auth.GetCredentials()
-		if err != nil {
-			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
-				" could not retrieve cbauth credentials,"+
-				" server: %s, poolName: %s, bucketName: %s,"+
-				" sourceParams: %q, err: %v",
-				server, poolName, bucketName, sourceParams, err)
-		}
-	}
-
-	var err error
-	var client couchbase.Client
-
-	if params.AuthUser != "" || bucketName != "default" {
-		client, err = couchbase.ConnectWithAuthCreds(server,
-			params.AuthUser, params.AuthPassword)
-	} else {
-		client, err = couchbase.Connect(server)
-	}
+	client, err := couchbase.ConnectWithAuth(server, auth)
 	if err != nil {
 		return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
 			" connection failed, server: %s, poolName: %s,"+
@@ -191,8 +153,16 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 			server, poolName, bucketName, err, bucketName)
 	}
 
+	if sourceUUID != "" && sourceUUID != bucket.UUID {
+		bucket.Close()
+
+		return nil, ErrCouchbaseMismatchedBucketUUID
+	}
+
 	return bucket, nil
 }
+
+// ----------------------------------------------------------------
 
 // CouchbaseParseSourceName parses a sourceName, if it's a couchbase
 // REST/HTTP URL, into a server URL, poolName and bucketName.
@@ -236,38 +206,6 @@ func CouchbaseParseSourceName(
 
 // -------------------------------------------------
 
-// CbAuthHandler implements the couchbase.AuthHandler interface.
-type CbAuthHandler struct {
-	HostPort string
-}
-
-func (ah *CbAuthHandler) GetSaslCredentials() (string, string, error) {
-	u, p, err := cbauth.GetMemcachedServiceAuth(ah.HostPort)
-	if err != nil {
-		return "", "", err
-	}
-	return u, p, nil
-}
-
-func (ah *CbAuthHandler) GetCredentials() (string, string, error) {
-	u, p, err := cbauth.GetHTTPServiceAuth(ah.HostPort)
-	if err != nil {
-		return "", "", err
-	}
-	return u, p, nil
-}
-
-func NewCbAuthHandler(s string) (*CbAuthHandler, error) {
-	u, err := url.Parse(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return &CbAuthHandler{HostPort: u.Host}, nil
-}
-
-// -------------------------------------------------
-
 // CouchbasePartitionSeqs returns a map keyed by partition/vbucket ID
 // with values of each vbucket's UUID / high_seqno.  It implements the
 // FeedPartitionsFunc func signature.
@@ -283,9 +221,18 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 
 	rv := map[string]UUIDSeq{}
 
-	stats := bucket.GetStats("vbucket-details")
+	stats := bucket.GatherStats("vbucket-details")
 
-	for _, nodeStats := range stats {
+	for _, gatheredStats := range stats {
+		if gatheredStats.Err != nil {
+			return nil, gatheredStats.Err
+		}
+
+		nodeStats := gatheredStats.Stats
+		if len(nodeStats) <= 0 {
+			continue
+		}
+
 		// TODO: What if vbucket appears across multiple nodes?  Need
 		// to look for the highest (or lowest?) seq number?
 		for _, vbid := range vbucketIdStrings {
@@ -360,6 +307,67 @@ func CouchbaseStats(sourceType, sourceName, sourceUUID,
 	}
 
 	return rv, nil
+}
+
+// -------------------------------------------------
+
+// CBAuthParams are common couchbase data-source/feed specific
+// connection parameters that may be part of a sourceParams JSON.
+type CBAuthParams struct {
+	AuthUser     string `json:"authUser"` // May be "" for no auth.
+	AuthPassword string `json:"authPassword"`
+
+	AuthSaslUser     string `json:"authSaslUser"` // May be "" for no auth.
+	AuthSaslPassword string `json:"authSaslPassword"`
+}
+
+func (d *CBAuthParams) GetCredentials() (string, string, string) {
+	// TODO: bucketName not necessarily userName.
+	return d.AuthUser, d.AuthPassword, d.AuthUser
+}
+
+// -------------------------------------------------
+
+// CBAuthParamsSasl implements the cbdatasource.ServerCredProvider
+// interface.
+type CBAuthParamsSasl struct {
+	CBAuthParams
+}
+
+func (d *CBAuthParamsSasl) GetSaslCredentials() (string, string) {
+	return d.AuthSaslUser, d.AuthSaslPassword
+}
+
+// -------------------------------------------------
+
+func CBAuth(sourceName, sourceParams string, options map[string]string) (
+	auth couchbase.AuthHandler, err error) {
+	params := &CBAuthParams{}
+
+	if sourceParams != "" {
+		err := json.Unmarshal([]byte(sourceParams), params)
+		if err != nil {
+			return nil, fmt.Errorf("feed_cb: CBAuth" +
+				" failed to parse sourceParams JSON to CBAuthParams")
+		}
+	}
+
+	auth = params
+
+	if params.AuthSaslUser != "" {
+		auth = &CBAuthParamsSasl{*params}
+	}
+
+	authType := ""
+	if options != nil {
+		authType = options["authType"]
+	}
+
+	if authType == "cbauth" {
+		auth = cbauth.NewAuthHandler(nil).ForBucket(sourceName)
+	}
+
+	return auth, nil
 }
 
 // -------------------------------------------------

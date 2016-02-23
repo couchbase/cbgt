@@ -209,14 +209,32 @@ func TestPrimaryFeed(t *testing.T) {
 	}
 }
 
-func TestDCPFeedParams(t *testing.T) {
-	p := &DCPFeedParams{
+func TestCBAuthParams(t *testing.T) {
+	p := &CBAuthParams{
 		AuthUser:     "au",
 		AuthPassword: "ap",
 	}
 	a, b, c := p.GetCredentials()
 	if a != "au" || b != "ap" || c != "au" {
 		t.Errorf("wrong creds")
+	}
+
+	p2 := &CBAuthParamsSasl{
+		CBAuthParams{
+			AuthUser:     "au",
+			AuthPassword: "ap",
+
+			AuthSaslUser:     "asu",
+			AuthSaslPassword: "asp",
+		},
+	}
+	a, b, c = p2.GetCredentials()
+	if a != "au" || b != "ap" || c != "au" {
+		t.Errorf("wrong creds")
+	}
+	a, b = p2.GetSaslCredentials()
+	if a != "asu" || b != "asp" {
+		t.Errorf("wrong sasl creds")
 	}
 }
 
@@ -279,8 +297,7 @@ func TestTAPFeedBasics(t *testing.T) {
 func TestDCPFeedBasics(t *testing.T) {
 	df, err := NewDCPFeed("aaa", "bbb",
 		"url", "poolName", "bucketName", "bucketUUID", "",
-		BasicPartitionFunc, map[string]Dest{}, false, "",
-		nil)
+		BasicPartitionFunc, map[string]Dest{}, false, nil)
 	if err != nil {
 		t.Errorf("expected NewDCPFeed to work")
 	}

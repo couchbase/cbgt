@@ -22,7 +22,6 @@ import (
 
 	log "github.com/couchbase/clog"
 
-	"github.com/couchbase/cbauth"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
@@ -67,11 +66,9 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	server, poolName, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
-	authType := mgr.Options()["authType"]
-
 	feed, err := NewDCPFeed(feedName, indexName, server, poolName,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
-		mgr.tagsMap != nil && !mgr.tagsMap["feed"], authType, mgr)
+		mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
 		return fmt.Errorf("feed_dcp:"+
 			" could not prepare DCP feed, server: %s,"+
@@ -102,6 +99,7 @@ type DCPFeed struct {
 	poolName   string
 	bucketName string
 	bucketUUID string
+	paramsStr  string
 	params     *DCPFeedParams
 	pf         DestPartitionFunc
 	dests      map[string]Dest
@@ -109,6 +107,7 @@ type DCPFeed struct {
 	stopAfter  map[string]UUIDSeq // May be nil.
 	bds        cbdatasource.BucketDataSource
 	mgr        *Manager
+	auth       couchbase.AuthHandler
 
 	m       sync.Mutex // Protects the fields that follow.
 	closed  bool
@@ -120,7 +119,7 @@ type DCPFeed struct {
 
 // DCPFeedParams are DCP data-source/feed specific connection
 // parameters that may be part of a sourceParams JSON and is a
-// superset of CBFeedParams.  DCPFeedParams holds the information used
+// superset of CBAuthParams.  DCPFeedParams holds the information used
 // to populate a cbdatasource.BucketDataSourceOptions on calls to
 // cbdatasource.NewBucketDataSource().  DCPFeedParams also implements
 // the couchbase.AuthHandler interface.
@@ -168,38 +167,27 @@ func NewDCPFeedParams() *DCPFeedParams {
 	}
 }
 
-// GetCredentials is part of the couchbase.AuthSaslHandler interface.
-func (d *DCPFeedParams) GetCredentials() (string, string, string) {
-	// TODO: bucketName not necessarily userName.
-	return d.AuthUser, d.AuthPassword, d.AuthUser
-}
-
-// DCPFeedParamsSasl implements the cbdatasource.ServerCredProvider
-// interface.
-type DCPFeedParamsSasl struct {
-	DCPFeedParams
-}
-
-func (d *DCPFeedParamsSasl) GetSaslCredentials() (string, string) {
-	return d.AuthSaslUser, d.AuthSaslPassword
-}
-
-func (d *DCPFeedParamsSasl) ProvideServerCred(server string) (
-	user string, pswd string, err error) {
-	return cbauth.GetMemcachedServiceAuth(server)
-}
-
 // NewDCPFeed creates a new, ready-to-be-started DCP feed.
 func NewDCPFeed(name, indexName, url, poolName,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
-	disable bool, authType string, mgr *Manager) (*DCPFeed, error) {
+	disable bool, mgr *Manager) (*DCPFeed, error) {
 	log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s",
 		name, indexName)
 
-	params := NewDCPFeedParams()
+	var optionsMgr map[string]string
+	if mgr != nil {
+		optionsMgr = mgr.Options()
+	}
+
+	auth, err := CBAuth(bucketName, paramsStr, optionsMgr)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp: NewDCPFeed CBAuth, err: %v", err)
+	}
 
 	var stopAfter map[string]UUIDSeq
+
+	params := NewDCPFeedParams()
 
 	if paramsStr != "" {
 		err := json.Unmarshal([]byte(paramsStr), params)
@@ -228,42 +216,6 @@ func NewDCPFeed(name, indexName, url, poolName,
 
 	urls := strings.Split(url, ";")
 
-	var auth couchbase.AuthHandler = params
-
-	if authType == "cbauth" {
-		for i, serverUrl := range urls {
-			log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s, cbauth %d prep",
-				name, indexName, i)
-
-			cbAuthHandler, err := NewCbAuthHandler(serverUrl)
-			if err != nil {
-				continue
-			}
-			params.AuthUser, params.AuthPassword, err =
-				cbAuthHandler.GetCredentials()
-			if err != nil {
-				continue
-			}
-			params.AuthSaslUser, params.AuthSaslPassword, err =
-				cbAuthHandler.GetSaslCredentials()
-			if err != nil {
-				continue
-			}
-
-			log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s, cbauth %d ok",
-				name, indexName, i)
-
-			break
-		}
-	}
-
-	if params.AuthSaslUser != "" {
-		log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s, AuthSaslUser",
-			name, indexName)
-
-		auth = &DCPFeedParamsSasl{*params}
-	}
-
 	options := &cbdatasource.BucketDataSourceOptions{
 		Name: fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31()),
 		ClusterManagerBackoffFactor: params.ClusterManagerBackoffFactor,
@@ -283,12 +235,14 @@ func NewDCPFeed(name, indexName, url, poolName,
 		poolName:   poolName,
 		bucketName: bucketName,
 		bucketUUID: bucketUUID,
+		paramsStr:  paramsStr,
 		params:     params,
 		pf:         pf,
 		dests:      dests,
 		disable:    disable,
 		stopAfter:  stopAfter,
 		mgr:        mgr,
+		auth:       auth,
 		stats:      NewDestStats(),
 	}
 
@@ -541,44 +495,29 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 }
 
 // VerifyBucketNotExists returns true only if it's sure the bucket
-// does not exist.  A rejected auth or connection failure, for
-// example, results in false.
+// does not exist anymore (including if UUID's no longer match).  A
+// rejected auth or connection failure, for example, results in false.
 func (r *DCPFeed) VerifyBucketNotExists() bool {
 	urls := strings.Split(r.url, ";")
-	if len(urls) > 0 {
-		// checking with first server for bucket existence
-		var auth couchbase.AuthHandler = r.params
-
-		authType := ""
-		if r.mgr != nil {
-			authType = r.mgr.Options()["authType"]
-		}
-
-		if authType == "cbauth" {
-			cbAuthHandler, err := NewCbAuthHandler(urls[0])
-			if err != nil {
-				return false
-			}
-
-			params := NewDCPFeedParams()
-			params.AuthUser, params.AuthPassword, err =
-				cbAuthHandler.GetCredentials()
-			if err != nil {
-				return false
-			}
-
-			auth = params
-		}
-
-		bucket, err := cbdatasource.ConnectBucket(urls[0], r.poolName,
-			r.bucketName, auth)
-		if err != nil {
-			_, ok := err.(*couchbase.BucketNotFoundError)
-			return ok
-		}
-
-		bucket.Close()
+	if len(urls) <= 0 {
+		return false
 	}
+
+	bucket, err := CouchbaseBucket(r.bucketName, r.bucketUUID, r.paramsStr,
+		urls[0], r.mgr.Options())
+	if err != nil {
+		if _, ok := err.(*couchbase.BucketNotFoundError); ok {
+			return true
+		}
+
+		if err == ErrCouchbaseMismatchedBucketUUID {
+			return true
+		}
+
+		return false
+	}
+
+	bucket.Close()
 
 	return false
 }
