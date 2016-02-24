@@ -135,6 +135,10 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 		}
 		rv.UUID = checkSumUUIDs(uuids)
 
+		if rv.ImplVersion == "" {
+			rv.ImplVersion = VERSION
+		}
+
 		data, err := json.Marshal(rv)
 		if err != nil {
 			return nil, 0, err
