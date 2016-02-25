@@ -12,7 +12,6 @@
 package cbgt
 
 import (
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -23,9 +22,6 @@ import (
 	"github.com/couchbase/blance"
 	log "github.com/couchbase/clog"
 )
-
-var ErrPlannerEndedNoIndexDefs = errors.New("planner: ended since no IndexDefs")
-var ErrPlannerEndedNoNodeDefs = errors.New("planner: ended since no NodeDefs")
 
 // NOTE: You *must* update VERSION if the planning algorithm or config
 // data schema changes, following semver rules.
@@ -212,7 +208,7 @@ func PlannerGetIndexDefs(cfg Cfg, version string) (*IndexDefs, error) {
 		return nil, fmt.Errorf("planner: CfgGetIndexDefs err: %v", err)
 	}
 	if indexDefs == nil {
-		return nil, ErrPlannerEndedNoIndexDefs
+		return NewIndexDefs(version), nil
 	}
 	if VersionGTE(version, indexDefs.ImplVersion) == false {
 		return nil, fmt.Errorf("planner: indexDefs.ImplVersion: %s"+
@@ -229,7 +225,7 @@ func PlannerGetNodeDefs(cfg Cfg, version, uuid string) (
 		return nil, fmt.Errorf("planner: CfgGetNodeDefs err: %v", err)
 	}
 	if nodeDefs == nil {
-		return nil, ErrPlannerEndedNoNodeDefs
+		nodeDefs = NewNodeDefs(version)
 	}
 	if VersionGTE(version, nodeDefs.ImplVersion) == false {
 		return nil, fmt.Errorf("planner: nodeDefs.ImplVersion: %s"+

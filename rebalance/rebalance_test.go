@@ -64,7 +64,7 @@ func TestRebalance(t *testing.T) {
 			"+a", nil,
 			"a",
 			"",
-			true,
+			false,
 		},
 		{"add 1st index x",
 			"+x", nil,
@@ -248,14 +248,17 @@ func TestRebalance(t *testing.T) {
 			mgr.Stop()
 		}
 
-		endIndexDefs, endNodeDefs, endPlanPIndexes, endPlanPIndexesCAS, err :=
+		endIndexDefs, endNodeDefs, endPlanPIndexes, _, err :=
 			cbgt.PlannerGetPlan(cfg, cbgt.VERSION, "")
-		if err != nil ||
-			endIndexDefs == nil ||
+		if err != nil {
+			t.Errorf("expected no err, got: %v", err)
+		}
+
+		if endIndexDefs == nil ||
 			endNodeDefs == nil ||
-			endPlanPIndexes == nil ||
-			endPlanPIndexesCAS == 0 {
-			t.Errorf("expected no err, got: %#v", err)
+			endPlanPIndexes == nil {
+			t.Errorf("expected some end defs and plan, got: %v, %v, %v",
+				endIndexDefs, endNodeDefs, endPlanPIndexes)
 		}
 
 		expNodes := strings.Split(test.expNodes, " ")
@@ -273,7 +276,10 @@ func TestRebalance(t *testing.T) {
 			}
 		}
 
-		expIndexes := strings.Split(test.expIndexes, " ")
+		expIndexes := []string{}
+		if len(test.expIndexes) > 0 {
+			expIndexes = strings.Split(test.expIndexes, " ")
+		}
 
 		r.Visit(func(
 			currStates CurrStates,
