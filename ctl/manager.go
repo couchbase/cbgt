@@ -32,7 +32,7 @@ import (
 	"github.com/couchbase/cbauth/service"
 )
 
-// CtlMgr implements the service.ServiceManager interface and
+// CtlMgr implements the cbauth/service.Manager interface and
 // provides the adapter or glue between ns-server's service API
 // and cbgt's Ctl implementation.
 type CtlMgr struct {
@@ -127,7 +127,7 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
 
 	if !same {
 		log.Printf("ctl/manager, GetTaskList, haveTasksRev: %s,"+
-			" changed, rv: %#v", haveTasksRev, rv)
+			" changed, rv: %+v", haveTasksRev, rv)
 	}
 
 	return rv, nil
@@ -244,7 +244,7 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 
 	if !same {
 		log.Printf("ctl/manager, GetCurrenTopology, haveTopologyRev: %s,"+
-			" changed, rv: %#v", haveTopologyRev, rv)
+			" changed, rv: %+v", haveTopologyRev, rv)
 	}
 
 	return rv, nil
@@ -410,7 +410,7 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 		errs []error,
 	) string {
-		m.updateProgress(taskId, progressEntries, errs)
+		m.updateProgress(taskId, seenNodes, seenPIndexes, progressEntries, errs)
 
 		if progressEntries == nil {
 			return "DONE"
@@ -458,28 +458,33 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 
 // ------------------------------------------------
 
+// The progressEntries is a map of...
+// pindex -> sourcePartition -> node -> *ProgressEntry.
 func (m *CtlMgr) updateProgress(
 	taskId string,
-	p map[string]map[string]map[string]*rebalance.ProgressEntry,
+	seenNodes map[string]bool,
+	seenPIndexes map[string]bool,
+	progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 	errs []error,
 ) {
 	var progress float64
 
-	if p != nil {
-		var totCurrDelta uint64
-		var totWantDelta uint64
+	if progressEntries != nil {
+		var sumPct float64
+		var numPct int
 
-		for _, p1 := range p {
-			for _, p2 := range p1 {
-				for _, pe := range p2 {
-					totCurrDelta += (pe.CurrUUIDSeq.Seq - pe.InitUUIDSeq.Seq)
-					totWantDelta += (pe.WantUUIDSeq.Seq - pe.InitUUIDSeq.Seq)
+		for _, mapSourcePartitions := range progressEntries {
+			for _, pe := range mapSourcePartitions[""] {
+				if pe.Done {
+					sumPct += 1.0
 				}
+
+				numPct += 1
 			}
 		}
 
-		if totWantDelta > 0 {
-			progress = float64(totCurrDelta) / float64(totWantDelta)
+		if numPct > 0 {
+			progress = sumPct / float64(numPct)
 		}
 	}
 
@@ -492,7 +497,7 @@ func (m *CtlMgr) updateProgress(
 
 	for _, th := range m.tasks.taskHandles {
 		if th.task.ID == taskId {
-			if p != nil || len(errs) > 0 {
+			if progressEntries != nil || len(errs) > 0 {
 				revNum := m.allocRevNumLOCKED(0)
 
 				taskNext := *th.task // Copy.
@@ -512,7 +517,7 @@ func (m *CtlMgr) updateProgress(
 					taskNext.ErrorMessage = taskNext.ErrorMessage + err.Error()
 				}
 
-				if p == nil && len(errs) > 0 {
+				if progressEntries == nil && len(errs) > 0 {
 					taskNext.Status = service.TaskStatusFailed
 				}
 

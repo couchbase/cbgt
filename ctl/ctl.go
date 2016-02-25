@@ -447,7 +447,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 	rev string,
 	mode string,
 	memberNodeUUIDs []string,
-	cb CtlOnProgressFunc) error {
+	ctlOnProgress CtlOnProgressFunc) error {
 	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) {
 		return ErrCtlWrongRev
 	}
@@ -468,7 +468,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 	if ctl.ctlDoneCh == nil &&
 		mode != "stop" &&
 		mode != "stopChangeTopology" {
-		return ctl.startCtlLOCKED(mode, memberNodeUUIDs, cb)
+		return ctl.startCtlLOCKED(mode, memberNodeUUIDs, ctlOnProgress)
 	}
 
 	return nil
