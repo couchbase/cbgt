@@ -146,11 +146,7 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	bucket, err := pool.GetBucket(bucketName)
 	if err != nil {
-		return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
-			" failed GetBucket, server: %s, poolName: %s,"+
-			" bucketName: %s, err: %v, please check that your"+
-			" bucketName/sourceName (%q) is correct",
-			server, poolName, bucketName, err, bucketName)
+		return nil, err
 	}
 
 	if sourceUUID != "" && sourceUUID != bucket.UUID {
