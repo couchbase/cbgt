@@ -595,6 +595,11 @@ func (ctl *Ctl) startCtlLOCKED(
 					return
 				}
 
+				if indexDefsStart == nil ||
+					len(indexDefsStart.IndexDefs) <= 0 {
+					break REBALANCE_LOOP
+				}
+
 				// Start rebalance and monitor progress.
 				r, err := rebalance.StartRebalance(cbgt.VERSION,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
