@@ -461,6 +461,7 @@ func SubsetPlanPIndexes(a, b *PlanPIndexes) bool {
 func SamePlanPIndex(a, b *PlanPIndex) bool {
 	// Of note, we don't compare UUID's.
 	if a.Name != b.Name ||
+		a.IndexType != b.IndexType ||
 		a.IndexName != b.IndexName ||
 		a.IndexUUID != b.IndexUUID ||
 		a.IndexParams != b.IndexParams ||
@@ -478,6 +479,7 @@ func SamePlanPIndex(a, b *PlanPIndex) bool {
 // Returns true if both the PIndex meets the PlanPIndex, ignoring UUID.
 func PIndexMatchesPlan(pindex *PIndex, planPIndex *PlanPIndex) bool {
 	same := pindex.Name == planPIndex.Name &&
+		pindex.IndexType == planPIndex.IndexType &&
 		pindex.IndexName == planPIndex.IndexName &&
 		pindex.IndexUUID == planPIndex.IndexUUID &&
 		pindex.IndexParams == planPIndex.IndexParams &&
