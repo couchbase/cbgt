@@ -44,9 +44,14 @@ import (
 // process init()'ialization.
 var CfgMetaKvPrefix = "/cbgt/cfg/"
 
-var cfgMetaKvSplitKeys map[string]bool = map[string]bool{
-	CfgNodeDefsKey(NODE_DEFS_WANTED): true,
-	CfgNodeDefsKey(NODE_DEFS_KNOWN):  true,
+type cfgMetaKvSplitHandler interface {
+	get(c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error)
+	set(c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error)
+}
+
+var cfgMetaKvSplitKeys map[string]cfgMetaKvSplitHandler = map[string]cfgMetaKvSplitHandler{
+	CfgNodeDefsKey(NODE_DEFS_WANTED): &cfgMetaKvNodeDefsSplitHandler{},
+	CfgNodeDefsKey(NODE_DEFS_KNOWN):  &cfgMetaKvNodeDefsSplitHandler{},
 }
 
 type CfgMetaKv struct {
@@ -105,54 +110,9 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 }
 
 func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) {
-	if cfgMetaKvSplitKeys[key] {
-		m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
-		if err != nil {
-			return nil, 0, err
-		}
-
-		rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
-
-		uuids := []string{}
-		for _, v := range m {
-			var childNodeDefs NodeDefs
-
-			err = json.Unmarshal(v.Value, &childNodeDefs)
-			if err != nil {
-				return nil, 0, err
-			}
-
-			for k1, v1 := range childNodeDefs.NodeDefs {
-				rv.NodeDefs[k1] = v1
-			}
-
-			if rv.ImplVersion == "" ||
-				VersionGTE(childNodeDefs.ImplVersion, rv.ImplVersion) {
-				rv.ImplVersion = childNodeDefs.ImplVersion
-			}
-
-			uuids = append(uuids, childNodeDefs.UUID)
-		}
-		rv.UUID = checkSumUUIDs(uuids)
-
-		if rv.ImplVersion == "" {
-			rv.ImplVersion = VERSION
-		}
-
-		data, err := json.Marshal(rv)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		casResult := c.lastSplitCAS + 1
-		c.lastSplitCAS = casResult
-
-		c.splitEntries[key] = CfgMetaKvEntry{
-			cas:  casResult,
-			data: data,
-		}
-
-		return data, casResult, nil
+	handler := cfgMetaKvSplitKeys[key]
+	if handler != nil {
+		return handler.get(c, key, cas)
 	}
 
 	path := c.keyToPath(key)
@@ -170,127 +130,15 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	log.Printf("cfg_metakv: Set, key: %v, cas: %x, split: %t, nodeUUID: %s",
 		key, cas, cfgMetaKvSplitKeys[key], c.nodeUUID)
 
-	path := c.keyToPath(key)
-
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	if cfgMetaKvSplitKeys[key] {
-		curEntry := c.splitEntries[key]
-
-		if cas != 0 && cas != curEntry.cas {
-			log.Printf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
-				key, cas, curEntry.cas)
-
-			return 0, &CfgCASError{}
-		}
-
-		var curNodeDefs NodeDefs
-
-		if curEntry.data != nil && len(curEntry.data) > 0 {
-			err := json.Unmarshal(curEntry.data, &curNodeDefs)
-			if err != nil {
-				return 0, err
-			}
-		}
-
-		var nd NodeDefs
-
-		err := json.Unmarshal(val, &nd)
-		if err != nil {
-			return 0, err
-		}
-
-		// Analyze which children were added, removed, updated.
-		//
-		added := map[string]bool{}
-		removed := map[string]bool{}
-		updated := map[string]bool{}
-
-		for k, v := range nd.NodeDefs {
-			if curNodeDefs.NodeDefs == nil ||
-				curNodeDefs.NodeDefs[k] == nil {
-				added[k] = true
-			} else {
-				if !reflect.DeepEqual(curNodeDefs.NodeDefs[k], v) {
-					updated[k] = true
-				}
-			}
-		}
-
-		if curNodeDefs.NodeDefs != nil {
-			for k, _ := range curNodeDefs.NodeDefs {
-				if nd.NodeDefs[k] == nil {
-					removed[k] = true
-				}
-			}
-		}
-
-		log.Printf("cfg_metakv: Set split, key: %v,"+
-			" added: %v, removed: %v, updated: %v",
-			key, added, removed, updated)
-
-	LOOP:
-		for k, v := range nd.NodeDefs {
-			if c.nodeUUID != "" && c.nodeUUID != v.UUID {
-				// If we have a nodeUUID, only add/update our
-				// nodeDef, where other nodes will each add/update
-				// only their own nodeDef's.
-				log.Printf("cfg_metakv: Set split, key: %v,"+
-					" skipping other node UUID: %v, self nodeUUID: %s",
-					key, v.UUID, c.nodeUUID)
-
-				continue LOOP
-			}
-
-			childNodeDefs := NodeDefs{
-				UUID:        nd.UUID,
-				NodeDefs:    map[string]*NodeDef{},
-				ImplVersion: nd.ImplVersion,
-			}
-			childNodeDefs.NodeDefs[k] = v
-
-			val, err = json.Marshal(childNodeDefs)
-			if err != nil {
-				return 0, err
-			}
-
-			childPath := path + "/" + k
-
-			log.Printf("cfg_metakv: Set split, key: %v, childPath: %v",
-				key, childPath)
-
-			err = metakv.Set(childPath, val, nil)
-			if err != nil {
-				return 0, err
-			}
-
-			break LOOP
-		}
-
-		// Remove composite children entries from metakv only if
-		// caller was attempting removals only.  This should work as
-		// the caller usually has read-compute-write logic that only
-		// removes node defs and does not add/update node defs in the
-		// same read-compute-write code path.
-		//
-		if len(added) <= 0 && len(updated) <= 0 && len(removed) > 0 {
-			for nodeDefUUID := range removed {
-				childPath := path + "/" + nodeDefUUID
-
-				log.Printf("cfg_metakv: Set delete, childPath: %v", childPath)
-
-				err = metakv.Delete(childPath, nil)
-				if err != nil {
-					return 0, err
-				}
-			}
-		}
-
-		casResult := c.lastSplitCAS + 1
-		c.lastSplitCAS = casResult
-		return casResult, err
+	handler := cfgMetaKvSplitKeys[key]
+	if handler != nil {
+		return handler.set(c, key, val, cas)
 	}
+
+	path := c.keyToPath(key)
 
 	log.Printf("cfg_metakv: Set path: %v", path)
 
@@ -312,7 +160,7 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 	path := c.keyToPath(key)
 
-	if cfgMetaKvSplitKeys[key] {
+	if cfgMetaKvSplitKeys[key] != nil {
 		delete(c.splitEntries, key)
 
 		return metakv.RecursiveDelete(path + "/")
@@ -370,7 +218,7 @@ func (c *CfgMetaKv) pathToKey(k string) string {
 func (c *CfgMetaKv) listChildPaths(key string) ([]string, error) {
 	g := []string{}
 
-	if cfgMetaKvSplitKeys[key] {
+	if cfgMetaKvSplitKeys[key] != nil {
 		m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
 		if err != nil {
 			return nil, err
@@ -387,4 +235,184 @@ func checkSumUUIDs(uuids []string) string {
 	sort.Strings(uuids)
 	d, _ := json.Marshal(uuids)
 	return fmt.Sprint(crc32.ChecksumIEEE(d))
+}
+
+// ----------------------------------------------------------------
+
+type cfgMetaKvNodeDefsSplitHandler struct{}
+
+// get() retrieves multiple child entries from the metakv and weaves
+// the results back into a composite nodeDefs.  get() must be invoked
+// with c.m.Lock()'ed.
+func (a *cfgMetaKvNodeDefsSplitHandler) get(
+	c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error) {
+	m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rv := &NodeDefs{NodeDefs: make(map[string]*NodeDef)}
+
+	uuids := []string{}
+	for _, v := range m {
+		var childNodeDefs NodeDefs
+
+		err = json.Unmarshal(v.Value, &childNodeDefs)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		for k1, v1 := range childNodeDefs.NodeDefs {
+			rv.NodeDefs[k1] = v1
+		}
+
+		if rv.ImplVersion == "" ||
+			VersionGTE(childNodeDefs.ImplVersion, rv.ImplVersion) {
+			rv.ImplVersion = childNodeDefs.ImplVersion
+		}
+
+		uuids = append(uuids, childNodeDefs.UUID)
+	}
+	rv.UUID = checkSumUUIDs(uuids)
+
+	if rv.ImplVersion == "" {
+		rv.ImplVersion = VERSION
+	}
+
+	data, err := json.Marshal(rv)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	casResult := c.lastSplitCAS + 1
+	c.lastSplitCAS = casResult
+
+	c.splitEntries[key] = CfgMetaKvEntry{
+		cas:  casResult,
+		data: data,
+	}
+
+	return data, casResult, nil
+}
+
+// set() splits a nodeDefs into multiple child metakv entries and must
+// be invoked with c.m.Lock()'ed.
+func (a *cfgMetaKvNodeDefsSplitHandler) set(
+	c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error) {
+	path := c.keyToPath(key)
+
+	curEntry := c.splitEntries[key]
+
+	if cas != 0 && cas != curEntry.cas {
+		log.Printf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
+			key, cas, curEntry.cas)
+
+		return 0, &CfgCASError{}
+	}
+
+	var curNodeDefs NodeDefs
+
+	if curEntry.data != nil && len(curEntry.data) > 0 {
+		err := json.Unmarshal(curEntry.data, &curNodeDefs)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	var nd NodeDefs
+
+	err := json.Unmarshal(val, &nd)
+	if err != nil {
+		return 0, err
+	}
+
+	// Analyze which children were added, removed, updated.
+	//
+	added := map[string]bool{}
+	removed := map[string]bool{}
+	updated := map[string]bool{}
+
+	for k, v := range nd.NodeDefs {
+		if curNodeDefs.NodeDefs == nil ||
+			curNodeDefs.NodeDefs[k] == nil {
+			added[k] = true
+		} else {
+			if !reflect.DeepEqual(curNodeDefs.NodeDefs[k], v) {
+				updated[k] = true
+			}
+		}
+	}
+
+	if curNodeDefs.NodeDefs != nil {
+		for k, _ := range curNodeDefs.NodeDefs {
+			if nd.NodeDefs[k] == nil {
+				removed[k] = true
+			}
+		}
+	}
+
+	log.Printf("cfg_metakv: Set split, key: %v,"+
+		" added: %v, removed: %v, updated: %v",
+		key, added, removed, updated)
+
+LOOP:
+	for k, v := range nd.NodeDefs {
+		if c.nodeUUID != "" && c.nodeUUID != v.UUID {
+			// If we have a nodeUUID, only add/update our
+			// nodeDef, where other nodes will each add/update
+			// only their own nodeDef's.
+			log.Printf("cfg_metakv: Set split, key: %v,"+
+				" skipping other node UUID: %v, self nodeUUID: %s",
+				key, v.UUID, c.nodeUUID)
+
+			continue LOOP
+		}
+
+		childNodeDefs := NodeDefs{
+			UUID:        nd.UUID,
+			NodeDefs:    map[string]*NodeDef{},
+			ImplVersion: nd.ImplVersion,
+		}
+		childNodeDefs.NodeDefs[k] = v
+
+		val, err = json.Marshal(childNodeDefs)
+		if err != nil {
+			return 0, err
+		}
+
+		childPath := path + "/" + k
+
+		log.Printf("cfg_metakv: Set split, key: %v, childPath: %v",
+			key, childPath)
+
+		err = metakv.Set(childPath, val, nil)
+		if err != nil {
+			return 0, err
+		}
+
+		break LOOP
+	}
+
+	// Remove composite children entries from metakv only if
+	// caller was attempting removals only.  This should work as
+	// the caller usually has read-compute-write logic that only
+	// removes node defs and does not add/update node defs in the
+	// same read-compute-write code path.
+	//
+	if len(added) <= 0 && len(updated) <= 0 && len(removed) > 0 {
+		for nodeDefUUID := range removed {
+			childPath := path + "/" + nodeDefUUID
+
+			log.Printf("cfg_metakv: Set delete, childPath: %v", childPath)
+
+			err = metakv.Delete(childPath, nil)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	casResult := c.lastSplitCAS + 1
+	c.lastSplitCAS = casResult
+	return casResult, err
 }
