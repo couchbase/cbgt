@@ -144,11 +144,15 @@ func (h *HandlerWithRESTMeta) ServeHTTP(
 		startTime = time.Now()
 	}
 
-	h.h.ServeHTTP(w, req)
+	crw := &CountResponseWriter{ResponseWriter: w}
+
+	h.h.ServeHTTP(crw, req)
 
 	if focusStats != nil {
 		atomic.AddUint64(&focusStats.TotRequestTimeNS,
 			uint64(time.Now().Sub(startTime)))
+
+		atomic.AddUint64(&focusStats.TotResponseBytes, crw.TotBytesWritten)
 	}
 }
 
@@ -755,4 +759,26 @@ func RESTGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
 			"memProfileRate": runtime.MemProfileRate,
 		},
 	})
+}
+
+// -------------------------------------------------------
+
+// A CountResponseWriter is a wrapper of an http.ResponseWriter that
+// counts the bytes written.
+type CountResponseWriter struct {
+	ResponseWriter  http.ResponseWriter
+	TotBytesWritten uint64
+}
+
+func (cw *CountResponseWriter) Header() http.Header {
+	return cw.ResponseWriter.Header()
+}
+
+func (cw *CountResponseWriter) Write(p []byte) (n int, err error) {
+	cw.TotBytesWritten += uint64(len(p))
+	return cw.ResponseWriter.Write(p)
+}
+
+func (cw *CountResponseWriter) WriteHeader(n int) {
+	cw.ResponseWriter.WriteHeader(n)
 }
