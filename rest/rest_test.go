@@ -576,3 +576,23 @@ func TestHandlersForEmptyManager(t *testing.T) {
 
 	testRESTHandlers(t, tests, router)
 }
+
+func TestPathFocusName(t *testing.T) {
+	tests := []struct {
+		inp string
+		exp string
+	}{
+		{"", ""},
+		{"hello", ""},
+		{"/api/index/{indexName}", "indexName"},
+		{"/api/index/{indexName}/query", "indexName"},
+	}
+
+	for testi, test := range tests {
+		got := PathFocusName(test.inp)
+		if got != test.exp {
+			t.Errorf("testi: %d, %s != %s on input %s",
+				testi, got, test.exp, test.inp)
+		}
+	}
+}

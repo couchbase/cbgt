@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	log "github.com/couchbase/clog"
@@ -189,9 +190,11 @@ type QueryHandler struct {
 	mgr *cbgt.Manager
 
 	slowQueryLogTimeout time.Duration
+
+	pathStats *RESTPathStats
 }
 
-func NewQueryHandler(mgr *cbgt.Manager) *QueryHandler {
+func NewQueryHandler(mgr *cbgt.Manager, pathStats *RESTPathStats) *QueryHandler {
 	slowQueryLogTimeout := time.Duration(0)
 	slowQueryLogTimeoutV := mgr.Options()["slowQueryLogTimeout"]
 	if slowQueryLogTimeoutV != "" {
@@ -204,6 +207,7 @@ func NewQueryHandler(mgr *cbgt.Manager) *QueryHandler {
 	return &QueryHandler{
 		mgr:                 mgr,
 		slowQueryLogTimeout: slowQueryLogTimeout,
+		pathStats:           pathStats,
 	}
 }
 
@@ -275,10 +279,22 @@ func (h *QueryHandler) ServeHTTP(
 			log.Printf("slow-query:"+
 				" index: %s, query: %s, duration: %v, err: %v",
 				indexName, string(requestBody), d, err)
+
+			if h.pathStats != nil {
+				focusStats := h.pathStats.FocusStats(indexName)
+				if focusStats != nil {
+					atomic.AddUint64(&focusStats.TotRequestSlow, 1)
+				}
+			}
 		}
 	}
 
 	if err != nil {
+		focusStats := h.pathStats.FocusStats(indexName)
+		if focusStats != nil {
+			atomic.AddUint64(&focusStats.TotRequestErr, 1)
+		}
+
 		if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
 			rv := struct {
 				Status       string              `json:"status"`

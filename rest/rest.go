@@ -17,10 +17,14 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"reflect"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -73,10 +77,27 @@ func PIndexNameLookup(req *http.Request) string {
 
 // -------------------------------------------------------
 
+var pathFocusNameRE = regexp.MustCompile(`{([a-zA-Z]+)}`)
+
+// PathFocusName return the focus name of path spec.  For example,
+// given a path spec of "/api/index/{indexName}", the focus name
+// result is "indexName".  A focus name of "" is valid.
+func PathFocusName(path string) string {
+	// Example path: "/api/index/{indexName}".
+	// Example path: "/api/index/{indexName}/query".
+	a := pathFocusNameRE.FindStringSubmatch(path)
+	if len(a) <= 1 {
+		return ""
+	}
+	return a[1]
+}
+
+// -------------------------------------------------------
+
 // RESTMeta represents the metadata of a REST API endpoint and is used
 // for auto-generated REST API documentation.
 type RESTMeta struct {
-	Path   string
+	Path   string // The path spec, including any optional prefix.
 	Method string
 	Opts   map[string]string
 }
@@ -102,11 +123,105 @@ var RESTMethodOrds = map[string]string{
 type HandlerWithRESTMeta struct {
 	h        http.Handler
 	RESTMeta *RESTMeta
+
+	pathStats *RESTPathStats // May be nil.
+	focusName string         // A path focus name, ex: "indexName", "pindexName".
 }
 
 func (h *HandlerWithRESTMeta) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
+	var focusStats *RESTFocusStats
+	var startTime time.Time
+
+	if h.pathStats != nil {
+		var focusVal string
+		if h.focusName != "" {
+			focusVal = MuxVariableLookup(req, h.focusName)
+		}
+
+		focusStats = h.pathStats.FocusStats(focusVal)
+		atomic.AddUint64(&focusStats.TotRequest, 1)
+		startTime = time.Now()
+	}
+
 	h.h.ServeHTTP(w, req)
+
+	if focusStats != nil {
+		atomic.AddUint64(&focusStats.TotRequestTimeNS,
+			uint64(time.Now().Sub(startTime)))
+	}
+}
+
+// -------------------------------------------------------
+
+// RESTPathStats represents the stats for a REST path spec.  A REST
+// path spec, like "/api/index" or "/api/index/{indexName}/query", can
+// have an optional focusName (i.e., "indexName"), which can in turn
+// have multiple runtime focus values, like "beer-sample",
+// "indexForCRM", "".
+type RESTPathStats struct {
+	m sync.Mutex // Protects the fields that follow.
+
+	// Keyed by a focus value, like "beer-sample", "pindex-12343234", "".
+	focusStats map[string]*RESTFocusStats
+}
+
+// FocusStats returns the RESTFocusStats for a given focus value (like
+// "beer-sample"), and is a concurrent safe method.  The returned
+// RESTFocusStats should only be accessed via sync/atomic functions.
+func (s *RESTPathStats) FocusStats(focusVal string) *RESTFocusStats {
+	s.m.Lock()
+	if s.focusStats == nil {
+		s.focusStats = map[string]*RESTFocusStats{}
+	}
+	rv, exists := s.focusStats[focusVal]
+	if !exists {
+		rv = &RESTFocusStats{}
+		s.focusStats[focusVal] = rv
+	}
+	s.m.Unlock()
+	return rv
+}
+
+// FocusValues returns the focus value strings, like ["beer-sample",
+// "indexForCRM", "wikiIndexTitles"].
+func (s *RESTPathStats) FocusValues() (rv []string) {
+	s.m.Lock()
+	for focusVal := range s.focusStats {
+		rv = append(rv, focusVal)
+	}
+	s.m.Unlock()
+	return rv
+}
+
+// -------------------------------------------------------
+
+// RESTFocusStats represents stats for a targeted or "focused" REST
+// endpoint, like "/api/index/beer-sample/query".
+type RESTFocusStats struct {
+	TotRequest        uint64
+	TotRequestTimeNS  uint64
+	TotRequestErr     uint64 `json:"TotRequestErr,omitempty"`
+	TotRequestSlow    uint64 `json:"TotRequestSlow,omitempty"`
+	TotRequestTimeout uint64 `json:"TotRequestTimeout,omitempty"`
+	TotResponseBytes  uint64 `json:"TotResponseBytes,omitempty"`
+}
+
+// AtomicCopyTo copies stats from s to r (from source to result).
+func (s *RESTFocusStats) AtomicCopyTo(r *RESTFocusStats) {
+	rve := reflect.ValueOf(r).Elem()
+	sve := reflect.ValueOf(s).Elem()
+	svet := sve.Type()
+	for i := 0; i < svet.NumField(); i++ {
+		rvef := rve.Field(i)
+		svef := sve.Field(i)
+		if rvef.CanAddr() && svef.CanAddr() {
+			rvefp := rvef.Addr().Interface()
+			svefp := svef.Addr().Interface()
+			atomic.StoreUint64(rvefp.(*uint64),
+				atomic.LoadUint64(svefp.(*uint64)))
+		}
+	}
 }
 
 // -------------------------------------------------------
@@ -159,10 +274,22 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 	options map[string]interface{}) (
 	*mux.Router, map[string]RESTMeta, error) {
 	var authHandler func(http.Handler) http.Handler
-	if v, ok := options["auth"]; ok {
-		authHandler, ok = v.(func(http.Handler) http.Handler)
-		if !ok {
-			log.Printf("rest: auth function is not valid")
+
+	mapRESTPathStats := map[string]*RESTPathStats{} // Keyed by path spec.
+
+	if options != nil {
+		if v, ok := options["auth"]; ok {
+			authHandler, ok = v.(func(http.Handler) http.Handler)
+			if !ok {
+				return nil, nil, fmt.Errorf("rest: auth function invalid")
+			}
+		}
+
+		if v, ok := options["mapRESTPathStats"]; ok {
+			mapRESTPathStats, ok = v.(map[string]*RESTPathStats)
+			if !ok {
+				return nil, nil, fmt.Errorf("rest: mapRESTPathStats invalid")
+			}
 		}
 	}
 
@@ -182,8 +309,10 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 		restMeta := RESTMeta{prefixPath, method, opts}
 		meta[prefixPath+" "+RESTMethodOrds[method]+method] = restMeta
 		h = &HandlerWithRESTMeta{
-			h:        h,
-			RESTMeta: &restMeta,
+			h:         h,
+			RESTMeta:  &restMeta,
+			pathStats: mapRESTPathStats[path],
+			focusName: PathFocusName(path),
 		}
 		if authHandler != nil {
 			h = authHandler(h)
@@ -225,7 +354,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"version introduced": "0.0.1",
 			})
 		handle("/api/index/{indexName}/query", "POST",
-			NewQueryHandler(mgr),
+			NewQueryHandler(mgr,
+				mapRESTPathStats["/api/index/{indexName}/query"]),
 			map[string]string{
 				"_category":          "Indexing|Index querying",
 				"_about":             `Queries an index.`,
