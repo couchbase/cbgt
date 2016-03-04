@@ -13,6 +13,7 @@ package cbgt
 
 import (
 	"container/list"
+	"errors"
 	"fmt"
 	"io"
 
@@ -92,6 +93,10 @@ type PIndexImplType struct {
 	// implementations and information.
 	UI map[string]string
 }
+
+// ErrPIndexQueryTimeout may be returned for queries that took too
+// long and timed out.
+var ErrPIndexQueryTimeout = errors.New("pindex query timeout")
 
 // PIndexImplTypes is a global registry of pindex type backends or
 // implementations.  It is keyed by indexType and should be treated as

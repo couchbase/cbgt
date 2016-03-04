@@ -293,6 +293,10 @@ func (h *QueryHandler) ServeHTTP(
 		focusStats := h.pathStats.FocusStats(indexName)
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotRequestErr, 1)
+
+			if err == cbgt.ErrPIndexQueryTimeout {
+				atomic.AddUint64(&focusStats.TotRequestTimeout, 1)
+			}
 		}
 
 		if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
