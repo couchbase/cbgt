@@ -22,7 +22,7 @@ import (
 )
 
 // MainUUID is a helper function for cmd-line tool developers, that
-// reuses a previous "baseName.idd" file from the dataDir if it
+// reuses a previous "baseName.uuid" file from the dataDir if it
 // exists, or generates a brand new UUID (and persists it).
 func MainUUID(baseName, dataDir string) (string, error) {
 	uuid := cbgt.NewUUID()
