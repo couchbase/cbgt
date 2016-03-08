@@ -12,8 +12,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"runtime"
@@ -91,6 +93,23 @@ func ParseOptions(optionKVs string, envName string,
 			a := strings.Split(kv, "=")
 			if len(a) >= 2 {
 				options[a[0]] = a[1]
+			}
+		}
+	}
+
+	optionsFile, exists := options["optionsFile"]
+	if exists {
+		log.Printf("main_flags: loading optionsFile: %q", optionsFile)
+
+		b, err := ioutil.ReadFile(optionsFile)
+		if err != nil {
+			log.Printf("main_flags: reading options file: %s, err: %v",
+				optionsFile, err)
+		} else {
+			err = json.Unmarshal(b, &options)
+			if err != nil {
+				log.Printf("main_flags: JSON parse option file: %s, err: %v",
+					optionsFile, err)
 			}
 		}
 	}
