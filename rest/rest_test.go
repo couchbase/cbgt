@@ -50,12 +50,11 @@ func TestInitStaticRouter(t *testing.T) {
 func TestMustEncode(t *testing.T) {
 	defer func() {
 		r := recover()
-		if r == nil {
-			t.Errorf("expected must encode panic and recover")
+		if r != nil {
+			t.Errorf("expected must encode to not panic anymore")
 		}
 	}()
 	MustEncode(&bytes.Buffer{}, func() {})
-	t.Errorf("expected must encode panic")
 }
 
 // Implements ManagerEventHandlers interface.

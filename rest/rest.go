@@ -43,17 +43,23 @@ func ShowError(w http.ResponseWriter, r *http.Request,
 }
 
 func MustEncode(w io.Writer, i interface{}) {
-	if headered, ok := w.(http.ResponseWriter); ok {
-		headered.Header().Set("Cache-Control", "no-cache")
-		if headered.Header().Get("Content-type") == "" {
-			headered.Header().Set("Content-type", "application/json")
+	rw, rwOk := w.(http.ResponseWriter)
+	if rwOk {
+		h := rw.Header()
+		if h != nil {
+			h.Set("Cache-Control", "no-cache")
+			if h.Get("Content-type") == "" {
+				h.Set("Content-type", "application/json")
+			}
 		}
 	}
 
-	e := json.NewEncoder(w)
-	err := e.Encode(i)
+	err := json.NewEncoder(w).Encode(i)
 	if err != nil {
-		panic(err)
+		log.Printf("rest: JSON encode: %+v, err: %v", i, err)
+		if rwOk {
+			http.Error(rw, fmt.Sprintf("rest: JSON encode, err: %v", err), 500)
+		}
 	}
 }
 
