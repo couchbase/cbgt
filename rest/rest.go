@@ -788,3 +788,11 @@ func (cw *CountResponseWriter) Write(p []byte) (n int, err error) {
 func (cw *CountResponseWriter) WriteHeader(n int) {
 	cw.ResponseWriter.WriteHeader(n)
 }
+
+func (cw *CountResponseWriter) CloseNotify() <-chan bool {
+	cn, ok := cw.ResponseWriter.(http.CloseNotifier)
+	if ok && cn != nil {
+		return cn.CloseNotify()
+	}
+	return nil
+}
