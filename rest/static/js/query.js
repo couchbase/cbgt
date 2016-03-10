@@ -221,6 +221,9 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                     hit.fragments[fv] = [$sce.trustAsHtml(""+fieldval)];
                 }
             }
+            if ($scope.decorateSearchHit) {
+              $scope.decorateSearchHit(hit)
+            }
         }
         if (data.took) {
             $scope.results.roundTook = $scope.roundTook(data.took);

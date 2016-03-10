@@ -12,7 +12,8 @@
 
   <ol start="{{firstResult}}">
     <li ng-repeat="hit in results.hits">
-      <b>{{hit.id}}</b>
+      <b ng-show="hit.docIDLink"><a href="{{hit.docIDLink}}">{{hit.id}}</a></b>
+      <b ng-hide="hit.docIDLink">{{hit.id}}</b>
       <span class="badge" ng-show="explainScoring">{{hit.roundedScore}}</span>
       <div class="well" ng-show="explainScoring">
         Scoring
