@@ -64,6 +64,8 @@ func (mgr *Manager) CreateIndex(sourceType,
 			sourceType, sourceName, sourceUUID, err)
 	}
 
+	var indexDef *IndexDef
+
 	tries := 0
 
 	for {
@@ -107,7 +109,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 
 		indexUUID := NewUUID()
 
-		indexDef := &IndexDef{
+		indexDef = &IndexDef{
 			Type:         indexType,
 			Name:         indexName,
 			UUID:         indexUUID,
@@ -139,6 +141,16 @@ func (mgr *Manager) CreateIndex(sourceType,
 		break // Success.
 	}
 
+	if prevIndexUUID == "" {
+		log.Printf("manager_api: index definition created,"+
+			" indexType: %s, indexName: %s, indexUUID: %s",
+			indexDef.Type, indexDef.Name, indexDef.UUID)
+	} else {
+		log.Printf("manager_api: index definition updated,"+
+			" indexType: %s, indexName: %s, indexUUID: %s, prevIndexUUID: %s",
+			indexDef.Type, indexDef.Name, indexDef.UUID, prevIndexUUID)
+	}
+
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
 	return nil
@@ -163,7 +175,8 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 			" indexDefs.ImplVersion: %s > mgr.version: %s",
 			indexDefs.ImplVersion, mgr.version)
 	}
-	if _, exists := indexDefs.IndexDefs[indexName]; !exists {
+	indexDef, exists := indexDefs.IndexDefs[indexName]
+	if !exists {
 		return fmt.Errorf("manager_api: index to delete missing,"+
 			" indexName: %s", indexName)
 	}
@@ -180,6 +193,10 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 		return fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
 	}
+
+	log.Printf("manager_api: index definition deleted,"+
+		" indexType: %s, indexName: %s, indexUUID: %s",
+		indexDef.Type, indexDef.Name, indexDef.UUID)
 
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
