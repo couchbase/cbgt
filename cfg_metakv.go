@@ -128,7 +128,7 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
 	log.Printf("cfg_metakv: Set, key: %v, cas: %x, split: %t, nodeUUID: %s",
-		key, cas, cfgMetaKvSplitKeys[key], c.nodeUUID)
+		key, cas, cfgMetaKvSplitKeys[key] != nil, c.nodeUUID)
 
 	c.m.Lock()
 	defer c.m.Unlock()
