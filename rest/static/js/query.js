@@ -129,6 +129,11 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         });
     };
 
+    $scope.runNewQuery = function() {
+        $scope.page = 1
+        $scope.runQuery()
+    };
+
     $scope.expl = function(explanation) {
         var rv = "" + $scope.roundScore(explanation.value) +
             " - " + explanation.message;
