@@ -21,6 +21,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -215,7 +216,16 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 		len(ctlTopology.PrevWarnings) <= 0 && len(ctlTopology.PrevErrs) <= 0
 
 	for resourceName, resourceWarnings := range ctlTopology.PrevWarnings {
+		aggregate := map[string]bool{}
 		for _, resourceWarning := range resourceWarnings {
+			if strings.HasPrefix(resourceWarning, "could not meet constraints") {
+				aggregate["could not meet replication constraints"] = true
+			} else {
+				aggregate[resourceWarning] = true
+			}
+		}
+
+		for resourceWarning := range aggregate {
 			rv.Messages = append(rv.Messages,
 				fmt.Sprintf("warning: resource: %q -- %s",
 					resourceName, resourceWarning))
