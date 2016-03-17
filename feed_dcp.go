@@ -124,11 +124,11 @@ type DCPFeed struct {
 // cbdatasource.NewBucketDataSource().  DCPFeedParams also implements
 // the couchbase.AuthHandler interface.
 type DCPFeedParams struct {
-	AuthUser     string `json:"authUser"` // May be "" for no auth.
-	AuthPassword string `json:"authPassword"`
+	AuthUser     string `json:"authUser,omitempty"` // May be "" for no auth.
+	AuthPassword string `json:"authPassword,omitempty"`
 
-	AuthSaslUser     string `json:"authSaslUser"` // May be "" for no auth.
-	AuthSaslPassword string `json:"authSaslPassword"`
+	AuthSaslUser     string `json:"authSaslUser,omitempty"` // May be "" for no auth.
+	AuthSaslPassword string `json:"authSaslPassword,omitempty"`
 
 	// Factor (like 1.5) to increase sleep time between retries
 	// in connecting to a cluster manager node.
