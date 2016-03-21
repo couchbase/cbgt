@@ -11,6 +11,8 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"sort"
 
@@ -235,4 +237,44 @@ func (h *ManagerHandler) ServeHTTP(
 	}
 
 	MustEncode(w, r)
+}
+
+// ---------------------------------------------------
+
+// ManagerOptions is a REST handler that sets the managerOptions
+type ManagerOptions struct {
+	mgr *cbgt.Manager
+}
+
+func NewManagerOptions(mgr *cbgt.Manager) *ManagerOptions {
+	return &ManagerOptions{mgr: mgr}
+}
+
+func (h *ManagerOptions) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		msg := fmt.Sprintf("rest_manage:"+
+			" could not read request body err: %v", err)
+		http.Error(w, msg, 400)
+		return
+	}
+
+	opt := h.mgr.Options()
+	newOptions := map[string]string{}
+	for k, v := range opt {
+		newOptions[k] = v
+	}
+	err = json.Unmarshal(requestBody, newOptions)
+	if err != nil {
+		msg := fmt.Sprintf("rest_manage:"+
+			" error in unmarshalling err: %v", err)
+		http.Error(w, msg, 400)
+		return
+	}
+
+	h.mgr.SetOptions(newOptions)
+	MustEncode(w, struct {
+		Status string `json:"status"`
+	}{Status: "ok"})
 }

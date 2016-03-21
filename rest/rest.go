@@ -438,6 +438,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			})
 	}
 
+	handle("/api/managerOptions", "PUT", NewManagerOptions(mgr),
+		map[string]string{
+			"_category":          "Node|Node configuration",
+			"_about":             "Set the options for the manager",
+			"version introduced": "4.2.0",
+		})
+
 	handle("/api/cfg", "GET", NewCfgGetHandler(mgr),
 		map[string]string{
 			"_category": "Node|Node configuration",
