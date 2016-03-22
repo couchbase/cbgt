@@ -37,7 +37,7 @@ func (h *ListIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexDefs, _, err := h.mgr.GetIndexDefs(false)
 	if err != nil {
-		ShowError(w, req, "could not retrieve index defs", 500)
+		ShowError(w, req, "could not retrieve index defs", http.StatusInternalServerError)
 		return
 	}
 
@@ -73,25 +73,25 @@ func (h *GetIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "index name is required", 400)
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
 
 	_, indexDefsByName, err := h.mgr.GetIndexDefs(false)
 	if err != nil {
-		ShowError(w, req, "could not retrieve index defs", 500)
+		ShowError(w, req, "could not retrieve index defs", http.StatusInternalServerError)
 		return
 	}
 
 	indexDef, exists := indexDefsByName[indexName]
 	if !exists || indexDef == nil {
-		ShowError(w, req, "index not found", 400)
+		ShowError(w, req, "index not found", http.StatusBadRequest)
 		return
 	}
 
 	indexUUID := req.FormValue("indexUUID")
 	if indexUUID != "" && indexUUID != indexDef.UUID {
-		ShowError(w, req, "wrong index UUID", 400)
+		ShowError(w, req, "wrong index UUID", http.StatusBadRequest)
 		return
 	}
 
@@ -100,7 +100,7 @@ func (h *GetIndexHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req,
 			fmt.Sprintf("rest_index: GetPlanPIndexes, err: %v",
-				err), 400)
+				err), http.StatusBadRequest)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (h *CountHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "index name is required", 400)
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
 
@@ -160,7 +160,7 @@ func (h *CountHandler) ServeHTTP(
 	if err != nil || pindexImplType.Count == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: Count,"+
 			" no pindexImplType, indexName: %s, err: %v",
-			indexName, err), 400)
+			indexName, err), http.StatusBadRequest)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (h *CountHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: Count,"+
 			" indexName: %s, err: %v",
-			indexName, err), 500)
+			indexName, err), http.StatusInternalServerError)
 		return
 	}
 
@@ -248,7 +248,7 @@ func (h *QueryHandler) ServeHTTP(
 
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "index name is required", 400)
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
 
@@ -258,7 +258,7 @@ func (h *QueryHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
 			" could not read request body, indexName: %s",
-			indexName), 400)
+			indexName), http.StatusBadRequest)
 		return
 	}
 
@@ -267,7 +267,7 @@ func (h *QueryHandler) ServeHTTP(
 	if err != nil || pindexImplType.Query == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
 			" no pindexImplType, indexName: %s, err: %v",
-			indexName, err), 400)
+			indexName, err), http.StatusBadRequest)
 		return
 	}
 
@@ -299,28 +299,13 @@ func (h *QueryHandler) ServeHTTP(
 			}
 		}
 
-		if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
-			rv := struct {
-				Status       string              `json:"status"`
-				Message      string              `json:"message"`
-				StartEndSeqs map[string][]uint64 `json:"startEndSeqs"`
-			}{
-				Status: errCW.Status,
-				Message: fmt.Sprintf("rest_index: Query,"+
-					" indexName: %s, requestBody: %s, req: %#v, err: %v",
-					indexName, requestBody, req, err),
-				StartEndSeqs: errCW.StartEndSeqs,
-			}
-			buf, err := json.Marshal(rv)
-			if err == nil && buf != nil {
-				ShowError(w, req, string(buf), 408)
-				return
-			}
+		if showConsistencyError(err, "Query", indexName, requestBody, w, req) {
+			return
 		}
 
 		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
 			" indexName: %s, requestBody: %s, req: %#v, err: %v",
-			indexName, requestBody, req, err), 400)
+			indexName, requestBody, req, err), http.StatusBadRequest)
 		return
 	}
 }
@@ -354,7 +339,7 @@ func (h *IndexControlHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "index name is required", 400)
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
 
@@ -363,7 +348,7 @@ func (h *IndexControlHandler) ServeHTTP(
 	op := MuxVariableLookup(req, "op")
 	if !h.allowedOps[op] {
 		ShowError(w, req, fmt.Sprintf("rest_index: IndexControl,"+
-			" error: unsupported op: %s", op), 400)
+			" error: unsupported op: %s", op), http.StatusBadRequest)
 		return
 	}
 
@@ -378,7 +363,7 @@ func (h *IndexControlHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: IndexControl,"+
 			" control: %s, could not op: %s, err: %v",
-			h.control, op, err), 400)
+			h.control, op, err), http.StatusBadRequest)
 		return
 	}
 
@@ -431,14 +416,14 @@ func (h *GetPIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	pindexName := PIndexNameLookup(req)
 	if pindexName == "" {
-		ShowError(w, req, "rest_index: pindex name is required", 400)
+		ShowError(w, req, "rest_index: pindex name is required", http.StatusBadRequest)
 		return
 	}
 
 	pindex := h.mgr.GetPIndex(pindexName)
 	if pindex == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: GetPIndex,"+
-			" no pindex, pindexName: %s", pindexName), 400)
+			" no pindex, pindexName: %s", pindexName), http.StatusBadRequest)
 		return
 	}
 
@@ -467,19 +452,19 @@ func (h *CountPIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	pindexName := PIndexNameLookup(req)
 	if pindexName == "" {
-		ShowError(w, req, "rest_index: pindex name is required", 400)
+		ShowError(w, req, "rest_index: pindex name is required", http.StatusBadRequest)
 		return
 	}
 
 	pindex := h.mgr.GetPIndex(pindexName)
 	if pindex == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: CountPIndex,"+
-			" no pindex, pindexName: %s", pindexName), 400)
+			" no pindex, pindexName: %s", pindexName), http.StatusBadRequest)
 		return
 	}
 	if pindex.Dest == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: CountPIndex,"+
-			" no pindex.Dest, pindexName: %s", pindexName), 400)
+			" no pindex.Dest, pindexName: %s", pindexName), http.StatusBadRequest)
 		return
 	}
 
@@ -487,7 +472,7 @@ func (h *CountPIndexHandler) ServeHTTP(
 	if pindexUUID != "" && pindex.UUID != pindexUUID {
 		ShowError(w, req, fmt.Sprintf("rest_index: CountPIndex,"+
 			" wrong pindexUUID: %s, pindex.UUID: %s, pindexName: %s",
-			pindexUUID, pindex.UUID, pindexName), 400)
+			pindexUUID, pindex.UUID, pindexName), http.StatusBadRequest)
 		return
 	}
 
@@ -505,7 +490,7 @@ func (h *CountPIndexHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: CountPIndex,"+
 			" pindexName: %s, req: %#v, err: %v",
-			pindexName, req, err), 400)
+			pindexName, req, err), http.StatusBadRequest)
 		return
 	}
 
@@ -534,19 +519,19 @@ func (h *QueryPIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	pindexName := PIndexNameLookup(req)
 	if pindexName == "" {
-		ShowError(w, req, "rest_index: pindex name is required", 400)
+		ShowError(w, req, "rest_index: pindex name is required", http.StatusBadRequest)
 		return
 	}
 
 	pindex := h.mgr.GetPIndex(pindexName)
 	if pindex == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
-			" no pindex, pindexName: %s", pindexName), 400)
+			" no pindex, pindexName: %s", pindexName), http.StatusBadRequest)
 		return
 	}
 	if pindex.Dest == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
-			" no pindex.Dest, pindexName: %s", pindexName), 400)
+			" no pindex.Dest, pindexName: %s", pindexName), http.StatusBadRequest)
 		return
 	}
 
@@ -554,7 +539,7 @@ func (h *QueryPIndexHandler) ServeHTTP(
 	if pindexUUID != "" && pindex.UUID != pindexUUID {
 		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
 			" wrong pindexUUID: %s, pindex.UUID: %s, pindexName: %s",
-			pindexUUID, pindex.UUID, pindexName), 400)
+			pindexUUID, pindex.UUID, pindexName), http.StatusBadRequest)
 		return
 	}
 
@@ -562,7 +547,7 @@ func (h *QueryPIndexHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
 			" could not read request body, pindexName: %s",
-			pindexName), 400)
+			pindexName), http.StatusBadRequest)
 		return
 	}
 
@@ -578,28 +563,36 @@ func (h *QueryPIndexHandler) ServeHTTP(
 
 	err = pindex.Dest.Query(pindex, requestBody, w, cancelCh)
 	if err != nil {
-		if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
-			rv := struct {
-				Status       string              `json:"status"`
-				Message      string              `json:"message"`
-				StartEndSeqs map[string][]uint64 `json:"startEndSeqs"`
-			}{
-				Status: errCW.Status,
-				Message: fmt.Sprintf("rest_index: QueryPIndex,"+
-					" pindexName: %s, requestBody: %s, req: %#v, err: %v",
-					pindexName, requestBody, req, err),
-				StartEndSeqs: errCW.StartEndSeqs,
-			}
-			buf, err := json.Marshal(rv)
-			if err == nil && buf != nil {
-				ShowError(w, req, string(buf), 408)
-				return
-			}
+		if showConsistencyError(err, "QueryPIndex", pindexName, requestBody, w, req) {
+			return
 		}
 
 		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
 			" pindexName: %s, requestBody: %s, req: %#v, err: %v",
-			pindexName, requestBody, req, err), 400)
+			pindexName, requestBody, req, err), http.StatusBadRequest)
 		return
 	}
+}
+
+func showConsistencyError(err error, methodName, itemName string,
+	requestBody []byte, w http.ResponseWriter, req *http.Request) bool {
+	if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
+		rv := struct {
+			Status       string              `json:"status"`
+			Message      string              `json:"message"`
+			StartEndSeqs map[string][]uint64 `json:"startEndSeqs"`
+		}{
+			Status: errCW.Status,
+			Message: fmt.Sprintf("rest_index: %s,"+
+				" name: %s, requestBody: %s, req: %#v, err: %v",
+				methodName, itemName, requestBody, req, err),
+			StartEndSeqs: errCW.StartEndSeqs,
+		}
+		buf, err := json.Marshal(rv)
+		if err == nil && buf != nil {
+			ShowError(w, req, string(buf), http.StatusPreconditionFailed)
+			return true
+		}
+	}
+	return false
 }
