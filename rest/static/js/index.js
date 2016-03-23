@@ -225,8 +225,6 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
         }).
         error(function(data, code) {
             $scope.indexDocCount = "..."
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
         });
     };
 
