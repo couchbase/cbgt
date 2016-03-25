@@ -50,6 +50,8 @@ type RebalanceOptions struct {
 	// Optional, defaults to http.Get(); this is used, for example,
 	// for unit testing.
 	HttpGet func(url string) (resp *http.Response, err error)
+
+	SkipSeqChecks bool // For unit-testing.
 }
 
 type RebalanceLogFunc func(format string, v ...interface{})
@@ -331,15 +333,32 @@ func (r *Rebalancer) GetEndPlanPIndexes() *cbgt.PlanPIndexes {
 
 // rebalanceIndexes rebalances each index, one at a time.
 func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
+	defer func() {
+		// Completion of rebalance operation, whether naturally or due
+		// to error/Stop(), needs this cleanup.  Wait for runMonitor()
+		// to finish as it may have more sends to progressCh.
+		//
+		r.Stop()
+
+		r.monitor.Stop()
+
+		<-r.monitorDoneCh
+
+		close(r.progressCh)
+
+		// TODO: Need to close monitorSampleWantCh?
+	}()
+
 	i := 1
 	n := len(r.begIndexDefs.IndexDefs)
 
-LOOP:
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
 		select {
 		case <-stopCh:
-			break LOOP
+			return
+
 		default:
+			// NO-OP.
 		}
 
 		r.Logf("=====================================")
@@ -350,25 +369,11 @@ LOOP:
 			r.Logf("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
 
-			break
+			return
 		}
 
 		i++
 	}
-
-	// Completion of rebalance operation, whether naturally or due to
-	// error/Stop(), reaches the cleanup codepath here.  We wait for
-	// runMonitor() to finish as it may have more sends to progressCh.
-	//
-	r.Stop()
-
-	r.monitor.Stop()
-
-	<-r.monitorDoneCh
-
-	close(r.progressCh)
-
-	// TODO: Need to close monitorSampleWantCh?
 }
 
 // --------------------------------------------------------
@@ -572,8 +577,8 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		return err
 	}
 
-	err = r.updatePlanPIndexes_unlocked(planPIndexes, indexDef,
-		pindex, node, state, op)
+	formerPrimaryNode, err := r.updatePlanPIndexes_unlocked(planPIndexes,
+		indexDef, pindex, node, state, op)
 	if err != nil {
 		r.m.Unlock()
 		return err
@@ -596,7 +601,7 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 
 	return r.waitAssignPIndexDone(stopCh, stopCh2,
 		indexDef, planPIndexes,
-		pindex, node, state, op)
+		pindex, node, state, op, formerPrimaryNode)
 }
 
 // --------------------------------------------------------
@@ -648,10 +653,17 @@ func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 // if the state transition is invalid.
 func (r *Rebalancer) updatePlanPIndexes_unlocked(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
-	pindex, node, state, op string) error {
+	pindex, node, state, op string) (string, error) {
 	planPIndex, err := r.getPlanPIndex_unlocked(planPIndexes, pindex)
 	if err != nil {
-		return err
+		return "", err
+	}
+
+	formerPrimaryNode := ""
+	for node, planPIndexNode := range planPIndex.Nodes {
+		if planPIndexNode.Priority <= 0 {
+			formerPrimaryNode = node
+		}
 	}
 
 	canRead, canWrite :=
@@ -668,7 +680,7 @@ func (r *Rebalancer) updatePlanPIndexes_unlocked(
 
 	if op == "add" {
 		if planPIndex.Nodes[node] != nil {
-			return fmt.Errorf("updatePlanPIndexes:"+
+			return "", fmt.Errorf("updatePlanPIndexes:"+
 				" planPIndex already exists,"+
 				" indexDef: %#v, pindex: %s,"+
 				" node: %s, state: %q, op: %s, planPIndex: %#v",
@@ -683,7 +695,7 @@ func (r *Rebalancer) updatePlanPIndexes_unlocked(
 		}
 	} else {
 		if planPIndex.Nodes[node] == nil {
-			return fmt.Errorf("updatePlanPIndexes:"+
+			return "", fmt.Errorf("updatePlanPIndexes:"+
 				" planPIndex missing,"+
 				" indexDef.Name: %s, pindex: %s,"+
 				" node: %s, state: %q, op: %s, planPIndex: %#v",
@@ -707,7 +719,7 @@ func (r *Rebalancer) updatePlanPIndexes_unlocked(
 	planPIndexes.UUID = cbgt.NewUUID()
 	planPIndexes.ImplVersion = r.version
 
-	return nil
+	return formerPrimaryNode, nil
 }
 
 // --------------------------------------------------------
@@ -763,13 +775,19 @@ func (r *Rebalancer) getNodePlanParamsReadWrite(
 func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	indexDef *cbgt.IndexDef,
 	planPIndexes *cbgt.PlanPIndexes,
-	pindex, node, state, op string) error {
+	pindex, node, state, op, formerPrimaryNode string) error {
 	if op == "del" {
 		return nil // TODO: Handle op del better.
 	}
 
-	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
-	if !exists || feedType == nil || feedType.PartitionSeqs == nil {
+	if state == "replica" {
+		// No need to wait for a replica pindex to be "caught up".
+		return nil
+	}
+
+	if formerPrimaryNode == "" {
+		// There was no previous primary pindex on some node to be
+		// "caught up" against.
 		return nil
 	}
 
@@ -783,31 +801,58 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 
 	sourcePartitions := strings.Split(planPIndex.SourcePartitions, ",")
 
+	// Loop to retrieve all the seqs that we need to reach for all
+	// source partitions.
+	if !r.optionsReb.SkipSeqChecks {
+		for _, sourcePartition := range sourcePartitions {
+		INIT_WANT_SEQ:
+			for {
+				_, exists := r.getUUIDSeq(r.wantSeqs, pindex,
+					sourcePartition, node)
+				if exists {
+					break INIT_WANT_SEQ
+				}
+
+				sampleWantCh := make(chan monitor.MonitorSample)
+
+				select {
+				case <-stopCh:
+					return blance.ErrorStopped
+
+				case <-stopCh2:
+					return blance.ErrorStopped
+
+				case r.monitorSampleWantCh <- sampleWantCh:
+					for range sampleWantCh {
+						// NO-OP, but a new sample meant r.currSeqs was updated.
+					}
+				}
+
+				uuidSeqWant, exists := r.getUUIDSeq(r.currSeqs, pindex,
+					sourcePartition, formerPrimaryNode)
+				if exists {
+					r.setUUIDSeq(r.wantSeqs, pindex, sourcePartition, node,
+						uuidSeqWant.UUID, uuidSeqWant.Seq)
+				}
+			}
+		}
+	}
+
+	// Loop to wait until we're caught up to the wanted seq for all
+	// source partitions.
+	//
 	// TODO: Give up after waiting too long.
 	// TODO: Claim success and proceed if we see it's converging.
 	for _, sourcePartition := range sourcePartitions {
-		sourcePartitionSeqs, err :=
-			feedType.PartitionSeqs(indexDef.SourceType,
-				indexDef.SourceName,
-				indexDef.SourceUUID,
-				indexDef.SourceParams, r.server, r.optionsMgr)
-		if err != nil {
-			return err
-		}
-
-		uuidSeqWant, exists := sourcePartitionSeqs[sourcePartition]
-		if !exists {
+		uuidSeqWant, exists := r.getUUIDSeq(r.wantSeqs, pindex,
+			sourcePartition, node)
+		if !exists && !r.optionsReb.SkipSeqChecks {
 			return fmt.Errorf("rebalance:"+
-				" waitAssignPIndexDone,"+
-				" missing sourcePartition from PartitionSeqs,"+
-				" indexDef: %#v, sourcePartition: %s, node: %s,"+
-				" state: %q, op: %s, sourcePartitionSeqs: %#v",
-				indexDef, sourcePartition, node, state, op,
-				sourcePartitionSeqs)
+				" waitAssignPIndexDone, could not find uuidSeqWant,"+
+				" indexDef: %#v, pindex: %s, sourcePartition: %s, node: %s,"+
+				" state: %q, op: %s",
+				indexDef, pindex, sourcePartition, node, state, op)
 		}
-
-		r.setUUIDSeq(r.wantSeqs, pindex, sourcePartition, node,
-			uuidSeqWant.UUID, uuidSeqWant.Seq)
 
 		reached, err := r.uuidSeqReached(indexDef.Name,
 			pindex, sourcePartition, node, uuidSeqWant)
@@ -878,14 +923,18 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 	sourcePartition string, node string,
 	uuidSeqWant cbgt.UUIDSeq) (bool, error) {
+	if r.optionsReb.SkipSeqChecks {
+		return true, nil
+	}
+
 	uuidSeqCurr, exists :=
 		r.getUUIDSeq(r.currSeqs, pindex, sourcePartition, node)
 
 	r.Logf("      uuidSeqReached,"+
 		" index: %s, pindex: %s, sourcePartition: %s,"+
-		" node: %s, uuidSeqWant: %+v, exists: %v",
+		" node: %s, uuidSeqWant: %+v, uuidSeqCurr: %+v, exists: %v",
 		index, pindex, sourcePartition, node,
-		uuidSeqWant, exists)
+		uuidSeqWant, uuidSeqCurr, exists)
 
 	if exists {
 		// TODO: Sometimes UUID's just don't
