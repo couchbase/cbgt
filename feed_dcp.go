@@ -226,6 +226,8 @@ func NewDCPFeed(name, indexName, url, poolName,
 		DataManagerSleepMaxMS:       params.DataManagerSleepMaxMS,
 		FeedBufferSizeBytes:         params.FeedBufferSizeBytes,
 		FeedBufferAckThreshold:      params.FeedBufferAckThreshold,
+		Logf:          log.Printf,
+		TraceCapacity: 20,
 	}
 
 	feed := &DCPFeed{
