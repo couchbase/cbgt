@@ -148,7 +148,9 @@ func (m *CtlMgr) CancelTask(
 	for _, taskHandle := range m.tasks.taskHandles {
 		task := taskHandle.task
 		if task.ID == taskId {
-			if taskRev != nil && !bytes.Equal(taskRev, task.Rev) {
+			if taskRev != nil &&
+				len(taskRev) > 0 &&
+				!bytes.Equal(taskRev, task.Rev) {
 				log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v, err: %v",
 					taskId, taskRev, service.ErrConflict)
 
@@ -164,6 +166,9 @@ func (m *CtlMgr) CancelTask(
 
 			if taskHandle.stop != nil {
 				taskHandle.stop()
+			} else {
+				log.Printf("ctl/manager, CancelTask, taskId: %s, taskRev: %v,"+
+					" nil taskHandle", taskId, taskRev)
 			}
 
 			canceled = true
@@ -449,6 +454,9 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 			},
 		},
 		stop: func() {
+			log.Printf("ctl/manager, stop taskHandle, ctlTopology.Rev: %v",
+				ctlTopology.Rev)
+
 			m.ctl.StopChangeTopology(ctlTopology.Rev)
 		},
 	}
@@ -524,6 +532,7 @@ func (m *CtlMgr) updateProgress(
 				taskHandlesNext = append(taskHandlesNext, &taskHandle{
 					startTime: th.startTime,
 					task:      &taskNext,
+					stop:      th.stop,
 				})
 			}
 
