@@ -13,6 +13,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 
 	log "github.com/couchbase/clog"
 
@@ -142,19 +143,23 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 					}
 				}
 
-				if promoted == "" {
-					// Didn't find a replica to promote, so consult the
-					// calculated plan for the primary assignment.
+				// If we didn't find a replica to promote, and we're
+				// configured with the option to
+				// "failoverAssignAllPrimaries-IndexName" or
+				// "failoverAssignAllPrimaries" (default true), then
+				// assign the primary from the calculated plan.
+				if promoted == "" && ParseOptionsBool(options,
+					"failoverAssignAllPrimaries", planPIndex.IndexName, true) {
 					planPIndexCalc, exists :=
 						planPIndexesCalc.PlanPIndexes[planPIndexName]
 					if exists && planPIndexCalc != nil {
-					PROMOTE_CALC:
+					ASSIGN_PRIMARY:
 						for nodeCalc, ppnCalc := range planPIndexCalc.Nodes {
 							if ppnCalc.Priority <= 0 &&
 								!mapNodesFailover[nodeCalc] {
 								planPIndex.Nodes[nodeCalc] = ppnCalc
 								promoted = nodeCalc
-								break PROMOTE_CALC
+								break ASSIGN_PRIMARY
 							}
 						}
 					}
@@ -179,4 +184,22 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 	}
 
 	return true, nil
+}
+
+// ParseOptionsBool parses the options "name-suffix" and then "name"
+// as boolean (strconv.ParseBool), otherwise returns defaultVal.
+func ParseOptionsBool(options map[string]string, name, suffix string,
+	defaultVal bool) bool {
+	if options != nil {
+		for _, optionName := range []string{name + "-" + suffix, name} {
+			if v, exists := options[optionName]; exists {
+				vb, err := strconv.ParseBool(v)
+				if err == nil {
+					return vb
+				}
+			}
+		}
+	}
+
+	return defaultVal
 }
