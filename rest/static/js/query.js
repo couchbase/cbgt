@@ -57,6 +57,8 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             var indexDefType = ($scope.indexDef && $scope.indexDef.type);
 
             $scope.queryHelp = $scope.meta.indexTypes[indexDefType].queryHelp;
+            // this call to trustAsHtml is safe provided we trust
+            // the registered pindex implementations
             $scope.queryHelpSafe = $sce.trustAsHtml($scope.queryHelp);
         }
     });
