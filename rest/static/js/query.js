@@ -150,6 +150,14 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         }
 	};
 
+  $scope.manualEscapeHtmlExceptHighlighting = function(orig) {
+    // escape HTML tags
+    updated = orig.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;")
+    // find escaped <mark> and </mark> and put them back
+    updated = updated.replace(/&lt;mark&gt;/g, "<mark>").replace(/&lt;\/mark&gt;/g, "</mark>")
+    return updated
+  }
+
     $scope.setupPager = function(results) {
         if (!results.total_hits) {
             return;
@@ -195,8 +203,8 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                 var newFragments = [];
                 for(var ffi in fragments) {
                     var fragment = fragments[ffi];
-                    var safeFragment = $sce.trustAsHtml(fragment);
-                    newFragments.push(safeFragment);
+                    var saferFragment = $scope.manualEscapeHtmlExceptHighlighting(fragment);
+                    newFragments.push(saferFragment);
                 }
                 hit.fragments[ff] = newFragments;
             }
@@ -206,7 +214,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             for(var fv in hit.fields) {
                 var fieldval = hit.fields[fv];
                 if (hit.fragments[fv] === undefined) {
-                    hit.fragments[fv] = [$sce.trustAsHtml(""+fieldval)];
+                    hit.fragments[fv] = [$scope.manualEscapeHtmlExceptHighlighting(""+fieldval)];
                 }
             }
             if ($scope.decorateSearchHit) {
