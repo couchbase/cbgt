@@ -14,10 +14,14 @@
     <li ng-repeat="hit in results.hits">
       <b ng-show="hit.docIDLink"><a href="{{hit.docIDLink}}">{{hit.id}}</a></b>
       <b ng-hide="hit.docIDLink">{{hit.id}}</b>
-      <span class="badge" ng-show="explainScoring">{{hit.roundedScore}}</span>
+      <span class="badge" ng-show="explainScoring">{{hit.score | number : 3}}</span>
       <div class="well" ng-show="explainScoring">
         Scoring
-        <ul><li><span ng-bind-html="hit.explanationStringSafe"></span></li></ul>
+        <ul>
+          <li ng-include
+               src="static_base + '/static/partials/index/query-result-expl.html'"
+               ng-init="explanation=hit.explanation"></li>
+        </ul>
       </div>
       <div class="well">
         <div ng-repeat="(fieldName, fragments) in hit.fragments">

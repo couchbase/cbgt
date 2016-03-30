@@ -134,22 +134,6 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.runQuery()
     };
 
-    $scope.expl = function(explanation) {
-        var rv = "" + $scope.roundScore(explanation.value) +
-            " - " + explanation.message;
-        rv = rv + "<ul>";
-        for(var i in explanation.children) {
-            var child = explanation.children[i];
-            rv = rv + "<li>" + $scope.expl(child) + "</li>";
-        }
-        rv = rv + "</ul>";
-        return rv;
-    };
-
-    $scope.roundScore = function(score) {
-        return Math.round(score*1000)/1000;
-    };
-
     $scope.roundTook = function(took) {
         if (!took || took <= 0) {
             return "";
@@ -204,9 +188,6 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
         for(var i in $scope.results.hits) {
             var hit = $scope.results.hits[i];
-            hit.roundedScore = $scope.roundScore(hit.score);
-            hit.explanationString = $scope.expl(hit.explanation);
-            hit.explanationStringSafe = $sce.trustAsHtml(hit.explanationString);
             for(var ff in hit.fragments) {
                 var fragments = hit.fragments[ff];
                 var newFragments = [];
