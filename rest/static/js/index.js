@@ -473,7 +473,7 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 }
                 $scope.newSourceType = data.indexDef.sourceType;
                 $scope.newSourceName = data.indexDef.sourceName;
-                $scope.newSourceUUID = data.indexDef.sourceUUID;
+                $scope.newSourceUUID = "";
                 $scope.newSourceParams[data.indexDef.sourceType] =
                     JSON.stringify(data.indexDef.sourceParams,
                                    undefined, 2);
