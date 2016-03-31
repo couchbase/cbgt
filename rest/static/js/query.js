@@ -3,18 +3,22 @@ var lastQueryReq = null;
 var lastQueryRes = null;
 
 function PrepQueryRequest(scope) {
-    return {
-        "indexName": scope.indexName,
-        "size": scope.resultsPerPage,
-        "from": (scope.page-1) * scope.resultsPerPage,
+    qr = {
         "explain": true,
+        "fields": ["*"],
         "highlight": {},
         "query": {
-            "boost": 1.0,
             "query": scope.query,
         },
-        "fields": ["*"],
+    };
+    if (scope.resultsPerPage != 10) {
+      qr["size"] = scope.resultsPerPage;
     }
+    from = (scope.page-1) * scope.resultsPerPage;
+    if (from != 0) {
+      qr["from"] = from
+    }
+    return qr
 }
 
 function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
@@ -71,19 +75,29 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
         var req = prepQueryRequestActual($scope) || {};
 
-        var v = null;
+        var v = {};
         try {
-            v = JSON.parse($scope.consistencyVectors || "null");
+            v = JSON.parse($scope.consistencyVectors || "{}");
         } finally {
         }
 
-        req.ctl = {
-            "consistency": {
-                "level": $scope.consistencyLevel,
-                "vectors": v,
-            },
-            "timeout": parseInt($scope.timeout) || 0
-        };
+        timeout = parseInt($scope.timeout) || 0;
+        if ($scope.consistencyLevel != "" || Object.keys(v).length > 0 || timeout != 0) {
+          req.ctl = {}
+          if ($scope.consistencyLevel != "") {
+            req.ctl.consistency = {}
+            req.ctl.consistency["level"] = $scope.consistencyLevel;
+          }
+          if (Object.keys(v).length > 0) {
+            if (req.ctl.consistency == null) {
+              req.ctl.consistency = {}
+            }
+            req.ctl.consistency["vectors"] = v
+          }
+          if (timeout != 0) {
+            req.ctl["timeout"] = timeout;
+          }
+        }
 
         return req;
     }
