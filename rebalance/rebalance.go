@@ -548,60 +548,62 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		index, pindex, node, state, op)
 
 	r.m.Lock() // Reduce but not eliminate CAS conflicts.
+	indexDef, planPIndexes, formerPrimaryNode, err :=
+		r.assignPIndexLOCKED(index, pindex, node, state, op)
+	r.m.Unlock()
 
-	err := r.assignPIndexCurrStates_unlocked(index,
-		pindex, node, state, op)
 	if err != nil {
-		r.m.Unlock()
-		return err
+		return fmt.Errorf("assignPIndex: update plan,"+
+			" perhaps a concurrent planner won, err: %v", err)
+	}
+
+	return r.waitAssignPIndexDone(stopCh, stopCh2,
+		indexDef, planPIndexes,
+		pindex, node, state, op, formerPrimaryNode)
+}
+
+// assignPIndexLOCKED updates the cfg with the pindex assignment, and
+// should be invoked while holding the r.m lock.
+func (r *Rebalancer) assignPIndexLOCKED(index, pindex, node, state, op string) (
+	*cbgt.IndexDef, *cbgt.PlanPIndexes, string, error) {
+	err := r.assignPIndexCurrStates_unlocked(index, pindex, node, state, op)
+	if err != nil {
+		return nil, nil, "", err
 	}
 
 	indexDefs, err := cbgt.PlannerGetIndexDefs(r.cfg, r.version)
 	if err != nil {
-		r.m.Unlock()
-		return err
+		return nil, nil, "", err
 	}
 
 	indexDef := indexDefs.IndexDefs[index]
 	if indexDef == nil {
-		r.m.Unlock()
-
-		return fmt.Errorf("assignPIndex: no indexDef,"+
+		return nil, nil, "", fmt.Errorf("assignPIndex: no indexDef,"+
 			" index: %s, pindex: %s, node: %s, state: %q, op: %s",
 			index, pindex, node, state, op)
 	}
 
 	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
 	if err != nil {
-		r.m.Unlock()
-		return err
+		return nil, nil, "", err
 	}
 
 	formerPrimaryNode, err := r.updatePlanPIndexes_unlocked(planPIndexes,
 		indexDef, pindex, node, state, op)
 	if err != nil {
-		r.m.Unlock()
-		return err
+		return nil, nil, "", err
 	}
 
 	if r.optionsReb.DryRun {
-		r.m.Unlock()
-		return nil
+		return nil, nil, formerPrimaryNode, nil
 	}
 
 	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
-
-	r.m.Unlock()
-
 	if err != nil {
-		return fmt.Errorf("assignPIndex: update plan,"+
-			" perhaps a concurrent planner won, cas: %d, err: %v",
-			cas, err)
+		return nil, nil, "", err
 	}
 
-	return r.waitAssignPIndexDone(stopCh, stopCh2,
-		indexDef, planPIndexes,
-		pindex, node, state, op, formerPrimaryNode)
+	return indexDef, planPIndexes, formerPrimaryNode, err
 }
 
 // --------------------------------------------------------
