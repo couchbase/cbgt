@@ -42,6 +42,12 @@ type RebalanceOptions struct {
 	// See blance.CalcPartitionMoves(favorMinNodes).
 	FavorMinNodes bool
 
+	// AddPrimaryDirectly, when true, means the rebalancer should
+	// assign a pindex as primary to a node directly, and not use a
+	// replica-promotion maneuver (e.g., assign replica first, wait
+	// until replica is caught up, then promote replica to primary).
+	AddPrimaryDirectly bool
+
 	DryRun bool // When true, no changes, for analysis/planning.
 
 	Log     RebalanceLogFunc
@@ -105,7 +111,7 @@ type Rebalancer struct {
 type CurrStates map[string]map[string]map[string]StateOp
 
 // A StateOp is used to track state transitions and associates a state
-// (i.e., "master") with an op (e.g., "add", "del").
+// (i.e., "primary") with an op (e.g., "add", "del").
 type StateOp struct {
 	State string
 	Op    string // May be "" for unknown or no in-flight op.
@@ -543,23 +549,51 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // synchronously change the pindex/node/state/op for an index.
 func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 	index, pindex, node, state, op string) error {
-	r.Logf("  assignPIndex: index: %s,"+
-		" pindex: %s, node: %s, state: %q, op: %s",
-		index, pindex, node, state, op)
+	forceWaitForCatchup := false
 
-	r.m.Lock() // Reduce but not eliminate CAS conflicts.
-	indexDef, planPIndexes, formerPrimaryNode, err :=
-		r.assignPIndexLOCKED(index, pindex, node, state, op)
-	r.m.Unlock()
+	stateOps := []StateOp{StateOp{State: state, Op: op}}
 
-	if err != nil {
-		return fmt.Errorf("assignPIndex: update plan,"+
-			" perhaps a concurrent planner won, err: %v", err)
+	if !r.optionsReb.AddPrimaryDirectly &&
+		state == "primary" && op == "add" {
+		// If we want to add a pindex to a node as a primary, then
+		// perform a 2-step maneuver by first adding the pindex as a
+		// replica, then promote that replica to master.
+		stateOps = []StateOp{
+			StateOp{State: "replica", Op: "add"},
+			StateOp{State: "primary", Op: "promote"},
+		}
+
+		forceWaitForCatchup = true
 	}
 
-	return r.waitAssignPIndexDone(stopCh, stopCh2,
-		indexDef, planPIndexes,
-		pindex, node, state, op, formerPrimaryNode)
+	r.Logf("  assignPIndex: index: %s,"+
+		" pindex: %s, node: %s, target state: %q, target op: %s, stateOps: %#v",
+		index, pindex, node, state, op, stateOps)
+
+	for i, stateOp := range stateOps {
+		r.Logf("  assignPIndex: index: %s, pindex: %s, node: %s,"+
+			" i: %d, stateOp: %#v", index, pindex, node, i, stateOp)
+
+		r.m.Lock() // Reduce but not eliminate CAS conflicts.
+		indexDef, planPIndexes, formerPrimaryNode, err := r.assignPIndexLOCKED(
+			index, pindex, node, stateOp.State, stateOp.Op)
+		r.m.Unlock()
+
+		if err != nil {
+			return fmt.Errorf("assignPIndex: update plan,"+
+				" perhaps a concurrent planner won, err: %v", err)
+		}
+
+		err = r.waitAssignPIndexDone(stopCh, stopCh2,
+			indexDef, planPIndexes, pindex, node,
+			stateOp.State, stateOp.Op, formerPrimaryNode,
+			forceWaitForCatchup)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // assignPIndexLOCKED updates the cfg with the pindex assignment, and
@@ -777,12 +811,13 @@ func (r *Rebalancer) getNodePlanParamsReadWrite(
 func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	indexDef *cbgt.IndexDef,
 	planPIndexes *cbgt.PlanPIndexes,
-	pindex, node, state, op, formerPrimaryNode string) error {
+	pindex, node, state, op, formerPrimaryNode string,
+	forceWaitForCatchup bool) error {
 	if op == "del" {
 		return nil // TODO: Handle op del better.
 	}
 
-	if state == "replica" {
+	if state == "replica" && !forceWaitForCatchup {
 		// No need to wait for a replica pindex to be "caught up".
 		return nil
 	}
