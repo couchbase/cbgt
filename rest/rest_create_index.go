@@ -167,25 +167,10 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexParams = indexDef.Params
 	}
 
-	sourceType := req.FormValue("sourceType")
-	if sourceType == "" {
-		sourceType = indexDef.SourceType
-	}
+	sourceType, sourceName := ExtractSourceTypeName(req, &indexDef, indexName)
 	if sourceType == "" {
 		ShowError(w, req, "rest_create_index: sourceType is required", 400)
 		return
-	}
-
-	sourceName := req.FormValue("sourceName")
-	if sourceName == "" {
-		sourceName = indexDef.SourceName
-	}
-	if sourceName == "" {
-		// NOTE: Some sourceTypes (like "nil") don't care if sourceName is "".
-		if sourceType == "couchbase" {
-			// TODO: Revisit default sourceName as indexName.
-			sourceName = indexName
-		}
 	}
 
 	sourceUUID := req.FormValue("sourceUUID") // Defaults to "".
@@ -236,4 +221,23 @@ func (h *CreateIndexHandler) ServeHTTP(
 		// TODO: Should return created vs 200 HTTP code?
 		Status string `json:"status"`
 	}{Status: "ok"})
+}
+
+func ExtractSourceTypeName(req *http.Request, indexDef *cbgt.IndexDef, indexName string) (string, string) {
+	sourceType := req.FormValue("sourceType")
+	if sourceType == "" {
+		sourceType = indexDef.SourceType
+	}
+	sourceName := req.FormValue("sourceName")
+	if sourceName == "" {
+		sourceName = indexDef.SourceName
+	}
+	if sourceName == "" {
+		// NOTE: Some sourceTypes (like "nil") don't care if sourceName is "".
+		if sourceType == "couchbase" {
+			// TODO: Revisit default sourceName as indexName.
+			sourceName = indexName
+		}
+	}
+	return sourceType, sourceName
 }
