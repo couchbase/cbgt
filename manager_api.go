@@ -299,6 +299,8 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 			indexDefs.ImplVersion, mgr.version)
 	}
 
+	var outerErr error
+
 	for indexName, indexDef := range indexDefs.IndexDefs {
 		if indexDef.SourceType == sourceType &&
 			indexDef.SourceName == sourceName {
@@ -313,13 +315,16 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 				indexName, sourceType, sourceName, sourceUUID)
 			err = mgr.DeleteIndex(indexName)
 			if err != nil {
-				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, 1)
-				return err
-			}
+				if outerErr == nil {
+					outerErr = err
+				}
 
-			atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, 1)
+				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, 1)
+			} else {
+				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, 1)
+			}
 		}
 	}
 
-	return nil
+	return outerErr
 }
