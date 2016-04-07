@@ -157,9 +157,13 @@ func (mgr *Manager) CreateIndex(sourceType,
 }
 
 // Deletes a logical index definition.
-//
-// TODO: DeleteIndex should check an optional index UUID?
 func (mgr *Manager) DeleteIndex(indexName string) error {
+	return mgr.DeleteIndexEx(indexName, "")
+}
+
+// DeleteIndexEx deletes a logical index definition, with an optional
+// indexUUID ("" means don't care).
+func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 	atomic.AddUint64(&mgr.stats.TotDeleteIndex, 1)
 
 	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
@@ -178,6 +182,10 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 	indexDef, exists := indexDefs.IndexDefs[indexName]
 	if !exists {
 		return fmt.Errorf("manager_api: index to delete missing,"+
+			" indexName: %s", indexName)
+	}
+	if indexUUID != "" && indexDef.UUID != indexUUID {
+		return fmt.Errorf("manager_api: index to delete wrong UUID,"+
 			" indexName: %s", indexName)
 	}
 
@@ -313,7 +321,7 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 			log.Printf("manager_api: DeleteAllIndexFromSource,"+
 				" indexName: %s, sourceType: %s, sourceName: %s, sourceUUID: %s",
 				indexName, sourceType, sourceName, sourceUUID)
-			err = mgr.DeleteIndex(indexName)
+			err = mgr.DeleteIndexEx(indexName, indexDef.UUID)
 			if err != nil {
 				if outerErr == nil {
 					outerErr = err
