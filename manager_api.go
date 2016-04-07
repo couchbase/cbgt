@@ -290,6 +290,45 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 	return nil
 }
 
+// BumpIndexDefs bumps the uuid of the index defs, to force planners
+// and other downstream tasks to re-run.
+func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
+	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
+	if err != nil {
+		return err
+	}
+	if indexDefs == nil {
+		return fmt.Errorf("manager_api: no indexDefs to bump")
+	}
+	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+		return fmt.Errorf("manager_api: could not bump indexDefs,"+
+			" indexDefs.ImplVersion: %s > mgr.version: %s",
+			indexDefs.ImplVersion, mgr.version)
+	}
+	if indexDefsUUID != "" && indexDefs.UUID != indexDefsUUID {
+		return fmt.Errorf("manager_api: bump indexDefs wrong UUID")
+	}
+
+	indexDefs.UUID = NewUUID()
+	indexDefs.ImplVersion = mgr.version
+
+	// NOTE: if our ImplVersion is still too old due to a race, we
+	// expect a more modern cbgt to do the work instead.
+
+	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+	if err != nil {
+		return fmt.Errorf("manager_api: could not bump indexDefs,"+
+			" err: %v", err)
+	}
+
+	log.Printf("manager_api: bumped indexDefs, indexDefsUUID: %s",
+		indexDefs.UUID)
+
+	mgr.PlannerKick("BumpIndexDefs")
+
+	return nil
+}
+
 // DeleteAllIndexFromSource deletes all indexes with a given
 // sourceType and sourceName.
 func (mgr *Manager) DeleteAllIndexFromSource(
@@ -332,6 +371,14 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, 1)
 			}
 		}
+	}
+
+	// With MB-19117, we've seen cfg that strangely had empty
+	// indexDefs, but non-empty planPIndexes.  Force bump the
+	// indexDefs so the planner and other downstream tasks re-run.
+	err = mgr.BumpIndexDefs("")
+	if err != nil {
+		return err
 	}
 
 	return outerErr
