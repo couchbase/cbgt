@@ -282,37 +282,44 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 	return nil
 }
 
-// Delete all the index with a given sourcetype and sourcename
-func (mgr *Manager) DeleteAllIndexFromSource(sourceType, sourceName,
-	srcUUID string) (err error) {
-	atomic.AddUint64(&mgr.stats.TotDeleteIndexBucket, 1)
-
+// DeleteAllIndexFromSource deletes all indexes with a given
+// sourceType and sourceName.
+func (mgr *Manager) DeleteAllIndexFromSource(
+	sourceType, sourceName, sourceUUID string) error {
 	indexDefs, _, err := CfgGetIndexDefs(mgr.cfg)
 	if err != nil {
 		return err
 	}
 	if indexDefs == nil {
-		return fmt.Errorf("manager_api: no indexes," +
-			" index read/write control")
+		return fmt.Errorf("manager_api: DeleteAllIndexFromSource, no indexDefs")
 	}
 	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		return fmt.Errorf("manager_api: index read/write control,"+
+		return fmt.Errorf("manager_api: DeleteAllIndexFromSource,"+
 			" indexDefs.ImplVersion: %s > mgr.version: %s",
 			indexDefs.ImplVersion, mgr.version)
 	}
+
 	for indexName, indexDef := range indexDefs.IndexDefs {
 		if indexDef.SourceType == sourceType &&
 			indexDef.SourceName == sourceName {
-			if srcUUID != "" && srcUUID != indexDef.SourceUUID {
+			if sourceUUID != "" && sourceUUID != indexDef.SourceUUID {
 				continue
 			}
-			log.Printf("manager_api: deleting index %s sourcetype"+
-				" %s sourcename %s", indexName, sourceType, sourceName)
-			if err = mgr.DeleteIndex(indexName); err != nil {
-				return
+
+			atomic.AddUint64(&mgr.stats.TotDeleteIndexBySource, 1)
+
+			log.Printf("manager_api: DeleteAllIndexFromSource,"+
+				" indexName: %s, sourceType: %s, sourceName: %s, sourceUUID: %s",
+				indexName, sourceType, sourceName, sourceUUID)
+			err = mgr.DeleteIndex(indexName)
+			if err != nil {
+				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, 1)
+				return err
 			}
-			atomic.AddUint64(&mgr.stats.TotDeleteIndexBucketDone, 1)
+
+			atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, 1)
 		}
 	}
-	return
+
+	return nil
 }

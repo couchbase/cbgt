@@ -88,14 +88,16 @@ type ManagerStats struct {
 	TotSaveNodeDefSame   uint64
 	TotSaveNodeDefOk     uint64
 
-	TotCreateIndex           uint64
-	TotCreateIndexOk         uint64
-	TotDeleteIndex           uint64
-	TotDeleteIndexOk         uint64
-	TotIndexControl          uint64
-	TotIndexControlOk        uint64
-	TotDeleteIndexBucket     uint64
-	TotDeleteIndexBucketDone uint64
+	TotCreateIndex    uint64
+	TotCreateIndexOk  uint64
+	TotDeleteIndex    uint64
+	TotDeleteIndexOk  uint64
+	TotIndexControl   uint64
+	TotIndexControlOk uint64
+
+	TotDeleteIndexBySource    uint64
+	TotDeleteIndexBySourceErr uint64
+	TotDeleteIndexBySourceOk  uint64
 
 	TotPlannerOpStart           uint64
 	TotPlannerOpRes             uint64
