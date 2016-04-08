@@ -1116,7 +1116,8 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 
 				err := json.Unmarshal(s.Data, &m)
 				if err != nil {
-					r.Logf("rebalance: runMonitor json, err: %#v", err)
+					r.Logf("rebalance: runMonitor json, s.Data: %s, err: %#v",
+						s.Data, err)
 
 					r.progressCh <- RebalanceProgress{Error: err}
 					r.Stop() // Stop the rebalance.
