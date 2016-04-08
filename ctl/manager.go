@@ -481,13 +481,32 @@ func (m *CtlMgr) updateProgress(
 		var sumPct float64
 		var numPct int
 
-		for _, mapSourcePartitions := range progressEntries {
-			for _, pe := range mapSourcePartitions[""] {
-				if pe.Done {
-					sumPct += 1.0
+		// Key is indexNameAndUUID.
+		indexNumPIndexes := map[string]int{}
+		indexNumPIndexesWithProgress := map[string]int{}
+
+		for pindexName := range seenPIndexes {
+			indexNumPIndexes[parsePIndexName(pindexName)]++
+		}
+
+		for pindexName, mapSourcePartitions := range progressEntries {
+			mapNodes := mapSourcePartitions[""]
+			if len(mapNodes) > 0 {
+				for _, pe := range mapNodes {
+					if pe.Done {
+						sumPct += 1.0
+					}
+
+					numPct += 1
 				}
 
-				numPct += 1
+				indexNumPIndexesWithProgress[parsePIndexName(pindexName)]++
+			}
+		}
+
+		for indexNameAndUUID, numPIndexes := range indexNumPIndexes {
+			if indexNumPIndexesWithProgress[indexNameAndUUID] <= 0 {
+				numPct += numPIndexes
 			}
 		}
 
@@ -549,6 +568,18 @@ func (m *CtlMgr) updateProgress(
 	m.updateTasksLOCKED(func(s *tasks) {
 		s.taskHandles = taskHandlesNext
 	})
+}
+
+// parsePIndexName returns the "indexName_indexUUID", given an input
+// pindexName that has a format that looks like
+// "indexName_indexUUID_pindexSpecificSuffix", where the indexName can
+// also have more underscores.
+func parsePIndexName(pindexName string) string {
+	uscoreLast := strings.LastIndex(pindexName, "_")
+	if uscoreLast >= 0 {
+		return pindexName[0:uscoreLast]
+	}
+	return ""
 }
 
 // ------------------------------------------------
