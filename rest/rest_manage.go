@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -56,6 +57,26 @@ func (h *StatsHandler) ServeHTTP(
 	}
 	sort.Strings(pindexNames)
 
+	feedStats := make(map[string][]byte)
+	for _, feedName := range feedNames {
+		var buf bytes.Buffer
+		err := feeds[feedName].Stats(&buf)
+		if err != nil {
+			ShowError(w, req, fmt.Sprintf("feed stats err: %v", err), 500)
+		}
+		feedStats[feedName] = buf.Bytes()
+	}
+
+	pindexStats := make(map[string][]byte)
+	for _, pindexName := range pindexNames {
+		var buf bytes.Buffer
+		err := pindexes[pindexName].Dest.Stats(&buf)
+		if err != nil {
+			ShowError(w, req, fmt.Sprintf("pindex stats err: %v", err), 500)
+		}
+		pindexStats[pindexName] = buf.Bytes()
+	}
+
 	w.Write(cbgt.JsonOpenBrace)
 
 	first := true
@@ -69,7 +90,7 @@ func (h *StatsHandler) ServeHTTP(
 			w.Write(statsNamePrefix)
 			w.Write([]byte(feedName))
 			w.Write(statsNameSuffix)
-			feeds[feedName].Stats(w)
+			w.Write(feedStats[feedName])
 		}
 	}
 	w.Write(cbgt.JsonCloseBraceComma)
@@ -85,7 +106,7 @@ func (h *StatsHandler) ServeHTTP(
 			w.Write(statsNamePrefix)
 			w.Write([]byte(pindexName))
 			w.Write(statsNameSuffix)
-			pindexes[pindexName].Dest.Stats(w)
+			w.Write(pindexStats[pindexName])
 		}
 	}
 	w.Write(cbgt.JsonCloseBrace)
