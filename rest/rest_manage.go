@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -42,9 +43,17 @@ var statsNameSuffix = []byte("\":")
 
 func (h *StatsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	indexName := mux.Vars(req)["indexName"]
+	err := WriteManagerStatsJSON(h.mgr, w, mux.Vars(req)["indexName"])
+	if err != nil {
+		ShowError(w, req, err.Error(), 500)
+	}
+}
 
-	feeds, pindexes := h.mgr.CurrentMaps()
+// WriteManagerStatsJSON writes JSON stats for a manager, and is
+// optionally focus'able on a particular indexName.
+func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
+	indexName string) error {
+	feeds, pindexes := mgr.CurrentMaps()
 	feedNames := make([]string, 0, len(feeds))
 	for feedName := range feeds {
 		feedNames = append(feedNames, feedName)
@@ -62,7 +71,7 @@ func (h *StatsHandler) ServeHTTP(
 		var buf bytes.Buffer
 		err := feeds[feedName].Stats(&buf)
 		if err != nil {
-			ShowError(w, req, fmt.Sprintf("feed stats err: %v", err), 500)
+			return fmt.Errorf("feed stats err: %v", err)
 		}
 		feedStats[feedName] = buf.Bytes()
 	}
@@ -72,7 +81,7 @@ func (h *StatsHandler) ServeHTTP(
 		var buf bytes.Buffer
 		err := pindexes[pindexName].Dest.Stats(&buf)
 		if err != nil {
-			ShowError(w, req, fmt.Sprintf("pindex stats err: %v", err), 500)
+			return fmt.Errorf("pindex stats err: %v", err)
 		}
 		pindexStats[pindexName] = buf.Bytes()
 	}
@@ -114,7 +123,7 @@ func (h *StatsHandler) ServeHTTP(
 	if indexName == "" {
 		w.Write(statsManagerPrefix)
 		var mgrStats cbgt.ManagerStats
-		h.mgr.StatsCopyTo(&mgrStats)
+		mgr.StatsCopyTo(&mgrStats)
 		mgrStatsJSON, err := json.Marshal(&mgrStats)
 		if err == nil && len(mgrStatsJSON) > 0 {
 			w.Write(mgrStatsJSON)
@@ -124,6 +133,8 @@ func (h *StatsHandler) ServeHTTP(
 	}
 
 	w.Write(cbgt.JsonCloseBrace)
+
+	return nil
 }
 
 // ---------------------------------------------------
