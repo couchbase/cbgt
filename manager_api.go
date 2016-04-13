@@ -94,6 +94,10 @@ func (mgr *Manager) CreateIndex(sourceType,
 				return fmt.Errorf("manager_api: index exists, indexName: %s",
 					indexName)
 			}
+		} else if prevIndexUUID == "*" {
+			if exists && prevIndex != nil {
+				prevIndexUUID = prevIndex.UUID
+			}
 		} else { // Update index definition.
 			if !exists || prevIndex == nil {
 				return fmt.Errorf("manager_api: index missing for update,"+
