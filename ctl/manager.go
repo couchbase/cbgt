@@ -40,6 +40,8 @@ type CtlMgr struct {
 
 	ctl *Ctl
 
+	taskProgressCh chan taskProgress
+
 	mu sync.Mutex // Protects the fields that follow.
 
 	revNumNext uint64 // The next rev num to use.
@@ -62,15 +64,31 @@ type taskHandle struct { // The taskHandle fields are immutable.
 	stop      func() // May be nil.
 }
 
+type taskProgress struct {
+	taskId         string
+	errs           []error
+	progressExists bool
+	progress       float64
+}
+
 // ------------------------------------------------
 
 func NewCtlMgr(nodeInfo *service.NodeInfo, ctl *Ctl) *CtlMgr {
-	return &CtlMgr{
-		nodeInfo:   nodeInfo,
-		ctl:        ctl,
-		revNumNext: 1,
-		tasks:      tasks{revNum: 0},
+	m := &CtlMgr{
+		nodeInfo:       nodeInfo,
+		ctl:            ctl,
+		revNumNext:     1,
+		tasks:          tasks{revNum: 0},
+		taskProgressCh: make(chan taskProgress, 10),
 	}
+
+	go func() {
+		for taskProgress := range m.taskProgressCh {
+			m.handleTaskProgress(taskProgress)
+		}
+	}()
+
+	return m
 }
 
 func (m *CtlMgr) GetNodeInfo() (*service.NodeInfo, error) {
@@ -93,6 +111,8 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
 	if len(haveTasksRev) > 0 {
 		haveTasksRevNum, err := DecodeRev(haveTasksRev)
 		if err != nil {
+			m.mu.Unlock()
+
 			log.Printf("ctl/manager, GetTaskList, DecodeRev, haveTasksRev: %s,"+
 				" err: %v", haveTasksRev, err)
 
@@ -468,6 +488,9 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 
 // The progressEntries is a map of...
 // pindex -> sourcePartition -> node -> *ProgressEntry.
+//
+// The updateProgress() implementation must not block, in order to not
+// block the invoking rebalancer.
 func (m *CtlMgr) updateProgress(
 	taskId string,
 	seenNodes map[string]bool,
@@ -515,6 +538,23 @@ func (m *CtlMgr) updateProgress(
 		}
 	}
 
+	taskProgress := taskProgress{
+		taskId:         taskId,
+		errs:           errs,
+		progressExists: progressEntries != nil,
+		progress:       progress,
+	}
+
+	select {
+	case m.taskProgressCh <- taskProgress:
+		// NO-OP.
+	default:
+		// NO-OP, if the handleTaskProgress() goroutine is behind,
+		// drop notifications rather than hold up the rebalancer.
+	}
+}
+
+func (m *CtlMgr) handleTaskProgress(taskProgress taskProgress) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -523,28 +563,28 @@ func (m *CtlMgr) updateProgress(
 	var taskHandlesNext []*taskHandle
 
 	for _, th := range m.tasks.taskHandles {
-		if th.task.ID == taskId {
-			if progressEntries != nil || len(errs) > 0 {
+		if th.task.ID == taskProgress.taskId {
+			if taskProgress.progressExists || len(taskProgress.errs) > 0 {
 				revNum := m.allocRevNumLOCKED(0)
 
 				taskNext := *th.task // Copy.
 				taskNext.Rev = EncodeRev(revNum)
-				taskNext.Progress = progress
+				taskNext.Progress = taskProgress.progress
 
 				log.Printf("ctl/manager, revNum: %d, progress: %f",
-					revNum, progress)
+					revNum, taskProgress.progress)
 
 				// TODO: DetailedProgress.
 
 				taskNext.ErrorMessage = ""
-				for _, err := range errs {
+				for _, err := range taskProgress.errs {
 					if len(taskNext.ErrorMessage) > 0 {
 						taskNext.ErrorMessage = taskNext.ErrorMessage + "\n"
 					}
 					taskNext.ErrorMessage = taskNext.ErrorMessage + err.Error()
 				}
 
-				if progressEntries == nil && len(errs) > 0 {
+				if !taskProgress.progressExists || len(taskProgress.errs) > 0 {
 					taskNext.Status = service.TaskStatusFailed
 				}
 
