@@ -540,7 +540,11 @@ func BlancePlanPIndexes(mode string,
 		planPIndex := planPIndexesForIndex[planPIndexName]
 		planPIndex.Nodes = map[string]*PlanPIndexNode{}
 
-		for _, nodeUUID := range blancePartition.NodesByState["primary"] {
+		for i, nodeUUID := range blancePartition.NodesByState["primary"] {
+			if i >= model["primary"].Constraints {
+				break
+			}
+
 			canRead := true
 			canWrite := true
 			nodePlanParam :=
@@ -559,6 +563,10 @@ func BlancePlanPIndexes(mode string,
 		}
 
 		for i, nodeUUID := range blancePartition.NodesByState["replica"] {
+			if i >= model["replica"].Constraints {
+				break
+			}
+
 			canRead := true
 			canWrite := true
 			nodePlanParam :=
