@@ -12,6 +12,8 @@
 package cbgt
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -244,6 +246,117 @@ func TestStructChanges(t *testing.T) {
 					" test: %#v, got: %#v",
 					entryi, testi, test, c)
 			}
+		}
+	}
+}
+
+func TestIsNanOrInf(t *testing.T) {
+	zval := 0.0
+	tests := []struct {
+		in  float64
+		out bool
+	}{
+		{
+			in:  1,
+			out: false,
+		},
+		{
+			in:  0.0 / zval,
+			out: true,
+		},
+		{
+			in:  1.0 / zval,
+			out: true,
+		},
+		{
+			in:  -1.0 / zval,
+			out: true,
+		},
+	}
+	for i, test := range tests {
+		actual := isNanOrInf(test.in)
+		if actual != test.out {
+			t.Errorf("testi: %d, expected %t got %t", i, test.out, actual)
+		}
+	}
+}
+
+func TestFPrintFloatMap(t *testing.T) {
+	zval := 0.0
+	tests := []struct {
+		name            string
+		values          map[string]float64
+		jsonParsedValue map[string]interface{}
+	}{
+		// 1 value
+		{
+			name: "n",
+			values: map[string]float64{
+				"v1": 3.14,
+			},
+			jsonParsedValue: map[string]interface{}{
+				"n": map[string]interface{}{
+					"v1": 3.14,
+				},
+			},
+		},
+		// 2 values
+		{
+			name: "n",
+			values: map[string]float64{
+				"v1": 3.14,
+				"v2": 1.2,
+			},
+			jsonParsedValue: map[string]interface{}{
+				"n": map[string]interface{}{
+					"v1": 3.14,
+					"v2": 1.2,
+				},
+			},
+		},
+		// 3 values, one is +Inf
+		{
+			name: "n",
+			values: map[string]float64{
+				"v1":  3.14,
+				"v2":  1.2,
+				"inf": 1.0 / zval,
+			},
+			jsonParsedValue: map[string]interface{}{
+				"n": map[string]interface{}{
+					"v1": 3.14,
+					"v2": 1.2,
+				},
+			},
+		},
+		// all values invalid
+		{
+			name: "n",
+			values: map[string]float64{
+				"inf": 1.0 / zval,
+				"nan": 0.0 / zval,
+			},
+			jsonParsedValue: map[string]interface{}{
+				"n": map[string]interface{}{},
+			},
+		},
+	}
+
+	// we can't just compare the generated strings because map iteration order
+	// is not stable, instead we parse the string back, and compare the result
+	for i, test := range tests {
+		var buf bytes.Buffer
+		fPrintFloatMap(&buf, test.name, test.values)
+		jsonString := buf.String()
+		// wrap it in surrounding structure
+		jsonString = "{" + jsonString + "}"
+		var parsed map[string]interface{}
+		err := json.Unmarshal([]byte(jsonString), &parsed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(parsed, test.jsonParsedValue) {
+			t.Errorf("testi: %d, expected %v got %v", i, test.jsonParsedValue, parsed)
 		}
 	}
 }

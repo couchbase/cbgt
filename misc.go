@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"reflect"
@@ -308,17 +309,55 @@ func WriteTimerJSON(w io.Writer, timer metrics.Timer) {
 	fmt.Fprintf(w, `{"count":%9d,`, t.Count())
 	fmt.Fprintf(w, `"min":%9d,`, t.Min())
 	fmt.Fprintf(w, `"max":%9d,`, t.Max())
-	fmt.Fprintf(w, `"mean":%12.2f,`, t.Mean())
-	fmt.Fprintf(w, `"stddev":%12.2f,`, t.StdDev())
-	fmt.Fprintf(w, `"percentiles":{`)
-	fmt.Fprintf(w, `"median":%12.2f,`, p[0])
-	fmt.Fprintf(w, `"75%%":%12.2f,`, p[1])
-	fmt.Fprintf(w, `"95%%":%12.2f,`, p[2])
-	fmt.Fprintf(w, `"99%%":%12.2f,`, p[3])
-	fmt.Fprintf(w, `"99.9%%":%12.2f},`, p[4])
-	fmt.Fprintf(w, `"rates":{`)
-	fmt.Fprintf(w, `"1-min":%12.2f,`, t.Rate1())
-	fmt.Fprintf(w, `"5-min":%12.2f,`, t.Rate5())
-	fmt.Fprintf(w, `"15-min":%12.2f,`, t.Rate15())
-	fmt.Fprintf(w, `"mean":%12.2f}}`, t.RateMean())
+	mean := t.Mean()
+	if !isNanOrInf(mean) {
+		fmt.Fprintf(w, `"mean":%12.2f,`, mean)
+	}
+	stddev := t.StdDev()
+	if !isNanOrInf(stddev) {
+		fmt.Fprintf(w, `"stddev":%12.2f,`, stddev)
+	}
+
+	fPrintFloatMap(w, "percentiles", map[string]float64{
+		"median": p[0],
+		"75%":    p[1],
+		"95%":    p[2],
+		"99%":    p[3],
+		"99.9%":  p[4],
+	})
+	fmt.Fprintf(w, `,`)
+	fPrintFloatMap(w, "rates", map[string]float64{
+		"1-min":  t.Rate1(),
+		"5-min":  t.Rate5(),
+		"15-min": t.Rate15(),
+		"mean":   t.RateMean(),
+	})
+	fmt.Fprintf(w, `}`)
+}
+
+// a helper to safely print a json map with string keys and float64 values
+// if +/-Inf or NaN values are encountered, that k/v pair is omitted
+// if there are no valid values in the map, the named map is still emitted
+// with no contents, ie:
+//    "name":{}
+func fPrintFloatMap(w io.Writer, name string, vals map[string]float64) {
+	fmt.Fprintf(w, `"%s":{`, name)
+	first := true
+	for k, v := range vals {
+		if !isNanOrInf(v) {
+			if !first {
+				fmt.Fprintf(w, `,`)
+			}
+			fmt.Fprintf(w, `"%s":%12.2f`, k, v)
+			first = false
+		}
+	}
+	fmt.Fprintf(w, `}`)
+}
+
+func isNanOrInf(v float64) bool {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return true
+	}
+	return false
 }
