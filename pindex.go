@@ -240,9 +240,29 @@ func (mgr *Manager) CoveringPIndexes(indexName, indexUUID string,
 	localPIndexes []*PIndex,
 	remotePlanPIndexes []*RemotePlanPIndex,
 	err error) {
+
+	var missingPIndexNames []string
+	localPIndexes, remotePlanPIndexes, missingPIndexNames, err =
+		mgr.CoveringPIndexesBestEffort(indexName, indexUUID, wantNode, wantKind)
+
+	if err == nil && len(missingPIndexNames) > 0 {
+		return nil, nil, fmt.Errorf("pindex:"+
+			" %s may have been disabled; no nodes are enabled/allocated"+
+			" to serve %s for the index partition(s)",
+			wantKind, wantKind)
+	}
+	return localPIndexes, remotePlanPIndexes, err
+}
+
+func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
+	wantNode PlanPIndexFilter, wantKind string) (
+	localPIndexes []*PIndex,
+	remotePlanPIndexes []*RemotePlanPIndex,
+	missingPIndexNames []string,
+	err error) {
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.Cfg(), NODE_DEFS_WANTED)
 	if err != nil {
-		return nil, nil,
+		return nil, nil, nil,
 			fmt.Errorf("pindex: could not retrieve wanted nodeDefs,"+
 				" err: %v", err)
 	}
@@ -265,20 +285,21 @@ func (mgr *Manager) CoveringPIndexes(indexName, indexUUID string,
 
 	_, allPlanPIndexes, err := mgr.GetPlanPIndexes(false)
 	if err != nil {
-		return nil, nil,
+		return nil, nil, nil,
 			fmt.Errorf("pindex: could not retrieve allPlanPIndexes,"+
 				" err: %v", err)
 	}
 
 	planPIndexes, exists := allPlanPIndexes[indexName]
 	if !exists || len(planPIndexes) <= 0 {
-		return nil, nil,
+		return nil, nil, nil,
 			fmt.Errorf("pindex: no planPIndexes for indexName: %s",
 				indexName)
 	}
 
 	localPIndexes = make([]*PIndex, 0)
 	remotePlanPIndexes = make([]*RemotePlanPIndex, 0)
+	missingPIndexNames = make([]string, 0)
 
 	_, pindexes := mgr.CurrentMaps()
 
@@ -316,11 +337,8 @@ build_loop:
 			}
 		}
 
-		return nil, nil, fmt.Errorf("pindex:"+
-			" %s may have been disabled; no nodes are enabled/allocated"+
-			" to serve %s for the index partition(s)",
-			wantKind, wantKind)
+		missingPIndexNames = append(missingPIndexNames, planPIndex.Name)
 	}
 
-	return localPIndexes, remotePlanPIndexes, nil
+	return localPIndexes, remotePlanPIndexes, missingPIndexNames, nil
 }
