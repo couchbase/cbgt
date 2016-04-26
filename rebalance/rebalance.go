@@ -564,6 +564,17 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		}
 
 		forceWaitForCatchup = true
+	} else if state == "primary" && op == "promote" {
+		// If we want to promote a pindex from replica to primary, then
+		// introduce a 2-step maneuver, the first step is a no-op, to
+		// allow the loop below to wait-for-catchup before promoting the
+		// replica to master.
+		stateOps = []StateOp{
+			StateOp{State: "replica", Op: "promote"},
+			StateOp{State: "primary", Op: "promote"},
+		}
+
+		forceWaitForCatchup = true
 	}
 
 	r.Logf("  assignPIndex: index: %s,"+

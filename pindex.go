@@ -304,40 +304,63 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 	_, pindexes := mgr.CurrentMaps()
 
 	selfUUID := mgr.UUID()
-	_, selfDoesPIndexes := nodeDoesPIndexes(selfUUID)
 
-build_loop:
 	for _, planPIndex := range planPIndexes {
-		// First check whether this local node serves that planPIndex.
-		if selfDoesPIndexes &&
-			wantNode(planPIndex.Nodes[selfUUID]) {
-			localPIndex, exists := pindexes[planPIndex.Name]
-			if exists &&
-				localPIndex != nil &&
-				localPIndex.Name == planPIndex.Name &&
-				localPIndex.IndexName == indexName &&
-				(indexUUID == "" || localPIndex.IndexUUID == indexUUID) {
-				localPIndexes = append(localPIndexes, localPIndex)
-				continue build_loop
-			}
-		}
 
-		// Otherwise, look for a remote node that serves that planPIndex.
+		lowestPrioritySeen := -1
+		var lowestNode *NodeDef
+		// look through each of the nodes
 		for nodeUUID, planPIndexNode := range planPIndex.Nodes {
-			if nodeUUID != selfUUID {
-				nodeDef, ok := nodeDoesPIndexes(nodeUUID)
-				if ok && wantNode(planPIndexNode) {
-					remotePlanPIndexes =
-						append(remotePlanPIndexes, &RemotePlanPIndex{
-							PlanPIndex: planPIndex,
-							NodeDef:    nodeDef,
-						})
-					continue build_loop
+
+			// if node is local, do additional checks
+			nodeLocal := nodeUUID == selfUUID
+			nodeLocalOK := false
+			if nodeLocal {
+				localPIndex, exists := pindexes[planPIndex.Name]
+				if exists &&
+					localPIndex != nil &&
+					localPIndex.Name == planPIndex.Name &&
+					localPIndex.IndexName == indexName &&
+					(indexUUID == "" || localPIndex.IndexUUID == indexUUID) {
+					nodeLocalOK = true
+				}
+			}
+
+			// node does pindexes and it is wanted
+			if nodeDef, ok := nodeDoesPIndexes(nodeUUID); ok &&
+				wantNode(planPIndexNode) {
+				if lowestPrioritySeen == -1 ||
+					planPIndexNode.Priority < lowestPrioritySeen {
+					// either first node, or this node has lower Priority
+					if !nodeLocal || (nodeLocal && nodeLocalOK) {
+						lowestNode = nodeDef
+						lowestPrioritySeen = planPIndexNode.Priority
+					}
+				} else if planPIndexNode.Priority == lowestPrioritySeen &&
+					nodeLocal && nodeLocalOK {
+					// same priority, but this one is local node
+					// local nodes also must pass these additional checks
+					lowestNode = nodeDef
 				}
 			}
 		}
 
-		missingPIndexNames = append(missingPIndexNames, planPIndex.Name)
+		// now add the node we found to the correct list
+		if lowestNode == nil {
+			// couldn't find anyone with this pindex
+			missingPIndexNames = append(missingPIndexNames, planPIndex.Name)
+		} else if lowestNode.UUID == selfUUID {
+			// lowest priority is local
+			localPIndex := pindexes[planPIndex.Name]
+			localPIndexes = append(localPIndexes, localPIndex)
+		} else {
+			// lowest priority is remote
+			remotePlanPIndexes =
+				append(remotePlanPIndexes, &RemotePlanPIndex{
+					PlanPIndex: planPIndex,
+					NodeDef:    lowestNode,
+				})
+		}
 	}
 
 	return localPIndexes, remotePlanPIndexes, missingPIndexNames, nil
