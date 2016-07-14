@@ -155,6 +155,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 			indexDef.Type, indexDef.Name, indexDef.UUID, prevIndexUUID)
 	}
 
+	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
 	return nil
@@ -210,6 +211,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 		" indexType: %s, indexName: %s, indexUUID: %s",
 		indexDef.Type, indexDef.Name, indexDef.UUID)
 
+	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
 	return nil
