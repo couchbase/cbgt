@@ -23,6 +23,57 @@ import (
 	log "github.com/couchbase/clog"
 )
 
+// PlannerHooks allows advanced applications to register callbacks
+// into the planning computation, in order to adjust the planning
+// outcome.  For example, an advanced application might adjust node
+// weights more dynamically in order to achieve an improved balancing
+// of pindexes across a cluster.  It should be modified only during
+// the init()'ialization phase of process startup.  See CalcPlan()
+// implementation for more information.
+var PlannerHooks = map[string]PlannerHook{}
+
+// A PlannerHook is an optional callback func supplied by the
+// application via PlannerHooks and is invoked during planning.
+type PlannerHook func(in PlannerHookInfo) (out PlannerHookInfo, skip bool, err error)
+
+// A PlannerHookInfo is the in/out information provided to PlannerHook
+// callbacks.  If the PlannerHook wishes to modify any of these fields
+// to affect the planning outcome, it must copy the field value
+// (e.g., copy-on-write).
+type PlannerHookInfo struct {
+	PlannerHookPhase string
+
+	Mode    string
+	Version string
+	Server  string
+
+	Options map[string]string
+
+	IndexDefs *IndexDefs
+	IndexDef  *IndexDef
+
+	NodeDefs          *NodeDefs
+	NodeUUIDsAll      []string
+	NodeUUIDsToAdd    []string
+	NodeUUIDsToRemove []string
+	NodeWeights       map[string]int
+	NodeHierarchy     map[string]string
+
+	PlannerFilter PlannerFilter
+
+	PlanPIndexesPrev *PlanPIndexes
+	PlanPIndexes     *PlanPIndexes
+
+	PlanPIndexesForIndex map[string]*PlanPIndex
+}
+
+// A NoopPlannerHook is a no-op planner hook that just returns its input.
+func NoopPlannerHook(x PlannerHookInfo) (PlannerHookInfo, bool, error) {
+	return x, false, nil
+}
+
+// -------------------------------------------------------
+
 // NOTE: You *must* update VERSION if the planning algorithm or config
 // data schema changes, following semver rules.
 
@@ -282,10 +333,70 @@ func PlannerGetPlanPIndexes(cfg Cfg, version string) (
 }
 
 // Split logical indexes into PIndexes and assign PIndexes to nodes.
+// As part of this, planner hook callbacks will be invoked to allow
+// advanced applications to adjust the planning outcome.
 func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	planPIndexesPrev *PlanPIndexes, version, server string,
 	options map[string]string, plannerFilter PlannerFilter) (
 	*PlanPIndexes, error) {
+	plannerHook := PlannerHooks[options["plannerHookName"]]
+	if plannerHook == nil {
+		plannerHook = NoopPlannerHook
+	}
+
+	var nodeUUIDsAll []string
+	var nodeUUIDsToAdd []string
+	var nodeUUIDsToRemove []string
+	var nodeWeights map[string]int
+	var nodeHierarchy map[string]string
+	var planPIndexes *PlanPIndexes
+
+	plannerHookCall := func(phase string, indexDef *IndexDef,
+		planPIndexesForIndex map[string]*PlanPIndex) (
+		PlannerHookInfo, bool, error) {
+		pho, skip, err := plannerHook(PlannerHookInfo{
+			PlannerHookPhase:     phase,
+			Mode:                 mode,
+			Version:              version,
+			Server:               server,
+			Options:              options,
+			IndexDefs:            indexDefs,
+			IndexDef:             indexDef,
+			NodeDefs:             nodeDefs,
+			NodeUUIDsAll:         nodeUUIDsAll,
+			NodeUUIDsToAdd:       nodeUUIDsToAdd,
+			NodeUUIDsToRemove:    nodeUUIDsToRemove,
+			NodeWeights:          nodeWeights,
+			NodeHierarchy:        nodeHierarchy,
+			PlannerFilter:        plannerFilter,
+			PlanPIndexesPrev:     planPIndexesPrev,
+			PlanPIndexes:         planPIndexes,
+			PlanPIndexesForIndex: planPIndexesForIndex,
+		})
+
+		mode = pho.Mode
+		version = pho.Version
+		server = pho.Server
+		options = pho.Options
+		indexDefs = pho.IndexDefs
+		nodeDefs = pho.NodeDefs
+		nodeUUIDsAll = pho.NodeUUIDsAll
+		nodeUUIDsToAdd = pho.NodeUUIDsToAdd
+		nodeUUIDsToRemove = pho.NodeUUIDsToRemove
+		nodeWeights = pho.NodeWeights
+		nodeHierarchy = pho.NodeHierarchy
+		plannerFilter = pho.PlannerFilter
+		planPIndexesPrev = pho.PlanPIndexesPrev
+		planPIndexes = pho.PlanPIndexes
+
+		return pho, skip, err
+	}
+
+	_, skip, err := plannerHookCall("begin", nil, nil)
+	if skip || err != nil {
+		return planPIndexes, err
+	}
+
 	// This simple planner assigns at most MaxPartitionsPerPIndex
 	// number of partitions onto a PIndex.  And then uses blance to
 	// assign the PIndex to 1 or more nodes (based on NumReplicas).
@@ -293,14 +404,37 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		return nil, nil
 	}
 
-	nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
-		nodeWeights, nodeHierarchy :=
+	nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove, nodeWeights, nodeHierarchy =
 		CalcNodesLayout(indexDefs, nodeDefs, planPIndexesPrev)
 
-	planPIndexes := NewPlanPIndexes(version)
+	_, skip, err = plannerHookCall("nodes", nil, nil)
+	if skip || err != nil {
+		return planPIndexes, err
+	}
 
-	// Examine every indexDef...
-	for _, indexDef := range indexDefs.IndexDefs {
+	if planPIndexes == nil {
+		planPIndexes = NewPlanPIndexes(version)
+	}
+
+	// Examine every indexDef, ordered by name for stability...
+	var indexDefNames []string
+	for indexDefName := range indexDefs.IndexDefs {
+		indexDefNames = append(indexDefNames, indexDefName)
+	}
+	sort.Strings(indexDefNames)
+
+	for _, indexDefName := range indexDefNames {
+		indexDef := indexDefs.IndexDefs[indexDefName]
+
+		pho, skip, err := plannerHookCall("indexDef.begin", indexDef, nil)
+		if skip {
+			continue
+		}
+		if err != nil {
+			return planPIndexes, err
+		}
+		indexDef = pho.IndexDef
+
 		// If the plan is frozen, CasePlanFrozen clones the previous
 		// plan for this index.
 		if CasePlanFrozen(indexDef, planPIndexesPrev, planPIndexes) {
@@ -333,6 +467,17 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			continue // Keep planning the other IndexDefs.
 		}
 
+		pho, skip, err = plannerHookCall("indexDef.split",
+			indexDef, planPIndexesForIndex)
+		if skip {
+			continue
+		}
+		if err != nil {
+			return planPIndexes, err
+		}
+		indexDef = pho.IndexDef
+		planPIndexesForIndex = pho.PlanPIndexesForIndex
+
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
 		warnings := BlancePlanPIndexes(mode, indexDef,
@@ -345,9 +490,17 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			log.Printf("planner: indexDef.Name: %s,"+
 				" PlanNextMap warning: %s", indexDef.Name, warning)
 		}
+
+		_, _, err = plannerHookCall("indexDef.balanced",
+			indexDef, planPIndexesForIndex)
+		if err != nil {
+			return planPIndexes, err
+		}
 	}
 
-	return planPIndexes, nil
+	_, skip, err = plannerHookCall("end", nil, nil)
+
+	return planPIndexes, err
 }
 
 // CalcNodesLayout computes information about the nodes based on the
