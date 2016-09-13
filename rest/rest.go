@@ -56,7 +56,6 @@ func MustEncode(w io.Writer, i interface{}) {
 
 	err := json.NewEncoder(w).Encode(i)
 	if err != nil {
-		log.Printf("rest: JSON encode: %+v, err: %v", i, err)
 		if rwOk {
 			http.Error(rw, fmt.Sprintf("rest: JSON encode, err: %v", err), 500)
 		}
