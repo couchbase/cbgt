@@ -260,10 +260,10 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 	remotePlanPIndexes []*RemotePlanPIndex,
 	missingPIndexNames []string,
 	err error) {
-	nodeDefs, _, err := CfgGetNodeDefs(mgr.Cfg(), NODE_DEFS_WANTED)
+	nodeDefs, err := mgr.GetNodeDefs(NODE_DEFS_WANTED, false)
 	if err != nil {
 		return nil, nil, nil,
-			fmt.Errorf("pindex: could not retrieve wanted nodeDefs,"+
+			fmt.Errorf("pindex: could not get wanted nodeDefs,"+
 				" err: %v", err)
 	}
 
@@ -306,12 +306,11 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 	selfUUID := mgr.UUID()
 
 	for _, planPIndex := range planPIndexes {
-
 		lowestPrioritySeen := -1
 		var lowestNode *NodeDef
+
 		// look through each of the nodes
 		for nodeUUID, planPIndexNode := range planPIndex.Nodes {
-
 			// if node is local, do additional checks
 			nodeLocal := nodeUUID == selfUUID
 			nodeLocalOK := false

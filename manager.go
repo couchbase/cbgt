@@ -66,6 +66,8 @@ type Manager struct {
 	janitorCh chan *workReq      // Kicks janitor that there's more work.
 	meh       ManagerEventHandlers
 
+	lastNodeDefs map[string]*NodeDefs
+
 	lastIndexDefs          *IndexDefs
 	lastIndexDefsByName    map[string]*IndexDef
 	lastPlanPIndexes       *PlanPIndexes
@@ -182,6 +184,8 @@ func NewManagerEx(version string, cfg Cfg, uuid string, tags []string,
 		janitorCh: make(chan *workReq),
 		meh:       meh,
 		events:    list.New(),
+
+		lastNodeDefs: make(map[string]*NodeDefs),
 	}
 }
 
@@ -254,6 +258,22 @@ func (mgr *Manager) StartCfg() error {
 				}
 			}
 		}()
+
+		kinds := []string{NODE_DEFS_KNOWN, NODE_DEFS_WANTED}
+		for _, kind := range kinds {
+			go func(kind string) {
+				ep := make(chan CfgEvent)
+				mgr.cfg.Subscribe(CfgNodeDefsKey(kind), ep)
+				for {
+					select {
+					case <-mgr.stopCh:
+						return
+					case <-ep:
+						mgr.GetNodeDefs(kind, true)
+					}
+				}
+			}(kind)
+		}
 	}
 
 	return nil
@@ -549,6 +569,25 @@ func (mgr *Manager) CurrentMaps() (map[string]Feed, map[string]*PIndex) {
 }
 
 // ---------------------------------------------------------------
+
+// Returns read-only snapshot of NodeDefs of a given kind (i.e.,
+// NODE_DEFS_WANTED).  Use refresh of true to force a read from Cfg.
+func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
+	nodeDefs *NodeDefs, err error) {
+	mgr.m.Lock()
+	defer mgr.m.Unlock()
+
+	nodeDefs = mgr.lastNodeDefs[kind]
+	if nodeDefs == nil || refresh {
+		nodeDefs, _, err = CfgGetNodeDefs(mgr.Cfg(), kind)
+		if err != nil {
+			return nil, err
+		}
+		mgr.lastNodeDefs[kind] = nodeDefs
+	}
+
+	return nodeDefs, nil
+}
 
 // Returns read-only snapshot of the IndexDefs, also with IndexDef's
 // organized by name.  Use refresh of true to force a read from Cfg.
