@@ -262,8 +262,7 @@ func (h *QueryHandler) ServeHTTP(
 		return
 	}
 
-	pindexImplType, err :=
-		cbgt.PIndexImplTypeForIndex(h.mgr.Cfg(), indexName)
+	_, pindexImplType, err := h.mgr.GetIndexDef(indexName, false)
 	if err != nil || pindexImplType.Query == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
 			" no pindexImplType, indexName: %s, err: %v",

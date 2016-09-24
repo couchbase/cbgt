@@ -614,6 +614,33 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 	return mgr.lastIndexDefs, mgr.lastIndexDefsByName, nil
 }
 
+// GetIndexDef retrieves the IndexDef and PIndexImplType for an index.
+// Use refresh of true to force a read from Cfg.
+func (mgr *Manager) GetIndexDef(indexName string, refresh bool) (
+	*IndexDef, *PIndexImplType, error) {
+	indexDefs, _, err := mgr.GetIndexDefs(refresh)
+	if err != nil || indexDefs == nil {
+		return nil, nil, fmt.Errorf("manager: could not get indexDefs,"+
+			" indexName: %s, err: %v",
+			indexName, err)
+	}
+
+	indexDef := indexDefs.IndexDefs[indexName]
+	if indexDef == nil {
+		return nil, nil, fmt.Errorf("manager: no indexDef,"+
+			" indexName: %s", indexName)
+	}
+
+	pindexImplType := PIndexImplTypes[indexDef.Type]
+	if pindexImplType == nil {
+		return nil, nil, fmt.Errorf("manager: no pindexImplType,"+
+			" indexName: %s, indexDef.Type: %s",
+			indexName, indexDef.Type)
+	}
+
+	return indexDef, pindexImplType, nil
+}
+
 // Returns read-only snapshot of the PlanPIndexes, also with PlanPIndex's
 // organized by IndexName.  Use refresh of true to force a read from Cfg.
 func (mgr *Manager) GetPlanPIndexes(refresh bool) (
