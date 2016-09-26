@@ -139,6 +139,10 @@ type ManagerStats struct {
 	TotJanitorUnknownErr        uint64
 	TotJanitorSubscriptionEvent uint64
 	TotJanitorStop              uint64
+
+	TotRefreshLastNodeDefs     uint64
+	TotRefreshLastIndexDefs    uint64
+	TotRefreshLastPlanPIndexes uint64
 }
 
 // MANAGER_MAX_EVENTS limits the number of events tracked by a Manager
@@ -614,6 +618,7 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 			return nil, err
 		}
 		mgr.lastNodeDefs[kind] = nodeDefs
+		atomic.AddUint64(&mgr.stats.TotRefreshLastNodeDefs, 1)
 	}
 
 	return nodeDefs, nil
@@ -632,6 +637,7 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 			return nil, nil, err
 		}
 		mgr.lastIndexDefs = indexDefs
+		atomic.AddUint64(&mgr.stats.TotRefreshLastIndexDefs, 1)
 
 		mgr.lastIndexDefsByName = make(map[string]*IndexDef)
 		if indexDefs != nil {
@@ -684,6 +690,7 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 			return nil, nil, err
 		}
 		mgr.lastPlanPIndexes = planPIndexes
+		atomic.AddUint64(&mgr.stats.TotRefreshLastPlanPIndexes, 1)
 
 		mgr.lastPlanPIndexesByName = make(map[string][]*PlanPIndex)
 		if planPIndexes != nil {
