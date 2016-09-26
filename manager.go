@@ -477,9 +477,9 @@ func (mgr *Manager) RemovePIndex(pindex *PIndex) error {
 // GetPIndex retrieves a named pindex instance.
 func (mgr *Manager) GetPIndex(pindexName string) *PIndex {
 	mgr.m.Lock()
-	defer mgr.m.Unlock()
-
-	return mgr.pindexes[pindexName]
+	rv := mgr.pindexes[pindexName]
+	mgr.m.Unlock()
+	return rv
 }
 
 func (mgr *Manager) registerPIndex(pindex *PIndex) error {
@@ -491,7 +491,10 @@ func (mgr *Manager) registerPIndex(pindex *PIndex) error {
 			pindex.Name)
 	}
 
-	mgr.pindexes[pindex.Name] = pindex
+	pindexes := mgr.copyPIndexesLOCKED()
+	pindexes[pindex.Name] = pindex
+	mgr.pindexes = pindexes
+
 	if mgr.meh != nil {
 		mgr.meh.OnRegisterPIndex(pindex)
 	}
@@ -512,15 +515,16 @@ func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex
 			return nil
 		}
 
-		delete(mgr.pindexes, name)
+		pindexes := mgr.copyPIndexesLOCKED()
+		delete(pindexes, name)
+		mgr.pindexes = pindexes
+
 		if mgr.meh != nil {
 			mgr.meh.OnUnregisterPIndex(pindex)
 		}
-
-		return pindex
 	}
 
-	return nil
+	return pindex
 }
 
 // ---------------------------------------------------------------
@@ -533,7 +537,11 @@ func (mgr *Manager) registerFeed(feed Feed) error {
 		return fmt.Errorf("manager: registered feed already exists, name: %s",
 			feed.Name())
 	}
-	mgr.feeds[feed.Name()] = feed
+
+	feeds := mgr.copyFeedsLOCKED()
+	feeds[feed.Name()] = feed
+	mgr.feeds = feeds
+
 	return nil
 }
 
@@ -543,29 +551,40 @@ func (mgr *Manager) unregisterFeed(name string) Feed {
 
 	rv, ok := mgr.feeds[name]
 	if ok {
-		delete(mgr.feeds, name)
-		return rv
+		feeds := mgr.copyFeedsLOCKED()
+		delete(feeds, name)
+		mgr.feeds = feeds
 	}
-	return nil
+
+	return rv
 }
 
 // ---------------------------------------------------------------
 
 // Returns a snapshot copy of the current feeds and pindexes.
 func (mgr *Manager) CurrentMaps() (map[string]Feed, map[string]*PIndex) {
-	feeds := make(map[string]Feed)
-	pindexes := make(map[string]*PIndex)
-
 	mgr.m.Lock()
-	defer mgr.m.Unlock()
+	feeds, pindexes := mgr.feeds, mgr.pindexes
+	mgr.m.Unlock()
+	return feeds, pindexes
+}
 
+// ---------------------------------------------------------------
+
+func (mgr *Manager) copyFeedsLOCKED() map[string]Feed {
+	feeds := make(map[string]Feed)
 	for k, v := range mgr.feeds {
 		feeds[k] = v
 	}
+	return feeds
+}
+
+func (mgr *Manager) copyPIndexesLOCKED() map[string]*PIndex {
+	pindexes := make(map[string]*PIndex)
 	for k, v := range mgr.pindexes {
 		pindexes[k] = v
 	}
-	return feeds, pindexes
+	return pindexes
 }
 
 // ---------------------------------------------------------------
