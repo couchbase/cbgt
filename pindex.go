@@ -223,12 +223,22 @@ type CoveringPIndexesSpec struct {
 	PlanPIndexFilterName string // See PlanPIndexesFilters.
 }
 
+// CoveringPIndexes represents a non-overlapping, disjoint set of
+// PIndexes that cover all the partitions of an index.
+type CoveringPIndexes struct {
+	LocalPIndexes      []*PIndex
+	RemotePlanPIndexes []*RemotePlanPIndex
+	MissingPIndexNames []string
+}
+
 // PlanPIndexFilters represent registered PlanPIndexFilter func's, and
 // should only be modified during process init()'ialization.
 var PlanPIndexFilters = map[string]PlanPIndexFilter{
 	"ok":      PlanPIndexNodeOk,
 	"canRead": PlanPIndexNodeCanRead,
 }
+
+// ---------------------------------------------------------
 
 // CoveringPIndexes returns a non-overlapping, disjoint set (or cut)
 // of PIndexes (either local or remote) that cover all the partitons
@@ -261,7 +271,7 @@ func (mgr *Manager) CoveringPIndexes(indexName, indexUUID string,
 		mgr.CoveringPIndexesEx(CoveringPIndexesSpec{
 			IndexName: indexName,
 			IndexUUID: indexUUID,
-		}, planPIndexFilter)
+		}, planPIndexFilter, false)
 	if err == nil && len(missingPIndexNames) > 0 {
 		return nil, nil, fmt.Errorf("pindex:"+
 			" %s may have been disabled; no nodes are enabled/allocated"+
@@ -284,7 +294,7 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 	return mgr.CoveringPIndexesEx(CoveringPIndexesSpec{
 		IndexName: indexName,
 		IndexUUID: indexUUID,
-	}, planPIndexFilter)
+	}, planPIndexFilter, false)
 }
 
 // CoveringPIndexesEx returns a non-overlapping, disjoint set (or cut)
@@ -294,14 +304,54 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 // If the planPIndexFilter param is nil, then the
 // spec.PlanPIndexFilterName is used.
 func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
-	planPIndexFilter PlanPIndexFilter) (
+	planPIndexFilter PlanPIndexFilter, noCache bool) (
 	[]*PIndex, []*RemotePlanPIndex, []string, error) {
+	var ver uint64
+
 	ppf := planPIndexFilter
 	if ppf == nil {
+		if !noCache {
+			var cp *CoveringPIndexes
+
+			mgr.m.Lock()
+			if mgr.coveringCache != nil {
+				cp = mgr.coveringCache[spec]
+				ver = mgr.coveringCacheVerLOCKED()
+			}
+			mgr.m.Unlock()
+
+			if cp != nil {
+				return cp.LocalPIndexes, cp.RemotePlanPIndexes, cp.MissingPIndexNames, nil
+			}
+		}
+
 		ppf = PlanPIndexFilters[spec.PlanPIndexFilterName]
 	}
 
-	return mgr.coveringPIndexesEx(spec.IndexName, spec.IndexUUID, ppf)
+	localPIndexes, remotePlanPIndexes, missingPIndexNames, err :=
+		mgr.coveringPIndexesEx(spec.IndexName, spec.IndexUUID, ppf)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if planPIndexFilter == nil && !noCache {
+		cp := &CoveringPIndexes{
+			LocalPIndexes:      localPIndexes,
+			RemotePlanPIndexes: remotePlanPIndexes,
+			MissingPIndexNames: missingPIndexNames,
+		}
+
+		mgr.m.Lock()
+		if ver == mgr.coveringCacheVerLOCKED() {
+			if mgr.coveringCache == nil {
+				mgr.coveringCache = map[CoveringPIndexesSpec]*CoveringPIndexes{}
+			}
+			mgr.coveringCache[spec] = cp
+		}
+		mgr.m.Unlock()
+	}
+
+	return localPIndexes, remotePlanPIndexes, missingPIndexNames, err
 }
 
 func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
@@ -413,4 +463,14 @@ func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
 	}
 
 	return localPIndexes, remotePlanPIndexes, missingPIndexNames, nil
+}
+
+// coveringCacheVerLOCKED computes a CAS-like number that can be
+// quickly compared to see if any inputs to the covering pindexes
+// computation have changed.
+func (mgr *Manager) coveringCacheVerLOCKED() uint64 {
+	return mgr.stats.TotRefreshLastNodeDefs +
+		mgr.stats.TotRefreshLastPlanPIndexes +
+		mgr.stats.TotRegisterPIndex +
+		mgr.stats.TotUnregisterPIndex
 }

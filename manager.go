@@ -73,6 +73,8 @@ type Manager struct {
 	lastPlanPIndexes       *PlanPIndexes
 	lastPlanPIndexesByName map[string][]*PlanPIndex
 
+	coveringCache map[CoveringPIndexesSpec]*CoveringPIndexes
+
 	stats  ManagerStats
 	events *list.List
 }
@@ -619,6 +621,8 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 		}
 		mgr.lastNodeDefs[kind] = nodeDefs
 		atomic.AddUint64(&mgr.stats.TotRefreshLastNodeDefs, 1)
+
+		mgr.coveringCache = nil
 	}
 
 	return nodeDefs, nil
@@ -645,6 +649,8 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 				mgr.lastIndexDefsByName[indexDef.Name] = indexDef
 			}
 		}
+
+		mgr.coveringCache = nil
 	}
 
 	return mgr.lastIndexDefs, mgr.lastIndexDefsByName, nil
@@ -703,6 +709,8 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 					append(a, planPIndex)
 			}
 		}
+
+		mgr.coveringCache = nil
 	}
 
 	return mgr.lastPlanPIndexes, mgr.lastPlanPIndexesByName, nil
