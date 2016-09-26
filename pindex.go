@@ -215,11 +215,26 @@ type RemotePlanPIndex struct {
 // CoveringPIndexes().
 type PlanPIndexFilter func(*PlanPIndexNode) bool
 
+// CoveringPIndexesSpec represent the arguments for computing the
+// covering pindexes for an index.  See also CoveringPIndexesEx().
+type CoveringPIndexesSpec struct {
+	IndexName            string
+	IndexUUID            string
+	PlanPIndexFilterName string // See PlanPIndexesFilters.
+}
+
+// PlanPIndexFilters represent registered PlanPIndexFilter func's, and
+// should only be modified during process init()'ialization.
+var PlanPIndexFilters = map[string]PlanPIndexFilter{
+	"ok":      PlanPIndexNodeOk,
+	"canRead": PlanPIndexNodeCanRead,
+}
+
 // CoveringPIndexes returns a non-overlapping, disjoint set (or cut)
 // of PIndexes (either local or remote) that cover all the partitons
 // of an index so that the caller can perform scatter/gather queries,
-// etc.  Only PlanPIndexes on wanted nodes that pass the wantNode
-// filter will be returned.
+// etc.  Only PlanPIndexes on wanted nodes that pass the
+// planPIndexFilter filter will be returned.
 //
 // TODO: Perhaps need a tighter check around indexUUID, as the current
 // implementation might have a race where old pindexes with a matching
@@ -236,26 +251,61 @@ type PlanPIndexFilter func(*PlanPIndexNode) bool
 // up-to-date node and hitting it with load just makes the
 // rebalance take longer?
 func (mgr *Manager) CoveringPIndexes(indexName, indexUUID string,
-	wantNode PlanPIndexFilter, wantKind string) (
+	planPIndexFilter PlanPIndexFilter, wantKind string) (
 	localPIndexes []*PIndex,
 	remotePlanPIndexes []*RemotePlanPIndex,
 	err error) {
-
 	var missingPIndexNames []string
-	localPIndexes, remotePlanPIndexes, missingPIndexNames, err =
-		mgr.CoveringPIndexesBestEffort(indexName, indexUUID, wantNode, wantKind)
 
+	localPIndexes, remotePlanPIndexes, missingPIndexNames, err =
+		mgr.CoveringPIndexesEx(CoveringPIndexesSpec{
+			IndexName: indexName,
+			IndexUUID: indexUUID,
+		}, planPIndexFilter)
 	if err == nil && len(missingPIndexNames) > 0 {
 		return nil, nil, fmt.Errorf("pindex:"+
 			" %s may have been disabled; no nodes are enabled/allocated"+
 			" to serve %s for the index partition(s)",
 			wantKind, wantKind)
 	}
+
 	return localPIndexes, remotePlanPIndexes, err
 }
 
+// CoveringPIndexesBestEffort is similar to CoveringPIndexes, but does
+// not error if there are missing/disabled nodes for some of the
+// pindexes.
 func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
-	wantNode PlanPIndexFilter, wantKind string) (
+	planPIndexFilter PlanPIndexFilter, wantKind string) (
+	localPIndexes []*PIndex,
+	remotePlanPIndexes []*RemotePlanPIndex,
+	missingPIndexNames []string,
+	err error) {
+	return mgr.CoveringPIndexesEx(CoveringPIndexesSpec{
+		IndexName: indexName,
+		IndexUUID: indexUUID,
+	}, planPIndexFilter)
+}
+
+// CoveringPIndexesEx returns a non-overlapping, disjoint set (or cut)
+// of PIndexes (either local or remote) that cover all the partitons
+// of an index so that the caller can perform scatter/gather queries.
+//
+// If the planPIndexFilter param is nil, then the
+// spec.PlanPIndexFilterName is used.
+func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
+	planPIndexFilter PlanPIndexFilter) (
+	[]*PIndex, []*RemotePlanPIndex, []string, error) {
+	ppf := planPIndexFilter
+	if ppf == nil {
+		ppf = PlanPIndexFilters[spec.PlanPIndexFilterName]
+	}
+
+	return mgr.coveringPIndexesEx(spec.IndexName, spec.IndexUUID, ppf)
+}
+
+func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
+	planPIndexFilter PlanPIndexFilter) (
 	localPIndexes []*PIndex,
 	remotePlanPIndexes []*RemotePlanPIndex,
 	missingPIndexNames []string,
@@ -327,7 +377,7 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 
 			// node does pindexes and it is wanted
 			if nodeDef, ok := nodeDoesPIndexes(nodeUUID); ok &&
-				wantNode(planPIndexNode) {
+				planPIndexFilter(planPIndexNode) {
 				if lowestPrioritySeen == -1 ||
 					planPIndexNode.Priority < lowestPrioritySeen {
 					// either first node, or this node has lower Priority
