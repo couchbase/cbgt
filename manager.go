@@ -82,6 +82,13 @@ type Manager struct {
 type ManagerStats struct {
 	TotKick uint64
 
+	TotSetOptions uint64
+
+	TotRegisterFeed     uint64
+	TotUnregisterFeed   uint64
+	TotRegisterPIndex   uint64
+	TotUnregisterPIndex uint64
+
 	TotSaveNodeDef       uint64
 	TotSaveNodeDefNil    uint64
 	TotSaveNodeDefGetErr uint64
@@ -494,6 +501,7 @@ func (mgr *Manager) registerPIndex(pindex *PIndex) error {
 	pindexes := mgr.copyPIndexesLOCKED()
 	pindexes[pindex.Name] = pindex
 	mgr.pindexes = pindexes
+	atomic.AddUint64(&mgr.stats.TotRegisterPIndex, 1)
 
 	if mgr.meh != nil {
 		mgr.meh.OnRegisterPIndex(pindex)
@@ -518,6 +526,7 @@ func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex
 		pindexes := mgr.copyPIndexesLOCKED()
 		delete(pindexes, name)
 		mgr.pindexes = pindexes
+		atomic.AddUint64(&mgr.stats.TotUnregisterPIndex, 1)
 
 		if mgr.meh != nil {
 			mgr.meh.OnUnregisterPIndex(pindex)
@@ -541,6 +550,7 @@ func (mgr *Manager) registerFeed(feed Feed) error {
 	feeds := mgr.copyFeedsLOCKED()
 	feeds[feed.Name()] = feed
 	mgr.feeds = feeds
+	atomic.AddUint64(&mgr.stats.TotRegisterFeed, 1)
 
 	return nil
 }
@@ -554,6 +564,7 @@ func (mgr *Manager) unregisterFeed(name string) Feed {
 		feeds := mgr.copyFeedsLOCKED()
 		delete(feeds, name)
 		mgr.feeds = feeds
+		atomic.AddUint64(&mgr.stats.TotUnregisterFeed, 1)
 	}
 
 	return rv
@@ -787,6 +798,7 @@ func (mgr *Manager) GetOptions() map[string]string {
 func (mgr *Manager) SetOptions(options map[string]string) {
 	mgr.m.Lock()
 	mgr.options = options
+	atomic.AddUint64(&mgr.stats.TotSetOptions, 1)
 	mgr.m.Unlock()
 }
 
