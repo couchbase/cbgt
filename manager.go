@@ -508,6 +508,7 @@ func (mgr *Manager) registerPIndex(pindex *PIndex) error {
 	pindexes[pindex.Name] = pindex
 	mgr.pindexes = pindexes
 	atomic.AddUint64(&mgr.stats.TotRegisterPIndex, 1)
+	mgr.coveringCache = nil
 
 	if mgr.meh != nil {
 		mgr.meh.OnRegisterPIndex(pindex)
@@ -533,6 +534,7 @@ func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex
 		delete(pindexes, name)
 		mgr.pindexes = pindexes
 		atomic.AddUint64(&mgr.stats.TotUnregisterPIndex, 1)
+		mgr.coveringCache = nil
 
 		if mgr.meh != nil {
 			mgr.meh.OnUnregisterPIndex(pindex)
