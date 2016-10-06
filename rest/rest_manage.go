@@ -230,6 +230,8 @@ func NewCfgRefreshHandler(mgr *cbgt.Manager) *CfgRefreshHandler {
 func (h *CfgRefreshHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	h.mgr.Cfg().Refresh()
+	h.mgr.GetNodeDefs(cbgt.NODE_DEFS_KNOWN, true)
+	h.mgr.GetNodeDefs(cbgt.NODE_DEFS_WANTED, true)
 	h.mgr.GetIndexDefs(true)
 	h.mgr.GetPlanPIndexes(true)
 	MustEncode(w, struct {

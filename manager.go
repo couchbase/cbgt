@@ -623,7 +623,6 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 		}
 		mgr.lastNodeDefs[kind] = nodeDefs
 		atomic.AddUint64(&mgr.stats.TotRefreshLastNodeDefs, 1)
-
 		mgr.coveringCache = nil
 	}
 

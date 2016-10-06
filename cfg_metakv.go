@@ -17,6 +17,7 @@ import (
 	"hash/crc32"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -180,6 +181,15 @@ func (c *CfgMetaKv) metaKVCallback(path string,
 
 	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v,"+
 		" deletion: %t", path, key, value == nil)
+
+	for splitKeyPrefix := range cfgMetaKvSplitKeys {
+		// Handle the case when the key from metakv looks like
+		// "nodeDefs-known/63f8a79660", but the subscription was for a
+		// key prefix like "nodeDefs-known".
+		if strings.HasPrefix(key, splitKeyPrefix) {
+			key = splitKeyPrefix
+		}
+	}
 
 	c.m.Lock()
 	c.cfgMem.FireEvent(key, 1, nil)

@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -397,8 +398,8 @@ func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
 				indexName)
 	}
 
-	localPIndexes = make([]*PIndex, 0)
-	remotePlanPIndexes = make([]*RemotePlanPIndex, 0)
+	localPIndexes = make([]*PIndex, 0, len(planPIndexes))
+	remotePlanPIndexes = make([]*RemotePlanPIndex, 0, len(planPIndexes))
 	missingPIndexNames = make([]string, 0)
 
 	_, pindexes := mgr.CurrentMaps()
@@ -406,7 +407,7 @@ func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
 	selfUUID := mgr.UUID()
 
 	for _, planPIndex := range planPIndexes {
-		lowestPrioritySeen := -1
+		lowestNodePriority := math.MaxInt64
 		var lowestNode *NodeDef
 
 		// look through each of the nodes
@@ -428,18 +429,18 @@ func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
 			// node does pindexes and it is wanted
 			if nodeDef, ok := nodeDoesPIndexes(nodeUUID); ok &&
 				planPIndexFilter(planPIndexNode) {
-				if lowestPrioritySeen == -1 ||
-					planPIndexNode.Priority < lowestPrioritySeen {
-					// either first node, or this node has lower Priority
+				if planPIndexNode.Priority < lowestNodePriority {
+					// candidate node has lower priority
 					if !nodeLocal || (nodeLocal && nodeLocalOK) {
 						lowestNode = nodeDef
-						lowestPrioritySeen = planPIndexNode.Priority
+						lowestNodePriority = planPIndexNode.Priority
 					}
-				} else if planPIndexNode.Priority == lowestPrioritySeen &&
-					nodeLocal && nodeLocalOK {
-					// same priority, but this one is local node
-					// local nodes also must pass these additional checks
-					lowestNode = nodeDef
+				} else if planPIndexNode.Priority == lowestNodePriority {
+					if nodeLocal && nodeLocalOK {
+						// same priority, but prefer local nodes
+						lowestNode = nodeDef
+						lowestNodePriority = planPIndexNode.Priority
+					}
 				}
 			}
 		}
