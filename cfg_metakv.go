@@ -45,12 +45,12 @@ import (
 // process init()'ialization.
 var CfgMetaKvPrefix = "/cbgt/cfg/"
 
-type cfgMetaKvSplitHandler interface {
+type cfgMetaKvAdvancedHandler interface {
 	get(c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error)
 	set(c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error)
 }
 
-var cfgMetaKvSplitKeys map[string]cfgMetaKvSplitHandler = map[string]cfgMetaKvSplitHandler{
+var cfgMetaKvAdvancedKeys map[string]cfgMetaKvAdvancedHandler = map[string]cfgMetaKvAdvancedHandler{
 	CfgNodeDefsKey(NODE_DEFS_WANTED): &cfgMetaKvNodeDefsSplitHandler{},
 	CfgNodeDefsKey(NODE_DEFS_KNOWN):  &cfgMetaKvNodeDefsSplitHandler{},
 }
@@ -111,7 +111,7 @@ func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 }
 
 func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) {
-	handler := cfgMetaKvSplitKeys[key]
+	handler := cfgMetaKvAdvancedKeys[key]
 	if handler != nil {
 		return handler.get(c, key, cas)
 	}
@@ -129,12 +129,12 @@ func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 	uint64, error) {
 	log.Printf("cfg_metakv: Set, key: %v, cas: %x, split: %t, nodeUUID: %s",
-		key, cas, cfgMetaKvSplitKeys[key] != nil, c.nodeUUID)
+		key, cas, cfgMetaKvAdvancedKeys[key] != nil, c.nodeUUID)
 
 	c.m.Lock()
 	defer c.m.Unlock()
 
-	handler := cfgMetaKvSplitKeys[key]
+	handler := cfgMetaKvAdvancedKeys[key]
 	if handler != nil {
 		return handler.set(c, key, val, cas)
 	}
@@ -161,7 +161,7 @@ func (c *CfgMetaKv) Del(key string, cas uint64) error {
 func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
 	path := c.keyToPath(key)
 
-	if cfgMetaKvSplitKeys[key] != nil {
+	if cfgMetaKvAdvancedKeys[key] != nil {
 		delete(c.splitEntries, key)
 
 		return metakv.RecursiveDelete(path + "/")
@@ -182,7 +182,7 @@ func (c *CfgMetaKv) metaKVCallback(path string,
 	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v,"+
 		" deletion: %t", path, key, value == nil)
 
-	for splitKeyPrefix := range cfgMetaKvSplitKeys {
+	for splitKeyPrefix := range cfgMetaKvAdvancedKeys {
 		// Handle the case when the key from metakv looks like
 		// "nodeDefs-known/63f8a79660", but the subscription was for a
 		// key prefix like "nodeDefs-known".
@@ -228,7 +228,7 @@ func (c *CfgMetaKv) pathToKey(k string) string {
 func (c *CfgMetaKv) listChildPaths(key string) ([]string, error) {
 	g := []string{}
 
-	if cfgMetaKvSplitKeys[key] != nil {
+	if cfgMetaKvAdvancedKeys[key] != nil {
 		m, err := metakv.ListAllChildren(c.keyToPath(key) + "/")
 		if err != nil {
 			return nil, err
