@@ -48,11 +48,13 @@ var CfgMetaKvPrefix = "/cbgt/cfg/"
 type cfgMetaKvAdvancedHandler interface {
 	get(c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error)
 	set(c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error)
+	del(c *CfgMetaKv, key string, cas uint64) error
 }
 
 var cfgMetaKvAdvancedKeys map[string]cfgMetaKvAdvancedHandler = map[string]cfgMetaKvAdvancedHandler{
 	CfgNodeDefsKey(NODE_DEFS_WANTED): &cfgMetaKvNodeDefsSplitHandler{},
 	CfgNodeDefsKey(NODE_DEFS_KNOWN):  &cfgMetaKvNodeDefsSplitHandler{},
+	PLAN_PINDEXES_KEY:                &cfgMetaKvPlanPIndexesHandler{},
 }
 
 type CfgMetaKv struct {
@@ -105,17 +107,22 @@ func NewCfgMetaKv(nodeUUID string) (*CfgMetaKv, error) {
 
 func (c *CfgMetaKv) Get(key string, cas uint64) ([]byte, uint64, error) {
 	c.m.Lock()
-	data, cas, err := c.getUnlocked(key, cas)
+	data, cas, err := c.getLOCKED(key, cas)
 	c.m.Unlock()
+
 	return data, cas, err
 }
 
-func (c *CfgMetaKv) getUnlocked(key string, cas uint64) ([]byte, uint64, error) {
+func (c *CfgMetaKv) getLOCKED(key string, cas uint64) ([]byte, uint64, error) {
 	handler := cfgMetaKvAdvancedKeys[key]
 	if handler != nil {
 		return handler.get(c, key, cas)
 	}
 
+	return c.getRawLOCKED(key, cas)
+}
+
+func (c *CfgMetaKv) getRawLOCKED(key string, cas uint64) ([]byte, uint64, error) {
 	path := c.keyToPath(key)
 
 	v, _, err := metakv.Get(path) // TODO: Handle rev.
@@ -132,13 +139,24 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 		key, cas, cfgMetaKvAdvancedKeys[key] != nil, c.nodeUUID)
 
 	c.m.Lock()
-	defer c.m.Unlock()
+	casResult, err := c.setLOCKED(key, val, cas)
+	c.m.Unlock()
 
+	return casResult, err
+}
+
+func (c *CfgMetaKv) setLOCKED(key string, val []byte, cas uint64) (
+	uint64, error) {
 	handler := cfgMetaKvAdvancedKeys[key]
 	if handler != nil {
 		return handler.set(c, key, val, cas)
 	}
 
+	return c.setRawLOCKED(key, val, cas)
+}
+
+func (c *CfgMetaKv) setRawLOCKED(key string, val []byte, cas uint64) (
+	uint64, error) {
 	path := c.keyToPath(key)
 
 	log.Printf("cfg_metakv: Set path: %v", path)
@@ -153,25 +171,30 @@ func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
 
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
 	c.m.Lock()
-	err := c.delUnlocked(key, cas)
+	err := c.delLOCKED(key, cas)
 	c.m.Unlock()
+
 	return err
 }
 
-func (c *CfgMetaKv) delUnlocked(key string, cas uint64) error {
-	path := c.keyToPath(key)
-
-	if cfgMetaKvAdvancedKeys[key] != nil {
-		delete(c.splitEntries, key)
-
-		return metakv.RecursiveDelete(path + "/")
+func (c *CfgMetaKv) delLOCKED(key string, cas uint64) error {
+	handler := cfgMetaKvAdvancedKeys[key]
+	if handler != nil {
+		return handler.del(c, key, cas)
 	}
+
+	return c.delRawLOCKED(key, cas)
+}
+
+func (c *CfgMetaKv) delRawLOCKED(key string, cas uint64) error {
+	path := c.keyToPath(key)
 
 	return metakv.Delete(path, nil) // TODO: Handle rev better.
 }
 
 func (c *CfgMetaKv) Load() error {
 	metakv.IterateChildren(c.prefix, c.metaKVCallback)
+
 	return nil
 }
 
@@ -202,6 +225,7 @@ func (c *CfgMetaKv) Subscribe(key string, ch chan CfgEvent) error {
 	c.m.Lock()
 	err := c.cfgMem.Subscribe(key, ch)
 	c.m.Unlock()
+
 	return err
 }
 
@@ -425,4 +449,147 @@ LOOP:
 	casResult := c.lastSplitCAS + 1
 	c.lastSplitCAS = casResult
 	return casResult, err
+}
+
+func (a *cfgMetaKvNodeDefsSplitHandler) del(
+	c *CfgMetaKv, key string, cas uint64) error {
+	delete(c.splitEntries, key)
+
+	path := c.keyToPath(key)
+
+	return metakv.RecursiveDelete(path + "/")
+}
+
+// ----------------------------------------------------------------
+
+// cfgMetaKvPlanPIndexesHandler rewrites the get/set of a planPIndex
+// document by deduplicating repeated index definitions and source
+// definitions.
+type cfgMetaKvPlanPIndexesHandler struct{}
+
+// PlanPIndexesShared represents a PlanPIndexes that has been
+// deduplicated into shared parts.
+type PlanPIndexesShared struct {
+	PlanPIndexes
+
+	// Key is "indexType/indexName/indexUUID".
+	SharedIndexDefs map[string]*PlanPIndexIndexDef `json:"sharedIndexDefs"`
+
+	// Key is "sourceType/sourceName/sourceUUID".
+	SharedSourceDefs map[string]*PlanPIndexSourceDef `json:"sharedSourceDefs"`
+}
+
+// PlanPIndexIndexDef represents the shared, repeated index definition
+// part of a PlanPIndex.
+type PlanPIndexIndexDef struct {
+	IndexParams string `json:"indexParams"`
+}
+
+// PlanPIndexSourceDef represents the shared, repeated source
+// definition part of a PlanPIndex.
+type PlanPIndexSourceDef struct {
+	SourceParams string `json:"sourceParams"`
+}
+
+func (a *cfgMetaKvPlanPIndexesHandler) get(c *CfgMetaKv,
+	key string, cas uint64) ([]byte, uint64, error) {
+	buf, casResult, err := c.getRawLOCKED(key, cas)
+	if err != nil || len(buf) <= 0 {
+		return buf, casResult, err
+	}
+
+	var shared PlanPIndexesShared
+
+	err = json.Unmarshal(buf, &shared)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	planPIndexes := &shared.PlanPIndexes
+
+	// Expand/reconstitute the planPIndex's name.
+	for ppiName, ppi := range planPIndexes.PlanPIndexes {
+		if ppi.Name == "" {
+			ppi.Name = ppiName
+		}
+	}
+
+	// Expand/reconstitute the index def part of each planPIndex.
+	if shared.SharedIndexDefs != nil {
+		for _, ppi := range planPIndexes.PlanPIndexes {
+			if ppi.IndexParams == "" {
+				k := ppi.IndexType + "/" + ppi.IndexName + "/" + ppi.IndexUUID
+				sharedPart, ok := shared.SharedIndexDefs[k]
+				if ok && sharedPart != nil {
+					ppi.IndexParams = sharedPart.IndexParams
+				}
+			}
+		}
+	}
+
+	// Expand/reconstitute the source def part of each planPIndex.
+	if shared.SharedSourceDefs != nil {
+		for _, ppi := range planPIndexes.PlanPIndexes {
+			if ppi.SourceParams == "" {
+				k := ppi.SourceType + "/" + ppi.SourceName + "/" + ppi.SourceUUID
+				sharedPart, ok := shared.SharedSourceDefs[k]
+				if ok && sharedPart != nil {
+					ppi.SourceParams = sharedPart.SourceParams
+				}
+			}
+		}
+	}
+
+	bufResult, err := json.Marshal(planPIndexes)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return bufResult, casResult, nil
+}
+
+func (a *cfgMetaKvPlanPIndexesHandler) set(c *CfgMetaKv,
+	key string, val []byte, cas uint64) (uint64, error) {
+	var shared PlanPIndexesShared
+
+	err := json.Unmarshal(val, &shared.PlanPIndexes)
+	if err != nil {
+		return 0, err
+	}
+
+	shared.SharedIndexDefs = map[string]*PlanPIndexIndexDef{}
+	shared.SharedSourceDefs = map[string]*PlanPIndexSourceDef{}
+
+	// Reduce the planPIndexes by not repeating the shared parts.
+	for _, ppi := range shared.PlanPIndexes.PlanPIndexes {
+		ppi.Name = ""
+
+		if ppi.IndexParams != "" {
+			k := ppi.IndexType + "/" + ppi.IndexName + "/" + ppi.IndexUUID
+			shared.SharedIndexDefs[k] = &PlanPIndexIndexDef{
+				IndexParams: ppi.IndexParams,
+			}
+			ppi.IndexParams = ""
+		}
+
+		if ppi.SourceParams != "" {
+			k := ppi.SourceType + "/" + ppi.SourceName + "/" + ppi.SourceUUID
+			shared.SharedSourceDefs[k] = &PlanPIndexSourceDef{
+				SourceParams: ppi.SourceParams,
+			}
+			ppi.SourceParams = ""
+		}
+	}
+
+	valShared, err := json.Marshal(&shared)
+	if err != nil {
+		return 0, err
+	}
+
+	return c.setRawLOCKED(key, valShared, cas)
+}
+
+func (a *cfgMetaKvPlanPIndexesHandler) del(c *CfgMetaKv,
+	key string, cas uint64) error {
+	return c.delRawLOCKED(key, cas)
 }
