@@ -138,8 +138,8 @@ func indexDefFromBase(base *indexDefBase, indexDef *IndexDef) {
 type PlanPIndexNested struct {
 	planPIndexBase
 
-	IndexParams  map[string]interface{} `json:"indexParams"`
-	SourceParams map[string]interface{} `json:"sourceParams"`
+	IndexParams  map[string]interface{} `json:"indexParams,omitempty"`
+	SourceParams map[string]interface{} `json:"sourceParams,omitempty"`
 }
 
 // A PlanPIndexEnveloped overrides PlanPIndex with IndexParams and
@@ -148,8 +148,8 @@ type PlanPIndexNested struct {
 type PlanPIndexEnveloped struct {
 	planPIndexBase
 
-	IndexParams  string `json:"indexParams"`
-	SourceParams string `json:"sourceParams"`
+	IndexParams  string `json:"indexParams,omitempty"`
+	SourceParams string `json:"sourceParams,omitempty"`
 }
 
 // -------------------------------------------------------------------

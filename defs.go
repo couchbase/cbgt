@@ -157,16 +157,16 @@ type PlanPIndexes struct {
 // An index partition might be assigned to more than one node if the
 // "plan params" has a replica count > 0.
 type PlanPIndex struct {
-	Name             string `json:"name"` // Stable & unique cluster wide.
+	Name             string `json:"name,omitempty"` // Stable & unique cluster wide.
 	UUID             string `json:"uuid"`
-	IndexType        string `json:"indexType"`   // See IndexDef.Type.
-	IndexName        string `json:"indexName"`   // See IndexDef.Name.
-	IndexUUID        string `json:"indexUUID"`   // See IndefDef.UUID.
-	IndexParams      string `json:"indexParams"` // See IndexDef.Params.
+	IndexType        string `json:"indexType"`             // See IndexDef.Type.
+	IndexName        string `json:"indexName"`             // See IndexDef.Name.
+	IndexUUID        string `json:"indexUUID"`             // See IndefDef.UUID.
+	IndexParams      string `json:"indexParams,omitempty"` // See IndexDef.Params.
 	SourceType       string `json:"sourceType"`
 	SourceName       string `json:"sourceName"`
 	SourceUUID       string `json:"sourceUUID"`
-	SourceParams     string `json:"sourceParams"` // Optional connection info.
+	SourceParams     string `json:"sourceParams,omitempty"` // Optional connection info.
 	SourcePartitions string `json:"sourcePartitions"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
@@ -179,7 +179,7 @@ type PlanPIndex struct {
 // struct definition.  If you change PlanPIndex struct, you must change
 // this planPIndexBase definition, too; and also see defs_json.go.
 type planPIndexBase struct {
-	Name             string `json:"name"` // Stable & unique cluster wide.
+	Name             string `json:"name,omitempty"` // Stable & unique cluster wide.
 	UUID             string `json:"uuid"`
 	IndexType        string `json:"indexType"` // See IndexDef.Type.
 	IndexName        string `json:"indexName"` // See IndexDef.Name.
