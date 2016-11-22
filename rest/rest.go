@@ -528,6 +528,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
+	handle("/api/ping", "GET", &NoopHandler{},
+		map[string]string{
+			"_category":          "Node|Node diagnostics",
+			"_about":             `Returns an empty body as a quick aliveness check.`,
+			"version introduced": "5.0.0",
+		})
+
 	handle("/api/runtime/gc", "POST",
 		http.HandlerFunc(RESTPostRuntimeGC),
 		map[string]string{
