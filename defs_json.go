@@ -171,7 +171,10 @@ func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 	}
 
 	// Else, try the new, "natural", non-enveloped, nested format.
-	var ppin PlanPIndexNested
+	ppin := PlanPIndexNested{
+		IndexParams:  map[string]interface{}{},
+		SourceParams: map[string]interface{}{},
+	}
 
 	err = json.Unmarshal(b, &ppin)
 	if err != nil {
