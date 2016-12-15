@@ -264,11 +264,9 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 
 // -------------------------------------------------
 
-// CouchbaseStats returns a map of server ID -> map of stat key to map
-// value, depending on the statsKind requested.a map keyed by stat
-// names, depending on the statsKind.  It implements the FeedStatsFunc
+// CouchbaseStats returns a map of aggregated ("aggStats") and
+// per-node stats ("nodesStats").  It implements the FeedStatsFunc
 // func signature.
-
 func CouchbaseStats(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string, statsKind string) (
