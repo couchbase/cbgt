@@ -362,13 +362,30 @@ func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
 // UnregisterNodes removes the given nodes (by their UUID) from the
 // nodes wanted & known cfg entries.
 func UnregisterNodes(cfg Cfg, version string, nodeUUIDs []string) error {
+	return UnregisterNodesWithRetries(cfg, version, nodeUUIDs, 10)
+}
+
+// UnregisterNodesWithRetries removes the given nodes (by their UUID)
+// from the nodes wanted & known cfg entries, and performs retries a
+// max number of times if there were CAS conflict errors.
+func UnregisterNodesWithRetries(cfg Cfg, version string, nodeUUIDs []string,
+	maxTries int) error {
 	for _, nodeUUID := range nodeUUIDs {
 		for _, kind := range []string{NODE_DEFS_WANTED, NODE_DEFS_KNOWN} {
-			err := CfgRemoveNodeDef(cfg, kind, nodeUUID, version)
-			if err != nil {
-				return fmt.Errorf("defs: UnregisterNodes,"+
-					" nodeUUID: %s, kind: %s, err: %v",
-					nodeUUID, kind, err)
+		LOOP_TRIES:
+			for tries := 0; tries < maxTries; tries++ {
+				err := CfgRemoveNodeDef(cfg, kind, nodeUUID, version)
+				if err != nil {
+					if _, ok := err.(*CfgCASError); ok {
+						continue LOOP_TRIES
+					}
+
+					return fmt.Errorf("defs: UnregisterNodes,"+
+						" nodeUUID: %s, kind: %s, tries; %d, err: %v",
+						nodeUUID, kind, tries, err)
+				}
+
+				break LOOP_TRIES // Success.
 			}
 		}
 	}
