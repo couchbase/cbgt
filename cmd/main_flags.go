@@ -116,11 +116,11 @@ func ParseOptions(optionKVs string, envName string,
 
 	optionsEnv := os.Getenv(envName)
 	if optionsEnv != "" {
-		log.Printf(envName)
+		log.Printf("main_flags: ParseOptions, envName: %s", envName)
 		for _, kv := range strings.Split(optionsEnv, ",") {
 			a := strings.Split(kv, "=")
 			if len(a) >= 2 {
-				log.Printf("  %s", a[0])
+				log.Printf("main_flags: ParseOptions, option: %s", a[0])
 				options[a[0]] = a[1]
 			}
 		}
