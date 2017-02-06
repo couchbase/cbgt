@@ -68,6 +68,20 @@ func MuxVariableLookup(req *http.Request, name string) string {
 	return mux.Vars(req)[name]
 }
 
+type docIDHolder struct {
+	DocID string `json:"docId"`
+}
+
+func DocIDFromBody(req *http.Request) string {
+	var in docIDHolder
+	decoder := json.NewDecoder(req.Body)
+	err := decoder.Decode(&in)
+	if err != nil {
+		return ""
+	}
+	return in.DocID
+}
+
 func DocIDLookup(req *http.Request) string {
 	return MuxVariableLookup(req, "docID")
 }
@@ -436,6 +450,12 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"version introduced": "0.2.0",
 			})
 	}
+	handle("/api/index/{indexName}/pindexLookup", "POST", NewPIndexLookUpHandler(mgr),
+		map[string]string{
+			"_category":          "Indexing|PIndex lookup",
+			"_about":             `Returns the PIndex ID.`,
+			"version introduced": "5.0.0",
+		})
 
 	handle("/api/managerOptions", "PUT", NewManagerOptions(mgr),
 		map[string]string{

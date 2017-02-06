@@ -36,21 +36,23 @@ var DCPFeedPrefix string
 
 func init() {
 	RegisterFeedType("couchbase", &FeedType{
-		Start:         StartDCPFeed,
-		Partitions:    CouchbasePartitions,
-		PartitionSeqs: CouchbasePartitionSeqs,
-		Stats:         CouchbaseStats,
-		Public:        true,
+		Start:           StartDCPFeed,
+		Partitions:      CouchbasePartitions,
+		PartitionSeqs:   CouchbasePartitionSeqs,
+		Stats:           CouchbaseStats,
+		PartitionLookUp: CouchbaseSourceVBucketLookUp,
+		Public:          true,
 		Description: "general/couchbase" +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),
 	})
 	RegisterFeedType("couchbase-dcp", &FeedType{
-		Start:         StartDCPFeed,
-		Partitions:    CouchbasePartitions,
-		PartitionSeqs: CouchbasePartitionSeqs,
-		Stats:         CouchbaseStats,
-		Public:        false, // Won't be listed in /api/managerMeta output.
+		Start:           StartDCPFeed,
+		Partitions:      CouchbasePartitions,
+		PartitionSeqs:   CouchbasePartitionSeqs,
+		Stats:           CouchbaseStats,
+		PartitionLookUp: CouchbaseSourceVBucketLookUp,
+		Public:          false, // Won't be listed in /api/managerMeta output.
 		Description: "general/couchbase-dcp" +
 			" - a Couchbase Server bucket will be the data source," +
 			" via DCP protocol",

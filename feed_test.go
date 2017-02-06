@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"reflect"
 	"testing"
 )
@@ -534,5 +535,33 @@ func TestDataSourcePrepParams(t *testing.T) {
 	if saw_testFeedPartitionSeqs != 1 {
 		t.Errorf("expected 1 saw_testFeedPartitionSeqs call, got: %d",
 			saw_testFeedPartitionSeqs)
+	}
+}
+
+func TestCouchbaseSourceVBucketLookUp(t *testing.T) {
+	req, _ := http.NewRequest("POST", "/api/index/idx/pindexLookup -uAdministrator:pwd", nil)
+	inDef := &IndexDef{Name: "idx", SourceName: "default", SourceType: "couchbase"}
+	tests := []struct {
+		documentID, serverIn string
+		inDef                *IndexDef
+		request              *http.Request
+		expErr               bool
+		expVBucketID         string
+	}{
+		{"test", "http://255.255.255.255:8091/pools/default/buckets/default", inDef, req, true, ""},
+	}
+	for _, test := range tests {
+		vBucketID, err := CouchbaseSourceVBucketLookUp(test.documentID,
+			test.serverIn, test.inDef, test.request)
+		if (test.expErr && err == nil) ||
+			(!test.expErr && err != nil) {
+			t.Errorf("test err != expErr,"+
+				" err: %v, test: %#v", err, test)
+		}
+
+		if !reflect.DeepEqual(vBucketID, test.expVBucketID) {
+			t.Errorf("test partitions != expPartitions,"+
+				" vBucketID: %v, test: %#v", vBucketID, test.expVBucketID)
+		}
 	}
 }

@@ -571,6 +571,19 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Body:   []byte(`{"type":"blackhole","sourceParams":{},"sourceType":"nil"}`),
 			Status: 200,
 		},
+		{
+			Desc:   "look up a pindexId for a non existant indexname and document ID",
+			Path:   "/api/index/idx/pindexLookup",
+			Method: "POST",
+			Params: url.Values{
+				"u": []string{"Administrator:asdasd"},
+			},
+			Body:   []byte(`{"docId":"blabla"}`),
+			Status: 404,
+			ResponseMatch: map[string]bool{
+				`manager: no indexDef, indexName: idx`: true,
+			},
+		},
 	}
 
 	testRESTHandlers(t, tests, router)

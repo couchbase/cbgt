@@ -24,6 +24,9 @@ import (
 	"github.com/couchbase/gomemcached"
 )
 
+const SOURCE_TYPE_COUCHBASE = "couchbase"
+const SOURCE_TYPE_DCP = "dcp"
+
 func init() {
 	if gomemcached.MaxBodyLen < int(3e7) { // 30,000,000.
 		gomemcached.MaxBodyLen = int(3e7)
@@ -393,4 +396,53 @@ func CBAuthURL(urlStr string) (string, error) {
 	u.User = url.UserPassword(cbUser, cbPasswd)
 
 	return u.String(), nil
+}
+
+func parseParams(src string,
+	req *http.Request) (string, string, string, error) {
+	u, err := url.Parse(src)
+	if err != nil {
+		return "", "", "", err
+	}
+	v := url.URL{
+		Scheme: u.Scheme,
+		User:   u.User,
+		Host:   u.Host,
+	}
+	uname, pwd, err := cbauth.ExtractCreds(req)
+	if err != nil {
+		return "", "", "", err
+	}
+	return v.String(), uname, pwd, nil
+}
+
+// ----------------------------------------------------------------
+// CouchbaseSourceVBucketLookUp looks up the source vBucketID for a given
+// document ID and index.
+func CouchbaseSourceVBucketLookUp(docID, serverIn string,
+	sourceDetails *IndexDef, req *http.Request) (string, error) {
+	server, uname, pwd, err := parseParams(serverIn, req)
+	if err != nil {
+		return "", err
+	}
+	authParams := `{"authUser": "` + uname + `",` + `"authPassword":"` + pwd + `"}`
+	if sourceDetails.SourceType != SOURCE_TYPE_COUCHBASE &&
+		sourceDetails.SourceType != SOURCE_TYPE_DCP {
+		return "", fmt.Errorf("operation not supported on " +
+			sourceDetails.SourceType + " type bucket " +
+			sourceDetails.SourceName)
+	}
+	bucket, err := CouchbaseBucket(sourceDetails.SourceName, "",
+		authParams, server, nil)
+	if err != nil {
+		return "", err
+	}
+	defer bucket.Close()
+	vbm := bucket.VBServerMap()
+	if vbm == nil {
+		return "", fmt.Errorf("feed_cb: CouchbaseSourceVBucketLookUp"+
+			" no VBServerMap, server: %s, sourceName: %s, err: %v",
+			server, sourceDetails.SourceName, err)
+	}
+	return strconv.Itoa(int(bucket.VBHash(docID))), nil
 }

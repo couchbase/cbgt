@@ -19,9 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/couchbase/clog"
-
 	"github.com/couchbase/cbgt"
+	log "github.com/couchbase/clog"
 )
 
 // ListIndexHandler is a REST handler for list indexes.
@@ -594,4 +593,101 @@ func showConsistencyError(err error, methodName, itemName string,
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------
+
+// PIndexLookUpHandler is a REST handler for looking up the
+// PIndex for the given index name and document ID.
+type PIndexLookUpHandler struct {
+	mgr *cbgt.Manager
+}
+
+// target pindex details
+type targetPIndexDetails struct {
+	ID    string `json:"id,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+func NewPIndexLookUpHandler(mgr *cbgt.Manager) *PIndexLookUpHandler {
+	return &PIndexLookUpHandler{mgr: mgr}
+}
+
+func (h *PIndexLookUpHandler) getTargetPIndex(docID string,
+	inDef *cbgt.IndexDef,
+	req *http.Request) map[string]*targetPIndexDetails {
+	response := make(map[string]*targetPIndexDetails)
+	feedType, exists := cbgt.FeedTypes[inDef.SourceType]
+	if !exists || feedType == nil {
+		response[inDef.Name] = &targetPIndexDetails{
+			Error: "Non existing feed type " + inDef.SourceType +
+				" for feedname " + inDef.SourceName}
+		return response
+	}
+	if feedType.PartitionLookUp == nil {
+		response[inDef.Name] = &targetPIndexDetails{
+			Error: "PartitionLookUp operation not supported on feedtype " +
+				inDef.SourceType}
+		return response
+	}
+	partitionID, err := feedType.PartitionLookUp(docID, h.mgr.Server(),
+		inDef, req)
+	if err != nil {
+		response[inDef.Name] = &targetPIndexDetails{
+			Error: "No feed partition ID found for given index " +
+				inDef.Name + " Err " + err.Error()}
+		return response
+	}
+	planPIndexes, _, err := h.mgr.GetPlanPIndexes(true)
+	if err != nil {
+		response[inDef.Name] = &targetPIndexDetails{
+			Error: "Failed GetPlanPIndexes for given index " +
+				inDef.Name + " Err " + err.Error()}
+		return response
+	}
+	for _, planPIndex := range planPIndexes.PlanPIndexes {
+		if planPIndex.IndexName == inDef.Name {
+			sp := strings.Split(planPIndex.SourcePartitions, ",")
+			for _, v := range sp {
+				if v == partitionID {
+					response[inDef.Name] = &targetPIndexDetails{
+						ID: planPIndex.Name}
+					return response
+				}
+			}
+		}
+	}
+	response[inDef.Name] =
+		&targetPIndexDetails{Error: "No PIndex found for given index " +
+			inDef.Name + " and document " + docID}
+	return response
+}
+
+func (h *PIndexLookUpHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	indexName := IndexNameLookup(req)
+	if indexName == "" {
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
+		return
+	}
+	docID := DocIDFromBody(req)
+	if docID == "" {
+		ShowError(w, req, "document id (docId) is missing ",
+			http.StatusBadRequest)
+		return
+	}
+	indexDefn, _, err := h.mgr.GetIndexDef(indexName, true)
+	if err != nil {
+		ShowError(w, req, err.Error(), http.StatusNotFound)
+		return
+	}
+	response := h.getTargetPIndex(docID, indexDefn, req)
+	rv := struct {
+		Status   string                          `json:"status"`
+		PIndexes map[string]*targetPIndexDetails `json:"pindexes"`
+	}{
+		Status:   "ok",
+		PIndexes: response,
+	}
+	MustEncode(w, rv)
 }

@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 )
 
 // A Feed interface represents an abstract data source.  A Feed
@@ -50,8 +51,9 @@ var FeedTypes = make(map[string]*FeedType) // Key is sourceType.
 type FeedType struct {
 	Start           FeedStartFunc
 	Partitions      FeedPartitionsFunc
-	PartitionSeqs   FeedPartitionSeqsFunc // Optional.
-	Stats           FeedStatsFunc         // Optional.
+	PartitionSeqs   FeedPartitionSeqsFunc   // Optional.
+	Stats           FeedStatsFunc           // Optional.
+	PartitionLookUp FeedPartitionLookUpFunc // Optional.
 	Public          bool
 	Description     string
 	StartSample     interface{}
@@ -89,6 +91,11 @@ type FeedStatsFunc func(sourceType, sourceName, sourceUUID,
 	sourceParams, server string,
 	options map[string]string,
 	statsKind string) (map[string]interface{}, error)
+
+// Performs a lookup of a source partition given a document id.
+type FeedPartitionLookUpFunc func(docID, server string,
+	sourceDetails *IndexDef,
+	req *http.Request) (string, error)
 
 // StopAfterSourceParams defines optional fields for the sourceParams
 // that can stop the data source feed (i.e., index ingest) if the seqs
