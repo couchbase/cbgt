@@ -856,7 +856,7 @@ func testManagerSimpleFeed(t *testing.T,
 	if meh.lastPIndex == nil {
 		t.Errorf("expected to be meh.lastPIndex")
 	}
-	feedName := FeedName(meh.lastPIndex)
+	feedName := FeedNameForPIndex(meh.lastPIndex, "")
 	feed, exists := feeds[feedName]
 	if !exists || feed == nil {
 		t.Errorf("expected there to be feed: %s", feedName)

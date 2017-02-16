@@ -22,6 +22,14 @@ import (
 	log "github.com/couchbase/clog"
 )
 
+// FeedAllotmentOption is the manager option key used the specify how
+// feeds should be alloted or assigned.
+const FeedAllotmentOption = "feedAllotment"
+
+// FeedAllotmentOnePerPIndex specifies that there should be only a
+// single feed per pindex.
+const FeedAllotmentOnePerPIndex = "oneFeedPerPIndex"
+
 const JANITOR_CLOSE_PINDEX = "janitor_close_pindex"
 const JANITOR_REMOVE_PINDEX = "janitor_remove_pindex"
 const JANITOR_LOAD_DATA_DIR = "janitor_load_data_dir"
@@ -124,6 +132,8 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		return fmt.Errorf("janitor: skipped due to nil cfg")
 	}
 
+	feedAllotment := mgr.GetOptions()[FeedAllotmentOption]
+
 	// NOTE: The janitor doesn't reconfirm that we're a wanted node
 	// because instead some planner will see that & update the plan;
 	// then relevant janitors will react by closing pindexes & feeds.
@@ -177,7 +187,8 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	currFeeds, currPIndexes = mgr.CurrentMaps()
 
 	addFeeds, removeFeeds :=
-		CalcFeedsDelta(mgr.uuid, planPIndexes, currFeeds, currPIndexes)
+		CalcFeedsDelta(mgr.uuid, planPIndexes, currFeeds, currPIndexes,
+			feedAllotment)
 
 	log.Printf("janitor: feeds to remove: %d", len(removeFeeds))
 	for _, removeFeed := range removeFeeds {
@@ -186,7 +197,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	log.Printf("janitor: feeds to add: %d", len(addFeeds))
 	for _, targetPIndexes := range addFeeds {
 		if len(targetPIndexes) > 0 {
-			log.Printf("  %s", FeedName(targetPIndexes[0]))
+			log.Printf("  %s", FeedNameForPIndex(targetPIndexes[0], feedAllotment))
 		}
 	}
 
@@ -278,8 +289,8 @@ func CalcPIndexesDelta(mgrUUID string,
 // the removeFeeds and addFeeds outputs, which assumes the caller is
 // going to remove feeds before adding feeds.
 func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
-	currFeeds map[string]Feed, pindexes map[string]*PIndex) (
-	addFeeds [][]*PIndex, removeFeeds []Feed) {
+	currFeeds map[string]Feed, pindexes map[string]*PIndex,
+	feedAllotment string) (addFeeds [][]*PIndex, removeFeeds []Feed) {
 	// Group the writable pindexes by their feed names.  Non-writable
 	// pindexes (perhaps index ingest is paused) will have their feeds
 	// removed.  Of note, currently, a pindex is never fed by >1 feed,
@@ -289,7 +300,7 @@ func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 		planPIndex, exists := planPIndexes.PlanPIndexes[pindex.Name]
 		if exists && planPIndex != nil &&
 			PlanPIndexNodeCanWrite(planPIndex.Nodes[nodeUUID]) {
-			feedName := FeedName(pindex)
+			feedName := FeedNameForPIndex(pindex, feedAllotment)
 			groupedPIndexes[feedName] =
 				append(groupedPIndexes[feedName], pindex)
 		}
@@ -343,11 +354,23 @@ func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 }
 
 // FeedName functionally computes the name of a feed given a pindex.
-//
-// NOTE: We're depending on the IndexName/IndexUUID to "cover" the
-// SourceType, SourceName, SourceUUID, SourceParams values, so we
-// don't need to encode those source parts into the feed name.
-func FeedName(pindex *PIndex) string {
+func FeedNameForPIndex(pindex *PIndex, feedAllotment string) string {
+	if feedAllotment == FeedAllotmentOnePerPIndex {
+		// Using the pindex.Name for the feed name means each pindex
+		// will have its own, independent feed.
+		return pindex.Name
+	}
+
+	// In contrast, the original default behavior was to use the
+	// indexName+indexUUID as the computed feed name, which means that
+	// the multiple pindexes from a single index will share a feed.
+	// In other words, there will be a feed per index.
+	//
+	// NOTE, in this feed-per-index approach, we're depending on the
+	// IndexName/IndexUUID to "cover" the SourceType, SourceName,
+	// SourceUUID, SourceParams values, so we don't need to encode
+	// those source parts into the feed name.
+	//
 	return pindex.IndexName + "_" + pindex.IndexUUID
 }
 
@@ -452,12 +475,14 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 		return nil
 	}
 
+	feedAllotment := mgr.GetOptions()[FeedAllotmentOption]
+
 	pindexFirst := pindexes[0]
-	feedName := FeedName(pindexFirst)
+	feedName := FeedNameForPIndex(pindexFirst, feedAllotment)
 
 	dests := make(map[string]Dest)
 	for _, pindex := range pindexes {
-		if f := FeedName(pindex); f != feedName {
+		if f := FeedNameForPIndex(pindex, feedAllotment); f != feedName {
 			return fmt.Errorf("janitor: unexpected feedName: %s != %s,"+
 				" pindex: %#v", f, feedName, pindex)
 		}
