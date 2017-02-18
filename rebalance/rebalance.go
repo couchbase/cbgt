@@ -611,7 +611,7 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 // should be invoked while holding the r.m lock.
 func (r *Rebalancer) assignPIndexLOCKED(index, pindex, node, state, op string) (
 	*cbgt.IndexDef, *cbgt.PlanPIndexes, string, error) {
-	err := r.assignPIndexCurrStates_unlocked(index, pindex, node, state, op)
+	err := r.assignPIndexCurrStatesLOCKED(index, pindex, node, state, op)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -633,7 +633,7 @@ func (r *Rebalancer) assignPIndexLOCKED(index, pindex, node, state, op string) (
 		return nil, nil, "", err
 	}
 
-	formerPrimaryNode, err := r.updatePlanPIndexes_unlocked(planPIndexes,
+	formerPrimaryNode, err := r.updatePlanPIndexesLOCKED(planPIndexes,
 		indexDef, pindex, node, state, op)
 	if err != nil {
 		return nil, nil, "", err
@@ -653,10 +653,10 @@ func (r *Rebalancer) assignPIndexLOCKED(index, pindex, node, state, op string) (
 
 // --------------------------------------------------------
 
-// assignPIndexCurrStates_unlocked validates the state transition is
+// assignPIndexCurrStatesLOCKED validates the state transition is
 // proper and then updates currStates to the assigned
 // index/pindex/node/state/op.
-func (r *Rebalancer) assignPIndexCurrStates_unlocked(
+func (r *Rebalancer) assignPIndexCurrStatesLOCKED(
 	index, pindex, node, state, op string) error {
 	pindexes, exists := r.currStates[index]
 	if !exists || pindexes == nil {
@@ -695,13 +695,13 @@ func (r *Rebalancer) assignPIndexCurrStates_unlocked(
 
 // --------------------------------------------------------
 
-// updatePlanPIndexes_unlocked modifies the planPIndexes in/out param
+// updatePlanPIndexesLOCKED modifies the planPIndexes in/out param
 // based on the indexDef/node/state/op params, and may return an error
 // if the state transition is invalid.
-func (r *Rebalancer) updatePlanPIndexes_unlocked(
+func (r *Rebalancer) updatePlanPIndexesLOCKED(
 	planPIndexes *cbgt.PlanPIndexes, indexDef *cbgt.IndexDef,
 	pindex, node, state, op string) (string, error) {
-	planPIndex, err := r.getPlanPIndex_unlocked(planPIndexes, pindex)
+	planPIndex, err := r.getPlanPIndexLOCKED(planPIndexes, pindex)
 	if err != nil {
 		return "", err
 	}
@@ -771,9 +771,9 @@ func (r *Rebalancer) updatePlanPIndexes_unlocked(
 
 // --------------------------------------------------------
 
-// getPlanPIndex_unlocked returns the planPIndex, defaulting to the
+// getPlanPIndexLOCKED returns the planPIndex, defaulting to the
 // endPlanPIndex's definition if necessary.
-func (r *Rebalancer) getPlanPIndex_unlocked(
+func (r *Rebalancer) getPlanPIndexLOCKED(
 	planPIndexes *cbgt.PlanPIndexes, pindex string) (
 	*cbgt.PlanPIndex, error) {
 	planPIndex := planPIndexes.PlanPIndexes[pindex]
@@ -840,7 +840,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	}
 
 	r.m.Lock()
-	planPIndex, err := r.getPlanPIndex_unlocked(planPIndexes, pindex)
+	planPIndex, err := r.getPlanPIndexLOCKED(planPIndexes, pindex)
 	r.m.Unlock()
 
 	if err != nil {
