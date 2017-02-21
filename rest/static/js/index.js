@@ -402,6 +402,11 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
     success(function(data) {
         var meta = $scope.meta = data;
 
+        $scope.newPlanParams =
+            JSON.stringify(data.startSamples["planParams"], undefined, 2);
+        $scope.paramNumLines["planParams"] =
+            $scope.newPlanParams.split("\n").length + 1;
+
         var sourceTypesArr = []
         for (var k in data.sourceTypes) {
             sourceTypesArr.push(data.sourceTypes[k]);
@@ -448,11 +453,6 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
         }
         indexTypesArr.sort(compareCategoryLabel);
         $scope.indexTypesArr = indexTypesArr;
-
-        $scope.newPlanParams =
-            JSON.stringify(data.startSamples["planParams"], undefined, 2);
-        $scope.paramNumLines["planParams"] =
-            $scope.newPlanParams.split("\n").length + 1;
 
         if (origIndexName &&
             origIndexName.length > 0) {
