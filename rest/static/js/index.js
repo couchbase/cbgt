@@ -584,8 +584,9 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             sourceParamsObj.authUser = sourceName;
         }
 
+        var planParamsObj = {};
         try {
-            JSON.parse(planParams);
+            planParamsObj = JSON.parse(planParams);
         } catch (e) {
             $scope.errorFields["planParams"] = true;
             $scope.errorMessage =
@@ -593,18 +594,16 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             return
         }
 
-        $http.put('/api/index/' + indexName, "", {
-            params: {
-                indexName: indexName,
-                indexType: indexType,
-                indexParams: indexParamsObj,
-                sourceType: sourceType,
-                sourceName: sourceName,
-                sourceUUID: sourceUUID || "",
-                sourceParams: sourceParamsObj,
-                planParams: planParams,
-                prevIndexUUID: prevIndexUUID
-            }
+        $http.put('/api/index/' + indexName, {
+            name: indexName,
+            type: indexType,
+            params: indexParamsObj,
+            sourceType: sourceType,
+            sourceName: sourceName,
+            sourceUUID: sourceUUID || "",
+            sourceParams: sourceParamsObj,
+            planParams: planParamsObj,
+            uuid: prevIndexUUID
         }).
         success(function(data) {
             $location.path('/indexes/' + indexName);
