@@ -530,7 +530,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Body:   []byte(`{"type":"blackhole","params":666,"sourceType":"nil"}`),
 			Status: 400,
 			ResponseMatch: map[string]bool{
-				`cannot unmarshal number into Go value`: true,
+				`cannot unmarshal number`: true,
 			},
 		},
 		{
@@ -554,7 +554,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Body:   []byte(`{"type":"blackhole","sourceParams":666,"sourceType":"nil"}`),
 			Status: 400,
 			ResponseMatch: map[string]bool{
-				`cannot unmarshal number into Go value`: true,
+				`cannot unmarshal number`: true,
 			},
 		},
 		{
