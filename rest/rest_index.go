@@ -23,6 +23,9 @@ import (
 	log "github.com/couchbase/clog"
 )
 
+const CLUSTER_ACTION = "Internal-Cluster-Action"
+const FTS_SCATTER_GATHER = "fts-scatter/gather"
+
 // ListIndexHandler is a REST handler for list indexes.
 type ListIndexHandler struct {
 	mgr *cbgt.Manager
@@ -271,24 +274,30 @@ func (h *QueryHandler) ServeHTTP(
 
 	err = pindexImplType.Query(h.mgr, indexName, indexUUID, requestBody, w)
 
+	//update the total client queries statistics.
+	var focusStats *RESTFocusStats
+	if h.pathStats != nil {
+		focusStats = h.pathStats.FocusStats(indexName)
+	}
+	if FTS_SCATTER_GATHER != req.Header.Get(CLUSTER_ACTION) {
+		if focusStats != nil {
+			atomic.AddUint64(&focusStats.TotClientRequest, 1)
+		}
+	}
+
 	if h.slowQueryLogTimeout > time.Duration(0) {
 		d := time.Since(startTime)
 		if d > h.slowQueryLogTimeout {
 			log.Printf("slow-query:"+
 				" index: %s, query: %s, duration: %v, err: %v",
 				indexName, string(requestBody), d, err)
-
-			if h.pathStats != nil {
-				focusStats := h.pathStats.FocusStats(indexName)
-				if focusStats != nil {
-					atomic.AddUint64(&focusStats.TotRequestSlow, 1)
-				}
+			if focusStats != nil {
+				atomic.AddUint64(&focusStats.TotRequestSlow, 1)
 			}
 		}
 	}
 
 	if err != nil {
-		focusStats := h.pathStats.FocusStats(indexName)
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotRequestErr, 1)
 

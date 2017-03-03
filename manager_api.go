@@ -161,9 +161,13 @@ func (mgr *Manager) CreateIndex(sourceType,
 	return nil
 }
 
-// Deletes a logical index definition.
+// DeleteIndex deletes a logical index definition.
 func (mgr *Manager) DeleteIndex(indexName string) error {
-	return mgr.DeleteIndexEx(indexName, "")
+	err := mgr.DeleteIndexEx(indexName, "")
+	if err != nil {
+		log.Printf("manager_api: DeleteIndex, indexname: %s, err %v", indexName, err)
+	}
+	return err
 }
 
 // DeleteIndexEx deletes a logical index definition, with an optional

@@ -157,7 +157,6 @@ func (h *HandlerWithRESTMeta) ServeHTTP(
 		if h.focusName != "" {
 			focusVal = MuxVariableLookup(req, h.focusName)
 		}
-
 		focusStats = h.pathStats.FocusStats(focusVal)
 		atomic.AddUint64(&focusStats.TotRequest, 1)
 		startTime = time.Now()
@@ -228,6 +227,7 @@ type RESTFocusStats struct {
 	TotRequestSlow    uint64 `json:"TotRequestSlow,omitempty"`
 	TotRequestTimeout uint64 `json:"TotRequestTimeout,omitempty"`
 	TotResponseBytes  uint64 `json:"TotResponseBytes,omitempty"`
+	TotClientRequest  uint64
 }
 
 // AtomicCopyTo copies stats from s to r (from source to result).
