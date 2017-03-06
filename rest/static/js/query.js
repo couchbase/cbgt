@@ -1,6 +1,8 @@
 var lastQueryIndex = null;
 var lastQueryReq = null;
 var lastQueryRes = null;
+var awaitingResults = false
+var overlay = null
 
 function PrepQueryRequest(scope) {
     qr = {
@@ -22,6 +24,9 @@ function PrepQueryRequest(scope) {
 }
 
 function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
+    if (awaitingResults === true) {
+        overlay = $scope
+    }
     $scope.query = null;
     $scope.queryHelp = null;
     $scope.queryHelpSafe = null;
@@ -125,17 +130,21 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.numPages = 0;
 
         var req = createQueryRequest();
-
         $http.post('/api/index/' + $scope.indexName + '/query', req).
         success(function(data) {
             lastQueryIndex = $scope.indexName;
             lastQueryReq = req;
             lastQueryRes = JSON.stringify(data);
-
-            $scope.processResults(data);
+            awaitingResults = false
+            if (overlay !== null) {
+                overlay.processResults(data);
+            } else {
+                $scope.processResults(data);
+            }
         }).
         error(function(data, code) {
             $scope.errorMessageFull = data;
+            awaitingResults = false
             if (data) {
                 $scope.errorMessage = errorMessage(data, code);
             } else {
@@ -143,6 +152,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                     data || ("error" + (code || " accessing server"));
             }
         });
+        awaitingResults = true;
     };
 
     $scope.runNewQuery = function() {
@@ -258,8 +268,9 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     if($location.search().q !== undefined) {
         $scope.query = $location.search().q;
-
-        $scope.runQuery();
+        if (awaitingResults === false) {
+            $scope.runQuery();
+        }
     } else {
         if (!$scope.query &&
             lastQueryIndex == $scope.indexName &&
