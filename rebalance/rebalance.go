@@ -28,6 +28,7 @@ import (
 
 var ErrorNotPausable = errors.New("not pausable")
 var ErrorNotResumable = errors.New("not resumable")
+var ErrorNoIndexDefinitionFound = errors.New("no index definition found")
 
 // RebalanceProgress represents progress status information as the
 // Rebalance() operation proceeds.
@@ -374,7 +375,6 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 		if err != nil {
 			r.Logf("run: indexDef.Name: %s, err: %#v",
 				indexDef.Name, err)
-
 			return
 		}
 
@@ -423,12 +423,14 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 			indexDef.Name, partition, node, state, op)
 		if err != nil {
 			r.Logf("rebalance: assignPartitionFunc, err: %v", err)
-
-			r.progressCh <- RebalanceProgress{Error: err}
-			r.Stop() // Stop the rebalance.
+			// Stop rebalance for all other errors.
+			if err != ErrorNoIndexDefinitionFound {
+				r.progressCh <- RebalanceProgress{Error: err}
+				r.Stop()
+				return err
+			}
 		}
-
-		return err
+		return nil
 	}
 
 	o, err := blance.OrchestrateMoves(
@@ -591,8 +593,15 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		r.m.Unlock()
 
 		if err != nil {
-			return fmt.Errorf("assignPIndex: update plan,"+
-				" perhaps a concurrent planner won, err: %v", err)
+			if err != ErrorNoIndexDefinitionFound {
+				return fmt.Errorf("assignPIndex: update plan,"+
+					" perhaps a concurrent planner won, err: %v", err)
+			}
+			r.Logf("assignPIndex: update plan,"+
+				" perhaps a concurrent planner won, no indexDef,"+
+				" index: %s, pindex: %s, node: %s, state: %q, op: %s",
+				index, pindex, node, state, op)
+			return err
 		}
 
 		err = r.waitAssignPIndexDone(stopCh, stopCh2,
@@ -623,9 +632,7 @@ func (r *Rebalancer) assignPIndexLOCKED(index, pindex, node, state, op string) (
 
 	indexDef := indexDefs.IndexDefs[index]
 	if indexDef == nil {
-		return nil, nil, "", fmt.Errorf("assignPIndex: no indexDef,"+
-			" index: %s, pindex: %s, node: %s, state: %q, op: %s",
-			index, pindex, node, state, op)
+		return nil, nil, "", ErrorNoIndexDefinitionFound
 	}
 
 	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
