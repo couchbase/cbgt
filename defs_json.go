@@ -43,6 +43,7 @@ type IndexDefEnveloped struct {
 func (def *IndexDef) UnmarshalJSON(b []byte) error {
 	// First, try the old, backwards compatible, enveloped format.
 	var ide IndexDefEnveloped
+	indexDefToBase(def, &ide.indexDefBase)
 
 	err := json.Unmarshal(b, &ide)
 	if err == nil {
@@ -56,6 +57,7 @@ func (def *IndexDef) UnmarshalJSON(b []byte) error {
 
 	// Else, try the new, "natural", non-enveloped, nested format.
 	var idn IndexDefNested
+	indexDefToBase(def, &idn.indexDefBase)
 
 	err = json.Unmarshal(b, &idn)
 	if err != nil {
