@@ -854,8 +854,22 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		return err
 	}
 
-	sourcePartitions := strings.Split(planPIndex.SourcePartitions, ",")
+	sampleWantCh := make(chan monitor.MonitorSample)
+	select {
+	case <-stopCh:
+		return blance.ErrorStopped
 
+	case <-stopCh2:
+		return blance.ErrorStopped
+
+	case r.monitorSampleWantCh <- sampleWantCh:
+		for range sampleWantCh {
+			// NO-OP, but a new sample meant r.currSeqs was updated.
+			// Awaiting once before we start processing the sps.
+		}
+	}
+
+	sourcePartitions := strings.Split(planPIndex.SourcePartitions, ",")
 	// Loop to retrieve all the seqs that we need to reach for all
 	// source partitions.
 	if !r.optionsReb.SkipSeqChecks {
@@ -866,21 +880,6 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 					sourcePartition, node)
 				if exists {
 					break INIT_WANT_SEQ
-				}
-
-				sampleWantCh := make(chan monitor.MonitorSample)
-
-				select {
-				case <-stopCh:
-					return blance.ErrorStopped
-
-				case <-stopCh2:
-					return blance.ErrorStopped
-
-				case r.monitorSampleWantCh <- sampleWantCh:
-					for range sampleWantCh {
-						// NO-OP, but a new sample meant r.currSeqs was updated.
-					}
 				}
 
 				uuidSeqWant, exists := r.getUUIDSeq(r.currSeqs, pindex,
@@ -916,7 +915,8 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		}
 
 		if reached {
-			return nil
+			//moving onto the next sp
+			continue
 		}
 
 		caughtUp := false
