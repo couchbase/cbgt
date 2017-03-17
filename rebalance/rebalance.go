@@ -384,6 +384,35 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 
 // --------------------------------------------------------
 
+// GetMovingPartitionsCount returns the total partitions
+// to be moved as a part of the rebalance operation.
+func (r *Rebalancer) GetMovingPartitionsCount() int {
+	count := 0
+	r.m.Lock()
+	if r.o != nil {
+		r.o.VisitNextMoves(func(m map[string]*blance.NextMoves) {
+			if m != nil {
+				for _, nextMoves := range m {
+					if len(nextMoves.Moves) > 0 {
+						count++
+					}
+				}
+			}
+		})
+	}
+	r.m.Unlock()
+	if r.begIndexDefs != nil && r.begIndexDefs.IndexDefs != nil {
+		// upfront approximation to get the total partitions
+		// based on the assumption that index partitions are evenly
+		// distributed which may not quite true, due to chronology of
+		// index creations and the corresponding topology changes
+		return len(r.begIndexDefs.IndexDefs) * count
+	}
+	return 0
+}
+
+// --------------------------------------------------------
+
 // rebalanceIndex rebalances a single index.
 func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	indexDef *cbgt.IndexDef) (
@@ -824,6 +853,28 @@ func (r *Rebalancer) getNodePlanParamsReadWrite(
 
 // --------------------------------------------------------
 
+// grabCurrentSample will block until it gets some stats
+// information from monitor routine at a 1 sec interval.
+func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{}) error {
+	sampleWantCh := make(chan monitor.MonitorSample)
+	select {
+	case <-stopCh:
+		return blance.ErrorStopped
+
+	case <-stopCh2:
+		return blance.ErrorStopped
+
+	case r.monitorSampleWantCh <- sampleWantCh:
+		for range sampleWantCh {
+			// NO-OP, but a new sample meant r.currSeqs was updated.
+			// Awaiting once before we start processing the sps.
+		}
+	}
+	return nil
+}
+
+// --------------------------------------------------------
+
 // waitAssignPIndexDone will block until stopped or until an
 // index/pindex/node/state/op transition is complete.
 func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
@@ -854,21 +905,6 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		return err
 	}
 
-	sampleWantCh := make(chan monitor.MonitorSample)
-	select {
-	case <-stopCh:
-		return blance.ErrorStopped
-
-	case <-stopCh2:
-		return blance.ErrorStopped
-
-	case r.monitorSampleWantCh <- sampleWantCh:
-		for range sampleWantCh {
-			// NO-OP, but a new sample meant r.currSeqs was updated.
-			// Awaiting once before we start processing the sps.
-		}
-	}
-
 	sourcePartitions := strings.Split(planPIndex.SourcePartitions, ",")
 	// Loop to retrieve all the seqs that we need to reach for all
 	// source partitions.
@@ -881,12 +917,15 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 				if exists {
 					break INIT_WANT_SEQ
 				}
-
 				uuidSeqWant, exists := r.getUUIDSeq(r.currSeqs, pindex,
 					sourcePartition, formerPrimaryNode)
 				if exists {
 					r.setUUIDSeq(r.wantSeqs, pindex, sourcePartition, node,
 						uuidSeqWant.UUID, uuidSeqWant.Seq)
+				} else {
+					r.Logf("rebalance: waitAssignPIndexDone,"+
+						" awaiting a stats sample grab for pindex %s", pindex)
+					r.grabCurrentSample(stopCh, stopCh2)
 				}
 			}
 		}

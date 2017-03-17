@@ -484,6 +484,40 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 	return th, nil
 }
 
+func (m *CtlMgr) computeProgPercent(pe *rebalance.ProgressEntry,
+	sourcePartitions map[string]map[string]*rebalance.ProgressEntry) float64 {
+	totPct, avgPct := 0.0, -1.1
+	numPct := 0
+	if pe != nil {
+		if sourcePartitions != nil {
+			for _, nodes := range sourcePartitions {
+				pex := nodes[pe.Node]
+				if pex == nil || pex.WantUUIDSeq.UUID == "" {
+					continue
+				}
+
+				if pex.WantUUIDSeq.Seq <= pex.CurrUUIDSeq.Seq {
+					totPct = totPct + 1.0
+					numPct = numPct + 1
+					continue
+				}
+
+				n := pex.CurrUUIDSeq.Seq - pex.InitUUIDSeq.Seq
+				d := pex.WantUUIDSeq.Seq - pex.InitUUIDSeq.Seq
+				if d > 0 {
+					pct := float64(n) / float64(d)
+					totPct = totPct + pct
+					numPct = numPct + 1
+				}
+			}
+		}
+	}
+	if numPct > 0 {
+		avgPct = totPct / float64(numPct)
+	}
+	return avgPct
+}
+
 // ------------------------------------------------
 
 // The progressEntries is a map of...
@@ -499,42 +533,34 @@ func (m *CtlMgr) updateProgress(
 	errs []error,
 ) {
 	var progress float64
-
 	if progressEntries != nil {
-		var sumPct float64
-		var numPct int
-
-		// Key is indexNameAndUUID.
-		indexNumPIndexes := map[string]int{}
-		indexNumPIndexesWithProgress := map[string]int{}
-
-		for pindexName := range seenPIndexes {
-			indexNumPIndexes[parsePIndexName(pindexName)]++
-		}
-
-		for pindexName, mapSourcePartitions := range progressEntries {
-			mapNodes := mapSourcePartitions[""]
-			if len(mapNodes) > 0 {
-				for _, pe := range mapNodes {
-					if pe.Done {
-						sumPct += 1.0
+		pindexProg := map[string]float64{}
+		for _, sourcePartitions := range progressEntries {
+			for _, nodes := range sourcePartitions {
+				for _, pex := range nodes {
+					if pex == nil {
+						continue
 					}
-
-					numPct += 1
+					curProg := m.computeProgPercent(pex, sourcePartitions)
+					if curProg > 0 {
+						pindexProg[pex.PIndex] = curProg
+					}
 				}
-
-				indexNumPIndexesWithProgress[parsePIndexName(pindexName)]++
 			}
 		}
-
-		for indexNameAndUUID, numPIndexes := range indexNumPIndexes {
-			if indexNumPIndexesWithProgress[indexNameAndUUID] <= 0 {
-				numPct += numPIndexes
+		totPct := 0.0
+		for _, prog := range pindexProg {
+			if prog > 0 {
+				totPct += prog
 			}
 		}
-
-		if numPct > 0 {
-			progress = sumPct / float64(numPct)
+		partitionsCnt := m.ctl.getMovingPartitionsCount()
+		if partitionsCnt > 0 {
+			progress = totPct / float64(partitionsCnt)
+		} else {
+			// this may happen only at the very start or after all
+			// movement is done, hence worked fine so far.
+			progress = totPct / float64(len(pindexProg))
 		}
 	}
 

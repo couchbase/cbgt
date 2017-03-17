@@ -78,6 +78,9 @@ type Ctl struct {
 
 	// Errs from previous operation.
 	prevErrs []error
+
+	// Handle to the current rebalancer
+	r *rebalance.Rebalancer
 }
 
 type CtlOptions struct {
@@ -175,6 +178,17 @@ func StartCtl(cfg cbgt.Cfg, server string,
 
 	return ctl, <-ctl.initCh
 }
+
+// ----------------------------------------------------
+
+func (ctl *Ctl) getMovingPartitionsCount() int {
+	if ctl.r != nil {
+		return ctl.r.GetMovingPartitionsCount()
+	}
+	return 0
+}
+
+// ----------------------------------------------------
 
 func (ctl *Ctl) Stop() error {
 	close(ctl.stopCh)
@@ -601,7 +615,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				}
 
 				// Start rebalance and monitor progress.
-				r, err := rebalance.StartRebalance(cbgt.VERSION,
+				ctl.r, err = rebalance.StartRebalance(cbgt.VERSION,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
@@ -647,14 +661,14 @@ func (ctl *Ctl) startCtlLOCKED(
 							progressEntries)
 					}
 
-					err = rebalance.ReportProgress(r, progressToString)
+					err = rebalance.ReportProgress(ctl.r, progressToString)
 					if err != nil {
 						log.Printf("ctl: ReportProgress, err: %v", err)
 						progressDoneCh <- err
 					}
 				}()
 
-				defer r.Stop()
+				defer ctl.r.Stop()
 
 				select {
 				case <-ctlStopCh:
@@ -667,7 +681,7 @@ func (ctl *Ctl) startCtlLOCKED(
 					}
 				}
 
-				ctlWarnings = r.GetEndPlanPIndexes().Warnings
+				ctlWarnings = ctl.r.GetEndPlanPIndexes().Warnings
 
 				// Repeat if the indexDefs had changed mid-rebalance.
 				indexDefsEnd, err :=
