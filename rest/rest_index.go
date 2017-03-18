@@ -352,7 +352,7 @@ func (h *IndexControlHandler) ServeHTTP(
 
 	indexUUID := req.FormValue("indexUUID")
 
-	op := MuxVariableLookup(req, "op")
+	op := RequestVariableLookup(req, "op")
 	if !h.allowedOps[op] {
 		ShowError(w, req, fmt.Sprintf("rest_index: IndexControl,"+
 			" error: unsupported op: %s", op), http.StatusBadRequest)

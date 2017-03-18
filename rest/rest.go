@@ -64,9 +64,19 @@ func MustEncode(w io.Writer, i interface{}) {
 
 // -------------------------------------------------------
 
+// MuxVariableLookup() uses gorilla.mux.Vars() to lookup a named
+// request parameter from an http.Request.
 func MuxVariableLookup(req *http.Request, name string) string {
 	return mux.Vars(req)[name]
 }
+
+// RequestVariableLookup function is used to lookup a named request
+// parameter or variable from an http.Request.  It defaults to
+// MuxVariableLookup, but can be overridden for cases like unit
+// testing, etc.
+var RequestVariableLookup func(req *http.Request, name string) string = MuxVariableLookup
+
+// -------------------------------------------------------
 
 type docIDHolder struct {
 	DocID string `json:"docId"`
@@ -82,16 +92,19 @@ func DocIDFromBody(req *http.Request) string {
 	return in.DocID
 }
 
+// DocIDLookup returns the docID param from an http.Request.
 func DocIDLookup(req *http.Request) string {
-	return MuxVariableLookup(req, "docID")
+	return RequestVariableLookup(req, "docID")
 }
 
+// IndexNameLookup returns the indexName param from an http.Request.
 func IndexNameLookup(req *http.Request) string {
-	return MuxVariableLookup(req, "indexName")
+	return RequestVariableLookup(req, "indexName")
 }
 
+// PIndexNameLookup returns the pindexName param from an http.Request.
 func PIndexNameLookup(req *http.Request) string {
-	return MuxVariableLookup(req, "pindexName")
+	return RequestVariableLookup(req, "pindexName")
 }
 
 // -------------------------------------------------------
@@ -155,7 +168,7 @@ func (h *HandlerWithRESTMeta) ServeHTTP(
 	if h.pathStats != nil {
 		var focusVal string
 		if h.focusName != "" {
-			focusVal = MuxVariableLookup(req, h.focusName)
+			focusVal = RequestVariableLookup(req, h.focusName)
 		}
 		focusStats = h.pathStats.FocusStats(focusVal)
 		atomic.AddUint64(&focusStats.TotRequest, 1)
