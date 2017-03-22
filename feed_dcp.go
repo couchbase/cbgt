@@ -134,30 +134,30 @@ type DCPFeedParams struct {
 
 	// Factor (like 1.5) to increase sleep time between retries
 	// in connecting to a cluster manager node.
-	ClusterManagerBackoffFactor float32 `json:"clusterManagerBackoffFactor"`
+	ClusterManagerBackoffFactor float32 `json:"clusterManagerBackoffFactor,omitempty"`
 
 	// Initial sleep time (millisecs) before first retry to cluster manager.
-	ClusterManagerSleepInitMS int `json:"clusterManagerSleepInitMS"`
+	ClusterManagerSleepInitMS int `json:"clusterManagerSleepInitMS,omitempty"`
 
 	// Maximum sleep time (millisecs) between retries to cluster manager.
-	ClusterManagerSleepMaxMS int `json:"clusterManagerSleepMaxMS"`
+	ClusterManagerSleepMaxMS int `json:"clusterManagerSleepMaxMS,omitempty"`
 
 	// Factor (like 1.5) to increase sleep time between retries
 	// in connecting to a data manager node.
-	DataManagerBackoffFactor float32 `json:"dataManagerBackoffFactor"`
+	DataManagerBackoffFactor float32 `json:"dataManagerBackoffFactor,omitempty"`
 
 	// Initial sleep time (millisecs) before first retry to data manager.
-	DataManagerSleepInitMS int `json:"dataManagerSleepInitMS"`
+	DataManagerSleepInitMS int `json:"dataManagerSleepInitMS,omitempty"`
 
 	// Maximum sleep time (millisecs) between retries to data manager.
-	DataManagerSleepMaxMS int `json:"dataManagerSleepMaxMS"`
+	DataManagerSleepMaxMS int `json:"dataManagerSleepMaxMS,omitempty"`
 
 	// Buffer size in bytes provided for UPR flow control.
-	FeedBufferSizeBytes uint32 `json:"feedBufferSizeBytes"`
+	FeedBufferSizeBytes uint32 `json:"feedBufferSizeBytes,omitempty"`
 
 	// Used for UPR flow control and buffer-ack messages when this
 	// percentage of FeedBufferSizeBytes is reached.
-	FeedBufferAckThreshold float32 `json:"feedBufferAckThreshold"`
+	FeedBufferAckThreshold float32 `json:"feedBufferAckThreshold,omitempty"`
 }
 
 // NewDCPFeedParams returns a DCPFeedParams initialized with default
