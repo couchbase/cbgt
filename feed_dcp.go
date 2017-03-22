@@ -171,10 +171,7 @@ type DCPFeedParams struct {
 // NewDCPFeedParams returns a DCPFeedParams initialized with default
 // values.
 func NewDCPFeedParams() *DCPFeedParams {
-	return &DCPFeedParams{
-		ClusterManagerSleepMaxMS: 2000,
-		DataManagerSleepMaxMS:    2000,
-	}
+	return &DCPFeedParams{}
 }
 
 // NewDCPFeed creates a new, ready-to-be-started DCP feed.
