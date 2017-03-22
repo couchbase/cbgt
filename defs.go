@@ -39,10 +39,10 @@ type IndexDef struct {
 	UUID         string     `json:"uuid"` // Like a revision id.
 	Params       string     `json:"params"`
 	SourceType   string     `json:"sourceType"`
-	SourceName   string     `json:"sourceName"`
-	SourceUUID   string     `json:"sourceUUID"`
-	SourceParams string     `json:"sourceParams"` // Optional connection info.
-	PlanParams   PlanParams `json:"planParams"`
+	SourceName   string     `json:"sourceName,omitempty"`
+	SourceUUID   string     `json:"sourceUUID,omitempty"`
+	SourceParams string     `json:"sourceParams,omitempty"` // Optional connection info.
+	PlanParams   PlanParams `json:"planParams,omitempty"`
 
 	// NOTE: Any auth credentials to access datasource, if any, may be
 	// stored as part of SourceParams.
@@ -59,9 +59,9 @@ type indexDefBase struct {
 	Name       string     `json:"name"`
 	UUID       string     `json:"uuid"` // Like a revision id.
 	SourceType string     `json:"sourceType"`
-	SourceName string     `json:"sourceName"`
-	SourceUUID string     `json:"sourceUUID"`
-	PlanParams PlanParams `json:"planParams"`
+	SourceName string     `json:"sourceName,omitempty"`
+	SourceUUID string     `json:"sourceUUID,omitempty"`
+	PlanParams PlanParams `json:"planParams,omitempty"`
 }
 
 // A PlanParams holds input parameters to the planner, that control
@@ -72,14 +72,14 @@ type PlanParams struct {
 	// MaxPartitionsPerPIndex controls the maximum number of source
 	// partitions the planner can assign to or clump into a PIndex (or
 	// index partition).
-	MaxPartitionsPerPIndex int `json:"maxPartitionsPerPIndex"`
+	MaxPartitionsPerPIndex int `json:"maxPartitionsPerPIndex,omitempty"`
 
 	// NumReplicas controls the number of replicas for a PIndex, over
 	// the first copy.  The first copy is not counted as a replica.
 	// For example, a NumReplicas setting of 2 means there should be a
 	// primary and 2 replicas... so 3 copies in total.  A NumReplicas
 	// of 0 means just the first, primary copy only.
-	NumReplicas int `json:"numReplicas"`
+	NumReplicas int `json:"numReplicas,omitempty"`
 
 	// HierarchyRules defines the policy the planner should follow
 	// when assigning PIndexes to nodes, especially for replica
@@ -90,7 +90,7 @@ type PlanParams struct {
 	// {"replica":[{"includeLevel":1,"excludeLevel":0}]}
 	// Try to put the first replica on a different rack...
 	// {"replica":[{"includeLevel":2,"excludeLevel":1}]}
-	HierarchyRules blance.HierarchyRules `json:"hierarchyRules"`
+	HierarchyRules blance.HierarchyRules `json:"hierarchyRules,omitempty"`
 
 	// NodePlanParams allows users to specify per-node input to the
 	// planner, such as whether PIndexes assigned to different nodes
@@ -98,19 +98,19 @@ type PlanParams struct {
 	// keyed by planPIndex.Name or indexDef.Name.  The empty string
 	// ("") is used to represent any node UUID and/or any planPIndex
 	// and/or any indexDef.
-	NodePlanParams map[string]map[string]*NodePlanParam `json:"nodePlanParams"`
+	NodePlanParams map[string]map[string]*NodePlanParam `json:"nodePlanParams,omitempty"`
 
 	// PIndexWeights allows users to specify an optional weight for a
 	// PIndex, where weights default to 1.  In a range-partitioned
 	// index, for example, some index partitions (or PIndexes) may
 	// have more entries (higher weight) than other index partitions.
-	PIndexWeights map[string]int `json:"pindexWeights"`
+	PIndexWeights map[string]int `json:"pindexWeights,omitempty"`
 
 	// PlanFrozen means the planner should not change the previous
 	// plan for an index, even if as nodes join or leave and even if
 	// there was no previous plan.  Defaults to false (allow
 	// re-planning).
-	PlanFrozen bool `json:"planFrozen"`
+	PlanFrozen bool `json:"planFrozen,omitempty"`
 }
 
 // A NodePlanParam defines whether a particular node can service a
@@ -164,8 +164,8 @@ type PlanPIndex struct {
 	IndexUUID        string `json:"indexUUID"`             // See IndefDef.UUID.
 	IndexParams      string `json:"indexParams,omitempty"` // See IndexDef.Params.
 	SourceType       string `json:"sourceType"`
-	SourceName       string `json:"sourceName"`
-	SourceUUID       string `json:"sourceUUID"`
+	SourceName       string `json:"sourceName,omitempty"`
+	SourceUUID       string `json:"sourceUUID,omitempty"`
 	SourceParams     string `json:"sourceParams,omitempty"` // Optional connection info.
 	SourcePartitions string `json:"sourcePartitions"`
 
@@ -185,8 +185,8 @@ type planPIndexBase struct {
 	IndexName        string `json:"indexName"` // See IndexDef.Name.
 	IndexUUID        string `json:"indexUUID"` // See IndefDef.UUID.
 	SourceType       string `json:"sourceType"`
-	SourceName       string `json:"sourceName"`
-	SourceUUID       string `json:"sourceUUID"`
+	SourceName       string `json:"sourceName,omitempty"`
+	SourceUUID       string `json:"sourceUUID,omitempty"`
 	SourcePartitions string `json:"sourcePartitions"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
