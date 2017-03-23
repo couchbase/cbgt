@@ -531,7 +531,8 @@ func (a *cfgMetaKvPlanPIndexesHandler) get(c *CfgMetaKv,
 	if shared.SharedSourceDefs != nil {
 		for _, ppi := range planPIndexes.PlanPIndexes {
 			if ppi.SourceParams == "" {
-				k := ppi.SourceType + "/" + ppi.SourceName + "/" + ppi.SourceUUID
+				k := ppi.SourceType + "/" + ppi.SourceName + "/" + ppi.SourceUUID +
+					"/" + ppi.IndexName + "/" + ppi.IndexUUID
 				sharedPart, ok := shared.SharedSourceDefs[k]
 				if ok && sharedPart != nil {
 					ppi.SourceParams = sharedPart.SourceParams
@@ -573,7 +574,8 @@ func (a *cfgMetaKvPlanPIndexesHandler) set(c *CfgMetaKv,
 		}
 
 		if ppi.SourceParams != "" {
-			k := ppi.SourceType + "/" + ppi.SourceName + "/" + ppi.SourceUUID
+			k := ppi.SourceType + "/" + ppi.SourceName + "/" + ppi.SourceUUID +
+				"/" + ppi.IndexName + "/" + ppi.IndexUUID
 			shared.SharedSourceDefs[k] = &PlanPIndexSourceDef{
 				SourceParams: ppi.SourceParams,
 			}

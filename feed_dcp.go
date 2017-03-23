@@ -158,6 +158,10 @@ type DCPFeedParams struct {
 	// Used for UPR flow control and buffer-ack messages when this
 	// percentage of FeedBufferSizeBytes is reached.
 	FeedBufferAckThreshold float32 `json:"feedBufferAckThreshold,omitempty"`
+
+	// Used to specify whether the applications are interested
+	// in receiving the xattrs information in a dcp stream.
+	IncludeXAttrs bool `json:"includeXAttrs,omitempty"`
 }
 
 // NewDCPFeedParams returns a DCPFeedParams initialized with default
@@ -230,6 +234,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 		FeedBufferAckThreshold:      params.FeedBufferAckThreshold,
 		Logf:          log.Printf,
 		TraceCapacity: 20,
+		IncludeXAttrs: params.IncludeXAttrs,
 	}
 
 	feed := &DCPFeed{
