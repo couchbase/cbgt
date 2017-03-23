@@ -282,6 +282,9 @@ func (h *QueryHandler) ServeHTTP(
 	if FTS_SCATTER_GATHER != req.Header.Get(CLUSTER_ACTION) {
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotClientRequest, 1)
+
+			atomic.AddUint64(&focusStats.TotClientRequestTimeNS,
+				uint64(time.Now().Sub(startTime)))
 		}
 	}
 

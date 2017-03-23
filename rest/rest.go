@@ -234,13 +234,14 @@ func (s *RESTPathStats) FocusValues() (rv []string) {
 // RESTFocusStats represents stats for a targeted or "focused" REST
 // endpoint, like "/api/index/beer-sample/query".
 type RESTFocusStats struct {
-	TotRequest        uint64
-	TotRequestTimeNS  uint64
-	TotRequestErr     uint64 `json:"TotRequestErr,omitempty"`
-	TotRequestSlow    uint64 `json:"TotRequestSlow,omitempty"`
-	TotRequestTimeout uint64 `json:"TotRequestTimeout,omitempty"`
-	TotResponseBytes  uint64 `json:"TotResponseBytes,omitempty"`
-	TotClientRequest  uint64
+	TotRequest             uint64
+	TotRequestTimeNS       uint64
+	TotRequestErr          uint64 `json:"TotRequestErr,omitempty"`
+	TotRequestSlow         uint64 `json:"TotRequestSlow,omitempty"`
+	TotRequestTimeout      uint64 `json:"TotRequestTimeout,omitempty"`
+	TotResponseBytes       uint64 `json:"TotResponseBytes,omitempty"`
+	TotClientRequest       uint64
+	TotClientRequestTimeNS uint64
 }
 
 // AtomicCopyTo copies stats from s to r (from source to result).
