@@ -99,6 +99,27 @@ type Dest interface {
 	Stats(io.Writer) error
 }
 
+// DestEx interface defines the data sink or destination for data that
+// comes from a data-source for any generic implementations.
+// For eg: xattrs listeners may choose to implement this interface
+type DestEx interface {
+	// Invoked when there's a new mutation from a data source for a
+	// partition. DestEx implementation is responsible for interpreting
+	// the header and body contents of *gomemcached.MCRequest
+	// and making its own copies of the key, val extras' data.
+	DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
+		cas uint64,
+		extrasType DestExtrasType, req interface{}) error
+
+	// Invoked by the data source when there's a data deletion in a
+	// partition. DestEx implementation is responsible for interpreting
+	// the header and body contents of *gomemcached.MCRequest
+	// and making its own copies of the key, val extras' data.
+	DataDeleteEx(partition string, key []byte, seq uint64,
+		cas uint64,
+		extrasType DestExtrasType, req interface{}) error
+}
+
 // DestExtrasType represents the encoding for the
 // Dest.DataUpdate/DataDelete() extras parameter.
 type DestExtrasType uint16

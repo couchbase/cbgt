@@ -31,6 +31,10 @@ import (
 // protocol.
 const DEST_EXTRAS_TYPE_DCP = DestExtrasType(0x0002)
 
+// DEST_EXTRAS_TYPE_MCREQUEST represents the MCRequest from DCP
+// protocol.
+const DEST_EXTRAS_TYPE_MCREQUEST = DestExtrasType(0x0003)
+
 // DCPFeedPrefix should be immutable after process init()'ialization.
 var DCPFeedPrefix string
 
@@ -261,7 +265,6 @@ func NewDCPFeed(name, indexName, url, poolName,
 	if err != nil {
 		return nil, err
 	}
-
 	return feed, nil
 }
 
@@ -394,8 +397,14 @@ func (r *DCPFeed) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 			return err
 		}
 
-		err = dest.DataUpdate(partition, key, seq, req.Body,
-			req.Cas, DEST_EXTRAS_TYPE_DCP, req.Extras)
+		if destEx, ok := dest.(DestEx); ok {
+			err = destEx.DataUpdateEx(partition, key, seq, req.Body,
+				req.Cas, DEST_EXTRAS_TYPE_MCREQUEST, req)
+		} else {
+			err = dest.DataUpdate(partition, key, seq, req.Body,
+				req.Cas, DEST_EXTRAS_TYPE_DCP, req.Extras)
+		}
+
 		if err != nil {
 			return fmt.Errorf("feed_dcp: DataUpdate,"+
 				" name: %s, partition: %s, key: %s, seq: %d, err: %v",
@@ -417,8 +426,14 @@ func (r *DCPFeed) DataDelete(vbucketId uint16, key []byte, seq uint64,
 			return err
 		}
 
-		err = dest.DataDelete(partition, key, seq,
-			req.Cas, DEST_EXTRAS_TYPE_DCP, req.Extras)
+		if destEx, ok := dest.(DestEx); ok {
+			err = destEx.DataDeleteEx(partition, key, seq,
+				req.Cas, DEST_EXTRAS_TYPE_MCREQUEST, req)
+		} else {
+			err = dest.DataDelete(partition, key, seq,
+				req.Cas, DEST_EXTRAS_TYPE_DCP, req.Extras)
+		}
+
 		if err != nil {
 			return fmt.Errorf("feed_dcp: DataDelete,"+
 				" name: %s, partition: %s, key: %s, seq: %d, err: %v",
