@@ -264,6 +264,14 @@ func (ctl *Ctl) run() {
 		return err
 	}
 
+	nodeDefns := cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_WANTED)
+	err = ctl.cfg.Subscribe(nodeDefns, ctl.cfgEventCh)
+	if err != nil {
+		ctl.initCh <- err
+		close(ctl.initCh)
+		return
+	}
+
 	err = kickIndexDefs("init")
 	if err != nil {
 		ctl.initCh <- err
@@ -281,8 +289,19 @@ func (ctl *Ctl) run() {
 			ctl.dispatchCtl("", "stop", nil, nil)
 			return
 
-		case <-ctl.cfgEventCh:
+		case ev := <-ctl.cfgEventCh:
 			kickIndexDefs("cfgEvent")
+			if ev.Key == nodeDefns {
+				memberNodes, err = CurrentMemberNodes(ctl.cfg)
+				if err != nil {
+					log.Printf("ctl: run, kind: %s, CurrentMemberNodes,"+
+						" err: %v", ev.Key, err)
+					continue
+				}
+				ctl.m.Lock()
+				ctl.memberNodes = memberNodes
+				ctl.m.Unlock()
+			}
 		}
 	}
 }
