@@ -509,38 +509,46 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
         }
     });
 
-    $scope.putIndex = function(indexName, indexType, indexParams,
-                               sourceType, sourceName,
-                               sourceUUID, sourceParams,
-                               planParams, prevIndexUUID) {
-        $scope.errorFields = {};
-        $scope.errorMessage = null;
-        $scope.errorMessageFull = null;
+    $scope.prepareIndex = function(indexName, indexType, indexParams,
+                                   sourceType, sourceName,
+                                   sourceUUID, sourceParams,
+                                   planParams, prevIndexUUID) {
+        var errorFields = {};
+        var errorMessage = null;
+        var errorMessageFull = null;
+
+        function errorResult() {
+            return {
+                errorFields: errorFields,
+                errorMessage: errorMessage,
+                errorMessageFull: errorMessageFull
+            }
+        }
 
         var errs = [];
         if (!indexName) {
-            $scope.errorFields["indexName"] = true;
+            errorFields["indexName"] = true;
             errs.push("index name is required");
         } else if ($scope.meta &&
                    $scope.meta.indexNameRE &&
                    !indexName.match($scope.meta.indexNameRE)) {
-            $scope.errorFields["indexName"] = true;
+            errorFields["indexName"] = true;
             errs.push("index name '" + indexName + "'" +
                       " does not pass validation regexp (" +
                       $scope.meta.indexNameRE + ")");
         }
         if (!indexType) {
-            $scope.errorFields["indexType"] = true;
+            errorFields["indexType"] = true;
             errs.push("index type is required");
         }
         if (!sourceType) {
-            $scope.errorFields["sourceType"] = true;
+            errorFields["sourceType"] = true;
             errs.push("source type is required");
         }
         if (errs.length > 0) {
-            $scope.errorMessage =
+            errorMessage =
                 (errs.length > 1 ? "errors: " : "error: ") + errs.join("; ");
-            return
+            return errorResult()
         }
 
         var indexParamsObj = {};
@@ -548,12 +556,12 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
             try {
                 indexParamsObj[k] = JSON.parse(indexParams[indexType][k]);
             } catch (e) {
-                $scope.errorFields["indexParams"] = {};
-                $scope.errorFields["indexParams"][indexType] = {};
-                $scope.errorFields["indexParams"][indexType][k] = true;
-                $scope.errorMessage =
+                errorFields["indexParams"] = {};
+                errorFields["indexParams"][indexType] = {};
+                errorFields["indexParams"][indexType][k] = true;
+                errorMessage =
                     "error: could not JSON parse index parameter: " + k;
-                return
+                return errorResult()
             }
         }
 
@@ -569,7 +577,7 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                 "done", indexParamsObj, indexUI,
                 $scope, $http, $route, $routeParams,
                 $location, $log, $sce, $uibModal)) {
-                return // Possibly due to validation error.
+                return errorResult() // Possibly due to validation error.
             }
         }
 
@@ -588,23 +596,47 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
         try {
             planParamsObj = JSON.parse(planParams);
         } catch (e) {
-            $scope.errorFields["planParams"] = true;
-            $scope.errorMessage =
+            errorFields["planParams"] = true;
+            errorMessage =
                 "error: could not JSON parse plan params";
+            return errorResult();
+        }
+
+        return {
+            indexDef: {
+                name: indexName,
+                type: indexType,
+                params: indexParamsObj,
+                sourceType: sourceType,
+                sourceName: sourceName,
+                sourceUUID: sourceUUID || "",
+                sourceParams: sourceParamsObj,
+                planParams: planParamsObj,
+                uuid: prevIndexUUID
+            }
+        }
+    }
+
+    $scope.putIndex = function(indexName, indexType, indexParams,
+                               sourceType, sourceName,
+                               sourceUUID, sourceParams,
+                               planParams, prevIndexUUID) {
+        $scope.errorFields = {};
+        $scope.errorMessage = null;
+        $scope.errorMessageFull = null;
+
+        var rv = $scope.prepareIndex(indexName, indexType, indexParams,
+                                     sourceType, sourceName,
+                                     sourceUUID, sourceParams,
+                                     planParams, prevIndexUUID);
+        if (!rv.indexDef) {
+            $scope.errorFields = rv.errorFields;
+            $scope.errorMessage = rv.errorMessage;
+            $scope.errorMessageFull = rv.errorMessageFull;
             return
         }
 
-        $http.put('/api/index/' + indexName, {
-            name: indexName,
-            type: indexType,
-            params: indexParamsObj,
-            sourceType: sourceType,
-            sourceName: sourceName,
-            sourceUUID: sourceUUID || "",
-            sourceParams: sourceParamsObj,
-            planParams: planParamsObj,
-            uuid: prevIndexUUID
-        }).
+        $http.put('/api/index/' + indexName, rv.indexDef).
         success(function(data) {
             $location.path('/indexes/' + indexName);
         }).
