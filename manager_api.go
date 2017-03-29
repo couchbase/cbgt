@@ -91,7 +91,8 @@ func (mgr *Manager) CreateIndex(sourceType,
 		prevIndex, exists := indexDefs.IndexDefs[indexName]
 		if prevIndexUUID == "" { // New index creation.
 			if exists || prevIndex != nil {
-				return fmt.Errorf("manager_api: index exists, indexName: %s",
+				return fmt.Errorf("manager_api: cannot create index because"+
+					" an index with the same name already exists: %s",
 					indexName)
 			}
 		} else if prevIndexUUID == "*" {
