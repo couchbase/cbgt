@@ -68,6 +68,17 @@ func (e *ErrorConsistencyWait) Error() string {
 		" err: %v", e.StartEndSeqs, e.Err)
 }
 
+// ErrorLocalPIndexHealth represents the unavailable pindexes and
+// the corresponding error details which is discovered during the
+// consistency checks.
+type ErrorLocalPIndexHealth struct {
+	IndexErrMap map[string]error
+}
+
+func (e *ErrorLocalPIndexHealth) Error() string {
+	return "pindex_consistency: some pindexes not available"
+}
+
 // ---------------------------------------------------------
 
 // ConsistencyWaitDone() waits for either the cancelCh or doneCh to
@@ -123,13 +134,14 @@ func ConsistencyWaitGroup(indexName string,
 	addLocalPIndex func(*PIndex) error) error {
 	var errConsistencyM sync.Mutex
 	var errConsistency error
-
 	var wg sync.WaitGroup
+	indexErrMap := make(map[string]error)
 
 	for _, localPIndex := range localPIndexes {
 		err := addLocalPIndex(localPIndex)
 		if err != nil {
-			return err
+			indexErrMap[localPIndex.Name] = err
+			continue
 		}
 
 		if consistencyParams != nil &&
@@ -169,6 +181,12 @@ func ConsistencyWaitGroup(indexName string,
 			return fmt.Errorf("pindex_consistency: ConsistencyWaitGroup cancelled")
 		default:
 		}
+	}
+
+	if len(indexErrMap) > 0 {
+		// If there are unhealthy local pindexes, then return the
+		// details to propagate to the final search results.
+		return &ErrorLocalPIndexHealth{IndexErrMap: indexErrMap}
 	}
 
 	// TODO: There's likely a race here where at this point we've now
