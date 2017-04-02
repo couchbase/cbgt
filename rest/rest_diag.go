@@ -119,8 +119,8 @@ func (h *DiagGetHandler) ServeHTTP(
 		if strings.HasPrefix(f.Name(), "PINDEX_") || // Matches PINDEX_xxx_META.
 			strings.HasSuffix(f.Name(), "_META") || // Matches PINDEX_META.
 			strings.HasSuffix(f.Name(), ".json") { // Matches index_meta.json.
-			b, err := ioutil.ReadFile(path)
-			if err == nil {
+			b, err2 := ioutil.ReadFile(path)
+			if err2 == nil {
 				m["Contents"] = string(b)
 			}
 		}

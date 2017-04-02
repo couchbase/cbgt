@@ -197,7 +197,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 	params := NewDCPFeedParams()
 
 	if paramsStr != "" {
-		err := json.Unmarshal([]byte(paramsStr), params)
+		err = json.Unmarshal([]byte(paramsStr), params)
 		if err != nil {
 			return nil, err
 		}
@@ -477,15 +477,15 @@ func (r *DCPFeed) SetMetaData(vbucketId uint16, value []byte) error {
 func (r *DCPFeed) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
 	err = Timer(func() error {
-		partition, dest, err :=
+		partition, dest, err2 :=
 			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, nil)
-		if err != nil || r.checkStopAfter(partition) {
-			return err
+		if err2 != nil || r.checkStopAfter(partition) {
+			return err2
 		}
 
-		value, lastSeq, err = dest.OpaqueGet(partition)
+		value, lastSeq, err2 = dest.OpaqueGet(partition)
 
-		return err
+		return err2
 	}, r.stats.TimerOpaqueGet)
 
 	return value, lastSeq, err

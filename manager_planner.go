@@ -129,9 +129,9 @@ func (mgr *Manager) PlannerLoop() {
 
 			if m.op == WORK_KICK {
 				atomic.AddUint64(&mgr.stats.TotPlannerKickStart, 1)
-				changed, err := mgr.PlannerOnce(m.msg)
-				if err != nil {
-					log.Printf("planner: PlannerOnce, err: %v", err)
+				changed, err2 := mgr.PlannerOnce(m.msg)
+				if err2 != nil {
+					log.Printf("planner: PlannerOnce, err: %v", err2)
 					atomic.AddUint64(&mgr.stats.TotPlannerKickErr, 1)
 					// Keep looping as perhaps it's a transient issue.
 				} else {
@@ -426,12 +426,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	for _, indexDefName := range indexDefNames {
 		indexDef := indexDefs.IndexDefs[indexDefName]
 
-		pho, skip, err := plannerHookCall("indexDef.begin", indexDef, nil)
-		if skip {
+		pho, skip2, err2 := plannerHookCall("indexDef.begin", indexDef, nil)
+		if skip2 {
 			continue
 		}
-		if err != nil {
-			return planPIndexes, err
+		if err2 != nil {
+			return planPIndexes, err2
 		}
 		indexDef = pho.IndexDef
 
@@ -458,12 +458,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		}
 
 		// Split each indexDef into 1 or more PlanPIndexes.
-		planPIndexesForIndex, err := SplitIndexDefIntoPlanPIndexes(
+		planPIndexesForIndex, err2 := SplitIndexDefIntoPlanPIndexes(
 			indexDef, server, options, planPIndexes)
-		if err != nil {
+		if err2 != nil {
 			log.Printf("planner: could not SplitIndexDefIntoPlanPIndexes,"+
 				" indexDef.Name: %s, server: %s, err: %v",
-				indexDef.Name, server, err)
+				indexDef.Name, server, err2)
 			continue // Keep planning the other IndexDefs.
 		}
 

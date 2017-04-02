@@ -81,7 +81,7 @@ func main() {
 	if steps != nil && steps["rebalance_"] {
 		log.Printf("main: step rebalance_")
 
-		err := rebalance.RunRebalance(cfg, flags.Server, options,
+		err = rebalance.RunRebalance(cfg, flags.Server, options,
 			nodesToRemove, flags.FavorMinNodes,
 			flags.DryRun, flags.Verbose, nil)
 		if err != nil {

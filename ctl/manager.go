@@ -564,7 +564,7 @@ func (m *CtlMgr) updateProgress(
 		}
 	}
 
-	taskProgress := taskProgress{
+	taskProgressVal := taskProgress{
 		taskId:         taskId,
 		errs:           errs,
 		progressExists: progressEntries != nil,
@@ -572,7 +572,7 @@ func (m *CtlMgr) updateProgress(
 	}
 
 	select {
-	case m.taskProgressCh <- taskProgress:
+	case m.taskProgressCh <- taskProgressVal:
 		// NO-OP.
 	default:
 		// NO-OP, if the handleTaskProgress() goroutine is behind,

@@ -126,7 +126,7 @@ func TestManagerStart(t *testing.T) {
 	cfg = NewCfgMem()
 	m = NewManager(VERSION, cfg, NewUUID(),
 		nil, "", 1, "", ":1000", emptyDir, "some-datasource", nil)
-	if err := m.Start("wanted"); err != nil {
+	if err = m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	nd, cas, err = CfgGetNodeDefs(cfg, NODE_DEFS_KNOWN)
@@ -153,20 +153,20 @@ func TestManagerRestart(t *testing.T) {
 
 	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
-	if err := m.Start("wanted"); err != nil {
+	if err = m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
 	sourceParams := ""
-	if err := m.CreateIndex("primary", "default", "123", sourceParams,
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
 		"blackhole", "foo", "", PlanParams{},
 		"bad-prevIndexUUID"); err == nil {
 		t.Errorf("expected CreateIndex() err on create-with-prevIndexUUID")
 	}
-	if err := m.CreateIndex("primary", "default", "123", sourceParams,
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
 		"blackhole", "foo", "", PlanParams{}, ""); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	if err := m.CreateIndex("primary", "default", "123", sourceParams,
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
 		"blackhole", "foo", "", PlanParams{},
 		"bad-prevIndexUUID"); err == nil {
 		t.Errorf("expected CreateIndex() err update wrong prevIndexUUID")
@@ -188,7 +188,7 @@ func TestManagerRestart(t *testing.T) {
 	m2 := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
 	m2.uuid = m.uuid
-	if err := m2.Start("wanted"); err != nil {
+	if err = m2.Start("wanted"); err != nil {
 		t.Errorf("expected reload Manager.Start() to work, err: %v", err)
 	}
 	m2.Kick("test2")
@@ -1024,7 +1024,7 @@ func TestRegisterUnwanted(t *testing.T) {
 
 	m1 := NewManager(VERSION, cfg, uuid, nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
-	if err := m1.Start("unchanged"); err != nil {
+	if err = m1.Start("unchanged"); err != nil {
 		t.Errorf("expected Manager.Start(unchanged) to work, err: %v", err)
 	}
 	nd, cas, err = CfgGetNodeDefs(cfg, NODE_DEFS_KNOWN)
@@ -1044,7 +1044,7 @@ func TestRegisterUnwanted(t *testing.T) {
 
 	m2 := NewManager(VERSION, cfg, uuid, nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
-	if err := m2.Start("unwanted"); err != nil {
+	if err = m2.Start("unwanted"); err != nil {
 		t.Errorf("expected Manager.Start(unwanted) to work, err: %v", err)
 	}
 	if err != nil {
@@ -1067,7 +1067,7 @@ func TestRegisterUnwanted(t *testing.T) {
 
 	m3 := NewManager(VERSION, cfg, uuid, nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
-	if err := m3.Start("unknown"); err != nil {
+	if err = m3.Start("unknown"); err != nil {
 		t.Errorf("expected Manager.Start(unknown) to work, err: %v", err)
 	}
 	if err != nil {

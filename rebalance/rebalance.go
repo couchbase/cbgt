@@ -448,15 +448,15 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	assignPartitionFunc := func(stopCh2 chan struct{},
 		partition, node, state, op string,
 	) error {
-		err := r.assignPIndex(stopCh, stopCh2,
+		err2 := r.assignPIndex(stopCh, stopCh2,
 			indexDef.Name, partition, node, state, op)
-		if err != nil {
-			r.Logf("rebalance: assignPartitionFunc, err: %v", err)
+		if err2 != nil {
+			r.Logf("rebalance: assignPartitionFunc, err: %v", err2)
 			// Stop rebalance for all other errors.
-			if err != ErrorNoIndexDefinitionFound {
-				r.progressCh <- RebalanceProgress{Error: err}
+			if err2 != ErrorNoIndexDefinitionFound {
+				r.progressCh <- RebalanceProgress{Error: err2}
 				r.Stop()
-				return err
+				return err2
 			}
 		}
 		return nil

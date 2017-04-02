@@ -47,7 +47,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 			" unknown indexType: %s", indexType)
 	}
 	if pindexImplType.Validate != nil {
-		err := pindexImplType.Validate(indexType, indexName, indexParams)
+		err = pindexImplType.Validate(indexType, indexName, indexParams)
 		if err != nil {
 			return fmt.Errorf("manager_api: CreateIndex, invalid,"+
 				" err: %v", err)

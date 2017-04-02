@@ -35,7 +35,7 @@ func TestMainCfg(t *testing.T) {
 		t.Errorf("expected MainCfg() to work on simple provider")
 	}
 
-	if _, err := cfg.Set("k", []byte("value"), 0); err != nil {
+	if _, err = cfg.Set("k", []byte("value"), 0); err != nil {
 		t.Errorf("expected Set() to work")
 	}
 

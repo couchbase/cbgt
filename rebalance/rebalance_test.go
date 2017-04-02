@@ -236,10 +236,10 @@ func TestRebalance(t *testing.T) {
 
 			waitUntilEmptyCfgEventsNodeDefsWanted()
 
-			mgr, err := startNodeManager(nodeDir(nodeToRemove),
+			mgr, err2 := startNodeManager(nodeDir(nodeToRemove),
 				cfg, nodeToRemove, "unknown", test.params, server)
-			if err != nil || mgr == nil {
-				t.Errorf("expected no err, got: %#v", err)
+			if err2 != nil || mgr == nil {
+				t.Errorf("expected no err, got: %#v", err2)
 			}
 
 			mgr.Kick("kick")

@@ -243,11 +243,11 @@ func (ctl *Ctl) run() {
 	kickIndexDefs := func(kind string) error {
 		log.Printf("ctl: kickIndexDefs, kind: %s", kind)
 
-		indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
-		if err != nil {
+		indexDefs, _, err2 := cbgt.CfgGetIndexDefs(ctl.cfg)
+		if err2 != nil {
 			log.Printf("ctl: kickIndexDefs, kind: %s, CfgGetIndexDefs,"+
-				" err: %v", kind, err)
-			return err
+				" err: %v", kind, err2)
+			return err2
 		}
 
 		if kind == "init" || kind == "force" || kind == "force-indexDefs" ||
@@ -619,12 +619,12 @@ func (ctl *Ctl) startCtlLOCKED(
 		REBALANCE_LOOP:
 			for {
 				// Retrieve the indexDefs before we do anything.
-				indexDefsStart, err :=
+				indexDefsStart, err2 :=
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
-				if err != nil {
-					log.Printf("ctl: PlannerGetIndexDefs, err: %v", err)
+				if err2 != nil {
+					log.Printf("ctl: PlannerGetIndexDefs, err: %v", err2)
 
-					ctlErrs = append(ctlErrs, err)
+					ctlErrs = append(ctlErrs, err2)
 					return
 				}
 
@@ -703,10 +703,10 @@ func (ctl *Ctl) startCtlLOCKED(
 				ctlWarnings = ctl.r.GetEndPlanPIndexes().Warnings
 
 				// Repeat if the indexDefs had changed mid-rebalance.
-				indexDefsEnd, err :=
+				indexDefsEnd, err2 :=
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
-				if err != nil {
-					ctlErrs = append(ctlErrs, err)
+				if err2 != nil {
+					ctlErrs = append(ctlErrs, err2)
 					return
 				}
 

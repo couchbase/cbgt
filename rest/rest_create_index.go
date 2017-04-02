@@ -144,11 +144,11 @@ func (h *CreateIndexHandler) ServeHTTP(
 	}
 
 	if len(requestBody) > 0 {
-		err := json.Unmarshal(requestBody, &indexDef)
-		if err != nil {
+		err2 := json.Unmarshal(requestBody, &indexDef)
+		if err2 != nil {
 			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" could not unmarshal json, indexName: %s, err: %v",
-				indexName, err), 400)
+				indexName, err2), 400)
 			return
 		}
 	}
@@ -187,11 +187,11 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	planParamsStr := req.FormValue("planParams")
 	if planParamsStr != "" {
-		err := json.Unmarshal([]byte(planParamsStr), &planParams)
-		if err != nil {
+		err2 := json.Unmarshal([]byte(planParamsStr), &planParams)
+		if err2 != nil {
 			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, err: %v",
-				planParamsStr, err), 400)
+				planParamsStr, err2), 400)
 			return
 		}
 	} else {

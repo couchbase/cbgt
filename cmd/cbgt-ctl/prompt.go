@@ -66,7 +66,8 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 						log.Printf("changeTopology,"+
 							" rev: %s, mode: %s, memberNodeUUIDs: %#v",
 							rev, mode, memberNodeUUIDs)
-						topology, err :=
+						var topology *ctl.CtlTopology
+						topology, err =
 							ctlInst.ChangeTopology(&ctl.CtlChangeTopology{
 								Rev:             rev,
 								Mode:            mode,
