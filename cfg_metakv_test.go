@@ -22,7 +22,7 @@ import (
 func compareNodeDefs(a, b *NodeDefs) bool {
 	for k, v := range a.NodeDefs {
 		m := b.NodeDefs[k]
-		fmt.Println("nodedefs %v %v", m, v)
+		fmt.Printf("nodedefs %v %v\n", m, v)
 		if m.UUID != v.UUID {
 			return false
 		}

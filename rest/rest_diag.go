@@ -50,31 +50,37 @@ func NewDiagGetHandler(versionMain string,
 func (h *DiagGetHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	handlers := []cbgt.DiagHandler{
-		{"/api/cfg", NewCfgGetHandler(h.mgr), nil},
-		{"/api/index", NewListIndexHandler(h.mgr), nil},
-		{"/api/log", NewLogGetHandler(h.mgr, h.mr), nil},
-		{"/api/manager", NewManagerHandler(h.mgr), nil},
-		{"/api/managerMeta", NewManagerMetaHandler(h.mgr, nil), nil},
-		{"/api/pindex", NewListPIndexHandler(h.mgr), nil},
-		{"/api/runtime", NewRuntimeGetHandler(h.versionMain, h.mgr), nil},
-		{"/api/runtime/args", nil, RESTGetRuntimeArgs},
-		{"/api/runtime/stats", nil, RESTGetRuntimeStats},
-		{"/api/runtime/statsMem", nil, RESTGetRuntimeStatsMem},
-		{"/api/stats", NewStatsHandler(h.mgr), nil},
-		{"/debug/pprof/block?debug=1", nil,
-			func(w http.ResponseWriter, r *http.Request) {
+		{Name: "/api/cfg", Handler: NewCfgGetHandler(h.mgr), HandlerFunc: nil},
+		{Name: "/api/index", Handler: NewListIndexHandler(h.mgr), HandlerFunc: nil},
+		{Name: "/api/log", Handler: NewLogGetHandler(h.mgr, h.mr),
+			HandlerFunc: nil},
+		{Name: "/api/manager", Handler: NewManagerHandler(h.mgr), HandlerFunc: nil},
+		{Name: "/api/managerMeta", Handler: NewManagerMetaHandler(h.mgr, nil),
+			HandlerFunc: nil},
+		{Name: "/api/pindex", Handler: NewListPIndexHandler(h.mgr),
+			HandlerFunc: nil},
+		{Name: "/api/runtime", Handler: NewRuntimeGetHandler(h.versionMain, h.mgr),
+			HandlerFunc: nil},
+		{Name: "/api/runtime/args", Handler: nil, HandlerFunc: RESTGetRuntimeArgs},
+		{Name: "/api/runtime/stats", Handler: nil,
+			HandlerFunc: RESTGetRuntimeStats},
+		{Name: "/api/runtime/statsMem", Handler: nil,
+			HandlerFunc: RESTGetRuntimeStatsMem},
+		{Name: "/api/stats", Handler: NewStatsHandler(h.mgr), HandlerFunc: nil},
+		{Name: "/debug/pprof/block?debug=1", Handler: nil,
+			HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
 				DiagGetPProf(w, "block", 2)
 			}},
-		{"/debug/pprof/goroutine?debug=2", nil,
-			func(w http.ResponseWriter, r *http.Request) {
+		{Name: "/debug/pprof/goroutine?debug=2", Handler: nil,
+			HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
 				DiagGetPProf(w, "goroutine", 2)
 			}},
-		{"/debug/pprof/heap?debug=1", nil,
-			func(w http.ResponseWriter, r *http.Request) {
+		{Name: "/debug/pprof/heap?debug=1", Handler: nil,
+			HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
 				DiagGetPProf(w, "heap", 1)
 			}},
-		{"/debug/pprof/threadcreate?debug=1", nil,
-			func(w http.ResponseWriter, r *http.Request) {
+		{Name: "/debug/pprof/threadcreate?debug=1", Handler: nil,
+			HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
 				DiagGetPProf(w, "threadcreate", 1)
 			}},
 	}
