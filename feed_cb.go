@@ -40,7 +40,7 @@ var ErrCouchbaseMismatchedBucketUUID = fmt.Errorf("mismatched-couchbase-bucket-U
 // dests map to vbucketId numbers.
 func ParsePartitionsToVBucketIds(dests map[string]Dest) ([]uint16, error) {
 	vbuckets := make([]uint16, 0, len(dests))
-	for partition, _ := range dests {
+	for partition := range dests {
 		if partition != "" {
 			vbId, err := strconv.Atoi(partition)
 			if err != nil {

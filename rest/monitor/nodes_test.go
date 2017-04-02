@@ -62,7 +62,7 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 	}
 
 	m, err := StartMonitorNodes([]UrlUUID{
-		UrlUUID{"url0", "uuid0"},
+		{"url0", "uuid0"},
 	}, sampleCh, opt)
 	if err != nil || m == nil {
 		t.Errorf("expected no err")
@@ -125,7 +125,7 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 	}
 
 	m, err := StartMonitorNodes([]UrlUUID{
-		UrlUUID{"url0", "uuid0"},
+		{"url0", "uuid0"},
 	}, sampleCh, opt)
 	if err != nil || m == nil {
 		t.Errorf("expected no err")
@@ -193,7 +193,7 @@ func Test1NodeStartMonitorNodesFast(t *testing.T) {
 	}
 
 	m, err := StartMonitorNodes([]UrlUUID{
-		UrlUUID{"url0", "uuid0"},
+		{"url0", "uuid0"},
 	}, sampleCh, opt)
 	if err != nil || m == nil {
 		t.Errorf("expected no err")

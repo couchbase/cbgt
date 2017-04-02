@@ -582,7 +582,7 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 	index, pindex, node, state, op string) error {
 	forceWaitForCatchup := false
 
-	stateOps := []StateOp{StateOp{State: state, Op: op}}
+	stateOps := []StateOp{{State: state, Op: op}}
 
 	if !r.optionsReb.AddPrimaryDirectly &&
 		state == "primary" && op == "add" {
@@ -590,8 +590,8 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		// perform a 2-step maneuver by first adding the pindex as a
 		// replica, then promote that replica to master.
 		stateOps = []StateOp{
-			StateOp{State: "replica", Op: "add"},
-			StateOp{State: "primary", Op: "promote"},
+			{State: "replica", Op: "add"},
+			{State: "primary", Op: "promote"},
 		}
 
 		forceWaitForCatchup = true
@@ -601,8 +601,8 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 		// allow the loop below to wait-for-catchup before promoting the
 		// replica to master.
 		stateOps = []StateOp{
-			StateOp{State: "replica", Op: "promote"},
-			StateOp{State: "primary", Op: "promote"},
+			{State: "replica", Op: "promote"},
+			{State: "primary", Op: "promote"},
 		}
 
 		forceWaitForCatchup = true

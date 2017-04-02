@@ -378,7 +378,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 	}
 
 	if curNodeDefs.NodeDefs != nil {
-		for k, _ := range curNodeDefs.NodeDefs {
+		for k := range curNodeDefs.NodeDefs {
 			if nd.NodeDefs[k] == nil {
 				removed[k] = true
 			}

@@ -30,7 +30,7 @@ func DumpOnSignalForPlatform() {
 func DumpOnSignal(signals ...os.Signal) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, signals...)
-	for _ = range c {
+	for range c {
 		log.Printf("dump: goroutine...")
 		pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
 		log.Printf("dump: heap...")

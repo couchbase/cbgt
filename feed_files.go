@@ -207,7 +207,7 @@ func (t *FilesFeed) Start() error {
 		// even during fast restarts or clock changes or node
 		// rebalances/reassignments.
 		seqs := map[string]uint64{}
-		for partition, _ := range t.dests {
+		for partition := range t.dests {
 			seqs[partition] = uint64(initTimeMicroSecs)
 		}
 
