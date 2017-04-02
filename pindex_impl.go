@@ -85,7 +85,7 @@ type PIndexImplType struct {
 	// for /api/diag output.
 	DiagHandlers []DiagHandler
 
-	// Optional, allows pindex implementaiton to add more information
+	// Optional, allows pindex implementation to add more information
 	// to the REST /api/managerMeta output.
 	MetaExtra func(map[string]interface{})
 

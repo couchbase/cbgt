@@ -97,8 +97,8 @@ func initFlags(flags *Flags) map[string][]string {
 		"no actual changes will be executed.")
 	b(&flags.FavorMinNodes,
 		[]string{"favorMinNodes"}, "", false,
-		"advanced: favor min # of nodes used during partition moves,"+
-			"\nto favor single-mastership over availability.")
+		"advanced: favor min # of nodes used during partition moves,\n"+
+			"to favor single-mastership over availability.")
 	b(&flags.Help,
 		[]string{"help", "?", "H", "h"}, "", false,
 		"print this usage message and exit.")

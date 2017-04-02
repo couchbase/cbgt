@@ -79,7 +79,7 @@ func (h *SourcePartitionSeqsHandler) ServeHTTP(
 		indexDef.SourceType, indexDef.SourceName, indexDef.SourceUUID,
 		indexDef.SourceParams, h.mgr.Server(), h.mgr.Options())
 	if err != nil {
-		ShowError(w, req, "could not retreive partition seqs", 500)
+		ShowError(w, req, "could not retrieve partition seqs", 500)
 		return
 	}
 
@@ -154,7 +154,7 @@ func (h *SourceStatsHandler) ServeHTTP(
 		indexDef.SourceParams, h.mgr.Server(), h.mgr.Options(),
 		req.FormValue("statsKind"))
 	if err != nil {
-		ShowError(w, req, "could not retreive stats", 500)
+		ShowError(w, req, "could not retrieve stats", 500)
 		return
 	}
 

@@ -572,7 +572,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 			Status: 200,
 		},
 		{
-			Desc:   "look up a pindexId for a non existant indexname and document ID",
+			Desc:   "look up a pindexId for a non existent indexname and document ID",
 			Path:   "/api/index/idx/pindexLookup",
 			Method: "POST",
 			Params: url.Values{

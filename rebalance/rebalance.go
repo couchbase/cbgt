@@ -252,7 +252,7 @@ func (r *Rebalancer) Stop() {
 	r.m.Unlock()
 }
 
-// ProgressCh() returns a channel that is updated occassionally when
+// ProgressCh() returns a channel that is updated occasionally when
 // the rebalance has made some progress on one or more partition
 // reassignments, or has reached an error.  The channel is closed when
 // the rebalance operation is finished, either naturally, or due to an

@@ -80,6 +80,6 @@ func TestCheckVersion(t *testing.T) {
 	}
 	ok, err = CheckVersion(eac, "1.1.0")
 	if err == nil || ok {
-		t.Errorf("expected err when forcing cfg Set() error during verison upgrade")
+		t.Errorf("expected err when forcing cfg Set() error during version upgrade")
 	}
 }
