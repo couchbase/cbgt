@@ -271,6 +271,12 @@ func TestVBucketIdToPartitionDest(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected err")
 	}
+	if partition != "" {
+		t.Errorf("expected empty string parition on err")
+	}
+	if dest != nil {
+		t.Errorf("expected nil dst on err")
+	}
 }
 
 func TestTAPFeedBasics(t *testing.T) {

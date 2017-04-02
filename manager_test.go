@@ -63,10 +63,16 @@ func TestPIndexPath(t *testing.T) {
 	if ok {
 		t.Errorf("expected not-ok on bad pindex path")
 	}
+	if n != "" {
+		t.Errorf("expected empty string on bad pindex path")
+	}
 	n, ok =
 		m.ParsePIndexPath("dir" + string(os.PathSeparator) + "not-a-pindex")
 	if ok {
 		t.Errorf("expected not-ok on bad pindex path")
+	}
+	if n != "" {
+		t.Errorf("expected empty string on bad pindex path")
 	}
 }
 
@@ -673,6 +679,9 @@ func TestManagerClosePIndex(t *testing.T) {
 		"sourceType", "sourceName", "sourceUUID",
 		sourceParams, "sourcePartitions",
 		m.PIndexPath("p0"))
+	if err != nil {
+		t.Errorf("error creating pindex: %v", err)
+	}
 	m.registerPIndex(p)
 	feeds, pindexes := m.CurrentMaps()
 	if feeds == nil || pindexes == nil {
@@ -714,6 +723,9 @@ func TestManagerRemovePIndex(t *testing.T) {
 		"sourceType", "sourceName", "sourceUUID",
 		sourceParams, "sourcePartitions",
 		m.PIndexPath("p0"))
+	if err != nil {
+		t.Errorf("error creating pindex: %v", err)
+	}
 	m.registerPIndex(p)
 	feeds, pindexes := m.CurrentMaps()
 	if feeds == nil || pindexes == nil {

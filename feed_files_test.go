@@ -163,6 +163,9 @@ func TestFilesFindMatches(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected err on bogus regexp")
 	}
+	if paths != nil {
+		t.Errorf("expected nil paths on bogus regexp")
+	}
 }
 
 func TestFilesFeedPartitions(t *testing.T) {
@@ -185,6 +188,9 @@ func TestFilesFeedPartitions(t *testing.T) {
 		sourceUUID, "this}{is]not[json", server, nil)
 	if err == nil {
 		t.Errorf("expected err on bad JSON")
+	}
+	if partitions != nil {
+		t.Errorf("expected nil partitions on bad JSON")
 	}
 
 	partitions, err = FilesFeedPartitions(sourceType, sourceName,

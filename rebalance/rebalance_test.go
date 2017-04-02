@@ -411,9 +411,15 @@ func startNodeManager(testDir string, cfg cbgt.Cfg, node, register string,
 	weight := 1
 	if params["weight"] != "" {
 		weight, err = strconv.Atoi(params["weight"])
+		if err != nil {
+			return nil, err
+		}
 	}
 	if params[node+".weight"] != "" {
 		weight, err = strconv.Atoi(params[node+".weight"])
+		if err != nil {
+			return nil, err
+		}
 	}
 	if weight < 1 {
 		weight = 1

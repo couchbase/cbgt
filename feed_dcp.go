@@ -347,8 +347,6 @@ func (r *DCPFeed) updateStopAfter(partition string, seq uint64) {
 
 	// TODO: check UUID matches?
 	if seq >= uuidSeq.Seq {
-		allDone := false
-
 		r.m.Lock()
 
 		if r.stopAfterReached == nil {
@@ -356,7 +354,7 @@ func (r *DCPFeed) updateStopAfter(partition string, seq uint64) {
 		}
 		r.stopAfterReached[partition] = true
 
-		allDone = len(r.stopAfterReached) >= len(r.stopAfter)
+		allDone := len(r.stopAfterReached) >= len(r.stopAfter)
 
 		r.m.Unlock()
 

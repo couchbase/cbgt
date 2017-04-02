@@ -108,7 +108,7 @@ func WriteProgressCell(b *bytes.Buffer,
 	pe *ProgressEntry,
 	sourcePartitions map[string]map[string]*ProgressEntry,
 	maxNodeLen int) {
-	written := 0
+	var written int
 
 	totPct := 0.0 // To compute average pct.
 	numPct := 0
