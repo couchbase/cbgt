@@ -158,7 +158,6 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 							if ppnCalc.Priority <= 0 &&
 								!mapNodesFailover[nodeCalc] {
 								planPIndex.Nodes[nodeCalc] = ppnCalc
-								promoted = nodeCalc
 								break ASSIGN_PRIMARY
 							}
 						}

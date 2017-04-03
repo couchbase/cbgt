@@ -147,7 +147,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		return fmt.Errorf("janitor: skipped on nil planPIndexes")
 	}
 
-	currFeeds, currPIndexes := mgr.CurrentMaps()
+	_, currPIndexes := mgr.CurrentMaps()
 
 	addPlanPIndexes, removePIndexes :=
 		CalcPIndexesDelta(mgr.uuid, currPIndexes, planPIndexes)
@@ -184,6 +184,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		}
 	}
 
+	var currFeeds map[string]Feed
 	currFeeds, currPIndexes = mgr.CurrentMaps()
 
 	addFeeds, removeFeeds :=

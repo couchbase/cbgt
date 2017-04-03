@@ -498,7 +498,7 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		}
 	}
 
-	_, skip, err = plannerHookCall("end", nil, nil)
+	_, _, err = plannerHookCall("end", nil, nil)
 
 	return planPIndexes, err
 }
