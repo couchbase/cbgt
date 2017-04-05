@@ -156,7 +156,7 @@ func (t *TAPFeed) Start() error {
 		func() int {
 			progress, err := t.feed()
 			if err != nil {
-				log.Printf("feed_tap: name: %s, progress: %d, err: %v",
+				log.Warnf("feed_tap: name: %s, progress: %d, err: %v",
 					t.Name(), progress, err)
 			}
 			return progress

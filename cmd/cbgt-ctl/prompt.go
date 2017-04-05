@@ -57,7 +57,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 					log.Printf("topology: %s", string(b))
 				} else if op == "changeTopology" || op == "ct" {
 					if len(lineParts) != 4 {
-						log.Printf("expected 3 arguments")
+						log.Warnf("expected 3 arguments")
 					} else {
 						rev := lineParts[1]
 						mode := lineParts[2]
@@ -81,7 +81,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 					}
 				} else if op == "stopChangeTopology" || op == "sct" {
 					if len(lineParts) != 2 {
-						log.Printf("expected 1 arguments")
+						log.Warnf("expected 1 arguments")
 					} else {
 						rev := lineParts[1]
 
@@ -97,7 +97,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 					log.Printf("bye")
 					os.Exit(0)
 				} else {
-					log.Printf("unknown op: %s", op)
+					log.Warnf("unknown op: %s", op)
 				}
 			}
 		}

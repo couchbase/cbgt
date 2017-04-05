@@ -103,12 +103,12 @@ func ParseOptions(optionKVs string, envName string,
 
 		b, err := ioutil.ReadFile(optionsFile)
 		if err != nil {
-			log.Printf("main_flags: reading options file: %s, err: %v",
+			log.Warnf("main_flags: reading options file: %s, err: %v",
 				optionsFile, err)
 		} else {
 			err = json.Unmarshal(b, &options)
 			if err != nil {
-				log.Printf("main_flags: JSON parse option file: %s, err: %v",
+				log.Warnf("main_flags: JSON parse option file: %s, err: %v",
 					optionsFile, err)
 			}
 		}

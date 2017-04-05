@@ -235,7 +235,7 @@ func (t *FilesFeed) Start() error {
 					t.sourceName, t.params.RegExps, prevStartTime,
 					t.params.MaxFileSize)
 				if err != nil {
-					log.Printf("feed_files, FilesFindMatches, err: %v", err)
+					log.Warnf("feed_files, FilesFindMatches, err: %v", err)
 					return -1
 				}
 
@@ -286,7 +286,7 @@ func (t *FilesFeed) Start() error {
 
 					buf, err := ioutil.ReadFile(path)
 					if err != nil {
-						log.Printf("feed_files: read file,"+
+						log.Warnf("feed_files: read file,"+
 							" name: %s, path: %s, err: %v",
 							t.Name(), path, err)
 						continue
@@ -298,7 +298,7 @@ func (t *FilesFeed) Start() error {
 						Contents: string(buf),
 					})
 					if err != nil {
-						log.Printf("feed_files: json marshal file,"+
+						log.Warnf("feed_files: json marshal file,"+
 							" name: %s, path: %s, err: %v",
 							t.Name(), path, err)
 						continue
@@ -308,10 +308,9 @@ func (t *FilesFeed) Start() error {
 						err = dest.SnapshotStart(partition, seqCur,
 							seqEnds[partition])
 						if err != nil {
-							log.Printf("feed_files: SnapshotStart,"+
-								" name: %s, partition: %s,"+
-								" seqCur: %d, seqEnd: %d, err: %v",
-								t.Name(), partition,
+							log.Warnf("feed_files: SnapshotStart,"+
+								" name: %s, partition: %s, seqCur: %d,"+
+								" seqEnd: %d, err: %v", t.Name(), partition,
 								seqCur, seqEnds[partition], err)
 							return -1
 						}
@@ -324,10 +323,10 @@ func (t *FilesFeed) Start() error {
 					err = dest.DataUpdate(partition, pathBuf, seqCur,
 						jbuf, 0, DEST_EXTRAS_TYPE_NIL, nil)
 					if err != nil {
-						log.Printf("feed_files: DataUpdate,"+
+						log.Warnf("feed_files: DataUpdate,"+
 							" name: %s, path: %s, partition: %s,"+
-							" seqCur: %d, err: %v",
-							t.Name(), path, partition, seqCur, err)
+							" seqCur: %d, err: %v", t.Name(), path,
+							partition, seqCur, err)
 						return -1
 					}
 

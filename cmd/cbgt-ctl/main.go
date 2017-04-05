@@ -51,7 +51,6 @@ func main() {
 	cfg, err := cmd.MainCfgClient(path.Base(os.Args[0]), flags.CfgConnect)
 	if err != nil {
 		log.Fatalf("%v", err)
-		return
 	}
 
 	if flags.IndexTypes != "" {
@@ -86,7 +85,6 @@ func main() {
 			flags.DryRun, flags.Verbose, nil)
 		if err != nil {
 			log.Fatalf("main: RunRebalance, err: %v", err)
-			return
 		}
 	}
 
@@ -96,7 +94,6 @@ func main() {
 		flags.Server, options, nodesToRemove, flags.DryRun, nil)
 	if err != nil {
 		log.Fatalf("main: PlannerSteps, err: %v", err)
-		return
 	}
 
 	// ------------------------------------------------
@@ -112,7 +109,6 @@ func main() {
 		})
 		if err != nil {
 			log.Fatalf("main: StartCtl, err: %v", err)
-			return
 		}
 
 		if steps["service"] {

@@ -126,7 +126,7 @@ func (m *MonitorCluster) run() {
 			rc := rest.RESTCfg{}
 			err := json.Unmarshal(cfgBytes, &rc)
 			if err != nil {
-				log.Printf("run: json.Unmarshal, cfgBytes: %q, err: %v",
+				log.Warnf("run: json.Unmarshal, cfgBytes: %q, err: %v",
 					cfgBytes, err)
 				continue
 			}

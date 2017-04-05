@@ -131,7 +131,7 @@ func (mgr *Manager) PlannerLoop() {
 				atomic.AddUint64(&mgr.stats.TotPlannerKickStart, 1)
 				changed, err2 := mgr.PlannerOnce(m.msg)
 				if err2 != nil {
-					log.Printf("planner: PlannerOnce, err: %v", err2)
+					log.Warnf("planner: PlannerOnce, err: %v", err2)
 					atomic.AddUint64(&mgr.stats.TotPlannerKickErr, 1)
 					// Keep looping as perhaps it's a transient issue.
 				} else {
@@ -461,7 +461,7 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		planPIndexesForIndex, err2 := SplitIndexDefIntoPlanPIndexes(
 			indexDef, server, options, planPIndexes)
 		if err2 != nil {
-			log.Printf("planner: could not SplitIndexDefIntoPlanPIndexes,"+
+			log.Warnf("planner: could not SplitIndexDefIntoPlanPIndexes,"+
 				" indexDef.Name: %s, server: %s, err: %v",
 				indexDef.Name, server, err2)
 			continue // Keep planning the other IndexDefs.

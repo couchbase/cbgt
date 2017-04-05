@@ -451,7 +451,7 @@ func (mgr *Manager) LoadDataDir() error {
 		log.Printf("manager: opening pindex path: %s", path)
 		pindex, err := OpenPIndex(mgr, path)
 		if err != nil {
-			log.Printf("manager: could not open pindex path: %s, err: %v",
+			log.Warnf("manager: could not open pindex path: %s, err: %v",
 				path, err)
 			continue
 		}

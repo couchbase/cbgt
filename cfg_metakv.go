@@ -338,7 +338,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 	curEntry := c.splitEntries[key]
 
 	if cas != 0 && cas != curEntry.cas {
-		log.Printf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
+		log.Warnf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
 			key, cas, curEntry.cas)
 
 		return 0, &CfgCASError{}

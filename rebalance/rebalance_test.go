@@ -218,7 +218,7 @@ func TestRebalance(t *testing.T) {
 			if progress.Error != nil {
 				err = progress.Error
 
-				log.Printf("saw progress error: %#v\n", progress)
+				log.Warnf("saw progress error: %#v\n", progress)
 			}
 		}
 

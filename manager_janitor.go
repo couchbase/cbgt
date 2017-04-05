@@ -90,7 +90,7 @@ func (mgr *Manager) JanitorLoop() {
 				if err != nil {
 					// Keep looping as perhaps it's a transient issue.
 					// TODO: Perhaps need a rescheduled janitor kick.
-					log.Printf("janitor: JanitorOnce, err: %v", err)
+					log.Warnf("janitor: JanitorOnce, err: %v", err)
 					atomic.AddUint64(&mgr.stats.TotJanitorKickErr, 1)
 				} else {
 					atomic.AddUint64(&mgr.stats.TotJanitorKickOk, 1)

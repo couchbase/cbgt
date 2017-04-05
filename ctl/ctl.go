@@ -245,7 +245,7 @@ func (ctl *Ctl) run() {
 
 		indexDefs, _, err2 := cbgt.CfgGetIndexDefs(ctl.cfg)
 		if err2 != nil {
-			log.Printf("ctl: kickIndexDefs, kind: %s, CfgGetIndexDefs,"+
+			log.Warnf("ctl: kickIndexDefs, kind: %s, CfgGetIndexDefs,"+
 				" err: %v", kind, err2)
 			return err2
 		}
@@ -254,7 +254,7 @@ func (ctl *Ctl) run() {
 			!reflect.DeepEqual(lastIndexDefs, indexDefs) {
 			err = ctl.IndexDefsChanged()
 			if err != nil {
-				log.Printf("ctl: kickIndexDefs, kind: %s, IndexDefsChanged,"+
+				log.Warnf("ctl: kickIndexDefs, kind: %s, IndexDefsChanged,"+
 					" err: %v", kind, err)
 			}
 		}
@@ -604,7 +604,7 @@ func (ctl *Ctl) startCtlLOCKED(
 		nodesToRemove, err :=
 			ctl.waitForWantedNodes(memberNodeUUIDs, ctlStopCh)
 		if err != nil {
-			log.Printf("ctl: waitForWantedNodes, err: %v", err)
+			log.Warnf("ctl: waitForWantedNodes, err: %v", err)
 			ctlErrs = append(ctlErrs, err)
 			return
 		}
@@ -622,7 +622,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				indexDefsStart, err2 :=
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err2 != nil {
-					log.Printf("ctl: PlannerGetIndexDefs, err: %v", err2)
+					log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err2)
 
 					ctlErrs = append(ctlErrs, err2)
 					return
@@ -644,7 +644,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						HttpGet:       httpGetWithAuth,
 					})
 				if err != nil {
-					log.Printf("ctl: StartRebalance, err: %v", err)
+					log.Warnf("ctl: StartRebalance, err: %v", err)
 
 					ctlErrs = append(ctlErrs, err)
 					return
@@ -682,7 +682,7 @@ func (ctl *Ctl) startCtlLOCKED(
 
 					err = rebalance.ReportProgress(ctl.r, progressToString)
 					if err != nil {
-						log.Printf("ctl: ReportProgress, err: %v", err)
+						log.Warnf("ctl: ReportProgress, err: %v", err)
 						progressDoneCh <- err
 					}
 				}()
@@ -733,7 +733,7 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctl.server, ctl.optionsMgr, nodesToRemove,
 			ctl.optionsCtl.DryRun, nil)
 		if err != nil {
-			log.Printf("ctl: PlannerSteps, err: %v", err)
+			log.Warnf("ctl: PlannerSteps, err: %v", err)
 			ctlErrs = append(ctlErrs, err)
 		}
 	}()
