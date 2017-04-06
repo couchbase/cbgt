@@ -300,6 +300,7 @@ func (ctl *Ctl) run() {
 				}
 				ctl.m.Lock()
 				ctl.memberNodes = memberNodes
+				ctl.incRevNumLOCKED()
 				ctl.m.Unlock()
 			}
 		}
