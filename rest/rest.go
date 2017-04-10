@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 	"strconv"
 	"strings"
 	"sync"
@@ -621,6 +622,14 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
+	handle("/api/runtime/trace", "POST",
+		http.HandlerFunc(RuntimeTrace),
+		map[string]string{
+			"_category":          "Node|Node diagnostics",
+			"_about":             `Requests the node to go trace the program.`,
+			"version introduced": "5.0.0",
+		})
+
 	// TODO: If we ever implement cluster-wide index stats, we should
 	// have it under /api/index/{indexName}/stats GET endpoint.
 	//
@@ -740,6 +749,42 @@ func RESTGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 
 func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 	runtime.GC()
+}
+
+// RuntimeTrace starts a program trace
+//		curl -X POST http://127.0.0.1:9200/api/runtime/trace -d secs=5
+// To analyze a profiling...
+//		go tool trace run-program.trace
+func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
+	secs, err := strconv.Atoi(r.FormValue("secs"))
+	if err != nil || secs <= 0 {
+		http.Error(w, "incorrect or missing secs parameter", 400)
+		return
+	}
+	fname := "./run-program.trace"
+	os.Remove(fname)
+	f, err := os.Create(fname)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("runtimeTrace:"+
+			" couldn't create file: %s, err: %v",
+			fname, err), 500)
+		return
+	}
+	log.Printf("runtimeTrace: start, file: %s", fname)
+	err = trace.Start(f)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("runtimeTrace:"+
+			" couldn't start program trace, file: %s, err: %v",
+			fname, err), 500)
+		return
+	}
+	go func() {
+		time.Sleep(time.Duration(secs) * time.Second)
+		trace.Stop()
+		f.Close()
+		log.Printf("runtimeTrace: end, file: %s", fname)
+	}()
+	w.WriteHeader(204)
 }
 
 // To start a cpu profiling...
