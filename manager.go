@@ -58,13 +58,14 @@ type Manager struct {
 	server    string // The default datasource that will be indexed.
 	stopCh    chan struct{}
 
-	m         sync.Mutex // Protects the fields that follow.
-	options   map[string]string
-	feeds     map[string]Feed    // Key is Feed.Name().
-	pindexes  map[string]*PIndex // Key is PIndex.Name().
-	plannerCh chan *workReq      // Kicks planner that there's more work.
-	janitorCh chan *workReq      // Kicks janitor that there's more work.
-	meh       ManagerEventHandlers
+	m               sync.Mutex // Protects the fields that follow.
+	options         map[string]string
+	feeds           map[string]Feed    // Key is Feed.Name().
+	pindexes        map[string]*PIndex // Key is PIndex.Name().
+	bootingPIndexes map[string]bool    // booting flag
+	plannerCh       chan *workReq      // Kicks planner that there's more work.
+	janitorCh       chan *workReq      // Kicks janitor that there's more work.
+	meh             ManagerEventHandlers
 
 	lastNodeDefs map[string]*NodeDefs
 
@@ -177,26 +178,27 @@ func NewManagerEx(version string, cfg Cfg, uuid string, tags []string,
 	}
 
 	return &Manager{
-		startTime: time.Now(),
-		version:   version,
-		cfg:       cfg,
-		uuid:      uuid,
-		tags:      tags,
-		tagsMap:   StringsToMap(tags),
-		container: container,
-		weight:    weight,
-		extras:    extras,
-		bindHttp:  bindHttp, // TODO: Need FQDN:port instead of ":8095".
-		dataDir:   dataDir,
-		server:    server,
-		stopCh:    make(chan struct{}),
-		options:   options,
-		feeds:     make(map[string]Feed),
-		pindexes:  make(map[string]*PIndex),
-		plannerCh: make(chan *workReq),
-		janitorCh: make(chan *workReq),
-		meh:       meh,
-		events:    list.New(),
+		startTime:       time.Now(),
+		version:         version,
+		cfg:             cfg,
+		uuid:            uuid,
+		tags:            tags,
+		tagsMap:         StringsToMap(tags),
+		container:       container,
+		weight:          weight,
+		extras:          extras,
+		bindHttp:        bindHttp, // TODO: Need FQDN:port instead of ":8095".
+		dataDir:         dataDir,
+		server:          server,
+		stopCh:          make(chan struct{}),
+		options:         options,
+		feeds:           make(map[string]Feed),
+		pindexes:        make(map[string]*PIndex),
+		bootingPIndexes: make(map[string]bool),
+		plannerCh:       make(chan *workReq),
+		janitorCh:       make(chan *workReq),
+		meh:             meh,
+		events:          list.New(),
 
 		lastNodeDefs: make(map[string]*NodeDefs),
 	}
@@ -217,15 +219,11 @@ func (mgr *Manager) Start(register string) error {
 
 	if mgr.tagsMap == nil || mgr.tagsMap["pindex"] {
 		mldd := mgr.options["managerLoadDataDir"]
-		if mldd == "sync" || mldd == "" {
+		if mldd == "sync" || mldd == "async" || mldd == "" {
 			err := mgr.LoadDataDir()
 			if err != nil {
 				return err
 			}
-		} else if mldd == "async" {
-			go func() {
-				mgr.janitorCh <- &workReq{op: JANITOR_LOAD_DATA_DIR}
-			}()
 		}
 	}
 
@@ -429,36 +427,99 @@ func (mgr *Manager) RemoveNodeDef(kind string) error {
 	return nil
 }
 
+// bootingPIndexes maintains the loading status of pindexes
+// during the loadDataDir operation. An entry in bootingPIndexes
+// indicates that the pindex is booting.
+// bootingPIndex returns true if the pindex loading is in progress
+func (mgr *Manager) bootingPIndex(pindex string) bool {
+	mgr.m.Lock()
+	rv := mgr.bootingPIndexes[pindex]
+	mgr.m.Unlock()
+	return rv
+}
+
+// update the booting status and returns whether the update was success or not
+func (mgr *Manager) updateBootingStatus(pindex string, status bool) bool {
+	if pindex != "" {
+		mgr.m.Lock()
+		defer mgr.m.Unlock()
+		if !status {
+			// booting completed
+			delete(mgr.bootingPIndexes, pindex)
+			return true
+		}
+		if _, exists := mgr.pindexes[pindex]; exists {
+			// already booted by Janitor, no status updates
+			return false
+		}
+		mgr.bootingPIndexes[pindex] = true
+	}
+	return true
+}
+
+type pindexLoadReq struct {
+	path, pindexName string
+}
+
 // ---------------------------------------------------------------
 
 // Walk the data dir and register pindexes for a Manager instance.
 func (mgr *Manager) LoadDataDir() error {
 	log.Printf("manager: loading dataDir...")
-
 	dirEntries, err := ioutil.ReadDir(mgr.dataDir)
 	if err != nil {
 		return fmt.Errorf("manager: could not read dataDir: %s, err: %v",
 			mgr.dataDir, err)
 	}
-
+	size := len(dirEntries)
+	openReqs := make(chan *pindexLoadReq, size)
+	nWorkers := getWorkerCount(size)
+	// spawn the openPIndex workers
+	for i := 0; i < nWorkers; i++ {
+		go func() {
+			for req := range openReqs {
+				// check whether pindex already loaded by the Janitor
+				// its possible after the first kick from a worker.
+				// if not loaded yet, then mark the pindex booting inprogress status
+				if !mgr.updateBootingStatus(req.pindexName, true) {
+					// 'p' already loaded
+					continue
+				}
+				// we have already validated the pindex paths, hence feeding directly
+				pindex, err := OpenPIndex(mgr, req.path)
+				if err != nil {
+					log.Printf("manager: could not open pindex path: %s, err: %v",
+						req.path, err)
+				} else {
+					mgr.registerPIndex(pindex)
+					// kick the janitor only in case of successful pindex load
+					// to complete the boot up ceremony like feed hook ups.
+					// but for a failure, we would like to depend on the
+					// usual healing power of JanitorOnce loop.
+					// Note: The moment first work kick happens, then its the Janitor
+					// who handles the further loading of pindexes.
+					mgr.janitorCh <- &workReq{op: WORK_KICK}
+				}
+				// mark the pindex booting complete status
+				mgr.updateBootingStatus(req.pindexName, false)
+			}
+		}()
+	}
+	// feed the openPIndex workers with pindex paths
 	for _, dirInfo := range dirEntries {
 		path := mgr.dataDir + string(os.PathSeparator) + dirInfo.Name()
-		_, ok := mgr.ParsePIndexPath(path)
+		// validate the pindex path here, if valid then
+		// send to workers for further processing
+		name, ok := mgr.ParsePIndexPath(path)
 		if !ok {
-			continue // Skip the entry that doesn't match the naming pattern.
-		}
-
-		log.Printf("manager: opening pindex path: %s", path)
-		pindex, err := OpenPIndex(mgr, path)
-		if err != nil {
-			log.Warnf("manager: could not open pindex path: %s, err: %v",
-				path, err)
+			// Skip the entry that doesn't match the naming pattern.
 			continue
 		}
-
-		mgr.registerPIndex(pindex)
+		openReqs <- &pindexLoadReq{path: path, pindexName: name}
 	}
+	close(openReqs)
 
+	// leave the pindex loading task to the async workers and return here
 	log.Printf("manager: loading dataDir... done")
 	return nil
 }

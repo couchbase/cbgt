@@ -11,6 +11,8 @@
 
 package cbgt
 
+import "runtime"
+
 const WORK_NOOP = ""
 const WORK_KICK = "kick"
 
@@ -29,4 +31,12 @@ func syncWorkReq(ch chan *workReq, op, msg string, obj interface{}) error {
 	resCh := make(chan error)
 	ch <- &workReq{op: op, msg: msg, obj: obj, resCh: resCh}
 	return <-resCh
+}
+
+func getWorkerCount(itemCount int) int {
+	ncpu := runtime.NumCPU()
+	if itemCount < ncpu {
+		return itemCount
+	}
+	return ncpu
 }

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -126,6 +127,86 @@ func (mgr *Manager) JanitorLoop() {
 	}
 }
 
+func (mgr *Manager) pindexesStop(removePIndexes []*PIndex) []error {
+	var wg sync.WaitGroup
+	size := len(removePIndexes)
+	requestCh := make(chan *PIndex, size)
+	responseCh := make(chan error, size)
+	nWorkers := getWorkerCount(size)
+	// spawn the stop PIndex workers
+	for i := 0; i < nWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			for pi := range requestCh {
+				// check if the loadDataDir is still loading this pindex, if so
+				// leave that to heal in subsequent Janitor loop?
+				if mgr.bootingPIndex(pi.Name) {
+					log.Printf("janitor: pindexesStop skipping stopPIndex,"+
+						" pindex: %s", pi.Name)
+					continue
+				}
+				err := mgr.stopPIndex(pi, true)
+				if err != nil {
+					responseCh <- fmt.Errorf("janitor: removing pindex: %s, err: %v",
+						pi.Name, err)
+				}
+			}
+			wg.Done()
+		}()
+	}
+	// feed the workers with PIndex to remove
+	for _, removePIndex := range removePIndexes {
+		requestCh <- removePIndex
+	}
+	close(requestCh)
+	wg.Wait()
+	close(responseCh)
+	var errs []error
+	for err := range responseCh {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
+func (mgr *Manager) pindexesStart(addPlanPIndexes []*PlanPIndex) []error {
+	var wg sync.WaitGroup
+	size := len(addPlanPIndexes)
+	requestCh := make(chan *PlanPIndex, size)
+	responseCh := make(chan error, size)
+	nWorkers := getWorkerCount(size)
+	// spawn the start PIndex workers
+	for i := 0; i < nWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			for pi := range requestCh {
+				// check if this pindex is already in booting
+				// by loadDataDir. If so just skip the processing here.
+				if mgr.bootingPIndex(pi.Name) {
+					continue
+				}
+				err := mgr.startPIndex(pi)
+				if err != nil {
+					responseCh <- fmt.Errorf("janitor: adding pindex: %s, err: %v",
+						pi.Name, err)
+				}
+			}
+			wg.Done()
+		}()
+	}
+	// feed the workers with planPIndexes
+	for _, addPlanPIndex := range addPlanPIndexes {
+		requestCh <- addPlanPIndex
+	}
+	close(requestCh)
+	wg.Wait()
+	close(responseCh)
+	var errs []error
+	for err := range responseCh {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
 // JanitorOnce is the main body of a JanitorLoop.
 func (mgr *Manager) JanitorOnce(reason string) error {
 	if mgr.cfg == nil { // Can occur during testing.
@@ -164,25 +245,14 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	var errs []error
 
 	// First, teardown pindexes that need to be removed.
-	for _, removePIndex := range removePIndexes {
-		log.Printf("janitor: removing pindex: %s", removePIndex.Name)
-		err = mgr.stopPIndex(removePIndex, true)
-		if err != nil {
-			errs = append(errs,
-				fmt.Errorf("janitor: removing pindex: %s, err: %v",
-					removePIndex.Name, err))
-		}
-	}
+	// batching the stop, aiming to expedite the
+	// whole JanitorOnce call
+	errs = append(errs, mgr.pindexesStop(removePIndexes)...)
+
 	// Then, (re-)create pindexes that we're missing.
-	for _, addPlanPIndex := range addPlanPIndexes {
-		log.Printf("janitor: adding pindex: %s", addPlanPIndex.Name)
-		err = mgr.startPIndex(addPlanPIndex)
-		if err != nil {
-			errs = append(errs,
-				fmt.Errorf("janitor: adding pindex: %s, err: %v",
-					addPlanPIndex.Name, err))
-		}
-	}
+	// batching the start, aiming to expedite the
+	// whole JanitorOnce call
+	errs = append(errs, mgr.pindexesStart(addPlanPIndexes)...)
 
 	var currFeeds map[string]Feed
 	currFeeds, currPIndexes = mgr.CurrentMaps()
