@@ -67,7 +67,9 @@ module.factory('expvar', function($http, $log) {
             dynamicDataPaths = this.dynamicDataPaths;
             dynamicDataKeys = this.dynamicDataKeys;
 
-            $http.get("/debug/vars").success(function(data) {
+            $http.get("/debug/vars").then(function(response) {
+                var data = response.data;
+
                 // lookup dynamic keys
                 for(var keyLookupName in dynamicDataPaths) {
                     keyPath = this.dynamicDataPaths[keyLookupName];
@@ -93,7 +95,7 @@ module.factory('expvar', function($http, $log) {
                     }
                     metricValues[metricName] = thisMetricValues;
                 }
-            }).error(function(data, status, headers, config) {
+            }, function(response) {
                 $log.info("error polling expvar");
             });
         },

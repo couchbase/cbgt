@@ -50,7 +50,8 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     }
 
     $http.get("/api/managerMeta").
-    success(function(data) {
+    then(function(response) {
+        var data = response.data;
         $scope.meta = data;
 
         if (!$scope.indexDef) {
@@ -131,7 +132,8 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
         var req = createQueryRequest();
         $http.post('/api/index/' + $scope.indexName + '/query', req).
-        success(function(data) {
+        then(function(response) {
+            var data = response.data;
             lastQueryIndex = $scope.indexName;
             lastQueryReq = req;
             lastQueryRes = JSON.stringify(data);
@@ -141,8 +143,9 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             } else {
                 $scope.processResults(data);
             }
-        }).
-        error(function(data, code) {
+        }, function(response) {
+            var data = response.data;
+            var code = response.code;
             $scope.errorMessageFull = data;
             awaitingResults = false
             if (data) {

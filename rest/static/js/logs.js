@@ -6,14 +6,14 @@ function LogsCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 	$scope.updateLogs = function() {
 		$scope.clearErrorMessage();
 		$scope.clearLogMessages();
-		$http.get('/api/log').success(function(data) {
+		$http.get('/api/log').then(function(response) {
+			var data = response.data;
 			for(var i in data.messages) {
 				$scope.logMessages += data.messages[i];
 			}
-      $scope.events = data.events;
-		}).
-		error(function(data, code) {
-			$scope.errorMessage = data;
+			$scope.events = data.events;
+		}, function(response) {
+			$scope.errorMessage = response.data;
 		});
 	};
 

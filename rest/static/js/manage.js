@@ -7,22 +7,22 @@ function ManageCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     $scope.managerKick = function(managerKickMsg) {
         $scope.resultManagerKick = null;
-        $http.post('/api/managerKick?msg=' + managerKickMsg).success(function(data) {
-            $scope.resultManagerKick = data.status;
-        }).
-        error(function(data, code) {
-            $scope.resultManagerKick = data.status;
+        $http.post('/api/managerKick?msg=' + managerKickMsg).then(function(response) {
+            $scope.resultManagerKick = response.data.status;
+        }, function(response) {
+            $scope.resultManagerKick = response.data;
         });
     };
 
     $scope.cfgGet = function() {
         $scope.resultCfg = null;
         $scope.resultCfgJSON = null;
-        $http.get('/api/cfg').success(function(data) {
+        $http.get('/api/cfg').then(function(response) {
+            var data = response.data;
             $scope.resultCfg = data;
             $scope.resultCfgJSON = JSON.stringify(data, undefined, 2);
-        }).
-        error(function(data, code) {
+        }, function(response) {
+            var data = response.data;
             $scope.resultCfg = data;
             $scope.resultCfgJSON = JSON.stringify(data, undefined, 2);
         });
@@ -30,12 +30,11 @@ function ManageCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     $scope.cfgRefresh = function(managerKickMsg) {
         $scope.resultCfgRefresh = null;
-        $http.post('/api/cfgRefresh').success(function(data) {
-            $scope.resultCfgRefresh = data.status;
+        $http.post('/api/cfgRefresh').then(function(response) {
+            $scope.resultCfgRefresh = response.data.status;
             $scope.cfgGet()
-        }).
-        error(function(data, code) {
-            $scope.resultCfgRefresh = data.status;
+        }, function(response) {
+            $scope.resultCfgRefresh = response.data.status;
         });
     };
 

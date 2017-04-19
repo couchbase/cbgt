@@ -13,7 +13,9 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.errorMessageFull = null;
 
     $scope.refreshIndexNames = function() {
-        $http.get('/api/index').success(function(data) {
+        $http.get('/api/index').then(function(response) {
+            var data = response.data;
+
             $scope.data = data;
 
             var indexNames = [];
@@ -33,9 +35,10 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
             $scope.indexNames = indexNames;
             $scope.indexNamesReady = true;
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
+        }, function(response) {
+            var data = response.data;
+
+            $scope.errorMessage = errorMessage(data, response.code);
             $scope.errorMessageFull = data;
         });
     };
@@ -49,12 +52,11 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.errorMessage = null;
         $scope.errorMessageFull = null;
 
-        $http.delete('/api/index/' + name).success(function(data) {
+        $http.delete('/api/index/' + name).then(function(response) {
             $scope.refreshIndexNames();
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+        }, function(response) {
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
     };
 
@@ -102,11 +104,13 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
 
     $scope.meta = null;
     $http.get('/api/managerMeta').
-    success(function(data) {
+    then(function(response) {
+        var data = response.data;
         var meta = $scope.meta = data;
 
         $http.get('/api/cfg').
-        success(function(data) {
+        then(function(response) {
+            var data = response.data;
             $scope.nodeDefsByUUID = {}
             $scope.nodeDefsByAddr = {}
             $scope.nodeAddrsArr = []
@@ -118,10 +122,9 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
             }
             $scope.nodeAddrsArr.sort();
             $scope.loadIndexDetails()
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+        }, function(response) {
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
 
         $scope.loadIndexDetails = function() {
@@ -129,7 +132,9 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
             $scope.errorMessageFull = null;
 
             $http.get('/api/index/' + $scope.indexName).
-            success(function(data) {
+            then(function(response) {
+                var data = response.data;
+
                 $scope.indexDef = data.indexDef
                 $scope.indexDefStr =
                     JSON.stringify(data.indexDef, undefined, 2);
@@ -206,10 +211,9 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
                         $scope, $http, $route, $routeParams,
                         $location, $log, $sce, $uibModal);
                 }
-            }).
-            error(function(data, code) {
-                $scope.errorMessage = errorMessage(data, code);
-                $scope.errorMessageFull = data;
+            }, function(response) {
+                $scope.errorMessage = errorMessage(response.data, response.code);
+                $scope.errorMessageFull = response.data;
             });
         };
     });
@@ -220,10 +224,9 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
         $scope.errorMessageFull = null;
 
         $http.get('/api/index/' + $scope.indexName + '/count').
-        success(function(data) {
-            $scope.indexDocCount = data.count;
-        }).
-        error(function(data, code) {
+        then(function(response) {
+            $scope.indexDocCount = response.data.count;
+        }, function(response) {
             $scope.indexDocCount = "..."
         });
     };
@@ -234,7 +237,9 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
         $scope.errorMessageFull = null;
 
         $http.get('/api/stats/index/' + $scope.indexName).
-        success(function(data) {
+        then(function(response) {
+            var data = response.data;
+
             $scope.statsRefresh = null;
             $scope.indexStats = data;
 
@@ -308,11 +313,10 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
             $scope.indexErrors = errors;
             $scope.indexStatsFlat = stats;
             $scope.indexStatsAgg = aggs;
-        }).
-        error(function(data, code) {
+        }, function(response) {
             $scope.statsRefresh = "error";
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
     };
 
@@ -329,12 +333,11 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
         $scope.errorMessageFull = null;
 
         $http.put('/api/index/' + $scope.indexName + "/doc/" + id, body).
-        success(function(data) {
+        then(function(response) {
             $scope.successMessage = "Indexed Document: " + id;
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+        }, function(response) {
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
     };
 
@@ -343,12 +346,11 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
         $scope.errorMessageFull = null;
 
         $http.delete('/api/index/' + $scope.indexName + "/" + id).
-        success(function(data) {
+        then(function(response) {
             $scope.successMessage = "Deleted Document: " + id;
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+        }, function(response) {
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
     };
 
@@ -361,12 +363,11 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
         }
 
         $http.post('/api/index/' + indexName + "/" +  what + "Control/" + op).
-        success(function(data) {
+        then(function(response) {
             $scope.loadIndexDetails();
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+        }, function(response) {
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
     };
 }
@@ -399,7 +400,8 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
     origIndexName = $routeParams.indexName;
 
     $http.get('/api/managerMeta').
-    success(function(data) {
+    then(function(response) {
+        var data = response.data;
         var meta = $scope.meta = data;
 
         $scope.newPlanParams =
@@ -457,7 +459,9 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
         if (origIndexName &&
             origIndexName.length > 0) {
             $http.get('/api/index/' + origIndexName).
-            success(function(data) {
+            then(function(response) {
+                var data = response.data;
+
                 $scope.newIndexName = data.indexDef.name;
                 if ($scope.isClone) {
                     $scope.newIndexName = data.indexDef.name + "-copy";
@@ -501,10 +505,9 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
                         $scope, $http, $route, $routeParams,
                         $location, $log, $sce, $uibModal);
                 }
-            }).
-            error(function(data, code) {
-                $scope.errorMessage = errorMessage(data, code);
-                $scope.errorMessageFull = data;
+            }, function(response) {
+                $scope.errorMessage = errorMessage(response.data, response.code);
+                $scope.errorMessageFull = response.data;
             })
         }
     });
@@ -637,12 +640,11 @@ function IndexNewCtrl($scope, $http, $route, $routeParams, $location, $log, $sce
         }
 
         $http.put('/api/index/' + indexName, rv.indexDef).
-        success(function(data) {
+        then(function(response) {
             $location.path('/indexes/' + indexName);
-        }).
-        error(function(data, code) {
-            $scope.errorMessage = errorMessage(data, code);
-            $scope.errorMessageFull = data;
+        }, function(response) {
+            $scope.errorMessage = errorMessage(response.data, response.code);
+            $scope.errorMessageFull = response.data;
         });
     };
 
