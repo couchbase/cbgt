@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/go-couchbase"
@@ -34,6 +35,61 @@ func init() {
 }
 
 var ErrCouchbaseMismatchedBucketUUID = fmt.Errorf("mismatched-couchbase-bucket-UUID")
+
+// ----------------------------------------------------------------
+
+type cbBucketMap struct {
+	// Mutex to serialize access to entries
+	m sync.Mutex
+	// Map of couchbase.Bucket instances by bucket <name>:<uuid>
+	entries map[string]*couchbase.Bucket
+}
+
+var cbBktMap *cbBucketMap
+
+// Fetches a couchbase bucket instance with the requested uuid,
+// if not found creates a new instance and stashes it in the map.
+func (cb *cbBucketMap) fetchCouchbaseBucket(name, uuid, params, server string,
+	options map[string]string) (*couchbase.Bucket, error) {
+	cb.m.Lock()
+	defer cb.m.Unlock()
+
+	key := name + ":" + uuid
+
+	_, exists := cb.entries[key]
+	if !exists {
+		bucket, err := CouchbaseBucket(name, uuid, params, server, options)
+		if err != nil {
+			return nil, err
+		}
+		cb.entries[key] = bucket
+	}
+
+	return cb.entries[key], nil
+}
+
+// Closes and removes the couchbase bucket instance with the uuid.
+func (cb *cbBucketMap) closeCouchbaseBucket(name, uuid string) {
+	cb.m.Lock()
+	defer cb.m.Unlock()
+
+	key := name + ":" + uuid
+
+	bucket, exists := cb.entries[key]
+	if exists {
+		bucket.Close()
+		delete(cb.entries, key)
+	}
+}
+
+func init() {
+	// Initialize cbBktMap
+	cbBktMap = &cbBucketMap{
+		entries: make(map[string]*couchbase.Bucket),
+	}
+}
+
+// ----------------------------------------------------------------
 
 // ParsePartitionsToVBucketIds is specific to couchbase
 // data-sources/feeds, converting a set of partition strings from a
@@ -90,13 +146,11 @@ func init() {
 func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (
 	partitions []string, err error) {
-	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-		serverIn, options)
+	bucket, err := cbBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
+		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
 	}
-
-	defer bucket.Close()
 
 	vbm := bucket.VBServerMap()
 	if vbm == nil {
@@ -212,8 +266,8 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
-	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-		serverIn, options)
+	bucket, err := cbBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
+		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
 	}
@@ -260,8 +314,6 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 		}
 	}
 
-	bucket.Close()
-
 	return rv, nil
 }
 
@@ -274,8 +326,8 @@ func CouchbaseStats(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string, statsKind string) (
 	map[string]interface{}, error) {
-	bucket, err := CouchbaseBucket(sourceName, sourceUUID, sourceParams,
-		serverIn, options)
+	bucket, err := cbBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
+		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +343,6 @@ func CouchbaseStats(sourceType, sourceName, sourceUUID,
 			}
 		}
 	}
-
-	bucket.Close()
 
 	rv := map[string]interface{}{
 		"aggStats":   aggStats,

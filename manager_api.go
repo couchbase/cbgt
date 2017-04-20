@@ -198,6 +198,9 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 			" indexName: %s", indexName)
 	}
 
+	// Close associated couchbase.Bucket instances
+	cbBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
+
 	indexDefs.UUID = NewUUID()
 	delete(indexDefs.IndexDefs, indexName)
 	indexDefs.ImplVersion = mgr.version
