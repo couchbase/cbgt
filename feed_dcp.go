@@ -513,6 +513,31 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	}, r.stats.TimerRollback)
 }
 
+func (r *DCPFeed) RollbackEx(vbucketId uint16, vBucketUUID uint64, rollbackSeq uint64) error {
+	return Timer(func() error {
+		partition, dest, err :=
+			VBucketIdToPartitionDest(r.pf, r.dests, vbucketId, nil)
+		if err != nil || r.checkStopAfter(partition) {
+			return err
+		}
+
+		opaqueValue, lastSeq, err := dest.OpaqueGet(partition)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("feed_dcp: rollback, name: %s: vbucketId: %d,"+
+			" rollbackSeq: %d, partition: %s, opaqueValue: %s, lastSeq: %d",
+			r.name, vbucketId, rollbackSeq,
+			partition, opaqueValue, lastSeq)
+
+		if destEx, ok := dest.(DestEx); ok {
+			return destEx.RollbackEx(partition, vBucketUUID, rollbackSeq)
+		}
+		return dest.Rollback(partition, rollbackSeq)
+	}, r.stats.TimerRollback)
+}
+
 // VerifyBucketNotExists returns true only if it's sure the bucket
 // does not exist anymore (including if UUID's no longer match).  A
 // rejected auth or connection failure, for example, results in false.

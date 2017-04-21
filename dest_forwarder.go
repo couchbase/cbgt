@@ -12,6 +12,7 @@
 package cbgt
 
 import (
+	"fmt"
 	"io"
 )
 
@@ -106,6 +107,20 @@ func (t *DestForwarder) Rollback(partition string, rollbackSeq uint64) error {
 	}
 
 	return dest.Rollback(partition, rollbackSeq)
+}
+
+func (t *DestForwarder) RollbackEx(partition string,
+	vBucketUUID uint64,
+	rollbackSeq uint64) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destEx, ok := dest.(DestEx); ok {
+		return destEx.RollbackEx(partition, vBucketUUID, rollbackSeq)
+	}
+	return fmt.Errorf("dest_forwarder: no DestEx implementation found for"+
+		" partition %s", partition)
 }
 
 func (t *DestForwarder) ConsistencyWait(partition, partitionUUID string,

@@ -174,6 +174,19 @@ func (t *PrimaryFeed) Rollback(partition string,
 	return dest.Rollback(partition, rollbackSeq)
 }
 
+func (t *PrimaryFeed) RollbackEx(partition string,
+	vBucketUUID uint64, rollbackSeq uint64) error {
+	dest, err := t.pf(partition, nil, t.dests)
+	if err != nil {
+		return fmt.Errorf("feed_primary: PrimaryFeed pf, err: %v", err)
+	}
+
+	if destEx, ok := dest.(DestEx); ok {
+		return destEx.RollbackEx(partition, vBucketUUID, rollbackSeq)
+	}
+	return dest.Rollback(partition, rollbackSeq)
+}
+
 func (t *PrimaryFeed) ConsistencyWait(partition, partitionUUID string,
 	consistencyLevel string,
 	consistencySeq uint64,

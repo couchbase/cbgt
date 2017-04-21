@@ -118,6 +118,13 @@ type DestEx interface {
 	DataDeleteEx(partition string, key []byte, seq uint64,
 		cas uint64,
 		extrasType DestExtrasType, req interface{}) error
+
+	// Invoked by when the datasource signals a rollback during dest
+	// initialization.  Note that both regular data and opaque data
+	// should be rolled back to at a maximum of the rollbackSeq. Of
+	// note, the DestEx is allowed to rollback even further, even all
+	// the way back to the start or to zero.
+	RollbackEx(partition string, partitionUUID uint64, rollbackSeq uint64) error
 }
 
 // DestExtrasType represents the encoding for the
