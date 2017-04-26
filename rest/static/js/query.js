@@ -55,8 +55,8 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.meta = data;
 
         if (!$scope.indexDef) {
-            $http.get('/api/index/' + $scope.indexName).success(function(data) {
-                $scope.indexDef = data.indexDef;
+            $http.get('/api/index/' + $scope.indexName).then(function(response) {
+                $scope.indexDef = response.data.indexDef;
                 initQueryHelp();
             })
         } else {
