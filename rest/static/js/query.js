@@ -85,25 +85,27 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         var v = {};
         try {
             v = JSON.parse($scope.consistencyVectors || "{}");
+        } catch(err) {
+            $scope.errorMessage = "consistency vectors: " + err.message;
         } finally {
         }
 
         timeout = parseInt($scope.timeout) || 0;
         if ($scope.consistencyLevel != "" || Object.keys(v).length > 0 || timeout != 0) {
-          req.ctl = {}
-          if ($scope.consistencyLevel != "") {
-            req.ctl.consistency = {}
-            req.ctl.consistency["level"] = $scope.consistencyLevel;
-          }
-          if (Object.keys(v).length > 0) {
-            if (req.ctl.consistency == null) {
-              req.ctl.consistency = {}
+            req.ctl = {}
+            if ($scope.consistencyLevel != "") {
+                req.ctl.consistency = {}
+                req.ctl.consistency["level"] = $scope.consistencyLevel;
             }
-            req.ctl.consistency["vectors"] = v
-          }
-          if (timeout != 0) {
-            req.ctl["timeout"] = timeout;
-          }
+            if (Object.keys(v).length > 0) {
+                if (req.ctl.consistency == null) {
+                    req.ctl.consistency = {}
+                }
+                req.ctl.consistency["vectors"] = v
+            }
+            if (timeout != 0) {
+                req.ctl["timeout"] = timeout;
+            }
         }
 
         return req;
