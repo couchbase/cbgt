@@ -603,7 +603,7 @@ func (m *CtlMgr) handleTaskProgress(taskProgress taskProgress) {
 					taskNext.ErrorMessage = taskNext.ErrorMessage + err.Error()
 				}
 
-				if !taskProgress.progressExists || len(taskProgress.errs) > 0 {
+				if len(taskProgress.errs) > 0 {
 					taskNext.Status = service.TaskStatusFailed
 				}
 

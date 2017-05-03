@@ -600,10 +600,22 @@ func (ctl *Ctl) startCtlLOCKED(
 			close(ctlDoneCh)
 		}()
 
+		indexDefsStart, err :=
+			cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
+		if err != nil {
+			log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err)
+
+			ctlErrs = append(ctlErrs, err)
+			return
+		}
+
 		// 1) Monitor cfg to wait for wanted nodes to appear.
-		//
-		nodesToRemove, err :=
-			ctl.waitForWantedNodes(memberNodeUUIDs, ctlStopCh)
+		ignoreWaitTimeOut := false
+		if indexDefsStart == nil ||
+			len(indexDefsStart.IndexDefs) == 0 {
+			ignoreWaitTimeOut = true
+		}
+		nodesToRemove, err := ctl.waitForWantedNodes(memberNodeUUIDs, ignoreWaitTimeOut, ctlStopCh)
 		if err != nil {
 			log.Warnf("ctl: waitForWantedNodes, err: %v", err)
 			ctlErrs = append(ctlErrs, err)
@@ -624,7 +636,6 @@ func (ctl *Ctl) startCtlLOCKED(
 					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
 				if err2 != nil {
 					log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err2)
-
 					ctlErrs = append(ctlErrs, err2)
 					return
 				}
@@ -746,24 +757,27 @@ func (ctl *Ctl) startCtlLOCKED(
 
 // Waits for actual nodeDefsWanted in the cfg to be equal to or a
 // superset of wantedNodes, and returns the nodesToRemove.
-func (ctl *Ctl) waitForWantedNodes(wantedNodes []string,
+func (ctl *Ctl) waitForWantedNodes(wantedNodes []string, ignoreWaitTimeOut bool,
 	cancelCh <-chan struct{}) ([]string, error) {
 	secs := ctl.optionsCtl.WaitForMemberNodes
 	if secs <= 0 {
-		secs = 30
+		if ignoreWaitTimeOut {
+			secs = 5
+		} else {
+			secs = 30
+		}
 	}
 
-	return WaitForWantedNodes(ctl.cfg, wantedNodes, cancelCh, secs)
+	return WaitForWantedNodes(ctl.cfg, wantedNodes, cancelCh, secs, ignoreWaitTimeOut)
 }
 
 // WaitForWantedNodes blocks until the nodeDefsWanted in the cfg is
 // equal to or a superset of the provided wantedNodes, and returns the
 // "nodes to remove" (actualWantedNodes SET-DIFFERENCE wantedNodes).
 func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
-	cancelCh <-chan struct{}, secs int) (
+	cancelCh <-chan struct{}, secs int, ignoreWaitTimeOut bool) (
 	[]string, error) {
 	var nodeDefWantedUUIDs []string
-
 	for i := 0; i < secs; i++ {
 		select {
 		case <-cancelCh:
@@ -781,7 +795,6 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
 		for _, nodeDef := range nodeDefsWanted.NodeDefs {
 			nodeDefWantedUUIDs = append(nodeDefWantedUUIDs, nodeDef.UUID)
 		}
-
 		if len(cbgt.StringsRemoveStrings(wantedNodes, nodeDefWantedUUIDs)) <= 0 {
 			return cbgt.StringsRemoveStrings(nodeDefWantedUUIDs, wantedNodes), nil
 		}
@@ -789,6 +802,9 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
 		time.Sleep(1 * time.Second)
 	}
 
+	if ignoreWaitTimeOut {
+		return nil, nil
+	}
 	return nil, fmt.Errorf("ctl: WaitForWantedNodes"+
 		" could not attain wantedNodes: %#v,"+
 		" only reached nodeDefWantedUUIDs: %#v",
