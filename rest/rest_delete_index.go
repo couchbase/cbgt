@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gorilla/mux"
-
 	"github.com/couchbase/cbgt"
 )
 
@@ -37,7 +35,7 @@ func (h *DeleteIndexHandler) RESTOpts(opts map[string]string) {
 
 func (h *DeleteIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	indexName := mux.Vars(req)["indexName"]
+	indexName := IndexNameLookup(req)
 	if indexName == "" {
 		ShowError(w, req, "rest_delete_index: index name is required", 400)
 		return

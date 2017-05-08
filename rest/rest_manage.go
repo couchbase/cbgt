@@ -18,8 +18,6 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/gorilla/mux"
-
 	"github.com/couchbase/cbgt"
 )
 
@@ -43,7 +41,7 @@ var statsNameSuffix = []byte("\":")
 
 func (h *StatsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	err := WriteManagerStatsJSON(h.mgr, w, mux.Vars(req)["indexName"])
+	err := WriteManagerStatsJSON(h.mgr, w, IndexNameLookup(req))
 	if err != nil {
 		ShowError(w, req, err.Error(), 500)
 	}

@@ -19,8 +19,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gorilla/mux"
-
 	"github.com/couchbase/cbgt"
 )
 
@@ -125,7 +123,7 @@ func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
 func (h *CreateIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	// TODO: Need more input validation (check source UUID's, etc).
-	indexName := mux.Vars(req)["indexName"]
+	indexName := IndexNameLookup(req)
 	if indexName == "" {
 		ShowError(w, req, "rest_create_index: index name is required", 400)
 		return
