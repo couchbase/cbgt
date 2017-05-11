@@ -275,11 +275,15 @@ func (h *ManagerHandler) ServeHTTP(
 
 // ManagerOptions is a REST handler that sets the managerOptions
 type ManagerOptions struct {
-	mgr *cbgt.Manager
+	mgr      *cbgt.Manager
+	Validate func(opt map[string]string) (map[string]string, error)
 }
 
 func NewManagerOptions(mgr *cbgt.Manager) *ManagerOptions {
-	return &ManagerOptions{mgr: mgr}
+	return &ManagerOptions{
+		mgr:      mgr,
+		Validate: nil,
+	}
 }
 
 func (h *ManagerOptions) ServeHTTP(
@@ -303,6 +307,15 @@ func (h *ManagerOptions) ServeHTTP(
 			" error in unmarshalling err: %v", err)
 		http.Error(w, msg, 400)
 		return
+	}
+
+	if h.Validate != nil {
+		newOptions, err = h.Validate(newOptions)
+		if err != nil {
+			msg := fmt.Sprintf("rest_manage: err: %v", err)
+			http.Error(w, msg, 400)
+			return
+		}
 	}
 
 	h.mgr.SetOptions(newOptions)
