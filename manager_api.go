@@ -14,6 +14,7 @@ package cbgt
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"sync/atomic"
 
 	log "github.com/couchbase/clog"
@@ -62,6 +63,13 @@ func (mgr *Manager) CreateIndex(sourceType,
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			sourceType, sourceName, sourceUUID, err)
+	}
+
+	// Validate maxReplicasAllowed here.
+	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
+	if planParams.NumReplicas < 0 || planParams.NumReplicas > maxReplicasAllowed {
+		return fmt.Errorf("manager_api: CreateIndex, maxReplicasAllowed:"+
+			" '%v', but request for '%v'", maxReplicasAllowed, planParams.NumReplicas)
 	}
 
 	var indexDef *IndexDef
