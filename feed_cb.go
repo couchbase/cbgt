@@ -152,6 +152,16 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 		return nil, err
 	}
 
+	// Validate bucketTypesAllowed here.
+	bucketTypesAllowed := "membase"
+	if options["bucketTypesAllowed"] != "" {
+		bucketTypesAllowed = options["bucketTypesAllowed"]
+	}
+	if !strings.Contains(bucketTypesAllowed, bucket.Type) {
+		return nil, fmt.Errorf("bucketTypesAllowed: '%v', but request for '%v'",
+			bucketTypesAllowed, bucket.Type)
+	}
+
 	vbm := bucket.VBServerMap()
 	if vbm == nil {
 		return nil, fmt.Errorf("feed_cb: CouchbasePartitions"+
