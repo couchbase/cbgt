@@ -1152,3 +1152,52 @@ func TestUnregisterNodes(t *testing.T) {
 		t.Errorf("expected no err when removing already removed uuid")
 	}
 }
+
+func TestManagerRestartPIndex(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+	meh := &TestMEH{}
+	m := NewManager(VERSION, nil, NewUUID(),
+		nil, "", 1, "", "", emptyDir, "", meh)
+	if meh.lastPIndex != nil || meh.lastCall != "" {
+		t.Errorf("expected no callback events to meh")
+	}
+	m.Start("wanted")
+	sourceParams := ""
+	p, err := NewPIndex(m, "p0", "uuid", "blackhole",
+		"indexName", "indexUUID", "",
+		"sourceType", "sourceName", "sourceUUID",
+		sourceParams, "sourcePartitions",
+		m.PIndexPath("p0"))
+	if err != nil {
+		t.Errorf("error creating pindex: %v", err)
+	}
+	m.registerPIndex(p)
+	feeds, pindexes := m.CurrentMaps()
+	if feeds == nil || pindexes == nil {
+		t.Errorf("expected current feeds & pindexes to be non-nil")
+	}
+	if len(feeds) != 0 || len(pindexes) != 1 {
+		t.Errorf("wrong counts for current feeds (%d) & pindexes (%d)",
+			len(feeds), len(pindexes))
+	}
+	req := &pindexRestartReq{pindex: p, planPIndexName: p.Name + "_temp"}
+	err = m.restartPIndex(req)
+	if err != nil {
+		t.Errorf("expected rebootPIndex() to work")
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if feeds == nil || pindexes == nil {
+		t.Errorf("expected current feeds & pindexes to be non-nil")
+	}
+	if len(feeds) != 0 || len(pindexes) != 1 {
+		t.Errorf("wrong counts for current feeds (%d) & pindexes (%d)",
+			len(feeds), len(pindexes))
+	}
+	if meh.lastPIndex != pindexes[p.Name+"_temp"] || meh.lastCall != "OnRegisterPIndex" {
+		t.Errorf("meh callbacks were wrong")
+	}
+	if m.stats.TotJanitorRestartPIndex != 1 {
+		t.Errorf("janitor should have restarted the pindex once")
+	}
+}

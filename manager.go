@@ -138,6 +138,7 @@ type ManagerStats struct {
 	TotJanitorKickOk            uint64
 	TotJanitorClosePIndex       uint64
 	TotJanitorRemovePIndex      uint64
+	TotJanitorRestartPIndex     uint64
 	TotJanitorLoadDataDir       uint64
 	TotJanitorUnknownErr        uint64
 	TotJanitorSubscriptionEvent uint64

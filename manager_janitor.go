@@ -13,7 +13,9 @@ package cbgt
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -207,6 +209,126 @@ func (mgr *Manager) pindexesStart(addPlanPIndexes []*PlanPIndex) []error {
 	return errs
 }
 
+func cleanDir(path string) {
+	if path != "" {
+		_ = os.RemoveAll(path)
+	}
+}
+
+func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
+	if req == nil {
+		return nil
+	}
+	// check if the loadDataDir is still loading this pindex, if so
+	// leave that to heal in subsequent Janitor loops.
+	if mgr.bootingPIndex(req.pindex.Name) {
+		log.Printf("janitor: restartPIndex skipping restart for "+
+			" pindex: %s", req.pindex.Name)
+		return nil
+	}
+	// stop the pindex first
+	err := mgr.stopPIndex(req.pindex, false)
+	if err != nil {
+		cleanDir(req.pindex.Path)
+		return fmt.Errorf("janitor: restartPIndex stopping "+
+			" pindex: %s, err: %v", req.pindex.Name, err)
+	}
+	// rename the pindex folder and name as per the new plan
+	newPath := mgr.PIndexPath(req.planPIndexName)
+	err = os.Rename(req.pindex.Path, newPath)
+	if err != nil {
+		cleanDir(req.pindex.Path)
+		cleanDir(newPath)
+		return fmt.Errorf("janitor: restartPIndex"+
+			" updating pindex: %s path: %s failed, err: %v",
+			req.pindex.Name, newPath, err)
+	}
+
+	pi := req.pindex.Clone()
+	pi.Name = req.planPIndexName
+	pi.Path = newPath
+	// update the new indexdef param changes
+	buf, err := json.Marshal(pi)
+	if err != nil {
+		cleanDir(newPath)
+		return fmt.Errorf("janitor: restartPIndex"+
+			" Marshal pindex: %s, err: %v", pi.Name, err)
+
+	}
+	err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
+		PINDEX_META_FILENAME, buf, 0600)
+	if err != nil {
+		cleanDir(pi.Path)
+		return fmt.Errorf("janitor: restartPIndex could not save "+
+			"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err)
+	}
+	// open the pindex and register
+	pindex, err := OpenPIndex(mgr, pi.Path)
+	if err != nil {
+		cleanDir(req.pindex.Path)
+		return fmt.Errorf("janitor: restartPIndex could not open "+
+			" pindex path: %s, err: %v", pi.Path, err)
+	}
+	err = mgr.registerPIndex(pindex)
+	if err != nil {
+		cleanDir(pindex.Path)
+		return fmt.Errorf("janitor: restartPIndex failed to "+
+			"register pindex: %s, err: %v", pindex.Name, err)
+	}
+	atomic.AddUint64(&mgr.stats.TotJanitorRestartPIndex, 1)
+	return nil
+}
+
+type pindexRestartReq struct {
+	pindex         *PIndex
+	planPIndexName string
+}
+
+type pindexRestartErr struct {
+	err    error
+	pindex *PIndex
+}
+
+func (re *pindexRestartErr) Error() string {
+	return re.err.Error()
+}
+
+func (mgr *Manager) pindexesRestart(
+	restartRequests []*pindexRestartReq) []pindexRestartErr {
+	var wg sync.WaitGroup
+	size := len(restartRequests)
+	requestCh := make(chan *pindexRestartReq, size)
+	responseCh := make(chan *pindexRestartErr, size)
+	nWorkers := getWorkerCount(size)
+	// spawn the restart PIndex workers
+	for i := 0; i < nWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			for req := range requestCh {
+				err := mgr.restartPIndex(req)
+				if err != nil {
+					responseCh <- &pindexRestartErr{err: err,
+						pindex: req.pindex}
+				}
+			}
+			wg.Done()
+		}()
+	}
+	// feed the workers with restartRequests
+	for _, restartReq := range restartRequests {
+		requestCh <- restartReq
+	}
+	close(requestCh)
+	wg.Wait()
+	close(responseCh)
+	var errs []pindexRestartErr
+	for resp := range responseCh {
+		log.Printf("janitor: restartPIndex err: %v", resp.err)
+		errs = append(errs, *resp)
+	}
+	return errs
+}
+
 // JanitorOnce is the main body of a JanitorLoop.
 func (mgr *Manager) JanitorOnce(reason string) error {
 	if mgr.cfg == nil { // Can occur during testing.
@@ -233,26 +355,39 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	addPlanPIndexes, removePIndexes :=
 		CalcPIndexesDelta(mgr.uuid, currPIndexes, planPIndexes)
 
-	log.Printf("janitor: pindexes to remove: %d", len(removePIndexes))
-	for _, pi := range removePIndexes {
+	// check for any pindexes for restart and get classified lists of
+	// pindexes to add, remove and restart
+	planPIndexesToAdd, pindexesToRemove, pindexesToRestart :=
+		classifyAddRemoveRestartPIndexes(addPlanPIndexes, removePIndexes)
+	log.Printf("janitor: pindexes to remove: %d", len(pindexesToRemove))
+	for _, pi := range pindexesToRemove {
 		log.Printf("  %+v", pi)
 	}
-	log.Printf("janitor: pindexes to add: %d", len(addPlanPIndexes))
-	for _, ppi := range addPlanPIndexes {
+	log.Printf("janitor: pindexes to add: %d", len(planPIndexesToAdd))
+	for _, ppi := range planPIndexesToAdd {
 		log.Printf("  %+v", ppi)
 	}
-
+	log.Printf("janitor: pindexes to restart: %d", len(pindexesToRestart))
+	for _, pi := range pindexesToRestart {
+		log.Printf(" %+v", pi)
+	}
+	// restart any of the pindexes so that they can
+	// adopt the updated indexDef parameters, ex: storeOptions
+	restartErrs := mgr.pindexesRestart(pindexesToRestart)
+	// upon any restart errors, bring back the addPlanPIndex for
+	// starting the pindex afresh
+	if len(restartErrs) > 0 {
+		planPIndexesToAdd = append(planPIndexesToAdd, elicitAddPlanPIndexes(addPlanPIndexes, restartErrs)...)
+	}
 	var errs []error
-
 	// First, teardown pindexes that need to be removed.
 	// batching the stop, aiming to expedite the
 	// whole JanitorOnce call
-	errs = append(errs, mgr.pindexesStop(removePIndexes)...)
-
+	errs = append(errs, mgr.pindexesStop(pindexesToRemove)...)
 	// Then, (re-)create pindexes that we're missing.
 	// batching the start, aiming to expedite the
 	// whole JanitorOnce call
-	errs = append(errs, mgr.pindexesStart(addPlanPIndexes)...)
+	errs = append(errs, mgr.pindexesStart(planPIndexesToAdd)...)
 
 	var currFeeds map[string]Feed
 	currFeeds, currPIndexes = mgr.CurrentMaps()
@@ -300,6 +435,156 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	}
 
 	return nil
+}
+
+func classifyAddRemoveRestartPIndexes(addPlanPIndexes []*PlanPIndex,
+	removePIndexes []*PIndex) (planPIndexesToAdd []*PlanPIndex,
+	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq) {
+	// if there are no pindexes to be removed as per planner,
+	// then there won't be anything to restart as well.
+	if len(removePIndexes) == 0 {
+		return addPlanPIndexes, nil, nil
+	}
+	pindexesToRestart = make([]*pindexRestartReq, 0)
+	pindexesToRemove = make([]*PIndex, 0)
+	planPIndexesToAdd = make([]*PlanPIndex, 0)
+	// grouping addPlanPIndexes and removePIndexes as per index for
+	// checking restartable indexDef changes per index
+	indexPlanPIndexMap := make(map[string][]*PlanPIndex)
+	indexPIndexMap := make(map[string][]*PIndex)
+	for _, rp := range removePIndexes {
+		indexPIndexMap[rp.IndexName] = append(indexPIndexMap[rp.IndexName], rp)
+	}
+	for _, addPlan := range addPlanPIndexes {
+		indexPlanPIndexMap[addPlan.IndexName] =
+			append(indexPlanPIndexMap[addPlan.IndexName], addPlan)
+	}
+	// take every pindex to remove and check the config change
+	// and sort out the pindexes to add, remove or restart
+	for indexName, pindexes := range indexPIndexMap {
+		if len(pindexes) > 0 && pindexes[0] != nil {
+			pindex := pindexes[0]
+			if planPIndexes, ok := indexPlanPIndexMap[indexName]; ok {
+				configAnalyzeReq := &ConfigAnalyzeRequest{
+					IndexDefnCur: getIndexDefFromPlanPIndexes(
+						planPIndexes),
+					IndexDefnPrev: getIndexDefFromPIndex(pindex),
+					SourcePartitionsCur: getSourcePartitionsMapFromPlanPIndexes(
+						addPlanPIndexes),
+					SourcePartitionsPrev: getSourcePartitionsMapFromPIndexes(
+						removePIndexes)}
+
+				pindexImplType, exists := PIndexImplTypes[pindex.IndexType]
+				if !exists || pindexImplType == nil {
+					pindexesToRemove = append(pindexesToRemove, pindexes...)
+					planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
+					continue
+				}
+				if pindexImplType.AnalyzeIndexDefUpdates != nil &&
+					pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq) ==
+						PINDEXES_RESTART {
+					pindexesToRestart = append(pindexesToRestart,
+						getPIndexesToRestart(pindexes, planPIndexes)...)
+					continue
+				}
+				pindexesToRemove = append(pindexesToRemove, pindexes...)
+				planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
+
+			} else {
+				pindexesToRemove = append(pindexesToRemove, pindexes...)
+			}
+		}
+	}
+	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart
+}
+
+func getPIndexesToRestart(pindexesToRemove []*PIndex,
+	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
+	pindexesToRestart := make([]*pindexRestartReq, len(pindexesToRemove))
+	i := 0
+	for _, pindex := range pindexesToRemove {
+		for _, addPlanPI := range addPlanPIndexes {
+			if addPlanPI.SourcePartitions == pindex.SourcePartitions {
+				pindex.IndexUUID = addPlanPI.IndexUUID
+				pindex.IndexParams = addPlanPI.IndexParams
+				pindexesToRestart[i] = &pindexRestartReq{
+					pindex: pindex, planPIndexName: addPlanPI.Name}
+				i++
+			}
+		}
+	}
+	return pindexesToRestart
+}
+
+func getIndexDefFromPIndex(pindex *PIndex) *IndexDef {
+	if pindex != nil {
+		return &IndexDef{Name: pindex.IndexName,
+			UUID:         pindex.IndexUUID,
+			SourceName:   pindex.SourceName,
+			SourceParams: pindex.SourceParams,
+			SourceType:   pindex.SourceType,
+			SourceUUID:   pindex.SourceUUID,
+			Type:         pindex.IndexType,
+			Params:       pindex.IndexParams,
+		}
+	}
+	return nil
+}
+
+func getIndexDefFromPlanPIndexes(planPIndexes []*PlanPIndex) *IndexDef {
+	if len(planPIndexes) != 0 && planPIndexes[0] != nil {
+		return &IndexDef{Name: planPIndexes[0].IndexName,
+			UUID:         planPIndexes[0].IndexUUID,
+			SourceName:   planPIndexes[0].SourceName,
+			SourceParams: planPIndexes[0].SourceParams,
+			SourceType:   planPIndexes[0].SourceType,
+			SourceUUID:   planPIndexes[0].SourceUUID,
+			Type:         planPIndexes[0].IndexType,
+			Params:       planPIndexes[0].IndexParams,
+		}
+	}
+	return nil
+}
+
+func getSourcePartitionsMapFromPIndexes(pindexes []*PIndex) map[string]bool {
+	sp := make(map[string]bool)
+	if len(pindexes) > 0 {
+		for _, pindex := range pindexes {
+			if pindex != nil && pindex.SourcePartitions != "" {
+				sp[pindex.SourcePartitions] = true
+			}
+		}
+	}
+	return sp
+}
+
+func getSourcePartitionsMapFromPlanPIndexes(
+	planPIndexes []*PlanPIndex) map[string]bool {
+	sp := make(map[string]bool)
+	if len(planPIndexes) > 0 {
+		for _, ppi := range planPIndexes {
+			if ppi != nil && ppi.SourcePartitions != "" {
+				sp[ppi.SourcePartitions] = true
+			}
+		}
+	}
+	return sp
+}
+
+func elicitAddPlanPIndexes(addPlanPIndexes []*PlanPIndex, errs []pindexRestartErr) []*PlanPIndex {
+	pindexesToAdd := make([]*PlanPIndex, len(errs))
+	for i, restartErr := range errs {
+		for _, planPIndex := range addPlanPIndexes {
+			if restartErr.pindex.IndexName == planPIndex.IndexName &&
+				restartErr.pindex.SourcePartitions == planPIndex.SourcePartitions {
+				pindexesToAdd[i] = planPIndex
+				log.Printf("janitor: restart failed and attempting start "+
+					"from scratch for pindex: %s", planPIndex.Name)
+				break
+			}
+		}
+	}
+	return pindexesToAdd
 }
 
 // --------------------------------------------------------
@@ -452,7 +737,6 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 	var err error
 
 	path := mgr.PIndexPath(planPIndex.Name)
-
 	// First, try reading the path with OpenPIndex().  An
 	// existing path might happen during a case of rollback.
 	_, err = os.Stat(path)
@@ -497,7 +781,6 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 		pindex.Close(true)
 		return err
 	}
-
 	return nil
 }
 

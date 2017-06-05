@@ -92,7 +92,29 @@ type PIndexImplType struct {
 	// Optional, allows pindex implementation to specify advanced UI
 	// implementations and information.
 	UI map[string]string
+
+	// Optional, invoked for checking whether the pindex implementations
+	// can effect the config changes through a restart of pindexes.
+	AnalyzeIndexDefUpdates func(configUpdates *ConfigAnalyzeRequest) ResultCode
 }
+
+// ConfigAnalyzeRequest wraps up the various configuration
+// parameters that the PIndexImplType implementations deals with.
+type ConfigAnalyzeRequest struct {
+	IndexDefnCur         *IndexDef
+	IndexDefnPrev        *IndexDef
+	SourcePartitionsCur  map[string]bool
+	SourcePartitionsPrev map[string]bool
+}
+
+// ResultCode represents the return code indicative of the various operations
+// recommended by the pindex implementations upon detecting a config change.
+type ResultCode string
+
+const (
+	// PINDEXES_RESTART suggests a reboot of the pindexes
+	PINDEXES_RESTART ResultCode = "request_restart_pindexes"
+)
 
 // ErrPIndexQueryTimeout may be returned for queries that took too
 // long and timed out.

@@ -19,6 +19,8 @@ import (
 	"os"
 	"testing"
 
+	"reflect"
+
 	"github.com/rcrowley/go-metrics"
 )
 
@@ -44,6 +46,32 @@ func TestNewPIndex(t *testing.T) {
 	err = pindex.Close(true)
 	if err != nil {
 		t.Errorf("expected Close to work")
+	}
+}
+
+func TestClonePIndex(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+
+	pindex, err := NewPIndex(nil, "fake", "uuid",
+		"blackhole", "indexName", "indexUUID", "",
+		"sourceType", "sourceName", "sourceUUID",
+		"sourceParams", "sourcePartitions",
+		PIndexPath(emptyDir, "fake"))
+	if pindex == nil || err != nil {
+		t.Errorf("expected NewPIndex to work")
+	}
+	clone := pindex.Clone()
+	if !reflect.DeepEqual(pindex, clone) {
+		t.Errorf("expected clone to be exactly similar to pindex")
+	}
+	err = pindex.Close(true)
+	if err != nil {
+		t.Errorf("expected Close to work")
+	}
+	err = clone.Close(true)
+	if err != nil {
+		t.Errorf("expected Close to work on clone")
 	}
 }
 

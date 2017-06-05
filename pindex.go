@@ -74,6 +74,34 @@ func (p *PIndex) Close(remove bool) error {
 	return nil
 }
 
+// Clone clones the current PIndex
+func (p *PIndex) Clone() *PIndex {
+	if p != nil {
+		p.m.Lock()
+		pi := &PIndex{
+			Name:                p.Name,
+			UUID:                p.UUID,
+			IndexName:           p.IndexName,
+			IndexParams:         p.IndexParams,
+			IndexType:           p.IndexType,
+			IndexUUID:           p.IndexUUID,
+			SourceType:          p.SourceType,
+			SourceName:          p.SourceName,
+			SourceUUID:          p.SourceUUID,
+			SourceParams:        p.SourceParams,
+			SourcePartitions:    p.SourcePartitions,
+			sourcePartitionsMap: p.sourcePartitionsMap,
+			Path:                p.Path,
+			Impl:                p.Impl,
+			Dest:                p.Dest,
+			closed:              p.closed,
+		}
+		p.m.Unlock()
+		return pi
+	}
+	return nil
+}
+
 func restartPIndex(mgr *Manager, pindex *PIndex) {
 	pindex.m.Lock()
 	closed := pindex.closed
