@@ -25,25 +25,25 @@ function PrepQueryRequest(scope) {
 
 function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     if (awaitingResults === true) {
-        overlay = $scope
+        overlay = $scope;
     } else {
-        $scope.query = null;
-        $scope.queryHelp = null;
-        $scope.queryHelpSafe = null;
-
-        $scope.page = 1;
         $scope.errorMessage = null;
         $scope.errorMessageFull = null;
-
-        $scope.results = null;
-        $scope.numPages = 0;
-        $scope.maxPagesToShow = 5;
-        $scope.resultsPerPage = 10;
-        $scope.timeout = 0;
-        $scope.consistencyLevel = "";
-        $scope.consistencyVectors = "{}";
-        $scope.jsonQuery = "";
     }
+
+    $scope.query = null;
+    $scope.queryHelp = null;
+    $scope.queryHelpSafe = null;
+
+    $scope.page = 1;
+    $scope.results = null;
+    $scope.numPages = 0;
+    $scope.maxPagesToShow = 5;
+    $scope.resultsPerPage = 10;
+    $scope.timeout = 0;
+    $scope.consistencyLevel = "";
+    $scope.consistencyVectors = "{}";
+    $scope.jsonQuery = "";
 
     $scope.hostPort = $location.host();
     if ($location.port()) {
