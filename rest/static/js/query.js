@@ -40,6 +40,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.numPages = 0;
     $scope.maxPagesToShow = 5;
     $scope.resultsPerPage = 10;
+    $scope.resultsSuccessPct = 100;
     $scope.timeout = 0;
     $scope.consistencyLevel = "";
     $scope.consistencyVectors = "{}";
@@ -132,6 +133,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
         $scope.errorMessageFull = null;
         $scope.results = null;
         $scope.numPages = 0;
+        $scope.resultsSuccessPct = 100;
 
         var req = createQueryRequest();
         $http.post('/api/index/' + $scope.indexName + '/query', req).
@@ -229,6 +231,12 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     $scope.processResults = function(data) {
         $scope.results = data;
         $scope.setupPager($scope.results);
+
+        if ($scope.results && $scope.results.status.failed > 0) {
+            var successful = $scope.results.status.successful;
+            var total = $scope.results.status.total;
+            $scope.resultsSuccessPct = Math.round(((1.0 * successful) / total) * 10000) / 100.0;
+        }
 
         for(var i in $scope.results.hits) {
             var hit = $scope.results.hits[i];
