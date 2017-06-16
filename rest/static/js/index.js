@@ -219,7 +219,6 @@ function IndexCtrl($scope, $http, $route, $routeParams, $location, $log, $sce, $
     });
 
     $scope.loadIndexDocCount = function() {
-        $scope.indexDocCount = ".."
         $scope.errorMessage = null;
         $scope.errorMessageFull = null;
 
