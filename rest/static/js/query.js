@@ -27,6 +27,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     if (awaitingResults === true) {
         overlay = $scope;
     } else {
+        overlay = null;
         $scope.errorMessage = null;
         $scope.errorMessageFull = null;
     }
@@ -142,7 +143,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             lastQueryIndex = $scope.indexName;
             lastQueryReq = req;
             lastQueryRes = JSON.stringify(data);
-            awaitingResults = false
+            awaitingResults = false;
             if (overlay !== null) {
                 overlay.processResults(data);
             } else {
