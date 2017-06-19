@@ -43,6 +43,8 @@ type RebalanceOptions struct {
 	// See blance.CalcPartitionMoves(favorMinNodes).
 	FavorMinNodes bool
 
+	MaxConcurrentPartitionMovesPerNode int
+
 	// AddPrimaryDirectly, when true, means the rebalancer should
 	// assign a pindex as primary to a node directly, and not use a
 	// replica-promotion maneuver (e.g., assign replica first, wait
@@ -465,8 +467,8 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	o, err := blance.OrchestrateMoves(
 		partitionModel,
 		blance.OrchestratorOptions{
-			// TODO: More options.
-			FavorMinNodes: r.optionsReb.FavorMinNodes,
+			MaxConcurrentPartitionMovesPerNode: r.optionsReb.MaxConcurrentPartitionMovesPerNode,
+			FavorMinNodes:                      r.optionsReb.FavorMinNodes,
 		},
 		r.nodesAll,
 		begMap,

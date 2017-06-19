@@ -84,10 +84,11 @@ type Ctl struct {
 }
 
 type CtlOptions struct {
-	DryRun             bool
-	Verbose            int
-	FavorMinNodes      bool
-	WaitForMemberNodes int // Seconds to wait for wanted member nodes to appear.
+	DryRun                             bool
+	Verbose                            int
+	FavorMinNodes                      bool
+	WaitForMemberNodes                 int // Seconds to wait for wanted member nodes to appear.
+	MaxConcurrentPartitionMovesPerNode int
 }
 
 type CtlNode struct {
@@ -650,10 +651,11 @@ func (ctl *Ctl) startCtlLOCKED(
 					ctl.cfg, ctl.server, ctl.optionsMgr,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
-						FavorMinNodes: ctl.optionsCtl.FavorMinNodes,
-						DryRun:        ctl.optionsCtl.DryRun,
-						Verbose:       ctl.optionsCtl.Verbose,
-						HttpGet:       httpGetWithAuth,
+						FavorMinNodes:                      ctl.optionsCtl.FavorMinNodes,
+						MaxConcurrentPartitionMovesPerNode: ctl.optionsCtl.MaxConcurrentPartitionMovesPerNode,
+						DryRun:  ctl.optionsCtl.DryRun,
+						Verbose: ctl.optionsCtl.Verbose,
+						HttpGet: httpGetWithAuth,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)
