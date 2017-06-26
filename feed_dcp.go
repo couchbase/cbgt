@@ -163,6 +163,10 @@ type DCPFeedParams struct {
 	// percentage of FeedBufferSizeBytes is reached.
 	FeedBufferAckThreshold float32 `json:"feedBufferAckThreshold,omitempty"`
 
+	// Time interval in seconds of NO-OP messages for UPR flow control,
+	// needs to be set to a non-zero value to enable no-ops.
+	NoopTimeIntervalSecs uint32 `json:"noopTimeIntervalSecs,omitempty"`
+
 	// Used to specify whether the applications are interested
 	// in receiving the xattrs information in a dcp stream.
 	IncludeXAttrs bool `json:"includeXAttrs,omitempty"`
@@ -233,9 +237,10 @@ func NewDCPFeed(name, indexName, url, poolName,
 		DataManagerSleepMaxMS:       params.DataManagerSleepMaxMS,
 		FeedBufferSizeBytes:         params.FeedBufferSizeBytes,
 		FeedBufferAckThreshold:      params.FeedBufferAckThreshold,
-		Logf:          log.Printf,
-		TraceCapacity: 20,
-		IncludeXAttrs: params.IncludeXAttrs,
+		NoopTimeIntervalSecs:        params.NoopTimeIntervalSecs,
+		Logf:                        log.Printf,
+		TraceCapacity:               20,
+		IncludeXAttrs:               params.IncludeXAttrs,
 	}
 
 	feed := &DCPFeed{
