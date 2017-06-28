@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"runtime/trace"
 	"strconv"
@@ -752,7 +753,19 @@ func RESTGetRuntimeArgs(w http.ResponseWriter, r *http.Request) {
 }
 
 func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
-	runtime.GC()
+	freeOSMemory := false
+	restParams := r.URL.Query()
+	if val, found := restParams["freeOSMemory"]; found {
+		if val[0] == "true" {
+			freeOSMemory = true
+		}
+	}
+
+	if freeOSMemory {
+		debug.FreeOSMemory()
+	} else {
+		runtime.GC()
+	}
 }
 
 // RuntimeTrace starts a program trace
