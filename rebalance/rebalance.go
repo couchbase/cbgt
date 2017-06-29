@@ -61,6 +61,8 @@ type RebalanceOptions struct {
 	HttpGet func(url string) (resp *http.Response, err error)
 
 	SkipSeqChecks bool // For unit-testing.
+
+	Manager *cbgt.Manager
 }
 
 type RebalanceLogFunc func(format string, v ...interface{})
@@ -1000,6 +1002,36 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 							caughtUp = caughtUp || reached
 
 							r.progressCh <- RebalanceProgress{}
+						}
+						// At the same polling frequency as stats, query cbgt
+						// Manager to verify that the index we are waiting
+						// on has not been deleted.
+						if r.optionsReb.Manager != nil {
+							idxDef, _, err := r.optionsReb.Manager.
+								GetIndexDef(indexDef.Name, false)
+							if err != nil {
+								r.Logf("rebalance:"+
+									" waitAssignPIndexDone GetIndex error,"+
+									" unable to get index definitions,"+
+									" index: %s,"+
+									" sourcePartition: %s, node: %s,"+
+									" state: %q, op: %s, uuidSeqWant: %+v,"+
+									" sample: %#v",
+									indexDef.Name, sourcePartition, node,
+									state, op, uuidSeqWant, sample)
+								return err
+							}
+							if idxDef == nil || indexDef.UUID != idxDef.UUID {
+								r.Logf("rebalance:"+
+									" waitAssignPIndexDone index missing!,"+
+									" index: %s,"+
+									" sourcePartition: %s, node: %s,"+
+									" state: %q, op: %s, uuidSeqWant: %+v,"+
+									" sample: %#v",
+									indexDef.Name, sourcePartition, node,
+									state, op, uuidSeqWant, sample)
+								return ErrorNoIndexDefinitionFound
+							}
 						}
 					}
 				}

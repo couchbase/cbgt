@@ -89,6 +89,7 @@ type CtlOptions struct {
 	FavorMinNodes                      bool
 	WaitForMemberNodes                 int // Seconds to wait for wanted member nodes to appear.
 	MaxConcurrentPartitionMovesPerNode int
+	Manager                            *cbgt.Manager
 }
 
 type CtlNode struct {
@@ -656,6 +657,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						DryRun:  ctl.optionsCtl.DryRun,
 						Verbose: ctl.optionsCtl.Verbose,
 						HttpGet: httpGetWithAuth,
+						Manager: ctl.optionsCtl.Manager,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)
