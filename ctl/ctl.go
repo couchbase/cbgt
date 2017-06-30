@@ -300,6 +300,8 @@ func (ctl *Ctl) run() {
 						" err: %v", ev.Key, err)
 					continue
 				}
+				log.Printf("ctl: run, kind: %s, updated memberNodes: %+v",
+					ev.Key, memberNodes)
 				ctl.m.Lock()
 				ctl.memberNodes = memberNodes
 				ctl.incRevNumLOCKED()
@@ -623,6 +625,7 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctlErrs = append(ctlErrs, err)
 			return
 		}
+		log.Printf("ctl: waitForWantedNodes, nodesToRemove: %+v", nodesToRemove)
 
 		// 2) Run rebalance in a loop (if not failover).
 		//
@@ -771,7 +774,7 @@ func (ctl *Ctl) waitForWantedNodes(wantedNodes []string, ignoreWaitTimeOut bool,
 			secs = 30
 		}
 	}
-
+	log.Printf("ctl: waitForWantedNodes, wantedNodes: %+v", wantedNodes)
 	return WaitForWantedNodes(ctl.cfg, wantedNodes, cancelCh, secs, ignoreWaitTimeOut)
 }
 
@@ -807,7 +810,8 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
 	}
 
 	if ignoreWaitTimeOut {
-		return nil, nil
+		log.Printf("ctl: WaitForWantedNodes ignoreWaitTimeOut")
+		return cbgt.StringsRemoveStrings(nodeDefWantedUUIDs, wantedNodes), nil
 	}
 	return nil, fmt.Errorf("ctl: WaitForWantedNodes"+
 		" could not attain wantedNodes: %#v,"+
@@ -853,4 +857,31 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 	}
 
 	return memberNodes, nil
+}
+
+// ----------------------------------------------------
+
+func (ctl *Ctl) checkAndReregisterSelf(selfUUID string) {
+	memberNodes, err := CurrentMemberNodes(ctl.cfg)
+	if err != nil {
+		log.Printf("ctl: CurrentMemberNodes failed, err: %+v", err)
+		return
+	}
+	for _, node := range memberNodes {
+		if node.UUID == selfUUID {
+			// node already in Cfg
+			return
+		}
+	}
+	log.Printf("ctl: checkAndReregisterSelf, current node: %s "+
+		" is missing from Cfg", selfUUID)
+	if ctl.optionsCtl.Manager != nil {
+		log.Printf("ctl: checkAndReregisterSelf, reregistering node: %s ",
+			selfUUID)
+		err := ctl.optionsCtl.Manager.Register("wanted")
+		if err != nil {
+			log.Printf("ctl: checkAndReregisterSelf, re register failed, "+
+				" err: %+v", err)
+		}
+	}
 }

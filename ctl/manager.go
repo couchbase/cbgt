@@ -329,6 +329,14 @@ func (m *CtlMgr) PrepareTopologyChange(
 		s.taskHandles = taskHandlesNext
 	})
 
+	// if the current node is in keep list, checking further
+	// for a reregister
+	for _, node := range change.KeepNodes {
+		if m.nodeInfo.NodeID == node.NodeInfo.NodeID {
+			m.ctl.checkAndReregisterSelf(string(m.nodeInfo.NodeID))
+		}
+	}
+
 	log.Printf("ctl/manager: PrepareTopologyChange, done")
 
 	return nil
