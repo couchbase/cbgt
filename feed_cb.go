@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/go-couchbase"
@@ -38,11 +39,20 @@ var ErrCouchbaseMismatchedBucketUUID = fmt.Errorf("mismatched-couchbase-bucket-U
 
 // ----------------------------------------------------------------
 
+// Frequency of type time.Duration to check the state of the cluster
+// that the couchbase.Bucket instance is a part of.
+var CouchbaseNodesRecheckInterval = 5 * time.Second
+
+type bucketInfo struct {
+	cbBkt       *couchbase.Bucket
+	lastChecked time.Time
+}
+
 type cbBucketMap struct {
 	// Mutex to serialize access to entries
 	m sync.Mutex
 	// Map of couchbase.Bucket instances by bucket <name>:<uuid>
-	entries map[string]*couchbase.Bucket
+	entries map[string]*bucketInfo
 }
 
 var cbBktMap *cbBucketMap
@@ -56,16 +66,38 @@ func (cb *cbBucketMap) fetchCouchbaseBucket(name, uuid, params, server string,
 
 	key := name + ":" + uuid
 
+	createNewInstance := false
 	_, exists := cb.entries[key]
 	if !exists {
+		// If not found, create new bucket instance
+		createNewInstance = true
+	} else {
+		timeSinceLastCheck := time.Since(cb.entries[key].lastChecked)
+		if timeSinceLastCheck >= CouchbaseNodesRecheckInterval {
+			// If time elapsed since last check is greater than the set
+			// CouchbaseNodesRecheckInterval, re-check to the see the state
+			// of the couchbase cluster.
+			if cb.entries[key].cbBkt.NodeListChanged() {
+				// If a change has been detected, reset the bucket instance.
+				cb.entries[key].cbBkt.Close()
+				delete(cb.entries, key)
+				createNewInstance = true
+			} else {
+				// Update the last checked time
+				cb.entries[key].lastChecked = time.Now()
+			}
+		}
+	}
+
+	if createNewInstance {
 		bucket, err := CouchbaseBucket(name, uuid, params, server, options)
 		if err != nil {
 			return nil, err
 		}
-		cb.entries[key] = bucket
+		cb.entries[key] = &bucketInfo{cbBkt: bucket, lastChecked: time.Now()}
 	}
 
-	return cb.entries[key], nil
+	return cb.entries[key].cbBkt, nil
 }
 
 // Closes and removes the couchbase bucket instance with the uuid.
@@ -75,9 +107,9 @@ func (cb *cbBucketMap) closeCouchbaseBucket(name, uuid string) {
 
 	key := name + ":" + uuid
 
-	bucket, exists := cb.entries[key]
+	bktInfo, exists := cb.entries[key]
 	if exists {
-		bucket.Close()
+		bktInfo.cbBkt.Close()
 		delete(cb.entries, key)
 	}
 }
@@ -85,7 +117,7 @@ func (cb *cbBucketMap) closeCouchbaseBucket(name, uuid string) {
 func init() {
 	// Initialize cbBktMap
 	cbBktMap = &cbBucketMap{
-		entries: make(map[string]*couchbase.Bucket),
+		entries: make(map[string]*bucketInfo),
 	}
 }
 
