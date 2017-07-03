@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"sort"
 
+	"math"
+
 	"github.com/couchbase/cbgt"
 )
 
@@ -232,6 +234,73 @@ func (h *CfgRefreshHandler) ServeHTTP(
 	h.mgr.GetNodeDefs(cbgt.NODE_DEFS_WANTED, true)
 	h.mgr.GetIndexDefs(true)
 	h.mgr.GetPlanPIndexes(true)
+	MustEncode(w, struct {
+		Status string `json:"status"`
+	}{Status: "ok"})
+}
+
+// ---------------------------------------------------
+
+// CfgNodeDefsHandler is a REST handler that processes a request for
+// the manager/node to set the given NodeDefs contents to the Cfg.
+type CfgNodeDefsHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewCfgNodeDefsHandler(mgr *cbgt.Manager) *CfgNodeDefsHandler {
+	return &CfgNodeDefsHandler{mgr: mgr}
+}
+
+func (h *CfgNodeDefsHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+			" could not read request body, err: %v", err), 400)
+		return
+	}
+	if len(requestBody) == 0 {
+		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+			" no request body found"), 400)
+		return
+	}
+	var defs struct {
+		Kind string `json:"kind"`
+	}
+	err = json.Unmarshal(requestBody, &defs)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+			" could not unmarshal request json, err: %v", err), 400)
+		return
+	}
+	if defs.Kind != cbgt.NODE_DEFS_KNOWN &&
+		defs.Kind != cbgt.NODE_DEFS_WANTED {
+		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+			" unknown nodeDefs kind: %s in request", defs.Kind), 400)
+		return
+	}
+	nodeDefs := cbgt.NodeDefs{}
+	err = json.Unmarshal(requestBody, &nodeDefs)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+			" could not unmarshal request json, err: %v", err), 400)
+		return
+	}
+	if cbgt.VersionGTE(h.mgr.Version(), nodeDefs.ImplVersion) == false {
+		ShowError(w, req, fmt.Sprintf("rest_manage: could not update nodeDefs,"+
+			" nodeDefs.ImplVersion: %s > mgr.version: %s",
+			nodeDefs.ImplVersion, h.mgr.Version()), 400)
+		return
+	}
+
+	nodeDefs.UUID = cbgt.NewUUID()
+	_, err = cbgt.CfgSetNodeDefs(h.mgr.Cfg(), defs.Kind, &nodeDefs, math.MaxUint64)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_manage: CfgSetNodeDefs "+
+			"failed, err: %v", err), 400)
+		return
+	}
+
 	MustEncode(w, struct {
 		Status string `json:"status"`
 	}{Status: "ok"})

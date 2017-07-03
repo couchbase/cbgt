@@ -500,6 +500,14 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "0.0.1",
 		})
 
+	handle("/api/cfgNodeDefs", "PUT", NewCfgNodeDefsHandler(mgr),
+		map[string]string{
+			"_category": "Node|Node configuration",
+			"_about": `Sets the given nodeDefs configurations
+                       to the Cfg.`,
+			"version introduced": "5.0.0",
+		})
+
 	handle("/api/log", "GET", NewLogGetHandler(mgr, mr),
 		map[string]string{
 			"_category": "Node|Node diagnostics",

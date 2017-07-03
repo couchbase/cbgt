@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"reflect"
 	"sort"
 	"strings"
@@ -337,7 +338,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 
 	curEntry := c.splitEntries[key]
 
-	if cas != 0 && cas != curEntry.cas {
+	if cas != math.MaxUint64 && cas != 0 && cas != curEntry.cas {
 		log.Warnf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
 			key, cas, curEntry.cas)
 
@@ -391,7 +392,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 
 LOOP:
 	for k, v := range nd.NodeDefs {
-		if c.nodeUUID != "" && c.nodeUUID != v.UUID {
+		if cas != math.MaxUint64 && c.nodeUUID != "" && c.nodeUUID != v.UUID {
 			// If we have a nodeUUID, only add/update our
 			// nodeDef, where other nodes will each add/update
 			// only their own nodeDef's.
@@ -423,8 +424,9 @@ LOOP:
 		if err != nil {
 			return 0, err
 		}
-
-		break LOOP
+		if cas != math.MaxUint64 {
+			break LOOP
+		}
 	}
 
 	// Remove composite children entries from metakv only if
