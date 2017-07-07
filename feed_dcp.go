@@ -38,6 +38,14 @@ const DEST_EXTRAS_TYPE_MCREQUEST = DestExtrasType(0x0003)
 // DCPFeedPrefix should be immutable after process init()'ialization.
 var DCPFeedPrefix string
 
+// DCPFeedBufferSizeBytes is representative of connection_buffer_size
+// for DCP to enable flow control, defaults at 20MB.
+var DCPFeedBufferSizeBytes = uint32(20000000)
+
+// DCPNoopTimeIntervalSecs is representative of set_noop_interval
+// for DCP to enable no-op messages, defaults at 2min.
+var DCPNoopTimeIntervalSecs = uint32(120)
+
 func init() {
 	RegisterFeedType("couchbase", &FeedType{
 		Start:           StartDCPFeed,
@@ -215,6 +223,18 @@ func NewDCPFeed(name, indexName, url, poolName,
 		if stopAfterSourceParams.StopAfter == "markReached" {
 			stopAfter = stopAfterSourceParams.MarkPartitionSeqs
 		}
+	}
+
+	// If feedBufferSizeBytes (to enable DCP flow control) isn't
+	// set, initialize it to the default.
+	if !strings.Contains(paramsStr, "feedBufferSizeBytes") {
+		params.FeedBufferSizeBytes = DCPFeedBufferSizeBytes
+	}
+
+	// If noopTimeIntervalSecs (to enable DCP noops) isn't
+	// set, initialize it to the default.
+	if !strings.Contains(paramsStr, "noopTimeIntervalSecs") {
+		params.NoopTimeIntervalSecs = DCPNoopTimeIntervalSecs
 	}
 
 	vbucketIds, err := ParsePartitionsToVBucketIds(dests)
