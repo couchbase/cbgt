@@ -1,8 +1,6 @@
 var lastQueryIndex = null;
 var lastQueryReq = null;
 var lastQueryRes = null;
-var awaitingResults = false
-var overlay = null
 
 function PrepQueryRequest(scope) {
     qr = {
@@ -24,14 +22,8 @@ function PrepQueryRequest(scope) {
 }
 
 function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
-    if (awaitingResults === true) {
-        overlay = $scope;
-    } else {
-        overlay = null;
-        $scope.errorMessage = null;
-        $scope.errorMessageFull = null;
-    }
-
+    $scope.errorMessage = null;
+    $scope.errorMessageFull = null;
     $scope.query = null;
     $scope.queryHelp = null;
     $scope.queryHelpSafe = null;
@@ -143,17 +135,11 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             lastQueryIndex = $scope.indexName;
             lastQueryReq = req;
             lastQueryRes = JSON.stringify(data);
-            awaitingResults = false;
-            if (overlay !== null) {
-                overlay.processResults(data);
-            } else {
-                $scope.processResults(data);
-            }
+            $scope.processResults(data);
         }, function(response) {
             var data = response.data;
             var code = response.code;
             $scope.errorMessageFull = data;
-            awaitingResults = false
             if (data) {
                 $scope.errorMessage = errorMessage(data, code);
             } else {
@@ -161,7 +147,6 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
                     data || ("error" + (code || " accessing server"));
             }
         });
-        awaitingResults = true;
     };
 
     $scope.resultsAvailable = function() {
@@ -287,9 +272,7 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
 
     if($location.search().q !== undefined) {
         $scope.query = $location.search().q;
-        if (awaitingResults === false) {
-            $scope.runQuery();
-        }
+        $scope.runQuery();
     } else {
         if (!$scope.query &&
             lastQueryIndex == $scope.indexName &&
