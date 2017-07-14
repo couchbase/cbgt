@@ -42,6 +42,11 @@ var DCPFeedPrefix string
 // for DCP to enable flow control, defaults at 20MB.
 var DCPFeedBufferSizeBytes = uint32(20000000)
 
+// DCPFeedBufferAckThreshold is representative of the percentage of
+// the connection_buffer_size when the consumer will ack back to
+// the producer.
+var DCPFeedBufferAckThreshold = float32(0.8)
+
 // DCPNoopTimeIntervalSecs is representative of set_noop_interval
 // for DCP to enable no-op messages, defaults at 2min.
 var DCPNoopTimeIntervalSecs = uint32(120)
@@ -229,6 +234,12 @@ func NewDCPFeed(name, indexName, url, poolName,
 	// set, initialize it to the default.
 	if !strings.Contains(paramsStr, "feedBufferSizeBytes") {
 		params.FeedBufferSizeBytes = DCPFeedBufferSizeBytes
+	}
+
+	// If feedBufferAckThreshold (acking for flow control) isn't
+	// set, initialize it to the default.
+	if !strings.Contains(paramsStr, "feedBufferAckThreshold") {
+		params.FeedBufferAckThreshold = DCPFeedBufferAckThreshold
 	}
 
 	// If noopTimeIntervalSecs (to enable DCP noops) isn't
