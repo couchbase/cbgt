@@ -21,6 +21,7 @@ import (
 	"math"
 
 	"github.com/couchbase/cbgt"
+	log "github.com/couchbase/clog"
 )
 
 // ---------------------------------------------------
@@ -151,7 +152,27 @@ func NewManagerKickHandler(mgr *cbgt.Manager) *ManagerKickHandler {
 
 func (h *ManagerKickHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	h.mgr.Kick(req.FormValue("msg"))
+	msg := req.FormValue("msg")
+
+	if msg == "planner-force" {
+		changed, err := cbgt.Plan(h.mgr.Cfg(), h.mgr.Version(), "",
+			h.mgr.Server(), h.mgr.Options(), nil)
+		if err != nil {
+			msg = fmt.Sprintf("rest_manage: Plan, err: %v", err)
+			http.Error(w, msg, 500)
+			return
+		}
+		if changed {
+			log.Printf("rest_manage: the plans have changed")
+		} else {
+			log.Printf("rest_manage: no change in the plans")
+		}
+	} else {
+		h.mgr.PlannerKick(msg)
+	}
+
+	h.mgr.JanitorKick(msg)
+
 	MustEncode(w, struct {
 		Status string `json:"status"`
 	}{Status: "ok"})
