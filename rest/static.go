@@ -62,21 +62,97 @@ func InitStaticRouterEx(r *mux.Router, staticDir, staticETag string,
 		s = AssetFS()
 	}
 
-	r.PathPrefix(prefix + "/static/").Handler(
-		http.StripPrefix(prefix+"/static/",
-			ETagFileHandler{http.FileServer(s), staticETag}))
+	staticRoutes := []string{
+		"/static/css/app.css",
+		"/static/css/bootstrap-theme.css",
+		"/static/css/bootstrap-theme.min.css",
+		"/static/css/bootstrap.css",
+		"/static/css/bootstrap.min.css",
+		"/static/css/dashboard.css",
+		"/static/css/prism.css",
+		"/static/css/rickshaw.min.css",
+		"/static/favicon.ico",
+		"/static/fonts/glyphicons-halflings-regular.eot",
+		"/static/fonts/glyphicons-halflings-regular.svg",
+		"/static/fonts/glyphicons-halflings-regular.ttf",
+		"/static/fonts/glyphicons-halflings-regular.woff",
+		"/static/img/cb.png",
+		"/static/index.html",
+		"/static/js/app.js",
+		"/static/js/b64.js",
+		"/static/js/controllers.js",
+		"/static/js/directives.js",
+		"/static/js/expvar.js",
+		"/static/js/filters.js",
+		"/static/js/index.js",
+		"/static/js/logs.js",
+		"/static/js/manage.js",
+		"/static/js/monitor.js",
+		"/static/js/node.js",
+		"/static/js/query.js",
+		"/static/js/services.js",
+		"/static/lib/angular/angular-csp.css",
+		"/static/lib/angular/angular.js",
+		"/static/lib/angular/angular.min.js",
+		"/static/lib/angular/index.js",
+		"/static/lib/angular-bootstrap/index.js",
+		"/static/lib/angular-bootstrap/ui-bootstrap-csp.css",
+		"/static/lib/angular-bootstrap/ui-bootstrap-tpls.js",
+		"/static/lib/angular-bootstrap/ui-bootstrap-tpls.min.js",
+		"/static/lib/angular-bootstrap/ui-bootstrap.js",
+		"/static/lib/angular-bootstrap/ui-bootstrap.min.js",
+		"/static/lib/angular-route/angular-route.js",
+		"/static/lib/angular-route/angular-route.min.js",
+		"/static/lib/angular-route/index.js",
+		"/static/lib/angular-ui-tree/dist/angular-ui-tree.js",
+		"/static/lib/angular-ui-tree/dist/angular-ui-tree.min.css",
+		"/static/lib/angular-ui-tree/dist/angular-ui-tree.min.js",
+		"/static/lib/bootstrap/bootstrap-lightbox.js",
+		"/static/lib/bootstrap/bootstrap-lightbox.min.js",
+		"/static/lib/bootstrap/bootstrap.js",
+		"/static/lib/d3.v3.js",
+		"/static/lib/humanize.min.js",
+		"/static/lib/jquery/jquery-2.1.1.js",
+		"/static/lib/jquery/jquery-ui.js",
+		"/static/lib/jquery/jquery-ui.min.js",
+		"/static/lib/jsonpointer.js",
+		"/static/lib/prism.js",
+		"/static/lib/rickshaw.min.js",
+		"/static/modal/backdrop.html",
+		"/static/modal/backdrop.window.html",
+		"/static/partials/index/index.html",
+		"/static/partials/index/list.html",
+		"/static/partials/index/new.html",
+		"/static/partials/index/query-result-expl.html",
+		"/static/partials/index/query-results.html",
+		"/static/partials/index/start.html",
+		"/static/partials/index/tab-manager.html",
+		"/static/partials/index/tab-monitor.html",
+		"/static/partials/index/tab-query.html",
+		"/static/partials/index/tab-summary.html",
+		"/static/partials/index/tabs.html",
+		"/static/partials/logs.html",
+		"/static/partials/manage.html",
+		"/static/partials/monitor.html",
+		"/static/partials/node/list.html",
+		"/static/partials/node/node.html",
+		"/static/partials/node/tab-summary.html",
+		"/static/partials/node/tabs.html",
+		"/static/tabs/tab.html",
+		"/static/tabs/tabset.html",
+	}
 
-	// Bootstrap UI insists on loading templates from this path.
-	r.PathPrefix(prefix + "/template/").Handler(
-		http.StripPrefix(prefix+"/template/",
+	for _, route := range staticRoutes {
+		r.Handle(prefix+route, http.StripPrefix(prefix+"/static/",
 			ETagFileHandler{http.FileServer(s), staticETag}))
+	}
 
-	// If client ask for any of the pages, redirect.
+	// Redirect any page the client asks for.
 	for _, p := range pages {
 		if pagesHandler != nil {
-			r.PathPrefix(p).Handler(pagesHandler)
+			r.Handle(p, pagesHandler)
 		} else {
-			r.PathPrefix(p).Handler(RewriteURL("/", http.FileServer(s)))
+			r.Handle(p, RewriteURL("/", http.FileServer(s)))
 		}
 	}
 
