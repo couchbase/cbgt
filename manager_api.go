@@ -345,8 +345,6 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 	log.Printf("manager_api: bumped indexDefs, indexDefsUUID: %s",
 		indexDefs.UUID)
 
-	mgr.PlannerKick("BumpIndexDefs")
-
 	return nil
 }
 
@@ -368,6 +366,7 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 	}
 
 	var outerErr error
+	indexDeleted := false
 
 	for indexName, indexDef := range indexDefs.IndexDefs {
 		if indexDef.SourceType == sourceType &&
@@ -389,6 +388,7 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 
 				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, 1)
 			} else {
+				indexDeleted = true
 				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, 1)
 			}
 		}
@@ -397,9 +397,11 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 	// With MB-19117, we've seen cfg that strangely had empty
 	// indexDefs, but non-empty planPIndexes.  Force bump the
 	// indexDefs so the planner and other downstream tasks re-run.
-	err = mgr.BumpIndexDefs("")
-	if err != nil {
-		return err
+	if indexDeleted {
+		err = mgr.BumpIndexDefs("")
+		if err != nil {
+			return err
+		}
 	}
 
 	return outerErr
