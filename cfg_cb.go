@@ -329,7 +329,8 @@ func (c *CfgCB) Del(key string, cas uint64) error {
 
 func (c *CfgCB) getBucket() (*couchbase.Bucket, error) {
 	if c.b == nil {
-		b, err := couchbase.GetBucket(c.urlStr, "default", c.bucket)
+		b, err := couchbase.ConnectWithAuthAndGetBucket(c.urlStr,
+			"default", c.bucket, c)
 		if err != nil {
 			return nil, err
 		}
@@ -390,6 +391,9 @@ func (a *CfgCB) GetCredentials() (string, string, string) {
 
 	if a.url != nil && a.url.User != nil {
 		pswd, _ = a.url.User.Password()
+		if a.url.User.Username() != "" {
+			user = a.url.User.Username()
+		}
 	}
 
 	return user, pswd, a.bucket
