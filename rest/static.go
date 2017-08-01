@@ -63,6 +63,7 @@ func InitStaticRouterEx(r *mux.Router, staticDir, staticETag string,
 	}
 
 	staticRoutes := []string{
+		"/static/",
 		"/static/css/app.css",
 		"/static/css/bootstrap-theme.css",
 		"/static/css/bootstrap-theme.css.map",
