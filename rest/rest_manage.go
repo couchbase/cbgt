@@ -391,7 +391,8 @@ func (h *ManagerOptions) ServeHTTP(
 	for k, v := range opt {
 		newOptions[k] = v
 	}
-	err = json.Unmarshal(requestBody, newOptions)
+
+	err = json.Unmarshal(requestBody, &newOptions)
 	if err != nil {
 		msg := fmt.Sprintf("rest_manage:"+
 			" error in unmarshalling err: %v", err)
