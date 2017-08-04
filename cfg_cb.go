@@ -14,6 +14,7 @@ package cbgt
 import (
 	"encoding/json"
 	"net/url"
+	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
@@ -28,6 +29,8 @@ import (
 // TODO: This current implementation is race-y!  Instead of storing
 // everything as a single uber key/value, we should instead be storing
 // individual key/value's on every get/set/del operation.
+//
+// urlStr: single URL or multiple URLs delimited by ';'
 type CfgCB struct {
 	m      sync.Mutex
 	urlStr string
@@ -57,17 +60,39 @@ var cfgCBOptions = &cbdatasource.BucketDataSourceOptions{
 // NewCfgCB returns a Cfg implementation that reads/writes its entries
 // from/to a couchbase bucket, using DCP streams to subscribe to
 // changes.
+//
+// urlStr: single URL or multiple URLs delimited by ';'
+// bucket: couchbase bucket name
 func NewCfgCB(urlStr, bucket string) (*CfgCB, error) {
 	return NewCfgCBEx(urlStr, bucket, nil)
 }
 
 // NewCfgCBEx is a more advanced version of NewCfgCB(), with more
-// initialization options via the options map.  Allowed options:
-// "keyPrefix" - an optional string prefix that's prepended to any
-// keys that are written to or read from the couchbase bucket.
+// initialization options via the options map.
+//
+// urlStr:  single URL or multiple URLs delimited by ';'
+// bucket:  couchbase bucket name
+// options: initialization options
+//
+// Allowed options include:
+// - 'keyPrefix':  an optional string prefix that's prepended to
+//                 to all keys that are written to or read from
+//                 the couchbase bucket.
+// - 'loggerDebug'
+// - 'loggerFunc'
 func NewCfgCBEx(urlStr, bucket string,
 	options map[string]interface{}) (*CfgCB, error) {
-	url, err := couchbase.ParseURL(urlStr)
+	urls := strings.Split(urlStr, ";")
+
+	var url *url.URL
+	var err error
+
+	for _, u := range urls {
+		url, err = couchbase.ParseURL(u)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +144,7 @@ func NewCfgCBEx(urlStr, bucket string,
 	vbucketIDs := []uint16{uint16(b.VBHash(c.cfgKey))}
 
 	bds, err := cbdatasource.NewBucketDataSource(
-		[]string{urlStr},
+		urls,
 		"default",
 		bucket, bucketUUID, vbucketIDs, c, c, cfgCBOptions)
 	if err != nil {
@@ -329,8 +354,20 @@ func (c *CfgCB) Del(key string, cas uint64) error {
 
 func (c *CfgCB) getBucket() (*couchbase.Bucket, error) {
 	if c.b == nil {
-		b, err := couchbase.ConnectWithAuthAndGetBucket(c.urlStr,
-			"default", c.bucket, c)
+		// Retry until a connection can be made
+		urls := strings.Split(c.urlStr, ";")
+
+		var b *couchbase.Bucket
+		var err error
+
+		for _, url := range urls {
+			b, err = couchbase.ConnectWithAuthAndGetBucket(url,
+				"default", c.bucket, c)
+			if err == nil {
+				break
+			}
+		}
+
 		if err != nil {
 			return nil, err
 		}
