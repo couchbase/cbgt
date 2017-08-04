@@ -225,13 +225,34 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
-	client, err := couchbase.ConnectWithAuth(server, auth)
+	// If sourceName were a couchbase REST/HTTP URL, a single server URL
+	// is what is built and returned from CouchbaseParseSourceName, in
+	// which case the svrs array below will contain just the one server.
+	// If the sourceName weren't a URL, the serverIn passed into the
+	// API is just returned as is. Note that as the user is permitted
+	// to add multiple servers concatenated - delimited by the ';', the
+	// following Split operation is necessary to break meaningful URLs
+	// apart.
+	//
+	// Following this, we iterate over all the meaningful URLs and
+	// attempt connection with the couchbase cluster until a successful
+	// connection is made.
+	svrs := strings.Split(server, ";")
+	var client couchbase.Client
+
+	for _, svr := range svrs {
+		client, err = couchbase.ConnectWithAuth(svr, auth)
+		if err == nil {
+			break
+		}
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
 			" connection failed, server: %s, poolName: %s,"+
 			" bucketName: %s, sourceParams: %q, err: %v,"+
 			" please check that your authUser and authPassword are correct"+
-			" and that your couchbase server (%q) is available",
+			" and that your couchbase cluster (%q) is available",
 			server, poolName, bucketName, sourceParams, err, server)
 	}
 
@@ -492,7 +513,19 @@ func CBAuthURL(urlStr string) (string, error) {
 
 func parseParams(src string,
 	req *http.Request) (string, string, string, error) {
-	u, err := url.Parse(src)
+	// Split the provided src on ";" as the user is permitted
+	// to provide multiple servers(urls) concatenated with a ";".
+	servers := strings.Split(src, ";")
+
+	var u *url.URL
+	var err error
+	for _, server := range servers {
+		u, err = url.Parse(server)
+		if err == nil {
+			break
+		}
+	}
+
 	if err != nil {
 		return "", "", "", err
 	}

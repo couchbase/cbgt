@@ -43,6 +43,8 @@ import (
 // instances, creating, deleting & hooking them up as necessary to try
 // to match to latest plans from the planner.  A janitor wakes up and
 // runs whenever it sees that latest plans in the Cfg have changed.
+//
+// As part of server: multiple urls permitted with ';' delimiter.
 type Manager struct {
 	startTime time.Time
 	version   string // See VERSION.
@@ -852,7 +854,7 @@ func (mgr *Manager) DataDir() string {
 	return mgr.dataDir
 }
 
-// Returns the configured server of a Manager.
+// Returns the configured server(s) of a Manager.
 func (mgr *Manager) Server() string {
 	return mgr.server
 }

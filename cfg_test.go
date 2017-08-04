@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -434,5 +435,13 @@ func TestCfgCB(t *testing.T) {
 		})
 	if err == nil || c != nil {
 		t.Errorf("expected NewCfgCBEx err fake url, with keyPrefix")
+	}
+
+	c, err = NewCfgCBEx("http://fake:66;http://fake:666;http://fake:6666",
+		"some bogus bucket", map[string]interface{}{})
+	if err == nil ||
+		!strings.Contains(err.Error(), "http://fake:6666") ||
+		c != nil {
+		t.Errorf("expected NewCfgCBEx err fake url on the last URL (%v)", err)
 	}
 }

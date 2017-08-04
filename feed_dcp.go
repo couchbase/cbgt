@@ -111,6 +111,8 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 // A DCPFeed implements both Feed and cbdatasource.Receiver
 // interfaces, and forwards any incoming cbdatasource.Receiver
 // callbacks to the relevant, hooked-up Dest instances.
+//
+// url: single URL or multiple URLs delimited by ';'
 type DCPFeed struct {
 	name       string
 	indexName  string
@@ -192,6 +194,8 @@ func NewDCPFeedParams() *DCPFeedParams {
 }
 
 // NewDCPFeed creates a new, ready-to-be-started DCP feed.
+//
+// url: single URL or multiple URLs delimited by ';'
 func NewDCPFeed(name, indexName, url, poolName,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,

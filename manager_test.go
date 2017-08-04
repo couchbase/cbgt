@@ -1201,3 +1201,20 @@ func TestManagerRestartPIndex(t *testing.T) {
 		t.Errorf("janitor should have restarted the pindex once")
 	}
 }
+
+func TestManagerMultipleServers(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+	meh := &TestMEH{}
+	serverStr := "localhost:1000;localhost:1001;localhost:1002"
+	m := NewManager(VERSION, nil, NewUUID(),
+		nil, "", 1, "", "", emptyDir, serverStr, meh)
+	err := m.Start("wanted")
+	if err != nil {
+		t.Errorf("expected Manager.Start() to work, err: %v", err)
+	}
+	if m.Server() != serverStr {
+		t.Errorf("expected Manager.Server() to return %v, but got %v",
+			serverStr, m.Server())
+	}
+}
