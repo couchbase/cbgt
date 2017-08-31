@@ -983,8 +983,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 
 						r.Logf("rebalance:"+
 							" waitAssignPIndexDone sample error,"+
-							" uuid mismatch, index: %s,"+
-							" sourcePartition: %s, node: %s,"+
+							" index: %s, sourcePartition: %s, node: %s,"+
 							" state: %q, op: %s, uuidSeqWant: %+v,"+
 							" sample: %#v",
 							indexDef.Name, sourcePartition, node,
