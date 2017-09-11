@@ -27,16 +27,21 @@ import (
 )
 
 // The values stored in a Cfg are normally atomic, but CfgMetaKv has
-// an exception for values related to NodeDefs.  In CfgMetaKv,
-// NodeDefs are handled in "composite" fashion, where CfgMetaKv will
-// split a NodeDefs value into zero or more child NodeDef values, each
-// stored into metakv using a shared path prefix (so, similar to
-// having a file-per-NodeDef in a shared directory).
+// an exception for values related to NodeDefs and PlanPIndexes.
+// In CfgMetaKv, NodeDefs and PlanPIndexes are handled in "composite"
+// fashion, where CfgMetaKv will split a NodeDefs/PlanPIndexes value
+// into zero or more child values, each stored into metakv using a
+// shared path prefix (so, similar to having a file-per-NodeDef in a
+// shared directory).
 //
-// This allows concurrent, racing nodes to register their own entries
+// This maneuver helps mainly on two aspects.
+// First, it allows concurrent, racing nodes to register their own entries
 // into a composite NodeDefs "directory".  This can happen when
 // multiple nodes are launched at nearly the same time, faster than
 // metakv can replicate in eventually consistent fashion.
+//
+// Secondly, it helps in optimising the storage requirements of
+// the PlanPIndexes at the config level by de duplicating the information.
 //
 // Eventually, metakv replication will occur, and a reader will see a
 // union of NodeDef values that CfgMetaKv reconstructs on the fly for
@@ -51,6 +56,29 @@ type cfgMetaKvAdvancedHandler interface {
 	set(c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error)
 	del(c *CfgMetaKv, key string, cas uint64) error
 }
+
+// PLAN_PINDEXES_KEY refers to the PlanPIndex handler which basically
+// invokes the different optimised representations of the PlanPIndex
+// (shared/lean) depending on the feature availability in the cluster.
+//
+// Lean plan re arranges the PlanPIndexes information grouped by index
+// level to optimise the de duplication of information.
+// So all the common fields of all the PlanPIndexes for a given index are
+// stored only once per index level as given below. This boosts the savings
+// with higher number of partitions per index.
+// And the plans for each index are stored in sibling folders at metakv.
+// Introduced since 5.1
+//
+// LeanPlanPIndexes -> map[indexName]
+//                                  => LeanIndexPlanPIndexes
+//                                     { indexDef,
+//                                       map[PlanPIndexName]=> LeanPlanPIndex{}
+//                                     }
+//
+// Shared plan refers to another approach for saving space while
+// storing the PlanPIndexes. Here common fields like IndexParams and
+// SourceParams across all PlanPIndexes of an index are deduplicated.
+// And the entire PlanPIndexes are stored under the same folder at metakv.
 
 var cfgMetaKvAdvancedKeys map[string]cfgMetaKvAdvancedHandler = map[string]cfgMetaKvAdvancedHandler{
 	CfgNodeDefsKey(NODE_DEFS_WANTED): &cfgMetaKvNodeDefsSplitHandler{},
@@ -464,10 +492,75 @@ func (a *cfgMetaKvNodeDefsSplitHandler) del(
 
 // ----------------------------------------------------------------
 
-// cfgMetaKvPlanPIndexesHandler rewrites the get/set of a planPIndex
-// document by deduplicating repeated index definitions and source
-// definitions.
+// cfgMetaKvPlanPIndexesHandler invokes the appropriate plan handler
+// depending on the feature availability
 type cfgMetaKvPlanPIndexesHandler struct{}
+
+func (a *cfgMetaKvPlanPIndexesHandler) get(c *CfgMetaKv,
+	key string, cas uint64) ([]byte, uint64, error) {
+	// if the cluster contains any nodes which dont support
+	// the Lean planPIndex feature then fallback to older
+	// shared PlanPIndex format
+	if isLeanPlanSupported(c) {
+		return getLeanPlan(c, key, cas)
+	}
+	return getSharedPlan(c, key, cas)
+}
+
+func (a *cfgMetaKvPlanPIndexesHandler) set(c *CfgMetaKv,
+	key string, val []byte, cas uint64) (uint64, error) {
+	// if the cluster contains any nodes which dont support
+	// the feature Lean planPIndex feature then fallback to older
+	// shared PlanPIndex format
+	if isLeanPlanSupported(c) {
+		return setLeanPlan(c, key, val, cas)
+	}
+	return setSharedPlan(c, key, val, cas)
+}
+
+func (a *cfgMetaKvPlanPIndexesHandler) del(c *CfgMetaKv,
+	key string, cas uint64) error {
+	// if the cluster contains any nodes which dont support
+	// the feature Lean planPIndex feature then fallback to older
+	// shared PlanPIndex format
+	if isLeanPlanSupported(c) {
+		return delLeanPlan(c, key, cas)
+	}
+	return delSharedPlan(c, key, cas)
+}
+
+func isLeanPlanSupported(c *CfgMetaKv) bool {
+	// if the cluster contains any nodes which dont support
+	// the Lean planPIndex feature then fallback to older
+	// shared PlanPIndex format
+	for _, k := range []string{NODE_DEFS_KNOWN, NODE_DEFS_WANTED} {
+		key := CfgNodeDefsKey(k)
+		handler := cfgMetaKvAdvancedKeys[key]
+		if handler == nil {
+			return false
+		}
+
+		v, _, err := handler.get(c, key, 0)
+		if err != nil {
+			log.Printf("cfg_metakv: isLeanPlanSupported, err: %v", err)
+			return false
+		}
+		if v == nil {
+			return false
+		}
+		rv := &NodeDefs{}
+		err = json.Unmarshal(v, rv)
+		if err != nil {
+			log.Printf("cfg_metakv: isLeanPlanSupported, json unmarshal, err: %v", err)
+			return false
+		}
+
+		if !IsFeatureSupportedByCluster(NodeFeatureLeanPlan, rv) {
+			return false
+		}
+	}
+	return true
+}
 
 // PlanPIndexesShared represents a PlanPIndexes that has been
 // deduplicated into shared parts.
@@ -493,7 +586,7 @@ type PlanPIndexSourceDef struct {
 	SourceParams string `json:"sourceParams"`
 }
 
-func (a *cfgMetaKvPlanPIndexesHandler) get(c *CfgMetaKv,
+func getSharedPlan(c *CfgMetaKv,
 	key string, cas uint64) ([]byte, uint64, error) {
 	buf, casResult, err := c.getRawLOCKED(key, cas)
 	if err != nil || len(buf) <= 0 {
@@ -551,7 +644,10 @@ func (a *cfgMetaKvPlanPIndexesHandler) get(c *CfgMetaKv,
 	return bufResult, casResult, nil
 }
 
-func (a *cfgMetaKvPlanPIndexesHandler) set(c *CfgMetaKv,
+// setSharedPlan rewrites the set of a planPIndex
+// document by deduplicating repeated index definitions and source
+// definitions.
+func setSharedPlan(c *CfgMetaKv,
 	key string, val []byte, cas uint64) (uint64, error) {
 	var shared PlanPIndexesShared
 
@@ -593,7 +689,6 @@ func (a *cfgMetaKvPlanPIndexesHandler) set(c *CfgMetaKv,
 	return c.setRawLOCKED(key, valShared, cas)
 }
 
-func (a *cfgMetaKvPlanPIndexesHandler) del(c *CfgMetaKv,
-	key string, cas uint64) error {
+func delSharedPlan(c *CfgMetaKv, key string, cas uint64) error {
 	return c.delRawLOCKED(key, cas)
 }

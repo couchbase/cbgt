@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/blance"
 )
@@ -536,4 +537,33 @@ func DefaultMaxPartitionsPerPIndex(mgr *Manager) int {
 	}
 
 	return maxPartitionsPerPIndex
+}
+
+// ------------------------------------------------------------------------
+
+// IsFeatureSupportedByCluster checks whether the given feature is
+// supported across the cluster/given NodeDefs
+func IsFeatureSupportedByCluster(feature string, nodeDefs *NodeDefs) bool {
+	for _, v1 := range nodeDefs.NodeDefs {
+		featureEnabled := false
+		if v1.Extras != "" {
+			extras := map[string]string{}
+			err := json.Unmarshal([]byte(v1.Extras), &extras)
+			if err != nil {
+				return false
+			}
+
+			features := strings.Split(extras["features"], ",")
+			for _, f := range features {
+				if f == feature {
+					featureEnabled = true
+					break
+				}
+			}
+		}
+		if !featureEnabled {
+			return false
+		}
+	}
+	return true
 }

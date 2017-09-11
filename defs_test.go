@@ -417,3 +417,64 @@ func TestPlanPIndexJSON(t *testing.T) {
 		t.Errorf("expected equal: %#v, versus: %#v", id1, id2)
 	}
 }
+
+func TestMetaKvIsLeanFeatureSupportedSuccess(t *testing.T) {
+
+	value := []byte(`{"uuid":"1530042671","nodeDefs":{"710948f76ea4f807dd4e41e44fe74c13":
+		{"hostPort":"127.0.0.1:9202","uuid":"710948f76ea4f807dd4e41e44fe74c13",
+		"implVersion":"5.0.0","tags":["feed","janitor","pindex","queryer","cbauth_service"],
+		"container":"","weight":1,"extras":"{\"features\":\"leanPlan\",\"nsHostPort\":` +
+		`\"127.0.0.1:9002\",\"version-cbft.app\":\"v0.5.0\",\"version-cbft.lib\": ` +
+		`\"v0.5.0\"}"},"7879038ec4529cc4815f5d927c3df476":{"hostPort":"192.168.1.3:9200",
+		"uuid":"7879038ec4529cc4815f5d927c3df476","implVersion":"5.0.0","tags":["feed",
+		"janitor","pindex","queryer","cbauth_service"],"container":"","weight":1,
+		"extras":"{\"features\":\"leanPlan\",\"nsHostPort\":\"192.168.1.3:9000\", ` +
+		`\"version-cbft.app\":\"v0.5.0\",\"version-cbft.lib\":\"v0.5.0\"}"},
+		"ecc1c3cad5a58523511e6ff2fd38f6be":{"hostPort":"127.0.0.1:9201",
+		"uuid":"ecc1c3cad5a58523511e6ff2fd38f6be","implVersion":"5.0.0",
+		"tags":["feed","janitor","pindex","queryer","cbauth_service"],"container":"",
+		"weight":1,"extras":"{\"features\":\"leanPlan\",\"nsHostPort\":\"127.0.0.1:9001\",` +
+		`\"version-cbft.app\":\"v0.5.0\",\"version-cbft.lib\":\"v0.5.0\"}"}},
+		"implVersion":"5.0.0"}`)
+
+	nodeDefs := &NodeDefs{}
+	err := json.Unmarshal(value, nodeDefs)
+	if err != nil {
+		t.Errorf("json parsing failed, err: %v", err)
+	}
+
+	if !IsFeatureSupportedByCluster(NodeFeatureLeanPlan, nodeDefs) {
+		t.Errorf(" `leanPlan` feature support check should have passed")
+	}
+}
+
+func TestMetaKvIsLeanFeatureSupportedFailure(t *testing.T) {
+
+	value := []byte(`{"uuid":"1530042671","nodeDefs":{"710948f76ea4f807dd4e41e44fe74c13":
+		{"hostPort":"127.0.0.1:9202","uuid":"710948f76ea4f807dd4e41e44fe74c13",
+		"implVersion":"5.0.0","tags":["feed","janitor","pindex","queryer","cbauth_service"],
+		"container":"","weight":1,"extras":"{\"features\":\"leanPlan\",\"nsHostPort\":` +
+		`\"127.0.0.1:9002\",\"version-cbft.app\":\"v0.5.0\",\"version-cbft.lib\": ` +
+		`\"v0.5.0\"}"},"7879038ec4529cc4815f5d927c3df476":{"hostPort":"192.168.1.3:9200",
+		"uuid":"7879038ec4529cc4815f5d927c3df476","implVersion":"5.0.0","tags":["feed",
+		"janitor","pindex","queryer","cbauth_service"],"container":"","weight":1,
+		"extras":"{\"features\":\"leanPlan\",\"nsHostPort\":\"192.168.1.3:9000\", ` +
+		`\"version-cbft.app\":\"v0.5.0\",\"version-cbft.lib\":\"v0.5.0\"}"},
+		"ecc1c3cad5a58523511e6ff2fd38f6be":{"hostPort":"127.0.0.1:9201",
+		"uuid":"ecc1c3cad5a58523511e6ff2fd38f6be","implVersion":"5.0.0",
+		"tags":["feed","janitor","pindex","queryer","cbauth_service"],"container":"",
+		"weight":1,"extras":"{\"features\":\"leanPlanNext\",\"nsHostPort\":\"127.0.0.1:9001\",` +
+		`\"version-cbft.app\":\"v0.5.0\",\"version-cbft.lib\":\"v0.5.0\"}"}},
+		"implVersion":"5.0.0"}`)
+
+	nodeDefs := &NodeDefs{}
+	err := json.Unmarshal(value, nodeDefs)
+	if err != nil {
+		t.Errorf("json parsing failed, err: %v", err)
+	}
+
+	if IsFeatureSupportedByCluster(NodeFeatureLeanPlan, nodeDefs) {
+		t.Errorf(" `leanPlan` feature support check should have failed")
+	}
+
+}
