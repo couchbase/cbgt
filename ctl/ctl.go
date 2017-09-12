@@ -18,6 +18,7 @@ package ctl
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"reflect"
 	"strings"
@@ -64,7 +65,8 @@ type Ctl struct {
 	revNum       uint64
 	revNumWaitCh chan struct{} // Closed when revNum changes.
 
-	memberNodes []CtlNode // May be nil before initCh closed.
+	memberNodes         []CtlNode // May be nil before initCh closed.
+	prevMemberNodeUUIDs []string
 
 	// The following ctlXxxx fields are all nil or non-nil together
 	// depending on whether a change topology is inflight.
@@ -81,6 +83,8 @@ type Ctl struct {
 
 	// Handle to the current rebalancer
 	r *rebalance.Rebalancer
+
+	movingPartitionsCount int
 }
 
 type CtlOptions struct {
@@ -183,11 +187,57 @@ func StartCtl(cfg cbgt.Cfg, server string,
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) getMovingPartitionsCount() int {
-	if ctl.r != nil {
-		return ctl.r.GetMovingPartitionsCount()
+func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) int {
+	numNewNodes := len(cbgt.StringsRemoveStrings(keepNodeUUIDs, existingNodes))
+
+	nodesToRemove, err := ctl.waitForWantedNodes(keepNodeUUIDs, true, nil)
+	if err != nil {
+		log.Warnf("ctl: getMovingPartitionsCount, waitForWantedNodes failed,"+
+			" err: %v", err)
+		return 0
 	}
-	return 0
+	indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
+	if err != nil {
+		log.Warnf("ctl: getMovingPartitionsCount, CfgGetIndexDefs failed,"+
+			" err: %v", err)
+		return 0
+	}
+
+	totalPartitions := 0
+	if indexDefs != nil {
+		for _, indexDef := range indexDefs.IndexDefs {
+			partitions, err := cbgt.CouchbasePartitions(indexDef.SourceType,
+				indexDef.SourceName, indexDef.SourceUUID,
+				indexDef.SourceParams,
+				ctl.optionsCtl.Manager.Server(),
+				ctl.optionsCtl.Manager.GetOptions())
+			if err != nil {
+				log.Printf("ctl: getMovingPartitionsCount, CouchbasePartitions"+
+					" failed, err: %v", err)
+				totalPartitions += 0
+				continue
+			}
+
+			numVbuckets := float64(len(partitions))
+			effectiveReplicas := math.Min(float64(indexDef.PlanParams.NumReplicas+1),
+				float64(len(keepNodeUUIDs)))
+			if indexDef.PlanParams.MaxPartitionsPerPIndex > 0 {
+				totalPartitions += int(math.Ceil(numVbuckets/
+					float64(indexDef.PlanParams.MaxPartitionsPerPIndex)) *
+					effectiveReplicas)
+			} else {
+				// handle the single partition case
+				totalPartitions += int(effectiveReplicas)
+			}
+		}
+	}
+
+	mpCount := cbgt.CalcMovingPartitionsCount(len(keepNodeUUIDs),
+		len(nodesToRemove), numNewNodes, len(existingNodes), totalPartitions)
+
+	log.Printf("ctl: getMovingPartitionsCount: %d", mpCount)
+
+	return mpCount
 }
 
 // ----------------------------------------------------
@@ -224,6 +274,9 @@ func (ctl *Ctl) run() {
 	ctl.incRevNumLOCKED()
 
 	ctl.memberNodes = memberNodes
+	for _, node := range memberNodes {
+		ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
+	}
 
 	if planPIndexes != nil {
 		ctl.prevWarnings = planPIndexes.Warnings
@@ -546,6 +599,10 @@ func (ctl *Ctl) startCtlLOCKED(
 		return http.Get(urlStr)
 	}
 
+	ctl.movingPartitionsCount = ctl.getMovingPartitionsCount(memberNodeUUIDs,
+		ctl.prevMemberNodeUUIDs)
+	ctl.prevMemberNodeUUIDs = memberNodeUUIDs
+
 	// The ctl goroutine.
 	//
 	go func() {
@@ -599,6 +656,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				ctlOnProgress(0, 0, nil, nil, nil, nil, nil, ctlErrs)
 			}
 
+			ctl.movingPartitionsCount = 0
 			ctl.m.Unlock()
 
 			close(ctlDoneCh)

@@ -361,3 +361,28 @@ func isNanOrInf(v float64) bool {
 	}
 	return false
 }
+
+// CalcMovingPartitionsCount attempts to compute the number of
+// moving partitions during a rebalance, given few node count
+// statistics of the cluster
+func CalcMovingPartitionsCount(numKeepNodes, numRemoveNodes, numNewNodes,
+	numPrevNodes, totalPartitions int) int {
+	// figure out the per node partitions to move during cases like
+	// scaleOut, scaleIn and constant nodecount in cluster
+	partitionsPerNode := 0
+	if numRemoveNodes == numNewNodes && numKeepNodes > 0 {
+		partitionsPerNode = totalPartitions / numKeepNodes
+	} else if numRemoveNodes > numNewNodes && numPrevNodes > 0 {
+		partitionsPerNode = totalPartitions / numPrevNodes
+	} else if numRemoveNodes < numNewNodes && numKeepNodes > 0 {
+		partitionsPerNode = totalPartitions / numKeepNodes
+	}
+	// adjust the partitionsPerNode for the rebalance scenario
+	// where both node additions and removals happen at the same time
+	delta := numRemoveNodes
+	if numRemoveNodes > 0 && numNewNodes > 0 {
+		delta = int(math.Abs(float64(numRemoveNodes - numNewNodes)))
+	}
+
+	return partitionsPerNode * (delta + numNewNodes)
+}

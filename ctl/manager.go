@@ -555,7 +555,8 @@ func (m *CtlMgr) updateProgress(
 				totPct += prog
 			}
 		}
-		partitionsCnt := m.ctl.getMovingPartitionsCount()
+
+		partitionsCnt := m.ctl.movingPartitionsCount
 		if partitionsCnt > 0 {
 			progress = totPct / float64(partitionsCnt)
 		} else if len(pindexProg) > 0 {

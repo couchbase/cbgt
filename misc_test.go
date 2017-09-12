@@ -360,3 +360,87 @@ func TestFPrintFloatMap(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMovingPartitionsCountUtil(t *testing.T) {
+	// scaleOut case: 1 => 3 nodes
+	numKeepNodes := 3
+	numRemoveNodes := 0
+	numExistingNodes := 1
+	numNewNodes := 2
+	numPartitions := 18 // eg: 6 * 3 indexes
+
+	movingPartitionCount := CalcMovingPartitionsCount(numKeepNodes,
+		numRemoveNodes, numNewNodes, numExistingNodes, numPartitions)
+
+	if movingPartitionCount != 12 {
+		t.Errorf(" moving partitions count should be 12")
+	}
+
+	// scaleIn case: 3 => 2 nodes
+	numKeepNodes = 2
+	numRemoveNodes = 1
+	numExistingNodes = 3
+	numNewNodes = 0
+	numPartitions = 18
+
+	movingPartitionCount = CalcMovingPartitionsCount(numKeepNodes,
+		numRemoveNodes, numNewNodes, numExistingNodes, numPartitions)
+
+	if movingPartitionCount != 6 {
+		t.Errorf(" moving partitions count should be 6")
+	}
+
+	// constant node count case: 2 => 2 nodes
+	numKeepNodes = 2
+	numRemoveNodes = 1
+	numExistingNodes = 2
+	numNewNodes = 1
+	numPartitions = 18
+
+	movingPartitionCount = CalcMovingPartitionsCount(numKeepNodes,
+		numRemoveNodes, numNewNodes, numExistingNodes, numPartitions)
+
+	if movingPartitionCount != 9 {
+		t.Errorf(" moving partitions count should be 9")
+	}
+
+	// few random cases
+	numKeepNodes = 2
+	numRemoveNodes = 1
+	numExistingNodes = 2
+	numNewNodes = 1
+	numPartitions = 0
+
+	movingPartitionCount = CalcMovingPartitionsCount(numKeepNodes,
+		numRemoveNodes, numNewNodes, numExistingNodes, numPartitions)
+
+	if movingPartitionCount != 0 {
+		t.Errorf(" moving partitions count should be 0")
+	}
+
+	numKeepNodes = 0
+	numRemoveNodes = 1
+	numExistingNodes = 2
+	numNewNodes = 1
+	numPartitions = 18
+
+	movingPartitionCount = CalcMovingPartitionsCount(numKeepNodes,
+		numRemoveNodes, numNewNodes, numExistingNodes, numPartitions)
+
+	if movingPartitionCount != 0 {
+		t.Errorf(" moving partitions count should be 0")
+	}
+
+	numKeepNodes = 3
+	numRemoveNodes = 0
+	numExistingNodes = 3
+	numNewNodes = 0
+	numPartitions = 18
+
+	movingPartitionCount = CalcMovingPartitionsCount(numKeepNodes,
+		numRemoveNodes, numNewNodes, numExistingNodes, numPartitions)
+
+	if movingPartitionCount != 0 {
+		t.Errorf(" moving partitions count should be 0")
+	}
+}
