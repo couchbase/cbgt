@@ -469,6 +469,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "x/Advanced|x/Index partition querying",
 				"version introduced": "0.2.0",
 			})
+		handle("/api/move/pindex/{pindexName}", "GET",
+			NewPIndexMoveHandler(mgr),
+			map[string]string{
+				"_category":          "PIndex file movement",
+				"version introduced": "5.0.1",
+			})
+
 	}
 	handle("/api/index/{indexName}/pindexLookup", "POST", NewPIndexLookUpHandler(mgr),
 		map[string]string{

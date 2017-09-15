@@ -543,8 +543,21 @@ func (m *CtlMgr) updateProgress(
 						continue
 					}
 					curProg := m.computeProgPercent(pex, sourcePartitions)
-					if curProg > 0 {
-						pindexProg[pex.PIndex] = curProg
+
+					if curProg > 0 || pex.TransferProgress > 0 {
+						t := float64(0)
+						if pex.TransferProgress > 0 {
+							t = .8 * pex.TransferProgress
+							if curProg > 0 {
+								t += .2 * curProg
+							}
+						} else {
+							t = curProg
+						}
+
+						if v, ok := pindexProg[pex.PIndex]; !ok || v < t {
+							pindexProg[pex.PIndex] = t
+						}
 					}
 				}
 			}
@@ -555,8 +568,7 @@ func (m *CtlMgr) updateProgress(
 				totPct += prog
 			}
 		}
-
-		partitionsCnt := m.ctl.movingPartitionsCount
+		partitionsCnt := m.ctl.getMovingPartitionsCount()
 		if partitionsCnt > 0 {
 			progress = totPct / float64(partitionsCnt)
 		} else if len(pindexProg) > 0 {
