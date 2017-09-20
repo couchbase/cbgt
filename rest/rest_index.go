@@ -289,11 +289,17 @@ func (h *QueryHandler) ServeHTTP(
 	}
 
 	if h.slowQueryLogTimeout > time.Duration(0) {
+		var resultSetBytes uint64
+		crw, ok := w.(*CountResponseWriter)
+		if ok {
+			resultSetBytes = crw.TotBytesWritten
+		}
+
 		d := time.Since(startTime)
 		if d > h.slowQueryLogTimeout {
-			log.Printf("slow-query:"+
-				" index: %s, query: %s, duration: %v, err: %v",
-				indexName, string(requestBody), d, err)
+			log.Printf("slow-query: index: %s,"+
+				" query: %s, resultset bytes: %v, duration: %v, err: %v",
+				indexName, string(requestBody), resultSetBytes, d, err)
 			if focusStats != nil {
 				atomic.AddUint64(&focusStats.TotRequestSlow, 1)
 			}
