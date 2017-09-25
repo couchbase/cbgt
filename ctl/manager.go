@@ -543,8 +543,19 @@ func (m *CtlMgr) updateProgress(
 						continue
 					}
 					curProg := m.computeProgPercent(pex, sourcePartitions)
-					if curProg > 0 {
-						pindexProg[pex.PIndex] = curProg
+					if curProg > 0 || pex.TransferProgress > 0 {
+						var t float64
+						if pex.TransferProgress > 0 {
+							t = .8 * pex.TransferProgress
+							if curProg > 0 {
+								t += .2 * curProg
+							}
+						} else {
+							t = curProg
+						}
+						if v, ok := pindexProg[pex.PIndex]; !ok || v < t {
+							pindexProg[pex.PIndex] = t
+						}
 					}
 				}
 			}

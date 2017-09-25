@@ -149,3 +149,11 @@ func (t *DestForwarder) Query(pindex *PIndex, req []byte, res io.Writer,
 func (t *DestForwarder) Stats(w io.Writer) error {
 	return t.DestProvider.Stats(w)
 }
+
+func (t *DestForwarder) CopyDestContents(mgr *Manager, req *CopyPIndexRequest) error {
+	if destTransfer, ok := t.DestProvider.(DestTransfer); ok {
+		return destTransfer.CopyDestContents(mgr, req)
+	}
+	return fmt.Errorf("dest_forwarder: no DestTransfer implementation found for"+
+		" partition %s", req.SourcePIndexName)
+}

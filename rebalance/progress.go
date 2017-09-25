@@ -37,10 +37,11 @@ type ProgressToString func(maxNodeLen, maxPIndexLen int,
 type ProgressEntry struct {
 	PIndex, SourcePartition, Node string // Immutable.
 
-	StateOp     StateOp
-	InitUUIDSeq cbgt.UUIDSeq
-	CurrUUIDSeq cbgt.UUIDSeq
-	WantUUIDSeq cbgt.UUIDSeq
+	StateOp          StateOp
+	InitUUIDSeq      cbgt.UUIDSeq
+	CurrUUIDSeq      cbgt.UUIDSeq
+	WantUUIDSeq      cbgt.UUIDSeq
+	TransferProgress float64
 
 	Move int
 	Done bool
@@ -160,6 +161,7 @@ func UpdateProgressEntries(
 		currStates CurrStates,
 		currSeqs CurrSeqs,
 		wantSeqs WantSeqs,
+		transferProgress map[string]float64,
 		mapNextMoves map[string]*blance.NextMoves,
 	) {
 		for _, pindexes := range currStates {
@@ -180,7 +182,9 @@ func UpdateProgressEntries(
 						sourcePartition, node,
 						func(pe *ProgressEntry) {
 							pe.CurrUUIDSeq = currUUIDSeq
-
+							if v, ok := transferProgress[pindex]; ok && v > 0 {
+								pe.TransferProgress = v
+							}
 							if pe.InitUUIDSeq.UUID == "" {
 								pe.InitUUIDSeq = currUUIDSeq
 							}

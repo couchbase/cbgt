@@ -19,6 +19,8 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -386,3 +388,21 @@ func CalcMovingPartitionsCount(numKeepNodes, numRemoveNodes, numNewNodes,
 
 	return partitionsPerNode * (delta + numNewNodes)
 }
+
+// GetDirectorySize computes the size of given directory
+// recursively
+func GetDirectorySize(path string) (int64, error) {
+	var dirSize int64
+
+	getSize := func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			dirSize += info.Size()
+		}
+		return err
+	}
+
+	err := filepath.Walk(path, getSize)
+
+	return dirSize, err
+}
+

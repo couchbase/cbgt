@@ -37,6 +37,7 @@ type RebalanceProgress struct {
 	Index string
 
 	OrchestratorProgress blance.OrchestratorProgress
+	TransferProgress     map[string]float64
 }
 
 type RebalanceOptions struct {
@@ -110,6 +111,8 @@ type Rebalancer struct {
 	wantSeqs WantSeqs
 
 	stopCh chan struct{} // Closed by app or when there's an error.
+
+	transferProgress map[string]float64 // pindex -> file transfer progress
 }
 
 // Map of index -> pindex -> node -> StateOp.
@@ -212,6 +215,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		currSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
 		wantSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
 		stopCh:              stopCh,
+		transferProgress:    map[string]float64{},
 	}
 
 	r.Logf("rebalance: nodesAll: %#v", nodesAll)
@@ -293,7 +297,7 @@ func (r *Rebalancer) ResumeNewAssignments() (err error) {
 	return err
 }
 
-type VisitFunc func(CurrStates, CurrSeqs, WantSeqs,
+type VisitFunc func(CurrStates, CurrSeqs, WantSeqs, map[string]float64,
 	map[string]*blance.NextMoves)
 
 // Visit invokes the visitor callback with the current,
@@ -302,10 +306,10 @@ func (r *Rebalancer) Visit(visitor VisitFunc) {
 	r.m.Lock()
 	if r.o != nil {
 		r.o.VisitNextMoves(func(m map[string]*blance.NextMoves) {
-			visitor(r.currStates, r.currSeqs, r.wantSeqs, m)
+			visitor(r.currStates, r.currSeqs, r.wantSeqs, r.transferProgress, m)
 		})
 	} else {
-		visitor(r.currStates, r.currSeqs, r.wantSeqs, nil)
+		visitor(r.currStates, r.currSeqs, r.wantSeqs, r.transferProgress, nil)
 	}
 	r.m.Unlock()
 }
@@ -1225,6 +1229,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 							UUID string `json:"uuid"`
 							Seq  uint64 `json:"seq"`
 						} `json:"partitions"`
+						TransferProgress float64 `json:"transferProgress,omitempty"`
 					} `json:"pindexes"`
 				}{}
 
@@ -1239,6 +1244,10 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 				}
 
 				for pindex, x := range m.PIndexes {
+					r.m.Lock()
+					r.transferProgress[pindex] = x.TransferProgress
+					r.m.Unlock()
+
 					for sourcePartition, uuidSeq := range x.Partitions {
 						uuidSeqPrev, uuidSeqPrevExists := r.setUUIDSeq(
 							r.currSeqs, pindex, sourcePartition,
