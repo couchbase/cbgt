@@ -127,6 +127,15 @@ type DestEx interface {
 	RollbackEx(partition string, partitionUUID uint64, rollbackSeq uint64) error
 }
 
+// DestTransfer interface defines the data sink or destination for data that
+// comes from a data-source for specific implementations which need to
+// support its own file transfer mechanism among nodes in cluster
+type DestTransfer interface {
+	// Invoked when the cluster needs to move the pindex files across
+	// nodes during a rebalance operation
+	CopyDestContents(mgr *Manager, moveReq *CopyPIndexRequest) error
+}
+
 // DestExtrasType represents the encoding for the
 // Dest.DataUpdate/DataDelete() extras parameter.
 type DestExtrasType uint16

@@ -262,22 +262,6 @@ func NewDCPFeed(name, indexName, url, poolName,
 
 	urls := strings.Split(url, ";")
 
-	options := &cbdatasource.BucketDataSourceOptions{
-		Name: fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31()),
-		ClusterManagerBackoffFactor: params.ClusterManagerBackoffFactor,
-		ClusterManagerSleepInitMS:   params.ClusterManagerSleepInitMS,
-		ClusterManagerSleepMaxMS:    params.ClusterManagerSleepMaxMS,
-		DataManagerBackoffFactor:    params.DataManagerBackoffFactor,
-		DataManagerSleepInitMS:      params.DataManagerSleepInitMS,
-		DataManagerSleepMaxMS:       params.DataManagerSleepMaxMS,
-		FeedBufferSizeBytes:         params.FeedBufferSizeBytes,
-		FeedBufferAckThreshold:      params.FeedBufferAckThreshold,
-		NoopTimeIntervalSecs:        params.NoopTimeIntervalSecs,
-		Logf:                        log.Printf,
-		TraceCapacity:               20,
-		IncludeXAttrs:               params.IncludeXAttrs,
-	}
-
 	feed := &DCPFeed{
 		name:       name,
 		indexName:  indexName,
@@ -294,6 +278,23 @@ func NewDCPFeed(name, indexName, url, poolName,
 		mgr:        mgr,
 		auth:       auth,
 		stats:      NewDestStats(),
+	}
+
+	options := &cbdatasource.BucketDataSourceOptions{
+		Name: fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31()),
+		ClusterManagerBackoffFactor: params.ClusterManagerBackoffFactor,
+		ClusterManagerSleepInitMS:   params.ClusterManagerSleepInitMS,
+		ClusterManagerSleepMaxMS:    params.ClusterManagerSleepMaxMS,
+		DataManagerBackoffFactor:    params.DataManagerBackoffFactor,
+		DataManagerSleepInitMS:      params.DataManagerSleepInitMS,
+		DataManagerSleepMaxMS:       params.DataManagerSleepMaxMS,
+		FeedBufferSizeBytes:         params.FeedBufferSizeBytes,
+		FeedBufferAckThreshold:      params.FeedBufferAckThreshold,
+		NoopTimeIntervalSecs:        params.NoopTimeIntervalSecs,
+		Logf:                        log.Printf,
+		OnFeedStart:                 feed.OnFeedStart,
+		TraceCapacity:               20,
+		IncludeXAttrs:               params.IncludeXAttrs,
 	}
 
 	feed.bds, err = cbdatasource.NewBucketDataSource(
@@ -321,6 +322,60 @@ func (t *DCPFeed) Start() error {
 
 	log.Printf("feed_dcp: start, name: %s", t.Name())
 	return t.bds.Start()
+}
+
+func (t *DCPFeed) OnFeedStart(stopCh chan struct{}) error {
+	// get any dest instance, as all are same
+	var dest Dest
+	for _, v := range t.dests {
+		dest = v
+		break
+	}
+	if dest == nil {
+		log.Printf("feed_dcp: no valid dest found for feed: %s", t.name)
+		return nil
+	}
+	var destTransfer DestTransfer
+	var ok bool
+	// check if the current version of dest has an implementation
+	// DestTransfer interface
+	if destTransfer, ok = dest.(DestTransfer); !ok {
+		log.Printf("feed_dcp: no DestTransfer implementation found")
+		return nil
+	}
+	var pindex *PIndex
+	_, pindexes := t.mgr.CurrentMaps()
+	if pindex, ok = pindexes[t.name]; !ok {
+		log.Printf("feed_dcp: no pindex found, %s", t.name)
+		return nil
+	}
+
+	mReq, err := getCopyPIndexRequest(t.name, t.mgr)
+	if mReq == nil || err != nil {
+		log.Printf("feed_dcp: no source nodes found for partition: %s", t.name)
+		return nil
+	}
+	mReq.CancelCh = stopCh
+
+	err = destTransfer.CopyDestContents(t.mgr, mReq)
+	if err != nil {
+		log.Printf("feed_dcp: MoveDestContents failed, err: %+v", err)
+		return err
+	}
+
+	err = t.mgr.restartPIndexDest(pindex)
+	if err != nil {
+		log.Printf("feed_dcp: restartPIndexDest failed, err: %+v", err)
+		return err
+	}
+	// hook the new dest back into the feed
+	t.m.Lock()
+	for k := range t.dests {
+		t.dests[k] = pindex.Dest
+	}
+	t.m.Unlock()
+	log.Printf("feed_dcp: restartPIndexDest finished")
+	return nil
 }
 
 func (t *DCPFeed) Close() error {

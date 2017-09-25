@@ -215,6 +215,43 @@ func cleanDir(path string) {
 	}
 }
 
+func (mgr *Manager) restartPIndexDest(pi *PIndex) error {
+	// stop the pindex dest
+	if pi.Dest != nil {
+		buf := bytes.NewBuffer(nil)
+		buf.Write([]byte(fmt.Sprintf(
+			`{"event":"stopPIndex","name":"%s","remove":%t,"time":"%s","stats":`,
+			pi.Name, false, time.Now().Format(time.RFC3339Nano))))
+		err := pi.Dest.Stats(buf)
+		if err == nil {
+			buf.Write(JsonCloseBrace)
+			mgr.AddEvent(buf.Bytes())
+		}
+	}
+
+	if pi.Dest != nil {
+		err := pi.Dest.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	// start the pindex dest
+	path := mgr.PIndexPath(pi.Name)
+	restart := func() {
+		go restartPIndex(mgr, pi)
+	}
+	_, dest, err := OpenPIndexImpl(pi.IndexType, path, restart)
+	if err != nil {
+		return fmt.Errorf("manager_janitor: could not open indexType: %s,"+
+			" path: %s, err: %v", pi.IndexType, path, err)
+	}
+	pi.m.Lock()
+	pi.Dest = dest
+	pi.m.Unlock()
+	return nil
+}
+
 func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	if req == nil {
 		return nil
