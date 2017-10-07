@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/blance"
 )
@@ -140,6 +141,30 @@ type NodeDef struct {
 	Container   string   `json:"container"`
 	Weight      int      `json:"weight"`
 	Extras      string   `json:"extras"`
+
+	m            sync.Mutex
+	extrasParsed map[string]interface{}
+}
+
+func (n *NodeDef) GetFromParsedExtras(key string) (interface{}, error) {
+	var ret interface{}
+	var err error
+
+	n.m.Lock()
+	if n.extrasParsed != nil {
+		ret = n.extrasParsed[key]
+	} else {
+		extrasParsed := make(map[string]interface{})
+
+		err = json.Unmarshal([]byte(n.Extras), &extrasParsed)
+		if err == nil {
+			n.extrasParsed = extrasParsed
+			ret = n.extrasParsed[key]
+		}
+	}
+	n.m.Unlock()
+
+	return ret, err
 }
 
 // ------------------------------------------------------------------------
