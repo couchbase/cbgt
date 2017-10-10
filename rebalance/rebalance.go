@@ -859,7 +859,8 @@ func (r *Rebalancer) getNodePlanParamsReadWrite(
 
 // grabCurrentSample will block until it gets some stats
 // information from monitor routine at a 1 sec interval.
-func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{}) error {
+func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{},
+	pindex string) error {
 	sampleWantCh := make(chan monitor.MonitorSample)
 	select {
 	case <-stopCh:
@@ -869,9 +870,26 @@ func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{}) error {
 		return blance.ErrorStopped
 
 	case r.monitorSampleWantCh <- sampleWantCh:
-		for range sampleWantCh {
-			// NO-OP, but a new sample meant r.currSeqs was updated.
-			// Awaiting once before we start processing the sps.
+		for s := range sampleWantCh {
+			// err upon not finding the pindex data in
+			// the stats response since that could indicate an index deletion
+			m := struct {
+				PIndexes map[string]struct {
+					Partitions map[string]struct {
+						UUID string `json:"uuid"`
+						Seq  uint64 `json:"seq"`
+					} `json:"partitions"`
+				} `json:"pindexes"`
+			}{}
+
+			err := json.Unmarshal(s.Data, &m)
+			if err != nil {
+				return err
+			}
+
+			if _, exists := m.PIndexes[pindex]; !exists {
+				return ErrorNoIndexDefinitionFound
+			}
 		}
 	}
 	return nil
@@ -929,7 +947,12 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 				} else {
 					r.Logf("rebalance: waitAssignPIndexDone,"+
 						" awaiting a stats sample grab for pindex %s", pindex)
-					r.grabCurrentSample(stopCh, stopCh2)
+					err := r.grabCurrentSample(stopCh, stopCh2, pindex)
+					if err != nil {
+						r.Logf("rebalance: waitAssignPIndexDone,"+
+							" failed for pindex: %s, err: %+v", pindex, err)
+						return err
+					}
 				}
 			}
 		}
