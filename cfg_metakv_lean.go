@@ -33,7 +33,7 @@ var NodeFeatureLeanPlan = "leanPlan"
 
 var leanPlanMetaKvKeyGlue = "Lean/planPIndexesLean-"
 
-// curMetaKvPlanKey is the source of truth meta kv path for the
+// curMetaKvPlanKey is the source of truth for the meta kv data for the
 // current plan
 var curMetaKvPlanKey = "curMetaKvPlanKey"
 
@@ -67,6 +67,13 @@ type LeanPlanPIndex struct {
 	UUID             string                     `json:"uuid"`
 	SourcePartitions string                     `json:"sourcePartitions"`
 	Nodes            map[string]*PlanPIndexNode `json:"nodes"`
+}
+
+// planMeta represents the json contents of curMetaKvPlanKey
+type planMeta struct {
+	Path        string `json:"path"`
+	UUID        string `json:"uuid"`
+	ImplVersion string `json:"implVersion"`
 }
 
 // setLeanPlan splits a PlanPIndexes into multiple child metakv entries
@@ -157,14 +164,24 @@ func setLeanPlan(c *CfgMetaKv,
 	}
 
 	// update the curPlanMetaKvKey to point to the latest plan directory
-	curPath, _, err := getCurMetaKvPlanPath(c)
+	curMeta, err := getCurMetaKvPlanMeta(c)
 	if err != nil {
-		log.Printf("cfg_metakv_lean: setLeanPlan, getCurMetaKvPlanPath,"+
+		log.Printf("cfg_metakv_lean: setLeanPlan, getCurMetaKvPlanMeta,"+
 			" err: %v", err)
 		metakv.RecursiveDelete(newPath)
 		return 0, err
 	}
-	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), []byte(newPath), nil)
+	// create the curPlanMetaKvKey key
+	meta := &planMeta{UUID: planPIndexes.UUID,
+		ImplVersion: planPIndexes.ImplVersion,
+		Path:        newPath,
+	}
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		metakv.RecursiveDelete(newPath)
+		return 0, err
+	}
+	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), metaJSON, nil)
 	if err != nil {
 		log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
 			"Set, err: %v", err)
@@ -172,11 +189,11 @@ func setLeanPlan(c *CfgMetaKv,
 		return 0, err
 	}
 	// double check before deleting the older plan directory
-	if strings.HasPrefix(curPath, leanPlanKeyPrefix) {
-		err = metakv.RecursiveDelete(curPath)
+	if curMeta != nil && strings.HasPrefix(curMeta.Path, leanPlanKeyPrefix) {
+		err := metakv.RecursiveDelete(curMeta.Path)
 		if err != nil {
 			log.Printf("cfg_metakv_lean: setLeanPlan, "+
-				"metakv.RecursiveDelete, err: %v", err)
+				"deleteMetaKvPath, err: %v", err)
 			return 0, err
 		}
 	}
@@ -185,6 +202,7 @@ func setLeanPlan(c *CfgMetaKv,
 	c.lastSplitCAS = casResult
 	// purge any orphaned lean planPIndexes
 	purgeOrphanedLeanPlans(c, newPath)
+	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s", newPath)
 	return casResult, err
 }
 
@@ -199,21 +217,21 @@ func getLeanPlan(c *CfgMetaKv,
 	// delete/set operations happening with the planPIndex directory
 RETRY:
 	attempt++
-	// fetch the current planPIndex path first
-	path, _, err := getCurMetaKvPlanPath(c)
+	// fetch the current planPIndex meta first
+	planMeta, err := getCurMetaKvPlanMeta(c)
 	if err != nil {
 		return nil, 0, err
 	}
-	// looks like an upgrade scenario as no leanPlan path set yet,
+	// looks like an upgrade scenario as no leanPlan meta set yet,
 	// hence fallback to older shared plan
-	if path == "" {
+	if planMeta == nil {
 		return getSharedPlan(c, key, cas)
 	}
-
-	children, err := metakv.ListAllChildren(path)
-	if err != nil {
-		return nil, 0, err
+	// looks like no active plan exists
+	if planMeta != nil && planMeta.Path == "" {
+		return nil, 0, nil
 	}
+
 	rv := &PlanPIndexes{
 		PlanPIndexes: make(map[string]*PlanPIndex),
 		Warnings:     make(map[string][]string),
@@ -221,21 +239,18 @@ RETRY:
 	leanPlanPIndexes := &LeanPlanPIndexes{
 		IndexPlanPIndexes: make(map[string]*LeanIndexPlanPIndexes),
 	}
+	rv.UUID = planMeta.UUID
+	rv.ImplVersion = planMeta.ImplVersion
 
+	children, err := metakv.ListAllChildren(planMeta.Path)
+	if err != nil {
+		return nil, 0, err
+	}
 	for _, v := range children {
 		var childPlan LeanPlanPIndexes
 		err = json.Unmarshal(v.Value, &childPlan)
 		if err != nil {
 			return nil, 0, err
-		}
-		if childPlan.Warnings != nil {
-			for index, warnings := range childPlan.Warnings {
-				// in order to have the [] slice to match the hash
-				if len(warnings) == 0 {
-					rv.Warnings[index] = make([]string, 0)
-				}
-				rv.Warnings[index] = append(rv.Warnings[index], warnings...)
-			}
 		}
 
 		for _, ipp := range childPlan.IndexPlanPIndexes {
@@ -257,6 +272,15 @@ RETRY:
 				rv.PlanPIndexes[lpp.Name] = planPIndex
 			}
 			leanPlanPIndexes.IndexPlanPIndexes[ipp.IndexDef.Name] = ipp
+
+			if childPlan.Warnings != nil {
+				if warnings, exists := childPlan.Warnings[ipp.IndexDef.Name]; exists {
+					if len(warnings) == 0 {
+						rv.Warnings[ipp.IndexDef.Name] = make([]string, 0)
+					}
+					rv.Warnings[ipp.IndexDef.Name] = append(rv.Warnings[ipp.IndexDef.Name], warnings...)
+				}
+			}
 		}
 
 		if rv.ImplVersion == "" ||
@@ -283,7 +307,7 @@ RETRY:
 		return nil, 0, err
 	}
 	hashStart := len(leanPlanKeyPrefix)
-	hashFromName := path[hashStart : hashStart+32]
+	hashFromName := planMeta.Path[hashStart : hashStart+32]
 	if hashFromName != hashMD5 {
 		if attempt < maxRetry {
 			goto RETRY
@@ -306,13 +330,31 @@ func delLeanPlan(
 	if len(buf) > 0 {
 		delSharedPlan(c, key, cas)
 	}
-	// fetch the current planPIndex path first
-	path, _, err := getCurMetaKvPlanPath(c)
+	// fetch the current planPIndex path
+	meta, err := getCurMetaKvPlanMeta(c)
+	if err != nil || meta == nil {
+		return err
+	}
+	err = metakv.RecursiveDelete(meta.Path)
+	if err != nil {
+		log.Printf("cfg_metakv_lean: delLeanPlan, RecursiveDelete,"+
+			" err: %v", err)
+		return err
+	}
+	// set the plan meta Path to empty, to prevent the fallback
+	// to the sharedPlan once upgraded
+	meta.Path = ""
+	metaJSON, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
-
-	return metakv.RecursiveDelete(path)
+	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), metaJSON, nil)
+	if err != nil {
+		log.Printf("cfg_metakv_lean: delLeanPlan, curMetaKvPlanKey "+
+			"Set, err: %v", err)
+		return err
+	}
+	return nil
 }
 
 // purgeOrphanedLeanPlans purges all those planPIndexes directories
@@ -327,10 +369,12 @@ func purgeOrphanedLeanPlans(c *CfgMetaKv, curPath string) error {
 	// deduplicate the directory entries under the
 	// "/fts/cbgt/cfg/planPIndexesLean/"
 	// as ListAllChildren traverse recursively
+	curDir, _ := filepath.Split(curPath)
 	planDirPaths := make(map[string]bool, len(children))
 	for _, v := range children {
 		dirPath, _ := filepath.Split(v.Path)
-		if _, seen := planDirPaths[dirPath]; !seen && curPath != dirPath {
+		if _, seen := planDirPaths[dirPath]; !seen && curPath != dirPath &&
+			curDir != dirPath {
 			planDirPaths[dirPath] = true
 		}
 	}
@@ -339,31 +383,44 @@ func purgeOrphanedLeanPlans(c *CfgMetaKv, curPath string) error {
 	// purge all those orphan lean planPIndex directory paths
 	// which are older than 10 min
 	for orphanPath := range planDirPaths {
-		bornTimeStr := orphanPath[len(leanPlanKeyPrefix)+
-			md5HashLength+1 : len(orphanPath)-1]
-		// check if older than a min
-		bornTimeMs, _ := strconv.Atoi(bornTimeStr)
-		age := curTimeMs - int64(bornTimeMs)
-		if age >= 600000 {
-			err = metakv.RecursiveDelete(orphanPath)
-			if err != nil {
-				// errs are logged and ignored except the last one
+		if strings.HasPrefix(orphanPath, leanPlanKeyPrefix) {
+			bornTimeStr := orphanPath[len(leanPlanKeyPrefix)+
+				md5HashLength+1 : len(orphanPath)-1]
+			// check if older than a min
+			bornTimeMs, _ := strconv.Atoi(bornTimeStr)
+			age := curTimeMs - int64(bornTimeMs)
+			if age >= 600000 {
+				err = metakv.RecursiveDelete(orphanPath)
+				if err != nil {
+					// errs are logged and ignored except the last one
+					log.Printf("cfg_metakv_lean: purgeOrphanedLeanPlans, "+
+						"err: %v", err)
+				}
 				log.Printf("cfg_metakv_lean: purgeOrphanedLeanPlans, "+
-					"err: %v", err)
+					" purged path: %s", orphanPath)
 			}
 		}
 	}
 	return err
 }
 
-func getCurMetaKvPlanPath(c *CfgMetaKv) (string, interface{}, error) {
+func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 	path := c.keyToPath(curMetaKvPlanKey)
-	v, cas, err := metakv.Get(path)
+	v, _, err := metakv.Get(path)
 	if err != nil {
-		log.Printf("cfg_metakv_lean: getCurMetaKvPlanPath, err: %v", err)
-		return "", 0, err
+		log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, err: %v", err)
+		return nil, err
 	}
-	return string(v), cas, nil
+	if len(v) == 0 {
+		return nil, nil
+	}
+	meta := &planMeta{}
+	err = json.Unmarshal(v, meta)
+	if err != nil {
+		log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, json err: %v", err)
+		return nil, err
+	}
+	return meta, nil
 }
 
 func computeMD5(payload []byte) (string, error) {
