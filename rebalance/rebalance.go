@@ -860,7 +860,7 @@ func (r *Rebalancer) getNodePlanParamsReadWrite(
 // grabCurrentSample will block until it gets some stats
 // information from monitor routine at a 1 sec interval.
 func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{},
-	pindex string) error {
+	pindex, node string) error {
 	sampleWantCh := make(chan monitor.MonitorSample)
 	select {
 	case <-stopCh:
@@ -871,24 +871,26 @@ func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{},
 
 	case r.monitorSampleWantCh <- sampleWantCh:
 		for s := range sampleWantCh {
-			// err upon not finding the pindex data in
-			// the stats response since that could indicate an index deletion
-			m := struct {
-				PIndexes map[string]struct {
-					Partitions map[string]struct {
-						UUID string `json:"uuid"`
-						Seq  uint64 `json:"seq"`
-					} `json:"partitions"`
-				} `json:"pindexes"`
-			}{}
+			if node == s.UUID {
+				// err upon not finding the pindex data in
+				// the stats response since that could indicate an index deletion
+				m := struct {
+					PIndexes map[string]struct {
+						Partitions map[string]struct {
+							UUID string `json:"uuid"`
+							Seq  uint64 `json:"seq"`
+						} `json:"partitions"`
+					} `json:"pindexes"`
+				}{}
 
-			err := json.Unmarshal(s.Data, &m)
-			if err != nil {
-				return err
-			}
+				err := json.Unmarshal(s.Data, &m)
+				if err != nil {
+					return err
+				}
 
-			if _, exists := m.PIndexes[pindex]; !exists {
-				return ErrorNoIndexDefinitionFound
+				if _, exists := m.PIndexes[pindex]; !exists {
+					return ErrorNoIndexDefinitionFound
+				}
 			}
 		}
 	}
@@ -948,7 +950,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 				} else {
 					r.Logf("rebalance: waitAssignPIndexDone,"+
 						" awaiting a stats sample grab for pindex %s", pindex)
-					err := r.grabCurrentSample(stopCh, stopCh2, pindex)
+					err := r.grabCurrentSample(stopCh, stopCh2, pindex, formerPrimaryNode)
 					if err != nil {
 						r.Logf("rebalance: waitAssignPIndexDone,"+
 							" failed for pindex: %s, err: %+v", pindex, err)
