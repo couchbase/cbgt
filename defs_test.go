@@ -477,4 +477,16 @@ func TestMetaKvIsLeanFeatureSupportedFailure(t *testing.T) {
 		t.Errorf(" `leanPlan` feature support check should have failed")
 	}
 
+	// no nodeDefs given, then expect no feature support
+	value = []byte(`{"uuid":"1530042671","nodeDefs":{},"implVersion":"5.0.0"}`)
+
+	nodeDefs = &NodeDefs{}
+	err = json.Unmarshal(value, nodeDefs)
+	if err != nil {
+		t.Errorf("json parsing failed, err: %v", err)
+	}
+
+	if IsFeatureSupportedByCluster(NodeFeatureLeanPlan, nodeDefs) {
+		t.Errorf(" `leanPlan` feature support check should have failed")
+	}
 }

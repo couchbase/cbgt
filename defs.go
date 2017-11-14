@@ -569,6 +569,10 @@ func DefaultMaxPartitionsPerPIndex(mgr *Manager) int {
 // IsFeatureSupportedByCluster checks whether the given feature is
 // supported across the cluster/given NodeDefs
 func IsFeatureSupportedByCluster(feature string, nodeDefs *NodeDefs) bool {
+	if nodeDefs == nil ||
+		(nodeDefs != nil && len(nodeDefs.NodeDefs) == 0) {
+		return false
+	}
 	for _, v1 := range nodeDefs.NodeDefs {
 		featureEnabled := false
 		if v1.Extras != "" {
