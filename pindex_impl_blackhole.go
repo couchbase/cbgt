@@ -12,10 +12,14 @@
 package cbgt
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
+
+	log "github.com/couchbase/clog"
 )
 
 func init() {
@@ -24,6 +28,7 @@ func init() {
 		Open:  OpenBlackHolePIndexImpl,
 		Count: nil, // Content of blackhole isn't countable.
 		Query: nil, // Content of blackhole isn't queryable.
+		AnalyzeIndexDefUpdates: restartOnIndexDefChanges,
 		Description: "advanced/blackhole" +
 			" - a blackhole index ignores all data and is not queryable;" +
 			" used for testing",
@@ -124,4 +129,72 @@ func (t *BlackHole) Query(pindex *PIndex, req []byte, w io.Writer,
 func (t *BlackHole) Stats(w io.Writer) error {
 	_, err := w.Write(JsonNULL)
 	return err
+}
+
+func reloadableIndexDefParamChange(paramPrev, paramCur string) bool {
+	// place holder implementation
+	return true
+}
+
+func reloadableSourceParamsChange(paramPrev, paramCur string) bool {
+	if paramPrev == paramCur {
+		return true
+	}
+
+	var prevMap map[string]interface{}
+	err := json.Unmarshal([]byte(paramPrev), &prevMap)
+	if err != nil {
+		log.Printf("pindex_impl_blackhole: reloadableSourceParamsChange"+
+			" json parse paramPrev: %s, err: %v",
+			paramPrev, err)
+		return false
+	}
+
+	var curMap map[string]interface{}
+	err = json.Unmarshal([]byte(paramCur), &curMap)
+	if err != nil {
+		log.Printf("pindex_impl_blackhole: reloadableSourceParamsChange"+
+			" json parse paramCur: %s, err: %v",
+			paramCur, err)
+		return false
+	}
+
+	// any parsing err doesn't matter here.
+	po, _ := ParseFeedAllotmentOption(paramPrev)
+	co, _ := ParseFeedAllotmentOption(paramCur)
+	if po != co {
+		prevMap["feedAllotment"] = ""
+		curMap["feedAllotment"] = ""
+	}
+
+	return reflect.DeepEqual(prevMap, curMap)
+}
+
+// restartOnIndexDefChanges checks whether the changes in the indexDefns are
+// quickly adoptable over a reboot of the pindex implementations.
+// eg: kvstore configs updates like compaction percentage.
+func restartOnIndexDefChanges(
+	configRequest *ConfigAnalyzeRequest) ResultCode {
+	if configRequest == nil || configRequest.IndexDefnCur == nil ||
+		configRequest.IndexDefnPrev == nil {
+		return ""
+	}
+	if configRequest.IndexDefnPrev.Name != configRequest.IndexDefnCur.Name ||
+		configRequest.IndexDefnPrev.SourceName !=
+			configRequest.IndexDefnCur.SourceName ||
+		configRequest.IndexDefnPrev.SourceType !=
+			configRequest.IndexDefnCur.SourceType ||
+		configRequest.IndexDefnPrev.SourceUUID !=
+			configRequest.IndexDefnCur.SourceUUID ||
+		!reloadableSourceParamsChange(configRequest.IndexDefnPrev.SourceParams,
+			configRequest.IndexDefnCur.SourceParams) ||
+		configRequest.IndexDefnPrev.Type !=
+			configRequest.IndexDefnCur.Type ||
+		!reflect.DeepEqual(configRequest.SourcePartitionsCur,
+			configRequest.SourcePartitionsPrev) ||
+		!reloadableIndexDefParamChange(configRequest.IndexDefnPrev.Params,
+			configRequest.IndexDefnCur.Params) {
+		return ""
+	}
+	return PINDEXES_RESTART
 }

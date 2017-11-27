@@ -1218,3 +1218,123 @@ func TestManagerMultipleServers(t *testing.T) {
 			serverStr, m.Server())
 	}
 }
+
+func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+	cfg := NewCfgMem()
+	pit, err := PIndexImplTypeForIndex(cfg, "foo")
+	if err == nil || pit != nil {
+		t.Error("expected pit for uncreated foo index")
+	}
+
+	options := map[string]string{"feedAllotment": FeedAllotmentOnePerPIndex}
+	m := NewManagerEx(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil, options)
+	if err = m.Start("wanted"); err != nil {
+		t.Errorf("expected Manager.Start() to work, err: %v", err)
+	}
+	sourceParams := "{\"numPartitions\":6}"
+	planParams := PlanParams{
+		MaxPartitionsPerPIndex: 1,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams,
+		"bad-prevIndexUUID"); err == nil {
+		t.Errorf("expected CreateIndex() err on create-with-prevIndexUUID")
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams,
+		"bad-prevIndexUUID"); err == nil {
+		t.Errorf("expected CreateIndex() err update wrong prevIndexUUID")
+	}
+
+	feeds, pindexes := m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+
+	// update the feedAllotment to "oneFeedPerIndex" for `foo`
+	// and expect only 1 feed
+	sourceParams = "{\"numPartitions\":6, \"feedAllotment\":\"oneFeedPerIndex\"}"
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 1 || len(pindexes) != 6 {
+		t.Errorf("expected 1 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 6 {
+		t.Errorf("expected pindex restarted count to be 6, but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+	err = m.DeleteIndex("foo")
+	if err != nil {
+		t.Errorf("expected index: foo to get deleted, err: %+v", err)
+	}
+
+	// other indexes should still fallback to the manager default of
+	// oneFeedPerPIndex
+	sourceParams = "{\"numPartitions\":6}"
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo_second", "", planParams, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex for index: foo_second,"+
+			"feeds: %+v, pindexes: %+v", feeds, pindexes)
+	}
+	err = m.DeleteIndex("foo_second")
+	if err != nil {
+		t.Errorf("expected index: foo_second to get deleted, err: %+v", err)
+	}
+
+	// create another index, update feedAllotment back and forth
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo_third", "", planParams, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+
+	// update the feedAllotment to "oneFeedPerIndex" for `foo`
+	// and expect only 1 feed
+	sourceParams = "{\"numPartitions\":6, \"feedAllotment\":\"oneFeedPerIndex\"}"
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo_third", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 1 || len(pindexes) != 6 {
+		t.Errorf("expected 1 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 12 {
+		t.Errorf("expected total pindex restarted count to be 12, but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	// set back to the manager default of oneFeedPerPIndex
+	sourceParams = "{\"numPartitions\":6, \"feedAllotment\":\"oneFeedPerPIndex\"}"
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo_third", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex for index: foo_second,"+
+			"feeds: %+v, pindexes: %+v", feeds, pindexes)
+	}
+
+}

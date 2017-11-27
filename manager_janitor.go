@@ -235,13 +235,15 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	}
 	// rename the pindex folder and name as per the new plan
 	newPath := mgr.PIndexPath(req.planPIndexName)
-	err = os.Rename(req.pindex.Path, newPath)
-	if err != nil {
-		cleanDir(req.pindex.Path)
-		cleanDir(newPath)
-		return fmt.Errorf("janitor: restartPIndex"+
-			" updating pindex: %s path: %s failed, err: %v",
-			req.pindex.Name, newPath, err)
+	if newPath != req.pindex.Path {
+		err = os.Rename(req.pindex.Path, newPath)
+		if err != nil {
+			cleanDir(req.pindex.Path)
+			cleanDir(newPath)
+			return fmt.Errorf("janitor: restartPIndex"+
+				" updating pindex: %s path: %s failed, err: %v",
+				req.pindex.Name, newPath, err)
+		}
 	}
 
 	pi := req.pindex.Clone()
@@ -507,8 +509,11 @@ func getPIndexesToRestart(pindexesToRemove []*PIndex,
 			if addPlanPI.SourcePartitions == pindex.SourcePartitions {
 				pindex.IndexUUID = addPlanPI.IndexUUID
 				pindex.IndexParams = addPlanPI.IndexParams
+				pindex.SourceParams = addPlanPI.SourceParams
 				pindexesToRestart[i] = &pindexRestartReq{
-					pindex: pindex, planPIndexName: addPlanPI.Name}
+					pindex:         pindex,
+					planPIndexName: addPlanPI.Name,
+				}
 				i++
 			}
 		}
@@ -709,8 +714,45 @@ func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 	return addFeeds, removeFeeds
 }
 
-// FeedName functionally computes the name of a feed given a pindex.
-func FeedNameForPIndex(pindex *PIndex, feedAllotment string) string {
+func ParseFeedAllotmentOption(sourceParams string) (string, error) {
+	var sourceParamsMap map[string]interface{}
+	err := json.Unmarshal([]byte(sourceParams), &sourceParamsMap)
+	if err != nil {
+		return "", fmt.Errorf("manager_janitor: ParseFeedAllotmentOption"+
+			" json parse sourceParams: %s, err: %v",
+			sourceParams, err)
+	}
+
+	if sourceParamsMap != nil {
+		v, exists := sourceParamsMap["feedAllotment"]
+		if exists {
+			feedAllotmentOption, ok := v.(string)
+			if ok {
+				return feedAllotmentOption, nil
+			}
+		}
+	}
+	return "", err
+}
+
+func feedAllotmentOption(sourceParams string) string {
+	if len(sourceParams) > 0 {
+		sp, err := ParseFeedAllotmentOption(sourceParams)
+		if err != nil {
+			log.Printf("manager_janitor: feedAllotment, err: %v", err)
+		}
+		return sp
+	}
+	return ""
+}
+
+// FeedNameForPIndex functionally computes the name of a feed given a pindex.
+func FeedNameForPIndex(pindex *PIndex, defaultFeedAllotment string) string {
+	feedAllotment := feedAllotmentOption(pindex.SourceParams)
+	if feedAllotment == "" {
+		feedAllotment = defaultFeedAllotment
+	}
+
 	if feedAllotment == FeedAllotmentOnePerPIndex {
 		// Using the pindex.Name for the feed name means each pindex
 		// will have its own, independent feed.
