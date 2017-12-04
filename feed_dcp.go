@@ -442,8 +442,9 @@ func (r *DCPFeed) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 		if err != nil {
 			return fmt.Errorf("feed_dcp: DataUpdate,"+
-				" name: %s, partition: %s, key: %s, seq: %d, err: %v",
-				r.name, partition, key, seq, err)
+				" name: %s, partition: %s, key: %v, seq: %d, err: %v",
+				r.name, partition,
+				log.Tag(log.UserData, key), seq, err)
 		}
 
 		r.updateStopAfter(partition, seq)
@@ -471,8 +472,9 @@ func (r *DCPFeed) DataDelete(vbucketId uint16, key []byte, seq uint64,
 
 		if err != nil {
 			return fmt.Errorf("feed_dcp: DataDelete,"+
-				" name: %s, partition: %s, key: %s, seq: %d, err: %v",
-				r.name, partition, key, seq, err)
+				" name: %s, partition: %s, key: %v, seq: %d, err: %v",
+				r.name, partition,
+				log.Tag(log.UserData, key), seq, err)
 		}
 
 		r.updateStopAfter(partition, seq)
