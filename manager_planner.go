@@ -761,6 +761,17 @@ func BlancePartitionModel(indexDef *IndexDef) (
 	}, map[string]int(nil)
 }
 
+func getPrevPlanName(newPlan *PlanPIndex,
+	planPIndexesPrev map[string]*PlanPIndex) string {
+	for _, plan := range planPIndexesPrev {
+		if plan.IndexName == newPlan.IndexName &&
+			plan.SourcePartitions == newPlan.SourcePartitions {
+			return plan.Name
+		}
+	}
+	return ""
+}
+
 // BlanceMap reconstructs a blance map from an existing plan.
 func BlanceMap(
 	planPIndexesForIndex map[string]*PlanPIndex,
@@ -777,6 +788,18 @@ func BlanceMap(
 
 		if planPIndexes != nil {
 			p, exists := planPIndexes.PlanPIndexes[planPIndex.Name]
+			if !exists {
+				// in case of indexDefinition updates, the planName
+				// would have changed, hence pick the planName from the
+				// prev pindex. This doesn't affect the new plans
+				// or reloadability of the indexDefinition changes.
+				// It only helps to feed blance with the existing
+				// partition layouts while creating the new partition
+				// assignments.
+				p, exists = planPIndexes.PlanPIndexes[getPrevPlanName(
+					planPIndex,
+					planPIndexes.PlanPIndexes)]
+			}
 			if exists && p != nil {
 				// Sort by planPIndexNode.Priority for stability.
 				planPIndexNodeRefs := PlanPIndexNodeRefs{}

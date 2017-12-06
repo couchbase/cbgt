@@ -472,9 +472,9 @@ func classifyAddRemoveRestartPIndexes(addPlanPIndexes []*PlanPIndex,
 						planPIndexes),
 					IndexDefnPrev: getIndexDefFromPIndex(pindex),
 					SourcePartitionsCur: getSourcePartitionsMapFromPlanPIndexes(
-						addPlanPIndexes),
+						planPIndexes),
 					SourcePartitionsPrev: getSourcePartitionsMapFromPIndexes(
-						removePIndexes)}
+						pindexes)}
 
 				pindexImplType, exists := PIndexImplTypes[pindex.IndexType]
 				if !exists || pindexImplType == nil {
