@@ -60,7 +60,7 @@ func MustEncode(w io.Writer, i interface{}) {
 	if err != nil {
 		if rwOk {
 			crw, ok := rw.(*CountResponseWriter)
-			if ok && crw.wrote {
+			if ok && crw.Wrote {
 				return
 			}
 			http.Error(rw, fmt.Sprintf("rest: JSON encode, err: %v", err), 500)
@@ -891,7 +891,7 @@ func RESTGetRuntimeStats(w http.ResponseWriter, r *http.Request) {
 type CountResponseWriter struct {
 	ResponseWriter  http.ResponseWriter
 	TotBytesWritten uint64
-	wrote           bool
+	Wrote           bool
 }
 
 func (cw *CountResponseWriter) Header() http.Header {
@@ -899,13 +899,13 @@ func (cw *CountResponseWriter) Header() http.Header {
 }
 
 func (cw *CountResponseWriter) Write(p []byte) (n int, err error) {
-	cw.wrote = true
+	cw.Wrote = true
 	cw.TotBytesWritten += uint64(len(p))
 	return cw.ResponseWriter.Write(p)
 }
 
 func (cw *CountResponseWriter) WriteHeader(n int) {
-	cw.wrote = true
+	cw.Wrote = true
 	cw.ResponseWriter.WriteHeader(n)
 }
 
