@@ -38,10 +38,44 @@ import (
 
 var StartTime = time.Now()
 
-func ShowError(w http.ResponseWriter, r *http.Request,
-	msg string, code int) {
+func ShowError(w http.ResponseWriter, req *http.Request, msg string, code int) {
 	log.Printf("rest: error code: %d, msg: %s", code, msg)
-	http.Error(w, msg, code)
+	PropagateError(w, req, msg, code)
+}
+
+// Time in seconds after a client can retry a request that received an error response.
+var RetryAfter = "30"
+
+// This function determines which http response codes deem a request as 'retry-able'
+// by the client.
+func isRetryableError(code int) bool {
+	if code >= http.StatusInternalServerError {
+		return true
+	}
+	return false
+}
+
+func PropagateError(w http.ResponseWriter, req *http.Request, msg string, code int) {
+	if isRetryableError(code) {
+		w.Header().Set("Retry-After", RetryAfter)
+	}
+
+	details := map[string]interface{}{
+		"status": "fail",
+		"error":  msg,
+	}
+
+	if req != nil {
+		details["req"] = fmt.Sprintf("%#v", req)
+	}
+
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		http.Error(w, msg, code)
+	} else {
+		http.Error(w, string(detailsJSON), code)
+	}
+
 }
 
 func MustEncode(w io.Writer, i interface{}) {
@@ -63,7 +97,8 @@ func MustEncode(w io.Writer, i interface{}) {
 			if ok && crw.Wrote {
 				return
 			}
-			http.Error(rw, fmt.Sprintf("rest: JSON encode, err: %v", err), 500)
+			PropagateError(rw, nil, fmt.Sprintf("rest: JSON encode, err: %v", err),
+				http.StatusInternalServerError)
 		}
 	}
 }
@@ -783,24 +818,25 @@ func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
-		http.Error(w, "incorrect or missing secs parameter", 400)
+		PropagateError(w, r, "incorrect or missing secs parameter",
+			http.StatusBadRequest)
 		return
 	}
 	fname := "./run-program.trace"
 	os.Remove(fname)
 	f, err := os.Create(fname)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("runtimeTrace:"+
+		PropagateError(w, r, fmt.Sprintf("runtimeTrace:"+
 			" couldn't create file: %s, err: %v",
-			fname, err), 500)
+			fname, err), http.StatusInternalServerError)
 		return
 	}
 	log.Printf("runtimeTrace: start, file: %s", fname)
 	err = trace.Start(f)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("runtimeTrace:"+
-			" couldn't start program trace, file: %s, err: %v",
-			fname, err), 500)
+		PropagateError(w, r, fmt.Sprintf("runtimeTrace:"+
+			" couldn't start program trace, file: %s, err: %v", fname, err),
+			http.StatusInternalServerError)
 		return
 	}
 	go func() {
@@ -819,24 +855,25 @@ func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
-		http.Error(w, "incorrect or missing secs parameter", 400)
+		PropagateError(w, r, "incorrect or missing secs parameter",
+			http.StatusBadRequest)
 		return
 	}
 	fname := "./run-cpu.pprof"
 	os.Remove(fname)
 	f, err := os.Create(fname)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("profileCPU:"+
-			" couldn't create file: %s, err: %v",
-			fname, err), 500)
+		PropagateError(w, r, fmt.Sprintf("profileCPU:"+
+			" couldn't create file: %s, err: %v", fname, err),
+			http.StatusInternalServerError)
 		return
 	}
 	log.Printf("profileCPU: start, file: %s", fname)
 	err = pprof.StartCPUProfile(f)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("profileCPU:"+
-			" couldn't start CPU profile, file: %s, err: %v",
-			fname, err), 500)
+		PropagateError(w, r, fmt.Sprintf("profileCPU:"+
+			" couldn't start CPU profile, file: %s, err: %v", fname, err),
+			http.StatusInternalServerError)
 		return
 	}
 	go func() {
@@ -857,9 +894,9 @@ func RESTProfileMemory(w http.ResponseWriter, r *http.Request) {
 	os.Remove(fname)
 	f, err := os.Create(fname)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("profileMemory:"+
-			" couldn't create file: %v, err: %v",
-			fname, err), 500)
+		PropagateError(w, r, fmt.Sprintf("profileMemory:"+
+			" couldn't create file: %v, err: %v", fname, err),
+			http.StatusInternalServerError)
 		return
 	}
 	defer f.Close()

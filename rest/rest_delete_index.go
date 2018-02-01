@@ -37,14 +37,15 @@ func (h *DeleteIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "rest_delete_index: index name is required", 400)
+		ShowError(w, req, "rest_delete_index: index name is required",
+			http.StatusBadRequest)
 		return
 	}
 
 	err := h.mgr.DeleteIndex(indexName)
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_delete_index:"+
-			" error deleting index, err: %v", err), 400)
+			" error deleting index, err: %v", err), http.StatusBadRequest)
 		return
 	}
 

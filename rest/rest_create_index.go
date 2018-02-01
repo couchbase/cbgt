@@ -125,7 +125,8 @@ func (h *CreateIndexHandler) ServeHTTP(
 	// TODO: Need more input validation (check source UUID's, etc).
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "rest_create_index: index name is required", 400)
+		ShowError(w, req, "rest_create_index: index name is required",
+			http.StatusBadRequest)
 		return
 	}
 
@@ -133,7 +134,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 			" could not read request body, indexName: %s, err: %v",
-			indexName, err), 400)
+			indexName, err), http.StatusBadRequest)
 		return
 	}
 
@@ -146,7 +147,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		if err2 != nil {
 			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" could not unmarshal json, indexName: %s, err: %v",
-				indexName, err2), 400)
+				indexName, err2), http.StatusBadRequest)
 			return
 		}
 	}
@@ -156,7 +157,8 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType = indexDef.Type
 	}
 	if indexType == "" {
-		ShowError(w, req, "rest_create_index: indexType is required", 400)
+		ShowError(w, req, "rest_create_index: indexType is required",
+			http.StatusBadRequest)
 		return
 	}
 
@@ -167,7 +169,8 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	sourceType, sourceName := ExtractSourceTypeName(req, &indexDef, indexName)
 	if sourceType == "" {
-		ShowError(w, req, "rest_create_index: sourceType is required", 400)
+		ShowError(w, req, "rest_create_index: sourceType is required",
+			http.StatusBadRequest)
 		return
 	}
 
@@ -189,7 +192,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		if err2 != nil {
 			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, err: %v",
-				planParamsStr, err2), 400)
+				planParamsStr, err2), http.StatusBadRequest)
 			return
 		}
 	} else {
@@ -211,7 +214,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",
-			indexName, err), 400)
+			indexName, err), http.StatusBadRequest)
 		return
 	}
 

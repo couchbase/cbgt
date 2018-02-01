@@ -37,25 +37,26 @@ func (h *SourcePartitionSeqsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "index name is required", 400)
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
 
 	_, indexDefsByName, err := h.mgr.GetIndexDefs(false)
 	if err != nil {
-		ShowError(w, req, "could not retrieve index defs", 500)
+		ShowError(w, req, "could not retrieve index defs",
+			http.StatusInternalServerError)
 		return
 	}
 
 	indexDef, exists := indexDefsByName[indexName]
 	if !exists || indexDef == nil {
-		ShowError(w, req, "index not found", 400)
+		ShowError(w, req, "index not found", http.StatusBadRequest)
 		return
 	}
 
 	indexUUID := req.FormValue("indexUUID")
 	if indexUUID != "" && indexUUID != indexDef.UUID {
-		ShowError(w, req, "wrong index UUID", 400)
+		ShowError(w, req, "wrong index UUID", http.StatusBadRequest)
 		return
 	}
 
@@ -66,7 +67,7 @@ func (h *SourcePartitionSeqsHandler) ServeHTTP(
 
 	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
 	if !exists || feedType == nil {
-		ShowError(w, req, "unknown source type", 500)
+		ShowError(w, req, "unknown source type", http.StatusInternalServerError)
 		return
 	}
 
@@ -79,7 +80,8 @@ func (h *SourcePartitionSeqsHandler) ServeHTTP(
 		indexDef.SourceType, indexDef.SourceName, indexDef.SourceUUID,
 		indexDef.SourceParams, h.mgr.Server(), h.mgr.Options())
 	if err != nil {
-		ShowError(w, req, "could not retrieve partition seqs", 500)
+		ShowError(w, req, "could not retrieve partition seqs",
+			http.StatusInternalServerError)
 		return
 	}
 
@@ -111,25 +113,26 @@ func (h *SourceStatsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
-		ShowError(w, req, "index name is required", 400)
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
 
 	_, indexDefsByName, err := h.mgr.GetIndexDefs(false)
 	if err != nil {
-		ShowError(w, req, "could not retrieve index defs", 500)
+		ShowError(w, req, "could not retrieve index defs",
+			http.StatusInternalServerError)
 		return
 	}
 
 	indexDef, exists := indexDefsByName[indexName]
 	if !exists || indexDef == nil {
-		ShowError(w, req, "index not found", 400)
+		ShowError(w, req, "index not found", http.StatusBadRequest)
 		return
 	}
 
 	indexUUID := req.FormValue("indexUUID")
 	if indexUUID != "" && indexUUID != indexDef.UUID {
-		ShowError(w, req, "wrong index UUID", 400)
+		ShowError(w, req, "wrong index UUID", http.StatusBadRequest)
 		return
 	}
 
@@ -140,7 +143,7 @@ func (h *SourceStatsHandler) ServeHTTP(
 
 	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
 	if !exists || feedType == nil {
-		ShowError(w, req, "unknown source type", 500)
+		ShowError(w, req, "unknown source type", http.StatusInternalServerError)
 		return
 	}
 
@@ -154,7 +157,7 @@ func (h *SourceStatsHandler) ServeHTTP(
 		indexDef.SourceParams, h.mgr.Server(), h.mgr.Options(),
 		req.FormValue("statsKind"))
 	if err != nil {
-		ShowError(w, req, "could not retrieve stats", 500)
+		ShowError(w, req, "could not retrieve stats", http.StatusInternalServerError)
 		return
 	}
 

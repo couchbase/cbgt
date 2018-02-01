@@ -323,8 +323,7 @@ func (h *QueryHandler) ServeHTTP(
 		}
 
 		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
-			" indexName: %s, requestBody: %s, req: %#v, err: %v",
-			indexName, requestBody, req, err), http.StatusBadRequest)
+			" indexName: %s, err: %v", indexName, err), http.StatusBadRequest)
 		return
 	}
 }
@@ -508,8 +507,8 @@ func (h *CountPIndexHandler) ServeHTTP(
 	count, err := pindex.Dest.Count(pindex, cancelCh)
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: CountPIndex,"+
-			" pindexName: %s, req: %#v, err: %v",
-			pindexName, req, err), http.StatusBadRequest)
+			" pindexName: %s, err: %v", pindexName, err),
+			http.StatusBadRequest)
 		return
 	}
 
@@ -587,8 +586,7 @@ func (h *QueryPIndexHandler) ServeHTTP(
 		}
 
 		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
-			" pindexName: %s, requestBody: %s, req: %#v, err: %v",
-			pindexName, requestBody, req, err), http.StatusBadRequest)
+			" pindexName: %s, err: %v", pindexName, err), http.StatusBadRequest)
 		return
 	}
 }
@@ -603,8 +601,7 @@ func showConsistencyError(err error, methodName, itemName string,
 		}{
 			Status: errCW.Status,
 			Message: fmt.Sprintf("rest_index: %s,"+
-				" name: %s, requestBody: %s, req: %#v, err: %v",
-				methodName, itemName, requestBody, req, err),
+				" name: %s, err: %v", methodName, itemName, err),
 			StartEndSeqs: errCW.StartEndSeqs,
 		}
 		buf, err := json.Marshal(rv)
