@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
 )
@@ -310,7 +312,7 @@ func (h *QueryHandler) ServeHTTP(
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotRequestErr, 1)
 
-			if err == cbgt.ErrPIndexQueryTimeout {
+			if err == context.DeadlineExceeded {
 				atomic.AddUint64(&focusStats.TotRequestTimeout, 1)
 			}
 		}

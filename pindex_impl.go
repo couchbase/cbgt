@@ -13,7 +13,6 @@ package cbgt
 
 import (
 	"container/list"
-	"errors"
 	"fmt"
 	"io"
 
@@ -115,10 +114,6 @@ const (
 	// PINDEXES_RESTART suggests a reboot of the pindexes
 	PINDEXES_RESTART ResultCode = "request_restart_pindexes"
 )
-
-// ErrPIndexQueryTimeout may be returned for queries that took too
-// long and timed out.
-var ErrPIndexQueryTimeout = errors.New("pindex query timeout")
 
 // PIndexImplTypes is a global registry of pindex type backends or
 // implementations.  It is keyed by indexType and should be treated as
