@@ -13,6 +13,7 @@ package cbgt
 
 import (
 	"container/list"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -150,6 +151,8 @@ type ManagerStats struct {
 	TotRefreshLastIndexDefs    uint64
 	TotRefreshLastPlanPIndexes uint64
 }
+
+var ErrNoIndexDefs = errors.New("no index definitions found")
 
 // MANAGER_MAX_EVENTS limits the number of events tracked by a Manager
 // for diagnosis/debugging.
@@ -721,18 +724,38 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 	return mgr.lastIndexDefs, mgr.lastIndexDefsByName, nil
 }
 
+func (mgr *Manager) CheckAndGetIndexDef(indexName string,
+	refresh bool) (*IndexDef, error) {
+	indexDefs, _, err := mgr.GetIndexDefs(refresh)
+	if err != nil {
+		return nil, err
+	}
+
+	if indexDefs == nil {
+		return nil, ErrNoIndexDefs
+	}
+
+	indexDef := indexDefs.IndexDefs[indexName]
+	if indexDef == nil {
+		return nil, nil
+	}
+
+	return indexDef, nil
+}
+
 // GetIndexDef retrieves the IndexDef and PIndexImplType for an index.
 // Use refresh of true to force a read from Cfg.
 func (mgr *Manager) GetIndexDef(indexName string, refresh bool) (
 	*IndexDef, *PIndexImplType, error) {
-	indexDefs, _, err := mgr.GetIndexDefs(refresh)
-	if err != nil || indexDefs == nil {
+	var indexDef *IndexDef
+	var err error
+	indexDef, err = mgr.CheckAndGetIndexDef(indexName, refresh)
+	if err != nil {
 		return nil, nil, fmt.Errorf("manager: could not get indexDefs,"+
 			" indexName: %s, err: %v",
 			indexName, err)
 	}
 
-	indexDef := indexDefs.IndexDefs[indexName]
 	if indexDef == nil {
 		return nil, nil, fmt.Errorf("manager: no indexDef,"+
 			" indexName: %s", indexName)

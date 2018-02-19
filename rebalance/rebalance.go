@@ -1032,17 +1032,17 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 						// Manager to verify that the index we are waiting
 						// on has not been deleted.
 						if r.optionsReb.Manager != nil {
-							idxDef, _, err := r.optionsReb.Manager.
-								GetIndexDef(indexDef.Name, false)
-							if err != nil {
+							idxDef, err := r.optionsReb.Manager.
+								CheckAndGetIndexDef(indexDef.Name, false)
+							if err != nil && err != cbgt.ErrNoIndexDefs {
 								r.Logf("rebalance:"+
 									" waitAssignPIndexDone GetIndex error,"+
-									" unable to get index definitions,"+
+									" unable to get index definitions, err: %s"+
 									" index: %s,"+
 									" sourcePartition: %s, node: %s,"+
 									" state: %q, op: %s, uuidSeqWant: %+v,"+
 									" sample: %#v",
-									indexDef.Name, sourcePartition, node,
+									err.Error(), indexDef.Name, sourcePartition, node,
 									state, op, uuidSeqWant, sample)
 								return err
 							}
