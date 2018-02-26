@@ -45,6 +45,12 @@ type PIndexImplType struct {
 	Open func(indexType, path string, restart func()) (
 		PIndexImpl, Dest, error)
 
+	// Optional, invoked by the manager when it wants a pindex
+	// implementation to reconstitute and reload a pindex instance
+	// back into the process, with the updated index parameter values.
+	OpenUsing func(indexType, path, indexParams string,
+		restart func()) (PIndexImpl, Dest, error)
+
 	// Invoked by the manager when it wants a count of documents from
 	// an index.  The registered Count() function can be nil.
 	Count func(mgr *Manager, indexName, indexUUID string) (
@@ -150,6 +156,19 @@ func OpenPIndexImpl(indexType, path string, restart func()) (
 	}
 
 	return t.Open(indexType, path, restart)
+}
+
+// OpenPIndexImplUsing loads an index partition of the given, registered
+// index type from a given path with the given indexParams.
+func OpenPIndexImplUsing(indexType, path, indexParams string,
+	restart func()) (PIndexImpl, Dest, error) {
+	t, exists := PIndexImplTypes[indexType]
+	if !exists || t == nil || t.OpenUsing == nil {
+		return nil, nil, fmt.Errorf("pindex_impl: OpenPIndexImplUsing"+
+			" indexType: %s", indexType)
+	}
+
+	return t.OpenUsing(indexType, path, indexParams, restart)
 }
 
 // PIndexImplTypeForIndex retrieves from the Cfg provider the index

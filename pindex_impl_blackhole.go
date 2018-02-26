@@ -24,10 +24,11 @@ import (
 
 func init() {
 	RegisterPIndexImplType("blackhole", &PIndexImplType{
-		New:   NewBlackHolePIndexImpl,
-		Open:  OpenBlackHolePIndexImpl,
-		Count: nil, // Content of blackhole isn't countable.
-		Query: nil, // Content of blackhole isn't queryable.
+		New:       NewBlackHolePIndexImpl,
+		Open:      OpenBlackHolePIndexImpl,
+		OpenUsing: OpenBlackHolePIndexImplUsing,
+		Count:     nil, // Content of blackhole isn't countable.
+		Query:     nil, // Content of blackhole isn't queryable.
 		AnalyzeIndexDefUpdates: restartOnIndexDefChanges,
 		Description: "advanced/blackhole" +
 			" - a blackhole index ignores all data and is not queryable;" +
@@ -53,6 +54,11 @@ func NewBlackHolePIndexImpl(indexType, indexParams,
 }
 
 func OpenBlackHolePIndexImpl(indexType, path string, restart func()) (
+	PIndexImpl, Dest, error) {
+	return OpenBlackHolePIndexImplUsing(indexType, path, "", restart)
+}
+
+func OpenBlackHolePIndexImplUsing(indexType, path, indexParams string, restart func()) (
 	PIndexImpl, Dest, error) {
 	buf, err := ioutil.ReadFile(path + string(os.PathSeparator) + "black.hole")
 	if err != nil {

@@ -194,7 +194,8 @@ func OpenPIndex(mgr *Manager, path string) (*PIndex, error) {
 		go restartPIndex(mgr, pindex)
 	}
 
-	impl, dest, err := OpenPIndexImpl(pindex.IndexType, path, restart)
+	impl, dest, err := OpenPIndexImplUsing(pindex.IndexType, path,
+		pindex.IndexParams, restart)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: could not open indexType: %s,"+
 			" path: %s, err: %v", pindex.IndexType, path, err)
