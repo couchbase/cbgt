@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -19,7 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/context"
+	contextOld "golang.org/x/net/context"
 
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
@@ -312,7 +313,7 @@ func (h *QueryHandler) ServeHTTP(
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotRequestErr, 1)
 
-			if err == context.DeadlineExceeded {
+			if err == context.DeadlineExceeded || err == contextOld.DeadlineExceeded {
 				atomic.AddUint64(&focusStats.TotRequestTimeout, 1)
 			}
 		}
