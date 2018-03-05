@@ -202,7 +202,7 @@ func setLeanPlan(c *CfgMetaKv,
 	c.lastSplitCAS = casResult
 	// purge any orphaned lean planPIndexes
 	purgeOrphanedLeanPlans(c, newPath)
-	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s", newPath)
+	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s, contents: %s", newPath, val)
 	return casResult, err
 }
 
@@ -313,7 +313,7 @@ RETRY:
 			goto RETRY
 		}
 		log.Printf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
-			" plan contents: %s, and directory stamp: %s", hashMD5, hashFromName)
+			" plan hash: %s \n contents: %s  , and directory stamp: %s", hashMD5, data, hashFromName)
 		return nil, 0, fmt.Errorf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
 			" plan contents: %s, and directory stamp: %s", hashMD5, hashFromName)
 	}
