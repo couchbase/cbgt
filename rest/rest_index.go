@@ -12,6 +12,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -28,6 +29,8 @@ import (
 
 const CLUSTER_ACTION = "Internal-Cluster-Action"
 const FTS_SCATTER_GATHER = "fts-scatter/gather"
+
+var ErrorSearchReqRejected = errors.New("search request rejected")
 
 // ListIndexHandler is a REST handler for list indexes.
 type ListIndexHandler struct {
@@ -322,8 +325,12 @@ func (h *QueryHandler) ServeHTTP(
 			return
 		}
 
+		status := http.StatusBadRequest
+		if err == ErrorSearchReqRejected {
+			status = http.StatusServiceUnavailable
+		}
 		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
-			" indexName: %s, err: %v", indexName, err), http.StatusBadRequest)
+			" indexName: %s, err: %v", indexName, err), status)
 		return
 	}
 }
