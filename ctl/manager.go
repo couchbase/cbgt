@@ -213,6 +213,17 @@ func (m *CtlMgr) CancelTask(
 	return nil
 }
 
+func isBalanced(ctlTopology *CtlTopology) bool {
+	if len(ctlTopology.PrevWarnings) > 0 {
+		for _, w := range ctlTopology.PrevWarnings {
+			if len(w) > 0 {
+				return false
+			}
+		}
+	}
+	return len(ctlTopology.PrevErrs) == 0
+}
+
 func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 	cancelCh service.Cancel) (*service.Topology, error) {
 	ctlTopology, err :=
@@ -236,8 +247,7 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 	}
 
 	// TODO: Need a proper IsBalanced computation.
-	rv.IsBalanced =
-		len(ctlTopology.PrevWarnings) <= 0 && len(ctlTopology.PrevErrs) <= 0
+	rv.IsBalanced = isBalanced(ctlTopology)
 
 	for resourceName, resourceWarnings := range ctlTopology.PrevWarnings {
 		aggregate := map[string]bool{}
