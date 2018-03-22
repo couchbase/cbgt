@@ -159,7 +159,7 @@ func (h *ManagerKickHandler) ServeHTTP(
 			h.mgr.Server(), h.mgr.Options(), nil)
 		if err != nil {
 			msg = fmt.Sprintf("rest_manage: Plan, err: %v", err)
-			PropagateError(w, req, msg, http.StatusInternalServerError)
+			PropagateError(w, nil, msg, http.StatusInternalServerError)
 			return
 		}
 		if changed {
@@ -276,12 +276,12 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_manage:"+
 			" could not read request body, err: %v", err), http.StatusBadRequest)
 		return
 	}
 	if len(requestBody) == 0 {
-		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_manage:"+
 			" no request body found"), http.StatusBadRequest)
 		return
 	}
@@ -290,13 +290,13 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 	}
 	err = json.Unmarshal(requestBody, &defs)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
 		return
 	}
 	if defs.Kind != cbgt.NODE_DEFS_KNOWN &&
 		defs.Kind != cbgt.NODE_DEFS_WANTED {
-		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" unknown nodeDefs kind: %s in request", defs.Kind),
 			http.StatusBadRequest)
 		return
@@ -304,12 +304,12 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 	nodeDefs := cbgt.NodeDefs{}
 	err = json.Unmarshal(requestBody, &nodeDefs)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_manage:"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
 		return
 	}
 	if cbgt.VersionGTE(h.mgr.Version(), nodeDefs.ImplVersion) == false {
-		ShowError(w, req, fmt.Sprintf("rest_manage: could not update nodeDefs,"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: could not update nodeDefs,"+
 			" nodeDefs.ImplVersion: %s > mgr.version: %s",
 			nodeDefs.ImplVersion, h.mgr.Version()), http.StatusBadRequest)
 		return
@@ -318,7 +318,7 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 	nodeDefs.UUID = cbgt.NewUUID()
 	_, err = cbgt.CfgSetNodeDefs(h.mgr.Cfg(), defs.Kind, &nodeDefs, math.MaxUint64)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_manage: CfgSetNodeDefs "+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: CfgSetNodeDefs "+
 			"failed, err: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -383,7 +383,7 @@ func (h *ManagerOptions) ServeHTTP(
 	if err != nil {
 		msg := fmt.Sprintf("rest_manage:"+
 			" could not read request body err: %v", err)
-		PropagateError(w, req, msg, http.StatusBadRequest)
+		PropagateError(w, nil, msg, http.StatusBadRequest)
 		return
 	}
 
@@ -397,7 +397,7 @@ func (h *ManagerOptions) ServeHTTP(
 	if err != nil {
 		msg := fmt.Sprintf("rest_manage:"+
 			" error in unmarshalling err: %v", err)
-		PropagateError(w, req, msg, http.StatusBadRequest)
+		PropagateError(w, requestBody, msg, http.StatusBadRequest)
 		return
 	}
 
@@ -405,7 +405,7 @@ func (h *ManagerOptions) ServeHTTP(
 		newOptions, err = h.Validate(newOptions)
 		if err != nil {
 			msg := fmt.Sprintf("rest_manage: err: %v", err)
-			PropagateError(w, req, msg, http.StatusBadRequest)
+			PropagateError(w, requestBody, msg, http.StatusBadRequest)
 			return
 		}
 	}

@@ -132,7 +132,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_create_index:"+
 			" could not read request body, indexName: %s, err: %v",
 			indexName, err), http.StatusBadRequest)
 		return
@@ -145,7 +145,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if len(requestBody) > 0 {
 		err2 := json.Unmarshal(requestBody, &indexDef)
 		if err2 != nil {
-			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
+			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 				" could not unmarshal json, indexName: %s, err: %v",
 				indexName, err2), http.StatusBadRequest)
 			return
@@ -157,7 +157,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType = indexDef.Type
 	}
 	if indexType == "" {
-		ShowError(w, req, "rest_create_index: indexType is required",
+		ShowErrorBody(w, requestBody, "rest_create_index: indexType is required",
 			http.StatusBadRequest)
 		return
 	}
@@ -169,7 +169,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	sourceType, sourceName := ExtractSourceTypeName(req, &indexDef, indexName)
 	if sourceType == "" {
-		ShowError(w, req, "rest_create_index: sourceType is required",
+		ShowErrorBody(w, requestBody, "rest_create_index: sourceType is required",
 			http.StatusBadRequest)
 		return
 	}
@@ -190,7 +190,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if planParamsStr != "" {
 		err2 := json.Unmarshal([]byte(planParamsStr), &planParams)
 		if err2 != nil {
-			ShowError(w, req, fmt.Sprintf("rest_create_index:"+
+			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, err: %v",
 				planParamsStr, err2), http.StatusBadRequest)
 			return
@@ -212,7 +212,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType, indexName, string(indexParams),
 		planParams, prevIndexUUID)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_create_index:"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",
 			indexName, err), http.StatusBadRequest)
 		return

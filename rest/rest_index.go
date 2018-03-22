@@ -264,7 +264,7 @@ func (h *QueryHandler) ServeHTTP(
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_index: Query,"+
 			" could not read request body, indexName: %s",
 			indexName), http.StatusBadRequest)
 		return
@@ -272,7 +272,7 @@ func (h *QueryHandler) ServeHTTP(
 
 	_, pindexImplType, err := h.mgr.GetIndexDef(indexName, false)
 	if err != nil || pindexImplType.Query == nil {
-		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_index: Query,"+
 			" no pindexImplType, indexName: %s, err: %v",
 			indexName, err), http.StatusBadRequest)
 		return
@@ -321,7 +321,7 @@ func (h *QueryHandler) ServeHTTP(
 			}
 		}
 
-		if showConsistencyError(err, "Query", indexName, requestBody, w, req) {
+		if showConsistencyError(err, "Query", indexName, requestBody, w) {
 			return
 		}
 
@@ -329,7 +329,8 @@ func (h *QueryHandler) ServeHTTP(
 		if err == ErrorSearchReqRejected {
 			status = http.StatusServiceUnavailable
 		}
-		ShowError(w, req, fmt.Sprintf("rest_index: Query,"+
+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_index: Query,"+
 			" indexName: %s, err: %v", indexName, err), status)
 		return
 	}
@@ -570,7 +571,7 @@ func (h *QueryPIndexHandler) ServeHTTP(
 
 	requestBody, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_index: QueryPIndex,"+
 			" could not read request body, pindexName: %s",
 			pindexName), http.StatusBadRequest)
 		return
@@ -588,18 +589,18 @@ func (h *QueryPIndexHandler) ServeHTTP(
 
 	err = pindex.Dest.Query(pindex, requestBody, w, cancelCh)
 	if err != nil {
-		if showConsistencyError(err, "QueryPIndex", pindexName, requestBody, w, req) {
+		if showConsistencyError(err, "QueryPIndex", pindexName, requestBody, w) {
 			return
 		}
 
-		ShowError(w, req, fmt.Sprintf("rest_index: QueryPIndex,"+
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_index: QueryPIndex,"+
 			" pindexName: %s, err: %v", pindexName, err), http.StatusBadRequest)
 		return
 	}
 }
 
 func showConsistencyError(err error, methodName, itemName string,
-	requestBody []byte, w http.ResponseWriter, req *http.Request) bool {
+	requestBody []byte, w http.ResponseWriter) bool {
 	if errCW, ok := err.(*cbgt.ErrorConsistencyWait); ok {
 		rv := struct {
 			Status       string              `json:"status"`
@@ -613,7 +614,7 @@ func showConsistencyError(err error, methodName, itemName string,
 		}
 		buf, err := json.Marshal(rv)
 		if err == nil && buf != nil {
-			ShowError(w, req, string(buf), http.StatusPreconditionFailed)
+			ShowErrorBody(w, requestBody, string(buf), http.StatusPreconditionFailed)
 			return true
 		}
 	}

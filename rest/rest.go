@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/user"
@@ -38,11 +39,6 @@ import (
 
 var StartTime = time.Now()
 
-func ShowError(w http.ResponseWriter, req *http.Request, msg string, code int) {
-	log.Printf("rest: error code: %d, msg: %s", code, msg)
-	PropagateError(w, req, msg, code)
-}
-
 // Time in seconds after a client can retry a request that received an error response.
 var RetryAfter = "30"
 
@@ -55,7 +51,20 @@ func isRetryableError(code int) bool {
 	return false
 }
 
-func PropagateError(w http.ResponseWriter, req *http.Request, msg string, code int) {
+func ShowError(w http.ResponseWriter, req *http.Request, msg string, code int) {
+	var requestBody []byte
+	if req != nil && req.Body != nil {
+		requestBody, _ = ioutil.ReadAll(req.Body)
+	}
+	ShowErrorBody(w, requestBody, msg, code)
+}
+
+func ShowErrorBody(w http.ResponseWriter, requestBody []byte, msg string, code int) {
+	log.Printf("rest: error code: %d, msg: %s", code, msg)
+	PropagateError(w, requestBody, msg, code)
+}
+
+func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code int) {
 	if isRetryableError(code) {
 		w.Header().Set("Retry-After", RetryAfter)
 	}
@@ -65,8 +74,14 @@ func PropagateError(w http.ResponseWriter, req *http.Request, msg string, code i
 		"error":  msg,
 	}
 
-	if req != nil {
-		details["req"] = fmt.Sprintf("%#v", req)
+	if requestBody != nil {
+		requestBodyMap := map[string]interface{}{}
+		err := json.Unmarshal(requestBody, &requestBodyMap)
+		if err != nil {
+			details["request"] = fmt.Sprintf("%v", string(requestBody))
+		} else {
+			details["request"] = requestBodyMap
+		}
 	}
 
 	detailsJSON, err := json.Marshal(details)
@@ -818,7 +833,7 @@ func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
-		PropagateError(w, r, "incorrect or missing secs parameter",
+		PropagateError(w, nil, "incorrect or missing secs parameter",
 			http.StatusBadRequest)
 		return
 	}
@@ -826,7 +841,7 @@ func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 	os.Remove(fname)
 	f, err := os.Create(fname)
 	if err != nil {
-		PropagateError(w, r, fmt.Sprintf("runtimeTrace:"+
+		PropagateError(w, nil, fmt.Sprintf("runtimeTrace:"+
 			" couldn't create file: %s, err: %v",
 			fname, err), http.StatusInternalServerError)
 		return
@@ -834,7 +849,7 @@ func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 	log.Printf("runtimeTrace: start, file: %s", fname)
 	err = trace.Start(f)
 	if err != nil {
-		PropagateError(w, r, fmt.Sprintf("runtimeTrace:"+
+		PropagateError(w, nil, fmt.Sprintf("runtimeTrace:"+
 			" couldn't start program trace, file: %s, err: %v", fname, err),
 			http.StatusInternalServerError)
 		return
@@ -855,7 +870,7 @@ func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
-		PropagateError(w, r, "incorrect or missing secs parameter",
+		PropagateError(w, nil, "incorrect or missing secs parameter",
 			http.StatusBadRequest)
 		return
 	}
@@ -863,7 +878,7 @@ func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	os.Remove(fname)
 	f, err := os.Create(fname)
 	if err != nil {
-		PropagateError(w, r, fmt.Sprintf("profileCPU:"+
+		PropagateError(w, nil, fmt.Sprintf("profileCPU:"+
 			" couldn't create file: %s, err: %v", fname, err),
 			http.StatusInternalServerError)
 		return
@@ -871,7 +886,7 @@ func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	log.Printf("profileCPU: start, file: %s", fname)
 	err = pprof.StartCPUProfile(f)
 	if err != nil {
-		PropagateError(w, r, fmt.Sprintf("profileCPU:"+
+		PropagateError(w, nil, fmt.Sprintf("profileCPU:"+
 			" couldn't start CPU profile, file: %s, err: %v", fname, err),
 			http.StatusInternalServerError)
 		return
@@ -894,7 +909,7 @@ func RESTProfileMemory(w http.ResponseWriter, r *http.Request) {
 	os.Remove(fname)
 	f, err := os.Create(fname)
 	if err != nil {
-		PropagateError(w, r, fmt.Sprintf("profileMemory:"+
+		PropagateError(w, nil, fmt.Sprintf("profileMemory:"+
 			" couldn't create file: %v, err: %v", fname, err),
 			http.StatusInternalServerError)
 		return
