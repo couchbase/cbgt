@@ -88,7 +88,10 @@ func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code 
 	if err != nil {
 		http.Error(w, msg, code)
 	} else {
-		http.Error(w, string(detailsJSON), code)
+		w.Header().Set("Content-type", "application/json")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(code)
+		fmt.Fprintln(w, string(detailsJSON))
 	}
 
 }
