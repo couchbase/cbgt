@@ -88,7 +88,7 @@ func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code 
 	if err != nil {
 		http.Error(w, msg, code)
 	} else {
-		w.Header().Set("Content-type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(code)
 		fmt.Fprintln(w, string(detailsJSON))
@@ -102,8 +102,8 @@ func MustEncode(w io.Writer, i interface{}) {
 		h := rw.Header()
 		if h != nil {
 			h.Set("Cache-Control", "no-cache")
-			if h.Get("Content-type") == "" {
-				h.Set("Content-type", "application/json")
+			if h.Get("Content-Type") == "" {
+				h.Set("Content-Type", "application/json")
 			}
 		}
 	}
