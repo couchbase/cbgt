@@ -195,7 +195,7 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	}
 
 	vbm := bucket.VBServerMap()
-	if vbm == nil {
+	if vbm == nil || len(vbm.VBucketMap) == 0 {
 		return nil, fmt.Errorf("feed_cb: CouchbasePartitions"+
 			" no VBServerMap, server: %s, sourceName: %s, err: %v",
 			serverIn, sourceName, err)
