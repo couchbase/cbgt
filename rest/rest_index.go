@@ -28,7 +28,6 @@ import (
 )
 
 const CLUSTER_ACTION = "Internal-Cluster-Action"
-const FTS_SCATTER_GATHER = "fts-scatter/gather"
 
 var ErrorSearchReqRejected = errors.New("search request rejected")
 
@@ -285,7 +284,7 @@ func (h *QueryHandler) ServeHTTP(
 	if h.pathStats != nil {
 		focusStats = h.pathStats.FocusStats(indexName)
 	}
-	if FTS_SCATTER_GATHER != req.Header.Get(CLUSTER_ACTION) {
+	if req.Header.Get(CLUSTER_ACTION) != "" {
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotClientRequest, 1)
 
