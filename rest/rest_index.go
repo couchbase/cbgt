@@ -284,7 +284,7 @@ func (h *QueryHandler) ServeHTTP(
 	if h.pathStats != nil {
 		focusStats = h.pathStats.FocusStats(indexName)
 	}
-	if req.Header.Get(CLUSTER_ACTION) != "" {
+	if req.Header.Get(CLUSTER_ACTION) == "" {
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotClientRequest, 1)
 
