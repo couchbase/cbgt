@@ -116,6 +116,7 @@ func NewCfgMetaKv(nodeUUID string) (*CfgMetaKv, error) {
 	backoffStartSleepMS := 200
 	backoffFactor := float32(1.5)
 	backoffMaxSleepMS := 5000
+	leanPlanKeyPrefix = CfgMetaKvPrefix + leanPlanKeyPrefix
 
 	go ExponentialBackoffLoop("cfg_metakv.RunObserveChildren",
 		func() int {
