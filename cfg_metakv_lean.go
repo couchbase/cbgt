@@ -37,7 +37,7 @@ var leanPlanMetaKvKeyGlue = "Lean/planPIndexesLean-"
 // current plan
 var curMetaKvPlanKey = "curMetaKvPlanKey"
 
-var leanPlanKeyPrefix = "/fts/cbgt/cfg/planPIndexesLean/planPIndexesLean-"
+var leanPlanKeyPrefix = "/cbgt/cfg/planPIndexesLean/planPIndexesLean-"
 
 var md5HashLength = 32
 
