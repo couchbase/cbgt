@@ -330,6 +330,59 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 
 // ---------------------------------------------------
 
+// CfgPlanPIndexesHandler is a REST handler that processes a request for
+// the manager/node to set the given planPIndexes contents to the Cfg.
+type CfgPlanPIndexesHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewCfgPlanPIndexesHandler(mgr *cbgt.Manager) *CfgPlanPIndexesHandler {
+	return &CfgPlanPIndexesHandler{mgr: mgr}
+}
+
+func (h *CfgPlanPIndexesHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_manage:"+
+			" could not read request body, err: %v", err), http.StatusBadRequest)
+		return
+	}
+	if len(requestBody) == 0 {
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_manage:"+
+			" no request body found"), http.StatusBadRequest)
+		return
+	}
+
+	planPIndexes := &cbgt.PlanPIndexes{}
+	err = json.Unmarshal(requestBody, planPIndexes)
+	if err != nil {
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
+			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
+		return
+	}
+	if cbgt.VersionGTE(h.mgr.Version(), planPIndexes.ImplVersion) == false {
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: could not update planPIndexes,"+
+			" planPIndexes.ImplVersion: %s > mgr.version: %s",
+			planPIndexes.ImplVersion, h.mgr.Version()), http.StatusBadRequest)
+		return
+	}
+
+	planPIndexes.UUID = cbgt.NewUUID()
+	_, err = cbgt.CfgSetPlanPIndexes(h.mgr.Cfg(), planPIndexes, cbgt.CFG_CAS_FORCE)
+	if err != nil {
+		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: CfgSetPlanPIndexes "+
+			"failed, err: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	MustEncode(w, struct {
+		Status string `json:"status"`
+	}{Status: "ok"})
+}
+
+// ---------------------------------------------------
+
 // ManagerHandler is a REST handler that returns runtime config
 // information about a manager/node.
 type ManagerHandler struct {

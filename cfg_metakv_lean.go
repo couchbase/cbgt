@@ -96,6 +96,8 @@ func setLeanPlan(c *CfgMetaKv,
 	newPath := c.keyToPath(key) + leanPlanMetaKvKeyGlue +
 		hashMD5 + "-" + strconv.FormatInt(timeMs, 10) + "/"
 
+	log.Printf("cfg_metakv_lean: setLeanPlan, val: %s", val)
+
 	planPIndexes := &PlanPIndexes{}
 	err = json.Unmarshal(val, planPIndexes)
 	if err != nil {
@@ -184,25 +186,31 @@ func setLeanPlan(c *CfgMetaKv,
 	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), metaJSON, nil)
 	if err != nil {
 		log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
-			"Set, err: %v", err)
+			"set, err: %v", err)
 		metakv.RecursiveDelete(newPath)
 		return 0, err
 	}
+
+	log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
+		"set, val: %s", metaJSON)
+
 	// double check before deleting the older plan directory
 	if curMeta != nil && strings.HasPrefix(curMeta.Path, leanPlanKeyPrefix) {
 		err := metakv.RecursiveDelete(curMeta.Path)
 		if err != nil {
 			log.Printf("cfg_metakv_lean: setLeanPlan, "+
-				"deleteMetaKvPath, err: %v", err)
+				"RecursiveDelete, err: %v", err)
 			return 0, err
 		}
+		log.Printf("cfg_metakv_lean: setLeanPlan, "+
+			"RecursiveDelete, path: %s", curMeta.Path)
 	}
 
 	casResult := c.lastSplitCAS + 1
 	c.lastSplitCAS = casResult
 	// purge any orphaned lean planPIndexes
 	purgeOrphanedLeanPlans(c, newPath)
-	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s, contents: %s", newPath, val)
+	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s", newPath)
 	return casResult, err
 }
 
@@ -312,10 +320,10 @@ RETRY:
 		if attempt < maxRetry {
 			goto RETRY
 		}
-		log.Printf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
-			" plan hash: %s \n contents: %s  , and directory stamp: %s", hashMD5, data, hashFromName)
-		return nil, 0, fmt.Errorf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
-			" plan contents: %s, and directory stamp: %s", hashMD5, hashFromName)
+		err = fmt.Errorf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
+			" plan hash: %s contents: %s, and directory stamp: %s", hashMD5, data, hashFromName)
+		log.Printf("%+v", err)
+		return nil, 0, err
 	}
 
 	casResult := c.lastSplitCAS + 1
@@ -341,6 +349,9 @@ func delLeanPlan(
 			" err: %v", err)
 		return err
 	}
+	log.Printf("cfg_metakv_lean: delLeanPlan, RecursiveDelete,"+
+		" path: %s", meta.Path)
+
 	// set the plan meta Path to empty, to prevent the fallback
 	// to the sharedPlan once upgraded
 	meta.Path = ""
@@ -354,6 +365,8 @@ func delLeanPlan(
 			"Set, err: %v", err)
 		return err
 	}
+	log.Printf("cfg_metakv_lean: delLeanPlan, curMetaKvPlanKey,"+
+		" val: %s", metaJSON)
 	return nil
 }
 
@@ -420,6 +433,7 @@ func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 		log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, json err: %v", err)
 		return nil, err
 	}
+	log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, val: %s", v)
 	return meta, nil
 }
 

@@ -561,6 +561,14 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "5.0.0",
 		})
 
+	handle("/api/cfgPlanPIndexes", "PUT", NewCfgPlanPIndexesHandler(mgr),
+		map[string]string{
+			"_category": "Plan|Plan configuration",
+			"_about": `Sets the given planPIndexes configurations
+                       to the Cfg.`,
+			"version introduced": "5.5.0",
+		})
+
 	handle("/api/log", "GET", NewLogGetHandler(mgr, mr),
 		map[string]string{
 			"_category": "Node|Node diagnostics",
