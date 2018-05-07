@@ -14,12 +14,16 @@
 /* Controllers */
 
 function errorMessage(errorMessageFull, code) {
-    if (code == 403 && typeof errorMessageFull == "object") {
-        var rv = errorMessageFull.message + ": ";
-        for (var x in errorMessageFull.permissions) {
-            rv += errorMessageFull.permissions[x];
+    if (typeof errorMessageFull == "object") {
+        if (code == 403) {
+            var rv = errorMessageFull.message + ": ";
+            for (var x in errorMessageFull.permissions) {
+                rv += errorMessageFull.permissions[x];
+            }
+            return rv;
+        } else {
+            errorMessageFull = errorMessageFull.error
         }
-        return rv;
     }
     console.log("errorMessageFull", errorMessageFull, code);
     var a = (errorMessageFull || (code + "")).split("err: ");
