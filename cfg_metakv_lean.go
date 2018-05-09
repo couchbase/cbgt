@@ -41,6 +41,8 @@ var leanPlanKeyPrefix = "planPIndexesLean/planPIndexesLean-"
 
 var md5HashLength = 32
 
+var PlanPurgeTimeout = int64(90000) // 15 min default
+
 // GetAllMetaKvChildrenFunc defines the callback func signature that's
 // invoked during supported feature check in a cluster
 type GetAllMetaKvChildrenFunc func(key string,
@@ -154,8 +156,6 @@ func setLeanPlan(c *CfgMetaKv,
 			return 0, err
 		}
 		childPath := newPath + name
-		log.Printf("cfg_metakv_lean: setLeanPlan, key: %v, childPath: %v",
-			key, childPath)
 		err = metakv.Set(childPath, val, nil)
 		if err != nil {
 			// clean up the incomplete plan directories
@@ -163,17 +163,11 @@ func setLeanPlan(c *CfgMetaKv,
 			metakv.RecursiveDelete(newPath)
 			return 0, err
 		}
+		log.Printf("cfg_metakv_lean: setLeanPlan, key: %v, childPath: %v",
+			key, childPath)
 	}
 
 	// update the curPlanMetaKvKey to point to the latest plan directory
-	curMeta, err := getCurMetaKvPlanMeta(c)
-	if err != nil {
-		log.Printf("cfg_metakv_lean: setLeanPlan, getCurMetaKvPlanMeta,"+
-			" err: %v", err)
-		metakv.RecursiveDelete(newPath)
-		return 0, err
-	}
-	// create the curPlanMetaKvKey key
 	meta := &planMeta{UUID: planPIndexes.UUID,
 		ImplVersion: planPIndexes.ImplVersion,
 		Path:        newPath,
@@ -194,21 +188,9 @@ func setLeanPlan(c *CfgMetaKv,
 	log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
 		"set, val: %s", metaJSON)
 
-	// double check before deleting the older plan directory
-	if curMeta != nil && strings.HasPrefix(curMeta.Path, leanPlanKeyPrefix) {
-		err := metakv.RecursiveDelete(curMeta.Path)
-		if err != nil {
-			log.Printf("cfg_metakv_lean: setLeanPlan, "+
-				"RecursiveDelete, err: %v", err)
-			return 0, err
-		}
-		log.Printf("cfg_metakv_lean: setLeanPlan, "+
-			"RecursiveDelete, path: %s", curMeta.Path)
-	}
-
 	casResult := c.lastSplitCAS + 1
 	c.lastSplitCAS = casResult
-	// purge any orphaned lean planPIndexes
+	// purge any orphaned, old enough lean planPIndexes
 	purgeOrphanedLeanPlans(c, newPath)
 	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s", newPath)
 	return casResult, err
@@ -394,15 +376,15 @@ func purgeOrphanedLeanPlans(c *CfgMetaKv, curPath string) error {
 
 	curTimeMs := time.Now().UnixNano() / 1000000
 	// purge all those orphan lean planPIndex directory paths
-	// which are older than 10 min
+	// which are older than PlanPurgeTimeout value
 	for orphanPath := range planDirPaths {
 		if strings.HasPrefix(orphanPath, leanPlanKeyPrefix) {
 			bornTimeStr := orphanPath[len(leanPlanKeyPrefix)+
 				md5HashLength+1 : len(orphanPath)-1]
-			// check if older than a min
+			// check if older than PlanPurgeTimeout
 			bornTimeMs, _ := strconv.Atoi(bornTimeStr)
 			age := curTimeMs - int64(bornTimeMs)
-			if age >= 600000 {
+			if age >= PlanPurgeTimeout {
 				err = metakv.RecursiveDelete(orphanPath)
 				if err != nil {
 					// errs are logged and ignored except the last one
