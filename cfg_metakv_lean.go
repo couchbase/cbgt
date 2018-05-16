@@ -192,7 +192,6 @@ func setLeanPlan(c *CfgMetaKv,
 	c.lastSplitCAS = casResult
 	// purge any orphaned, old enough lean planPIndexes
 	purgeOrphanedLeanPlans(c, newPath)
-	log.Printf("cfg_metakv_lean: setLeanPlan, path: %s", newPath)
 	return casResult, err
 }
 
@@ -415,7 +414,7 @@ func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 		log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, json err: %v", err)
 		return nil, err
 	}
-	log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, val: %s", v)
+
 	return meta, nil
 }
 
