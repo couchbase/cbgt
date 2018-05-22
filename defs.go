@@ -424,6 +424,8 @@ func UnregisterNodesWithRetries(cfg Cfg, version string, nodeUUIDs []string,
 // PLAN_PINDEXES_KEY is used for Cfg access.
 const PLAN_PINDEXES_KEY = "planPIndexes"
 
+const PLAN_PINDEXES_DIRECTORY_STAMP = "curMetaKvPlanKey"
+
 // Returns an initialized PlanPIndexes.
 func NewPlanPIndexes(version string) *PlanPIndexes {
 	return &PlanPIndexes{
