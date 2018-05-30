@@ -94,6 +94,16 @@ func (cb *cbBucketMap) fetchCouchbaseBucket(name, uuid, params, server string,
 		if err != nil {
 			return nil, err
 		}
+		vbm := bucket.VBServerMap()
+		if vbm == nil || len(vbm.VBucketMap) == 0 {
+			bucket.Close()
+
+			return nil, fmt.Errorf("feed_cb: CouchbaseBucket"+
+				" vbucket map not available yet,"+
+				" server: %s, bucketName: %s",
+				server, name)
+		}
+
 		cb.entries[key] = &bucketInfo{cbBkt: bucket, lastChecked: time.Now()}
 	}
 
@@ -564,7 +574,7 @@ func CouchbaseSourceVBucketLookUp(docID, serverIn string,
 	}
 	defer bucket.Close()
 	vbm := bucket.VBServerMap()
-	if vbm == nil {
+	if vbm == nil || len(vbm.VBucketMap) == 0 {
 		return "", fmt.Errorf("feed_cb: CouchbaseSourceVBucketLookUp"+
 			" no VBServerMap, server: %s, sourceName: %s, err: %v",
 			server, sourceDetails.SourceName, err)
