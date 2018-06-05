@@ -47,6 +47,13 @@ func (mgr *Manager) CreateIndex(sourceType,
 		return fmt.Errorf("manager_api: CreateIndex,"+
 			" unknown indexType: %s", indexType)
 	}
+	if pindexImplType.PrepareParams != nil {
+		indexParams, err = pindexImplType.PrepareParams(indexParams)
+		if err != nil {
+			return fmt.Errorf("manager_api: CreateIndex, PrepareParams failed,"+
+				" err: %v", err)
+		}
+	}
 	if pindexImplType.Validate != nil {
 		err = pindexImplType.Validate(indexType, indexName, indexParams)
 		if err != nil {
