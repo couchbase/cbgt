@@ -136,11 +136,6 @@ func (h *SourceStatsHandler) ServeHTTP(
 		return
 	}
 
-	if indexDef.SourceParams == "" {
-		MustEncode(w, nil)
-		return
-	}
-
 	feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
 	if !exists || feedType == nil {
 		ShowError(w, req, "unknown source type", http.StatusInternalServerError)
