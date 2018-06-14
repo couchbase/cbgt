@@ -266,6 +266,7 @@ func (mgr *Manager) StartCfg() error {
 		go func() {
 			ep := make(chan CfgEvent)
 			mgr.cfg.Subscribe(PLAN_PINDEXES_KEY, ep)
+			mgr.cfg.Subscribe(PLAN_PINDEXES_DIRECTORY_STAMP, ep)
 			for {
 				select {
 				case <-mgr.stopCh:
