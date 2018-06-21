@@ -42,6 +42,17 @@ func (mgr *Manager) CreateIndex(sourceType,
 			" indexName is invalid, indexName: %q", indexName)
 	}
 
+	indexDef := &IndexDef{
+		Type:         indexType,
+		Name:         indexName,
+		Params:       indexParams,
+		SourceType:   sourceType,
+		SourceName:   sourceName,
+		SourceUUID:   sourceUUID,
+		SourceParams: sourceParams,
+		PlanParams:   planParams,
+	}
+
 	pindexImplType, exists := PIndexImplTypes[indexType]
 	if !exists {
 		return fmt.Errorf("manager_api: CreateIndex,"+
@@ -54,6 +65,16 @@ func (mgr *Manager) CreateIndex(sourceType,
 				" err: %v", err)
 		}
 	}
+	indexDef.Params = indexParams
+
+	if pindexImplType.Prepare != nil {
+		indexDef, err = pindexImplType.Prepare(indexDef)
+		if err != nil {
+			return fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
+				" err: %v", err)
+		}
+	}
+
 	if pindexImplType.Validate != nil {
 		err = pindexImplType.Validate(indexType, indexName, indexParams)
 		if err != nil {
@@ -71,6 +92,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			sourceType, sourceName, sourceUUID, err)
 	}
+	indexDef.SourceParams = sourceParams
 
 	// Validate maxReplicasAllowed here.
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
@@ -78,8 +100,6 @@ func (mgr *Manager) CreateIndex(sourceType,
 		return fmt.Errorf("manager_api: CreateIndex, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, planParams.NumReplicas)
 	}
-
-	var indexDef *IndexDef
 
 	tries := 0
 
@@ -128,19 +148,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 		}
 
 		indexUUID := NewUUID()
-
-		indexDef = &IndexDef{
-			Type:         indexType,
-			Name:         indexName,
-			UUID:         indexUUID,
-			Params:       indexParams,
-			SourceType:   sourceType,
-			SourceName:   sourceName,
-			SourceUUID:   sourceUUID,
-			SourceParams: sourceParams,
-			PlanParams:   planParams,
-		}
-
+		indexDef.UUID = indexUUID
 		indexDefs.UUID = indexUUID
 		indexDefs.IndexDefs[indexName] = indexDef
 		indexDefs.ImplVersion = mgr.version

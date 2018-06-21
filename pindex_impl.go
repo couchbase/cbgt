@@ -32,6 +32,9 @@ type PIndexImplType struct {
 	// default.
 	PrepareParams func(indexParams string) (string, error)
 
+	// Prepare provides a way to customize the index definition.
+	Prepare func(indexDef *IndexDef) (*IndexDef, error)
+
 	// Invoked by the manager when it wants validate indef definition
 	// inputs before doing the actual creation.
 	Validate func(indexType, indexName, indexParams string) error
