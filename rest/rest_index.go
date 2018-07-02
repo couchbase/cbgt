@@ -279,44 +279,47 @@ func (h *QueryHandler) ServeHTTP(
 
 	err = pindexImplType.Query(h.mgr, indexName, indexUUID, requestBody, w)
 
-	//update the total client queries statistics.
+	// update the total client queries statistics.
 	var focusStats *RESTFocusStats
 	if h.pathStats != nil {
 		focusStats = h.pathStats.FocusStats(indexName)
 	}
 	if req.Header.Get(CLUSTER_ACTION) == "" {
+		// account for query stats on the co-ordinating node only
 		if focusStats != nil {
 			atomic.AddUint64(&focusStats.TotClientRequest, 1)
 
 			atomic.AddUint64(&focusStats.TotClientRequestTimeNS,
 				uint64(time.Now().Sub(startTime)))
 		}
-	}
 
-	if h.slowQueryLogTimeout > time.Duration(0) {
-		var resultSetBytes uint64
-		crw, ok := w.(*CountResponseWriter)
-		if ok {
-			resultSetBytes = crw.TotBytesWritten
-		}
+		if h.slowQueryLogTimeout > time.Duration(0) {
+			var resultSetBytes uint64
+			crw, ok := w.(*CountResponseWriter)
+			if ok {
+				resultSetBytes = crw.TotBytesWritten
+			}
 
-		d := time.Since(startTime)
-		if d > h.slowQueryLogTimeout {
-			log.Printf("slow-query: index: %s,"+
-				" query: %s, resultset bytes: %v, duration: %v, err: %v",
-				indexName, string(requestBody), resultSetBytes, d, err)
-			if focusStats != nil {
-				atomic.AddUint64(&focusStats.TotRequestSlow, 1)
+			d := time.Since(startTime)
+			if d > h.slowQueryLogTimeout {
+				log.Printf("slow-query: index: %s,"+
+					" query: %s, resultset bytes: %v, duration: %v, err: %v",
+					indexName, string(requestBody), resultSetBytes, d, err)
+				if focusStats != nil {
+					atomic.AddUint64(&focusStats.TotRequestSlow, 1)
+				}
 			}
 		}
 	}
 
 	if err != nil {
-		if focusStats != nil {
-			atomic.AddUint64(&focusStats.TotRequestErr, 1)
+		if req.Header.Get(CLUSTER_ACTION) == "" {
+			if focusStats != nil {
+				atomic.AddUint64(&focusStats.TotRequestErr, 1)
 
-			if err == context.DeadlineExceeded || err == contextOld.DeadlineExceeded {
-				atomic.AddUint64(&focusStats.TotRequestTimeout, 1)
+				if err == context.DeadlineExceeded || err == contextOld.DeadlineExceeded {
+					atomic.AddUint64(&focusStats.TotRequestTimeout, 1)
+				}
 			}
 		}
 

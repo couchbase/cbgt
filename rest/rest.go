@@ -238,11 +238,14 @@ func (h *HandlerWithRESTMeta) ServeHTTP(
 
 	h.h.ServeHTTP(crw, req)
 
-	if focusStats != nil {
-		atomic.AddUint64(&focusStats.TotRequestTimeNS,
-			uint64(time.Now().Sub(startTime)))
+	if req.Header.Get(CLUSTER_ACTION) == "" {
+		// account for query stats on the co-ordinating node only
+		if focusStats != nil {
+			atomic.AddUint64(&focusStats.TotRequestTimeNS,
+				uint64(time.Now().Sub(startTime)))
 
-		atomic.AddUint64(&focusStats.TotResponseBytes, crw.TotBytesWritten)
+			atomic.AddUint64(&focusStats.TotResponseBytes, crw.TotBytesWritten)
+		}
 	}
 }
 
