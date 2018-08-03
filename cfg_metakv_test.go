@@ -161,3 +161,30 @@ func disabled_TestCfgMetaKvIllConfigured(t *testing.T) {
 		t.Errorf("expected err on del because metakv not properly setup")
 	}
 }
+
+func TestCompatibilityVersion(t *testing.T) {
+	v, _ := CompatibilityVersion("5.0.0")
+	if v != 327680 {
+		t.Errorf("version expected: %d, actual: %d", v, v)
+	}
+
+	v, _ = CompatibilityVersion("5.5.0")
+	if v != 327685 {
+		t.Errorf("version expected: %d, actual: %d", v, v)
+	}
+
+	v, _ = CompatibilityVersion("6.0.0")
+	if v != 393216 {
+		t.Errorf("version expected: %d, actual: %d", v, v)
+	}
+
+	v, _ = CompatibilityVersion("0.0")
+	if v != 0 {
+		t.Errorf("version expected: %d, actual: %d", v, v)
+	}
+
+	v, _ = CompatibilityVersion("")
+	if v != 1 {
+		t.Errorf("version expected: %d, actual: %d", v, v)
+	}
+}

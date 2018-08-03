@@ -325,6 +325,15 @@ func NewNodeDefs(version string) *NodeDefs {
 	}
 }
 
+// CfgGetVersion returns the Cfg version
+func CfgGetVersion(cfg Cfg) string {
+	v, _, err := cfg.Get(VERSION_KEY, 0)
+	if err != nil || v == nil {
+		return VERSION
+	}
+	return string(v)
+}
+
 // CfgNodeDefsKey returns the Cfg access key for a NodeDef kind.
 func CfgNodeDefsKey(kind string) string {
 	return NODE_DEFS_KEY + "-" + kind

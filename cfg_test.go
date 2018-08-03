@@ -96,6 +96,65 @@ func (c *ErrorAfterCfg) Refresh() error {
 
 // ------------------------------------------------
 
+type ErrorUntilCfg struct {
+	inner    Cfg
+	errUntil int
+	numOps   int
+}
+
+func (c *ErrorUntilCfg) Get(key string, cas uint64) (
+	[]byte, uint64, error) {
+	c.numOps++
+	if c.numOps < c.errUntil {
+		return nil, 0, fmt.Errorf("Get error until %d", c.errUntil)
+	}
+	return c.inner.Get(key, cas)
+}
+
+func (c *ErrorUntilCfg) Set(key string, val []byte, cas uint64) (
+	uint64, error) {
+	c.numOps++
+	if c.numOps < c.errUntil {
+		return 0, fmt.Errorf("Set error until %d", c.errUntil)
+	}
+	return c.inner.Set(key, val, cas)
+}
+
+func (c *ErrorUntilCfg) Del(key string, cas uint64) error {
+	c.numOps++
+	if c.numOps < c.errUntil {
+		return fmt.Errorf("Del error until %d", c.errUntil)
+	}
+	return c.inner.Del(key, cas)
+}
+
+func (c *ErrorUntilCfg) Subscribe(key string, ch chan CfgEvent) error {
+	c.numOps++
+	if c.numOps < c.errUntil {
+		return fmt.Errorf("Subscribe error until %d", c.errUntil)
+	}
+	return c.inner.Subscribe(key, ch)
+}
+
+func (c *ErrorUntilCfg) Refresh() error {
+	c.numOps++
+	if c.numOps < c.errUntil {
+		return fmt.Errorf("Refresh error until %d", c.errUntil)
+	}
+	return c.inner.Refresh()
+}
+
+func (c *ErrorUntilCfg) ClusterVersion() (uint64, error) {
+	c.numOps++
+	if c.numOps < c.errUntil {
+		return 0, fmt.Errorf("ClusterVersion error until %d",
+			c.errUntil)
+	}
+	return CompatibilityVersion(LeanPlanVersion)
+}
+
+// ------------------------------------------------
+
 func TestCfgMem(t *testing.T) {
 	testCfg(t, NewCfgMem())
 }

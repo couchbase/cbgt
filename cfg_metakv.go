@@ -15,9 +15,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"io/ioutil"
 	"math"
+	"net/http"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -50,6 +53,14 @@ import (
 // Prefix of paths stored in metakv, and should be immutable after
 // process init()'ialization.
 var CfgMetaKvPrefix = "/cbgt/cfg/"
+
+var LeanPlanVersion = "5.5.0"
+
+// CfgAppVersion is a global Cfg variable supposed to be overridden by
+// applications to indicate the current application version.
+// This version information is used to figure out cluster level compatibility
+// issues.
+var CfgAppVersion = "6.0.0"
 
 type cfgMetaKvAdvancedHandler interface {
 	get(c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error)
@@ -95,6 +106,7 @@ type CfgMetaKv struct {
 	cancelCh     chan struct{}
 	lastSplitCAS uint64
 	splitEntries map[string]CfgMetaKvEntry
+	nsServerUrl  string
 }
 
 type CfgMetaKvEntry struct {
@@ -102,9 +114,21 @@ type CfgMetaKvEntry struct {
 	data []byte
 }
 
+// VersionReader is an interface to be implemented by the
+// configuration providers who supports the verification of
+// homogeneousness of the cluster before performing certain
+// Key/Values updates related to the cluster status
+type VersionReader interface {
+	// ClusterVersion retrieves the cluster
+	// compatibility information from the ns_server
+	ClusterVersion() (uint64, error)
+}
+
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
 // configuration file in the metakv.
-func NewCfgMetaKv(nodeUUID string) (*CfgMetaKv, error) {
+func NewCfgMetaKv(nodeUUID string, options map[string]string) (*CfgMetaKv, error) {
+	nsServerURL, _ := options["nsServerURL"]
+
 	cfg := &CfgMetaKv{
 		prefix:       CfgMetaKvPrefix,
 		nodeUUID:     nodeUUID,
@@ -117,6 +141,8 @@ func NewCfgMetaKv(nodeUUID string) (*CfgMetaKv, error) {
 	backoffFactor := float32(1.5)
 	backoffMaxSleepMS := 5000
 	leanPlanKeyPrefix = CfgMetaKvPrefix + leanPlanKeyPrefix
+
+	cfg.nsServerUrl = nsServerURL + "/pools/default"
 
 	go ExponentialBackoffLoop("cfg_metakv.RunObserveChildren",
 		func() int {
@@ -531,9 +557,19 @@ func (a *cfgMetaKvPlanPIndexesHandler) del(c *CfgMetaKv,
 }
 
 func isLeanPlanSupported(c *CfgMetaKv) bool {
-	// if the cluster contains any nodes which dont support
-	// the Lean planPIndex feature then fallback to older
-	// shared PlanPIndex format
+	b, _, err := c.getRawLOCKED(VERSION_KEY, 0)
+	if err != nil {
+		return false
+	}
+	// if the Cfg version is lower than 5.5.0/LeanPlanVersion
+	// then return false
+	if VersionGTE(string(b), LeanPlanVersion) == false {
+		return false
+	}
+
+	// extra check to see if the cluster contains any nodes which
+	// dont support the Lean planPIndex feature then fallback to
+	// older shared PlanPIndex format
 	for _, k := range []string{NODE_DEFS_KNOWN, NODE_DEFS_WANTED} {
 		key := CfgNodeDefsKey(k)
 		handler := cfgMetaKvAdvancedKeys[key]
@@ -692,4 +728,74 @@ func setSharedPlan(c *CfgMetaKv,
 
 func delSharedPlan(c *CfgMetaKv, key string, cas uint64) error {
 	return c.delRawLOCKED(key, cas)
+}
+
+type Compatibility struct {
+	ClusterCompatibility int `json:"clusterCompatibility"`
+}
+
+type NsServerResponse struct {
+	Nodes []Compatibility `json:"nodes"`
+}
+
+func (c *CfgMetaKv) ClusterVersion() (uint64, error) {
+	if len(c.nsServerUrl) < 2 {
+		return 1, fmt.Errorf("cfg_metakv: no ns_server URL configured")
+	}
+
+	u, err := CBAuthURL(c.nsServerUrl)
+	if err != nil {
+		return 0, fmt.Errorf("cfg_metakv: auth for ns_server,"+
+			" nsServerURL: %s, authType: %s, err: %v",
+			c.nsServerUrl, "cbauth", err)
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	respBuf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("cfg_metakv: error reading resp.Body,"+
+			" nsServerURL: %s, resp: %#v, err: %v", c.nsServerUrl, resp, err)
+	}
+
+	rv := &NsServerResponse{}
+	err = json.Unmarshal(respBuf, rv)
+	if err != nil {
+		return 0, fmt.Errorf("cfg_metakv: error parsing respBuf: %s,"+
+			" nsServerURL: %s, err: %v", respBuf, c.nsServerUrl, err)
+
+	}
+
+	return uint64(rv.Nodes[0].ClusterCompatibility), nil
+}
+
+func CompatibilityVersion(version string) (uint64, error) {
+	eVersion := uint64(1)
+	xa := strings.Split(version, ".")
+	if len(xa) < 2 {
+		return eVersion, fmt.Errorf("invalid version")
+	}
+
+	majVersion, err := strconv.Atoi(xa[0])
+	if err != nil {
+		return eVersion, err
+	}
+
+	minVersion, err := strconv.Atoi(xa[1])
+	if err != nil {
+		return eVersion, err
+	}
+
+	return uint64(65536*majVersion + minVersion), nil
 }

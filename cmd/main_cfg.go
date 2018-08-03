@@ -110,7 +110,7 @@ func MainCfgCB(baseName, urlStr, bindHttp, register, dataDir string) (
 func MainCfgMetaKv(baseName, urlStr, bindHttp, register, dataDir, uuid string,
 	options map[string]string) (
 	cbgt.Cfg, error) {
-	cfg, err := cbgt.NewCfgMetaKv(uuid)
+	cfg, err := cbgt.NewCfgMetaKv(uuid, options)
 	if err == nil {
 		// Useful for reseting internal testing.
 		if urlStr == ":removeAllKeys" {

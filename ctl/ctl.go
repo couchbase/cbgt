@@ -257,13 +257,16 @@ func (ctl *Ctl) run() {
 
 	memberNodes, err := CurrentMemberNodes(ctl.cfg)
 	if err != nil {
+		log.Printf("ctl: run, CurrentMemberNodes err %v", err)
 		ctl.initCh <- err
 		close(ctl.initCh)
 		return
 	}
 
-	planPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
+	planPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(ctl.cfg,
+		cbgt.CfgGetVersion(ctl.cfg))
 	if err != nil {
+		log.Printf("ctl: run, PlannerGetPlanPIndexes err: %v", err)
 		ctl.initCh <- err
 		close(ctl.initCh)
 		return
@@ -418,13 +421,14 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 		steps := map[string]bool{"planner": true}
 
 		var nodesToRemove []string
+		version := cbgt.CfgGetVersion(ctl.cfg)
 
-		cmd.PlannerSteps(steps, ctl.cfg, cbgt.VERSION,
+		cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
 			plannerFilterNewIndexesOnly)
 
 		planPIndexes, _, err :=
-			cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
+			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
 		if err == nil && planPIndexes != nil {
 			ctl.m.Lock()
 			ctl.incRevNumLOCKED()
@@ -608,7 +612,7 @@ func (ctl *Ctl) startCtlLOCKED(
 	go func() {
 		var ctlErrs []error
 		var ctlWarnings map[string][]string
-
+		version := cbgt.CfgGetVersion(ctl.cfg)
 		// Cleanup ctl goroutine.
 		//
 		defer func() {
@@ -616,7 +620,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				// If there were no warnings, see if there were any
 				// warnings left in the plan.
 				planPIndexes, _, err :=
-					cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.VERSION)
+					cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
 				if err == nil {
 					if planPIndexes != nil {
 						ctlWarnings = planPIndexes.Warnings
@@ -663,7 +667,7 @@ func (ctl *Ctl) startCtlLOCKED(
 		}()
 
 		indexDefsStart, err :=
-			cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
+			cbgt.PlannerGetIndexDefs(ctl.cfg, version)
 		if err != nil {
 			log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err)
 
@@ -696,7 +700,7 @@ func (ctl *Ctl) startCtlLOCKED(
 			for {
 				// Retrieve the indexDefs before we do anything.
 				indexDefsStart, err2 :=
-					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
+					cbgt.PlannerGetIndexDefs(ctl.cfg, version)
 				if err2 != nil {
 					log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err2)
 					ctlErrs = append(ctlErrs, err2)
@@ -709,7 +713,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				}
 
 				// Start rebalance and monitor progress.
-				ctl.r, err = rebalance.StartRebalance(cbgt.VERSION,
+				ctl.r, err = rebalance.StartRebalance(version,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
@@ -781,7 +785,7 @@ func (ctl *Ctl) startCtlLOCKED(
 
 				// Repeat if the indexDefs had changed mid-rebalance.
 				indexDefsEnd, err2 :=
-					cbgt.PlannerGetIndexDefs(ctl.cfg, cbgt.VERSION)
+					cbgt.PlannerGetIndexDefs(ctl.cfg, version)
 				if err2 != nil {
 					ctlErrs = append(ctlErrs, err2)
 					return
@@ -806,7 +810,7 @@ func (ctl *Ctl) startCtlLOCKED(
 			steps["planner"] = true
 		}
 
-		err = cmd.PlannerSteps(steps, ctl.cfg, cbgt.VERSION,
+		err = cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove,
 			ctl.optionsCtl.DryRun, nil)
 		if err != nil {
