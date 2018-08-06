@@ -74,7 +74,15 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 		if err != nil {
 			return fmt.Errorf("feed stats err: %v", err)
 		}
-		feedStats[feedName] = buf.Bytes()
+		if len(buf.Bytes()) == 0 {
+			feedStats[feedName] = []byte("{}")
+		} else {
+			if !json.Valid(buf.Bytes()) {
+				return fmt.Errorf("pindex stats err, invalid feedStats json: %v",
+					string(buf.Bytes()))
+			}
+			feedStats[feedName] = buf.Bytes()
+		}
 	}
 
 	pindexStats := make(map[string][]byte)
@@ -84,7 +92,15 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 		if err != nil {
 			return fmt.Errorf("pindex stats err: %v", err)
 		}
-		pindexStats[pindexName] = buf.Bytes()
+		if len(buf.Bytes()) == 0 {
+			pindexStats[pindexName] = []byte("{}")
+		} else {
+			if !json.Valid(buf.Bytes()) {
+				return fmt.Errorf("pindex stats err, invalid pindexStats json: %v",
+					string(buf.Bytes()))
+			}
+			pindexStats[pindexName] = buf.Bytes()
+		}
 	}
 
 	w.Write(cbgt.JsonOpenBrace)
