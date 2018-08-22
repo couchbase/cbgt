@@ -388,7 +388,9 @@ func (mgr *Manager) SaveNodeDef(kind string, force bool) error {
 
 		nodeDefs.UUID = NewUUID()
 		nodeDefs.NodeDefs[mgr.uuid] = nodeDef
-		nodeDefs.ImplVersion = mgr.version
+		nodeDefs.ImplVersion = CfgGetVersion(mgr.cfg)
+		log.Printf("manager: setting the nodeDefs implVersion "+
+			"to %s", nodeDefs.ImplVersion)
 
 		_, err = CfgSetNodeDefs(mgr.cfg, kind, nodeDefs, cas)
 		if err != nil {
@@ -418,7 +420,7 @@ func (mgr *Manager) RemoveNodeDef(kind string) error {
 	}
 
 	for {
-		err := CfgRemoveNodeDef(mgr.cfg, kind, mgr.uuid, mgr.version)
+		err := CfgRemoveNodeDef(mgr.cfg, kind, mgr.uuid, CfgGetVersion(mgr.cfg))
 		if err != nil {
 			if _, ok := err.(*CfgCASError); ok {
 				// Retry if it was a CAS mismatch, as perhaps multiple
