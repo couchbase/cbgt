@@ -102,7 +102,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 	}
 
 	tries := 0
-
+	version := CfgGetVersion(mgr.cfg)
 	for {
 		tries += 1
 		if tries > 100 {
@@ -115,7 +115,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 			return fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
 		}
 		if indexDefs == nil {
-			indexDefs = NewIndexDefs(mgr.version)
+			indexDefs = NewIndexDefs(version)
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
 			return fmt.Errorf("manager_api: could not create index,"+
@@ -151,7 +151,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 		indexDef.UUID = indexUUID
 		indexDefs.UUID = indexUUID
 		indexDefs.IndexDefs[indexName] = indexDef
-		indexDefs.ImplVersion = mgr.version
+		indexDefs.ImplVersion = version
 
 		// NOTE: If our ImplVersion is still too old due to a race, we
 		// expect a more modern planner to catch it later.
