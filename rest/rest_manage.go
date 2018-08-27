@@ -171,7 +171,7 @@ func (h *ManagerKickHandler) ServeHTTP(
 	msg := req.FormValue("msg")
 
 	if msg == "planner-force" {
-		changed, err := cbgt.Plan(h.mgr.Cfg(), h.mgr.Version(), "",
+		changed, err := cbgt.Plan(h.mgr.Cfg(), cbgt.CfgGetVersion(h.mgr.Cfg()), "",
 			h.mgr.Server(), h.mgr.Options(), nil)
 		if err != nil {
 			msg = fmt.Sprintf("rest_manage: Plan, err: %v", err)
@@ -324,12 +324,6 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
 		return
 	}
-	if cbgt.VersionGTE(h.mgr.Version(), nodeDefs.ImplVersion) == false {
-		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: could not update nodeDefs,"+
-			" nodeDefs.ImplVersion: %s > mgr.version: %s",
-			nodeDefs.ImplVersion, h.mgr.Version()), http.StatusBadRequest)
-		return
-	}
 
 	nodeDefs.UUID = cbgt.NewUUID()
 	_, err = cbgt.CfgSetNodeDefs(h.mgr.Cfg(), defs.Kind, &nodeDefs, math.MaxUint64)
@@ -375,12 +369,6 @@ func (h *CfgPlanPIndexesHandler) ServeHTTP(
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
-		return
-	}
-	if cbgt.VersionGTE(h.mgr.Version(), planPIndexes.ImplVersion) == false {
-		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: could not update planPIndexes,"+
-			" planPIndexes.ImplVersion: %s > mgr.version: %s",
-			planPIndexes.ImplVersion, h.mgr.Version()), http.StatusBadRequest)
 		return
 	}
 

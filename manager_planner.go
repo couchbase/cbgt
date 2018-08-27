@@ -217,6 +217,7 @@ func PlannerGetPlan(cfg Cfg, version string, uuid string) (
 	planPIndexes *PlanPIndexes,
 	planPIndexesCAS uint64,
 	err error) {
+	// use the incoming version for a potential version bump
 	err = PlannerCheckVersion(cfg, version)
 	if err != nil {
 		return nil, nil, nil, 0, err
@@ -259,7 +260,7 @@ func PlannerGetIndexDefs(cfg Cfg, version string) (*IndexDefs, error) {
 		return nil, fmt.Errorf("planner: CfgGetIndexDefs err: %v", err)
 	}
 	if indexDefs == nil {
-		return NewIndexDefs(version), nil
+		return NewIndexDefs(CfgGetVersion(cfg)), nil
 	}
 	if VersionGTE(version, indexDefs.ImplVersion) == false {
 		return nil, fmt.Errorf("planner: indexDefs.ImplVersion: %s"+
@@ -276,7 +277,7 @@ func PlannerGetNodeDefs(cfg Cfg, version, uuid string) (
 		return nil, fmt.Errorf("planner: CfgGetNodeDefs err: %v", err)
 	}
 	if nodeDefs == nil {
-		nodeDefs = NewNodeDefs(version)
+		nodeDefs = NewNodeDefs(CfgGetVersion(cfg))
 	}
 	if VersionGTE(version, nodeDefs.ImplVersion) == false {
 		return nil, fmt.Errorf("planner: nodeDefs.ImplVersion: %s"+
@@ -323,7 +324,7 @@ func PlannerGetPlanPIndexes(cfg Cfg, version string) (
 		return nil, 0, fmt.Errorf("planner: CfgGetPlanPIndexes err: %v", err)
 	}
 	if planPIndexesPrev == nil {
-		planPIndexesPrev = NewPlanPIndexes(version)
+		planPIndexesPrev = NewPlanPIndexes(CfgGetVersion(cfg))
 	}
 	if VersionGTE(version, planPIndexesPrev.ImplVersion) == false {
 		return nil, 0, fmt.Errorf("planner: planPIndexesPrev.ImplVersion: %s"+

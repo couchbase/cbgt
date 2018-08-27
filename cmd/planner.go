@@ -65,7 +65,7 @@ func PlannerSteps(steps map[string]bool,
 		log.Printf("planner: step unregister")
 
 		if !dryRun {
-			err := cbgt.UnregisterNodes(cfg, cbgt.VERSION, nodesRemove)
+			err := cbgt.UnregisterNodes(cfg, cbgt.CfgGetVersion(cfg), nodesRemove)
 			if err != nil {
 				return err
 			}

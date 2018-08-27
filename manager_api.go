@@ -226,7 +226,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 
 	indexDefs.UUID = NewUUID()
 	delete(indexDefs.IndexDefs, indexName)
-	indexDefs.ImplVersion = mgr.version
+	indexDefs.ImplVersion = CfgGetVersion(mgr.cfg)
 
 	// NOTE: if our ImplVersion is still too old due to a race, we
 	// expect a more modern planner to catch it later.
