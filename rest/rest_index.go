@@ -29,7 +29,7 @@ import (
 
 const CLUSTER_ACTION = "Internal-Cluster-Action"
 
-var ErrorSearchReqRejected = errors.New("search request rejected")
+var ErrorQueryReqRejected = errors.New("query request rejected")
 
 // ListIndexHandler is a REST handler for list indexes.
 type ListIndexHandler struct {
@@ -328,7 +328,7 @@ func (h *QueryHandler) ServeHTTP(
 		}
 
 		status := http.StatusBadRequest
-		if err == ErrorSearchReqRejected {
+		if err == ErrorQueryReqRejected {
 			status = http.StatusTooManyRequests
 		}
 
