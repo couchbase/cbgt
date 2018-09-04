@@ -329,7 +329,7 @@ func (h *QueryHandler) ServeHTTP(
 
 		status := http.StatusBadRequest
 		if err == ErrorSearchReqRejected {
-			status = http.StatusServiceUnavailable
+			status = http.StatusTooManyRequests
 		}
 
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_index: Query,"+
