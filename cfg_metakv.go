@@ -356,8 +356,9 @@ func (a *cfgMetaKvNodeDefsSplitHandler) get(
 			rv.NodeDefs[k1] = v1
 		}
 
+		// use the lowest version among nodeDefs
 		if rv.ImplVersion == "" ||
-			VersionGTE(childNodeDefs.ImplVersion, rv.ImplVersion) {
+			!VersionGTE(childNodeDefs.ImplVersion, rv.ImplVersion) {
 			rv.ImplVersion = childNodeDefs.ImplVersion
 		}
 
@@ -366,7 +367,12 @@ func (a *cfgMetaKvNodeDefsSplitHandler) get(
 	rv.UUID = checkSumUUIDs(uuids)
 
 	if rv.ImplVersion == "" {
-		rv.ImplVersion = VERSION
+		version := VERSION
+		v, _, err := c.getRawLOCKED(VERSION_KEY, 0)
+		if err == nil {
+			version = string(v)
+		}
+		rv.ImplVersion = version
 	}
 
 	data, err := json.Marshal(rv)

@@ -272,16 +272,23 @@ RETRY:
 			}
 		}
 
+		// use the lowest version among childPlans
 		if rv.ImplVersion == "" ||
-			VersionGTE(childPlan.ImplVersion, rv.ImplVersion) {
+			!VersionGTE(childPlan.ImplVersion, rv.ImplVersion) {
 			rv.ImplVersion = childPlan.ImplVersion
 		}
 		if rv.UUID == "" {
 			rv.UUID = childPlan.UUID
 		}
 	}
+
 	if rv.ImplVersion == "" {
-		rv.ImplVersion = VERSION
+		version := VERSION
+		v, _, err := c.getRawLOCKED(VERSION_KEY, 0)
+		if err == nil {
+			version = string(v)
+		}
+		rv.ImplVersion = version
 	}
 
 	data, err := json.Marshal(rv)

@@ -111,6 +111,18 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 		return false, err
 	}
 
+	// use the effective version while calculating the new plan.
+	// In a mixed node cluster, if user fails over - one of the upgraded
+	// nodes and the failover rebalance picks the master from any other
+	// remaining upgraded nodes, then we need to use the effective version
+	// rather than the cbgt version.
+	eVersion := cbgt.CfgGetVersion(cfg)
+	if eVersion != version {
+		log.Printf("planner: failover, current version: %s, effective"+
+			"Cfg version used: %s", version, eVersion)
+		version = eVersion
+	}
+
 	planPIndexesCalc, err := cbgt.CalcPlan("failover",
 		indexDefs, nodeDefs, planPIndexesPrev, version, server, options, nil)
 	if err != nil {

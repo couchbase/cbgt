@@ -190,6 +190,14 @@ func Plan(cfg Cfg, version, uuid, server string, options map[string]string,
 		return false, err
 	}
 
+	// use the effective version while calculating the new plan
+	eVersion := CfgGetVersion(cfg)
+	if eVersion != version {
+		log.Printf("planner: Plan, incoming version: %s, effective"+
+			"Cfg version used: %s", version, eVersion)
+		version = eVersion
+	}
+
 	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
 		planPIndexesPrev, version, server, options, plannerFilter)
 	if err != nil {
