@@ -30,6 +30,7 @@ import (
 const CLUSTER_ACTION = "Internal-Cluster-Action"
 
 var ErrorQueryReqRejected = errors.New("query request rejected")
+var ErrorAlreadyPropagated = errors.New("response already propagated")
 
 // ListIndexHandler is a REST handler for list indexes.
 type ListIndexHandler struct {
@@ -323,6 +324,11 @@ func (h *QueryHandler) ServeHTTP(
 			}
 		}
 
+		if err == ErrorAlreadyPropagated {
+			// query result was already propagated
+			return
+		}
+
 		if showConsistencyError(err, "Query", indexName, requestBody, w) {
 			return
 		}
@@ -334,7 +340,6 @@ func (h *QueryHandler) ServeHTTP(
 
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_index: Query,"+
 			" indexName: %s, err: %v", indexName, err), status)
-		return
 	}
 }
 

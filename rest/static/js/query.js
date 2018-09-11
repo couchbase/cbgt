@@ -233,6 +233,12 @@ function QueryCtrl($scope, $http, $routeParams, $log, $sce, $location) {
             var successful = $scope.results.status.successful;
             var total = $scope.results.status.total;
             $scope.resultsSuccessPct = Math.round(((1.0 * successful) / total) * 10000) / 100.0;
+            // set errorMessage to first error seen
+            try {
+                var errors = $scope.results.status.errors;
+                $scope.errorMessage = errors[Object.keys(errors)[0]];
+            } catch (e) {
+            }
         }
 
         for(var i in $scope.results.hits) {
