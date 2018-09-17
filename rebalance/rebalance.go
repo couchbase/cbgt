@@ -30,6 +30,11 @@ var ErrorNotPausable = errors.New("not pausable")
 var ErrorNotResumable = errors.New("not resumable")
 var ErrorNoIndexDefinitionFound = errors.New("no index definition found")
 
+// StatsSampleErrorThreshold defines the default upper limit for
+// the ephemeral stats monitoring errors tolerated / ignored
+// during a heavy rebalance scenario.
+var StatsSampleErrorThreshold = uint8(3)
+
 // RebalanceProgress represents progress status information as the
 // Rebalance() operation proceeds.
 type RebalanceProgress struct {
@@ -63,6 +68,8 @@ type RebalanceOptions struct {
 	SkipSeqChecks bool // For unit-testing.
 
 	Manager *cbgt.Manager
+
+	StatsSampleErrorThreshold *int
 }
 
 type RebalanceLogFunc func(format string, v ...interface{})
@@ -1200,6 +1207,13 @@ func SetUUIDSeq(
 func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 	defer close(r.monitorDoneCh)
 
+	errMap := make(map[string]uint8, len(r.nodesAll))
+
+	errThreshold := StatsSampleErrorThreshold
+	if r.optionsReb.StatsSampleErrorThreshold != nil {
+		errThreshold = uint8(*r.optionsReb.StatsSampleErrorThreshold)
+	}
+
 	for {
 		select {
 		case <-stopCh:
@@ -1213,6 +1227,14 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 			r.Logf("      monitor: %s, node: %s", s.Kind, s.UUID)
 
 			if s.Error != nil {
+				errMap[s.UUID]++
+				if errMap[s.UUID] < errThreshold {
+					r.Logf("rebalance: runMonitor, ignoring the s.Error: %#v, "+
+						"for node: %s, for %d time", s.Error, s.UUID,
+						errMap[s.UUID])
+					continue
+				}
+
 				r.Logf("rebalance: runMonitor, s.Error: %#v", s.Error)
 
 				r.progressCh <- RebalanceProgress{Error: s.Error}
@@ -1221,6 +1243,15 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 			}
 
 			if s.Kind == "/api/stats" {
+				if s.Data == nil {
+					errMap[s.UUID]++
+					if errMap[s.UUID] < errThreshold {
+						r.Logf("rebalance: runMonitor, skipping the empty response"+
+							"for node: %s, for %d time", s.UUID, errMap[s.UUID])
+						continue
+					}
+				}
+
 				m := struct {
 					PIndexes map[string]struct {
 						Partitions map[string]struct {
@@ -1239,6 +1270,10 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 					r.Stop() // Stop the rebalance.
 					continue
 				}
+
+				// reset the error count, as rebalance supposed to fail only
+				// if it hits a sequential run of errors for a given node.
+				errMap[s.UUID] = 0
 
 				for pindex, x := range m.PIndexes {
 					for sourcePartition, uuidSeq := range x.Partitions {
