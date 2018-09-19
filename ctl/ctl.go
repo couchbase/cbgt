@@ -620,7 +620,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				// If there were no warnings, see if there were any
 				// warnings left in the plan.
 				planPIndexes, _, err :=
-					cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
+					cbgt.PlannerGetPlanPIndexes(ctl.cfg, cbgt.CfgGetVersion(ctl.cfg))
 				if err == nil {
 					if planPIndexes != nil {
 						ctlWarnings = planPIndexes.Warnings
