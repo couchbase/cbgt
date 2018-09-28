@@ -315,7 +315,7 @@ func (t *DCPFeed) IndexName() string {
 
 func (t *DCPFeed) Start() error {
 	if t.disable {
-		log.Printf("feed_dcp: disable, name: %s", t.Name())
+		log.Printf("feed_dcp: disabled, name: %s", t.Name())
 		return nil
 	}
 
