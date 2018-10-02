@@ -64,7 +64,7 @@ func (bm *bucketMap) fetchGoCBBucket(name, uuid, params, server string,
 			// if time elapsed since last check is greater than the set
 			// CouchbaseNodesRecheckInterval, re-check to see the state
 			// of the couchbase cluster.
-			// TODO: Check if cluster configuration has changed?
+			// FIXME: Check if cluster configuration has changed?
 
 		}
 	}
@@ -74,7 +74,7 @@ func (bm *bucketMap) fetchGoCBBucket(name, uuid, params, server string,
 		if err != nil {
 			return nil, err
 		}
-		// TODO: Check if the vbucket map is ready or not? maybe?
+		// FIXME: Check if the vbucket map is ready or not? maybe?
 
 		bm.entries[key] = &bucketInfo{bkt: bucket, lastChecked: time.Now()}
 	}
@@ -105,8 +105,8 @@ func cbBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 			CouchbaseParseSourceName(serverIn, "default", sourceName)
 	*/
 
-	// TODO: Implement gocbcore.Authenticator
-	// TODO: Setup connection via a gocb.Bucket or a gocbcore.Agent?
+	// FIXME: Implement gocbcore.Authenticator
+	// FIXME: Setup connection via a gocb.Bucket or a gocbcore.Agent?
 
 	return nil, nil
 }
@@ -115,7 +115,7 @@ func cbBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 
 // CBPartitions parses a sourceParams for a couchbase
 // data-sourcec/feed.
-// TODO: How to fetch the vbucket server map for the bucket??
+// FIXME: How to fetch the vbucket server map for the bucket??
 func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (
 	partitions []string, err error) {

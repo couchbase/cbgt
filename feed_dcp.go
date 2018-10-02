@@ -372,7 +372,7 @@ func (r *DCPFeed) checkStopAfter(partition string) bool {
 }
 
 // updateStopAfter checks and maintains the stopAfterReached tracking
-// maps, which are used for so-called "one-time indexing".  Once we've
+// maps, which are used for so-called "one-time indexing". Once we've
 // reached the stopping point, we close the feed (after all partitions
 // have reached their stopAfter sequence numbers).
 func (r *DCPFeed) updateStopAfter(partition string, seq uint64) {
