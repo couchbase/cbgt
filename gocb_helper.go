@@ -15,10 +15,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 // ----------------------------------------------------------------
@@ -250,4 +253,24 @@ func CBVBucketLookUp(docID, serverIn string,
 	vb := bucket.IoRouter().KeyToVbucket([]byte(docID))
 
 	return strconv.Itoa(int(vb)), nil
+}
+
+// ----------------------------------------------------------------
+
+type Authenticator struct{}
+
+func (a *Authenticator) Credentials(req gocbcore.AuthCredsRequest) ([]gocbcore.UserPassPair, error) {
+	endpoint := req.Endpoint
+
+	// get rid of the http:// or https:// prefix from the endpoint
+	endpoint = strings.TrimPrefix(strings.TrimPrefix(endpoint, "http://"), "https://")
+	username, password, err := cbauth.GetMemcachedServiceAuth(endpoint)
+	if err != nil {
+		return []gocbcore.UserPassPair{{}}, err
+	}
+
+	return []gocbcore.UserPassPair{{
+		Username: username,
+		Password: password,
+	}}, nil
 }

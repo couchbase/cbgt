@@ -20,6 +20,7 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
+	"github.com/couchbase/gocb"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -40,10 +41,10 @@ func init() {
 func StartGocbDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	sourceType, sourceName, bucketUUID, params string,
 	dests map[string]Dest) error {
-	server, poolName, bucketName :=
+	server, _, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
-	feed, err := NewGocbDCPFeed(feedName, indexName, server, poolName,
+	feed, err := NewGocbDCPFeed(feedName, indexName, server,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
 		mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
@@ -75,7 +76,6 @@ type GocbDCPFeed struct {
 	name       string
 	indexName  string
 	url        string
-	poolName   string
 	bucketName string
 	bucketUUID string
 	paramsStr  string
@@ -87,15 +87,19 @@ type GocbDCPFeed struct {
 	agent      *gocbcore.Agent
 	mgr        *Manager
 
-	m       sync.Mutex
-	closed  bool
-	lastErr error
-	stats   *DestStats
+	lastReceivedSeqno map[uint16]uint64
+
+	m         sync.Mutex
+	remaining sync.WaitGroup
+	active    map[uint16]bool
+	closed    bool
+	lastErr   error
+	stats     *DestStats
 
 	stopAfterReached map[string]bool // May be nil.
 }
 
-func NewGocbDCPFeed(name, indexName, url, poolName,
+func NewGocbDCPFeed(name, indexName, url,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbDCPFeed, error) {
@@ -123,6 +127,8 @@ func NewGocbDCPFeed(name, indexName, url, poolName,
 		}
 	}
 
+	// FIXME: Plugging in DCP options: NoopTimeInterval, BufferAckThreshold, etc.
+
 	// If feedBufferSizeBytes (to enable DCP flow control) isn't
 	// set, initialize it to the default.
 	if !strings.Contains(paramsStr, "feedBufferSizeBytes") {
@@ -146,24 +152,35 @@ func NewGocbDCPFeed(name, indexName, url, poolName,
 		return nil, fmt.Errorf("feed_gocb_dcp: NewGocbDCPFeed, no urls provided")
 	}
 
-	feed := &GocbDCPFeed{
-		name:       name,
-		indexName:  indexName,
-		url:        url,
-		poolName:   poolName,
-		bucketName: bucketName,
-		bucketUUID: bucketUUID,
-		paramsStr:  paramsStr,
-		params:     params,
-		pf:         pf,
-		dests:      dests,
-		disable:    disable,
-		stopAfter:  stopAfter,
-		mgr:        mgr,
-		stats:      NewDestStats(),
+	vbucketIds, err := ParsePartitionsToVBucketIds(dests)
+	if err != nil {
+		return nil, err
+	}
+	if len(vbucketIds) == 0 {
+		return nil, fmt.Errorf("feed_gocb_dcp: No vbucketids for this feed")
 	}
 
-	// FIXME: Need to add authenticator
+	feed := &GocbDCPFeed{
+		name:              name,
+		indexName:         indexName,
+		url:               url,
+		bucketName:        bucketName,
+		bucketUUID:        bucketUUID,
+		paramsStr:         paramsStr,
+		params:            params,
+		pf:                pf,
+		dests:             dests,
+		disable:           disable,
+		stopAfter:         stopAfter,
+		mgr:               mgr,
+		lastReceivedSeqno: make(map[uint16]uint64),
+		stats:             NewDestStats(),
+		active:            make(map[uint16]bool),
+	}
+
+	for _, vbid := range vbucketIds {
+		feed.lastReceivedSeqno[vbid] = 0
+	}
 
 	config := &gocbcore.AgentConfig{
 		UserString:           name,
@@ -172,18 +189,17 @@ func NewGocbDCPFeed(name, indexName, url, poolName,
 		ServerConnectTimeout: 7000 * time.Millisecond,
 		NmvRetryDelay:        100 * time.Millisecond,
 		UseKvErrorMaps:       true,
+		Auth:                 &Authenticator{},
 	}
 
 	spec := urls[0]
 	// FIXME: Get CA cert file from somewhere
 	// spec += "?certpath=" + CACERTFILE
 
-	err := config.FromConnStr(spec)
+	err = config.FromConnStr(spec)
 	if err != nil {
 		return nil, err
 	}
-
-	// FIXME: Plugging in DCP options: NoopTimeInterval, BufferAckThreshold, etc.
 
 	flags := gocbcore.DcpOpenFlagProducer | gocbcore.DcpOpenFlagIncludeXattrs
 
@@ -213,32 +229,31 @@ func (f *GocbDCPFeed) Start() error {
 
 	log.Printf("feed_gocb_dcp: start, name: %s", f.Name())
 
-	vbucketIds, err := ParsePartitionsToVBucketIds(f.dests)
-	if err != nil {
-		return err
-	}
-	if len(vbucketIds) <= 0 {
-		// FIXME: handle this situation
-		return nil
+	for vbid := range f.lastReceivedSeqno {
+		err := f.initiateStream(uint16(vbid), true)
+		if err != nil {
+			return fmt.Errorf("feed_gocb_dcp: start, name: %s, vbid: %v, err: %v",
+				f.Name(), vbid, err)
+		}
 	}
 
-	for vbid := range vbucketIds {
-		f.startIndefiniteStream(uint16(vbid))
-	}
 	return nil
 }
 
 func (f *GocbDCPFeed) Close() error {
+	f.agent.Close()
 	f.m.Lock()
 	if f.closed {
 		f.m.Unlock()
 		return nil
 	}
 	f.closed = true
+	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
+	f.wait()
+
 	log.Printf("feed_gocb_dcp: close, name: %s", f.Name())
-	f.agent.Close()
 	return nil
 }
 
@@ -253,10 +268,89 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 
 // ----------------------------------------------------------------
 
-func (f *GocbDCPFeed) startIndefiniteStream(vbId uint16) {
-	// FIXME: 0 to be replaced with lastReceivedSeqno for the vbid
-	//lastReceviedSeqno := 0
-	// FIXME
+func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
+	metadataBytes, lastSeq, err := f.getMetaData(vbId)
+	if err != nil {
+		return err
+	}
+
+	vbuuid := gocbcore.VbUuid(0)
+	if metadataBytes != nil {
+		var metadata *metaData
+		err = json.Unmarshal(metadataBytes, metadata)
+		if err != nil {
+			return err
+		}
+
+		if len(metadata.FailOverLog) > 0 {
+			vbuuid = gocbcore.VbUuid(metadata.FailOverLog[len(metadata.FailOverLog)-1][0])
+		}
+	}
+
+	if isNewStream {
+		f.m.Lock()
+		if !f.active[vbId] {
+			f.remaining.Add(1)
+			f.active[vbId] = true
+		}
+		f.m.Unlock()
+	}
+
+	seqStart := gocbcore.SeqNo(lastSeq)
+	seqEnd := gocbcore.SeqNo(0xffffffffffffffff)
+	snapStart := seqStart
+
+	signal := make(chan bool, 1)
+	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
+		vbuuid, seqStart, seqEnd, snapStart, snapStart, f,
+		func(entries []gocbcore.FailoverEntry, er error) {
+			if er == gocb.ErrShutdown {
+				log.Printf("feed_gocb_dcp: DCP stream for vb: %v was shutdown", vbId)
+				f.complete(vbId)
+			} else if er == gocb.ErrNetwork {
+				// TODO: Add a maximum retry-count here maybe?
+				log.Printf("feed_gocb_dcp: Network error received on DCP stream for"+
+					" vb: %v", vbId)
+				f.initiateStream(vbId, false)
+			} else if er == gocb.ErrRollback {
+				log.Printf("feed_gocb_dcp: Received rollback, for vb: %v", vbId)
+				// FIXME: Rollback invocation
+				f.initiateStream(vbId, false)
+			} else if er != nil {
+				log.Printf("feed_gocb_dcp: Received error on DCP stream for vb: %v,"+
+					" err: %v", vbId, err)
+				f.complete(vbId)
+			}
+
+			signal <- true
+		})
+	if err != nil {
+		log.Warnf("feed_gocb_dcp: DCP stream closed for vbID: %v, due to client"+
+			" error: `%s`", vbId, err)
+		f.complete(vbId)
+	}
+
+	go func() {
+		timeoutTmr := gocbcore.AcquireTimer(180 * time.Second)
+		select {
+		case <-signal:
+			gocbcore.ReleaseTimer(timeoutTmr, false)
+			return
+		case <-timeoutTmr.C:
+			gocbcore.ReleaseTimer(timeoutTmr, true)
+			if !op.Cancel() {
+				<-signal
+				return
+			}
+
+			// TODO: On stream request timeout, configure a maximum number
+			// of retry attempts perhaps?
+			f.complete(vbId)
+			return
+		}
+	}()
+
+	return nil
 }
 
 // ----------------------------------------------------------------
@@ -284,7 +378,46 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	if err != nil {
 		log.Warnf("feed_gocb_dcp: Error in accepting a DCP snapshot marker,"+
 			" err: %v", err)
+		return
 	}
+
+	// Get Latest failover log
+	var failoverLog [][]uint64
+	f.agent.GetFailoverLog(vbId, func(entries []gocbcore.FailoverEntry, er error) {
+		if er != nil {
+			err = er
+			return
+		}
+
+		failoverLog = make([][]uint64, len(entries))
+		var cursor int
+		for i := len(entries) - 1; i >= 0; i-- {
+			uuid := uint64(entries[i].VbUuid)
+			seqno := uint64(entries[i].SeqNo)
+			if cursor > 0 {
+				if seqno < failoverLog[cursor-1][1] {
+					err = fmt.Errorf("Seqno must be higher than seqno in last" +
+						" log entry")
+					return
+				}
+			}
+			failoverLog[cursor] = []uint64{uuid, seqno}
+			cursor++
+		}
+	})
+	if err != nil {
+		log.Warnf("feed_gocb_dcp: Error in fetching failover log, err: %v", err)
+		return
+	}
+
+	// Set internal metadata with info from the snapshot marker
+	f.setMetaData(vbId, &metaData{
+		SeqStart:    0,
+		SeqEnd:      0,
+		SnapStart:   startSeqNo,
+		SnapEnd:     endSeqNo,
+		FailOverLog: failoverLog,
+	})
 }
 
 func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
@@ -318,10 +451,9 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	if err != nil {
 		log.Warnf("feed_gocb_dcp: Error in accepting a DCP mutation, err: %v",
 			err)
+	} else {
+		f.lastReceivedSeqno[vbId] = seqNo
 	}
-
-	// FIXME: Update VbucketMetaData if (seqNo == snapshotEndSeqno), so this
-	// metadata can be used to re-establish a disconnected stream
 }
 
 func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
@@ -354,10 +486,9 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	if err != nil {
 		log.Warnf("feed_gocb_dcp: Error in accepting a DCP deletion, err: %v",
 			err)
+	} else {
+		f.lastReceivedSeqno[vbId] = seqNo
 	}
-
-	// FIXME: Update VbucketMetaData if (seqNo == snapshotEndSeqno), so this
-	// metadata can be used to re-establish a disconnected stream
 }
 
 func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
@@ -366,8 +497,109 @@ func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 }
 
 func (f *GocbDCPFeed) End(vbId uint16, err error) {
-	log.Printf("feed_gocb_dcp: DCP stream terminated for vbId: %v, err: %v",
-		vbId, err)
+	if err == nil {
+		log.Printf("feed_gocb_dcp: DCP stream ended for vb: %v, last seq: %v",
+			vbId, f.lastReceivedSeqno[vbId])
+		f.complete(vbId)
+	} else if err == gocb.ErrStreamStateChanged || err == gocb.ErrStreamTooSlow ||
+		err == gocb.ErrStreamDisconnected {
+		log.Printf("feed_gocb_dcp: DCP stream for vb: %v, closed due to"+
+			" `%s`, will reconnect", vbId, err.Error())
+		f.initiateStream(vbId, false)
+	} else if err == gocb.ErrStreamClosed {
+		log.Printf("feed_gocb_dcp: DCP stream for vb: %v, closed by consumer", vbId)
+		f.complete(vbId)
+	} else if err == gocb.ErrNetwork {
+		// TODO: Add a maximum retry-count here maybe?
+		log.Printf("feed_gocb_dcp: Network error received on DCP stream for vb: %v",
+			vbId)
+		f.initiateStream(vbId, false)
+	} else {
+		log.Printf("feed_gocb_dcp: DCP stream closed for vb: %v, last seq: %v,"+
+			" err: `%s`", vbId, f.lastReceivedSeqno[vbId], err)
+		f.complete(vbId)
+	}
+}
+
+// ----------------------------------------------------------------
+
+// This struct is to remain AS IS, it follows the same format
+// used in go-couchbase/cbdatasource (lookup: VBucketMetaData).
+type metaData struct {
+	SeqStart    uint64     `json:"seqStart"`
+	SeqEnd      uint64     `json:"seqEnd"`
+	SnapStart   uint64     `json:"snapStart"`
+	SnapEnd     uint64     `json:"snapEnd"`
+	FailOverLog [][]uint64 `json:"failOverLog"`
+}
+
+func (f *GocbDCPFeed) setMetaData(vbId uint16, m *metaData) error {
+	return Timer(func() error {
+		partition, dest, err :=
+			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+		if err != nil || f.checkStopAfter(partition) {
+			return err
+		}
+
+		value, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+
+		return dest.OpaqueSet(partition, value)
+	}, f.stats.TimerOpaqueSet)
+}
+
+func (f *GocbDCPFeed) getMetaData(vbId uint16) (value []byte, lastSeq uint64, err error) {
+	err = Timer(func() error {
+		partition, dest, err :=
+			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+		if err != nil || f.checkStopAfter(partition) {
+			return err
+		}
+
+		value, lastSeq, err = dest.OpaqueGet(partition)
+
+		return err
+	}, f.stats.TimerOpaqueGet)
+
+	return value, lastSeq, err
+}
+
+// ----------------------------------------------------------------
+
+func (f *GocbDCPFeed) rollback(vbId uint16, rollbackSeq uint64) error {
+	// FIXME
+
+	return nil
+}
+
+func (f *GocbDCPFeed) rollbackEx(vbId uint16, vbUuid, rollbackSeq uint64) error {
+	// FIXME
+
+	return nil
+}
+
+// ----------------------------------------------------------------
+
+func (f *GocbDCPFeed) wait() {
+	f.remaining.Wait()
+}
+
+func (f *GocbDCPFeed) complete(vbId uint16) {
+	f.m.Lock()
+	f.remaining.Done()
+	f.active[vbId] = false
+	f.m.Unlock()
+}
+
+func (f *GocbDCPFeed) forceCompleteLOCKED() {
+	for k, v := range f.active {
+		if v {
+			f.active[k] = false
+			f.remaining.Done()
+		}
+	}
 }
 
 // ----------------------------------------------------------------
