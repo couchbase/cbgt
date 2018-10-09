@@ -26,104 +26,109 @@ import (
 
 // ----------------------------------------------------------------
 
-type bucketInfo struct {
-	// TODO: Can we do with a gocb.Agent instead?
-	bkt         *gocb.Bucket
-	lastChecked time.Time
-}
-
-type bucketMap struct {
+type gocbAgentMap struct {
 	// Mutex to serialize access to entries
 	m sync.Mutex
-	// Map of gocb.Bucket instances by bucket <name>:<uuid>
-	entries map[string]*bucketInfo
+	// Map of gocbcore.Agent instances by bucket <name>:<uuid>
+	entries map[string]*gocbcore.Agent
 }
 
-var bktMap *bucketMap
+var agentMap *gocbAgentMap
 
 func init() {
-	bktMap = &bucketMap{
-		entries: make(map[string]*bucketInfo),
+	agentMap = &gocbAgentMap{
+		entries: make(map[string]*gocbcore.Agent),
 	}
 }
 
-// Fetches a gocb bucket instance with the requested uuid,
+// Fetches a gocbcore agent instance for the bucket (name:uuid),
 // if not found creates a new instance and stashes it in the map.
-func (bm *bucketMap) fetchGoCBBucket(name, uuid, params, server string,
-	options map[string]string) (*gocb.Bucket, error) {
-	bm.m.Lock()
-	defer bm.m.Unlock()
+func (am *gocbAgentMap) fetchAgent(name, uuid, params, server string,
+	options map[string]string) (*gocbcore.Agent, error) {
+	am.m.Lock()
+	defer am.m.Unlock()
 
 	key := name + ":" + uuid
 
-	createNewInstance := false
-	_, exists := bm.entries[key]
-	if !exists {
-		// if not found, create new bucket instance
-		createNewInstance = true
-	} else {
-		timeSinceLastCheck := time.Since(bm.entries[key].lastChecked)
-		if timeSinceLastCheck >= CouchbaseNodesRecheckInterval {
-			// if time elapsed since last check is greater than the set
-			// CouchbaseNodesRecheckInterval, re-check to see the state
-			// of the couchbase cluster.
-			// FIXME: Check if cluster configuration has changed?
-
-		}
-	}
-
-	if createNewInstance {
-		bucket, err := cbBucket(name, uuid, params, server, options)
+	if _, exists := am.entries[key]; !exists {
+		agent, err := newAgent(name, uuid, params, server, options)
 		if err != nil {
 			return nil, err
 		}
-		// FIXME: Check if the vbucket map is ready or not? maybe?
 
-		bm.entries[key] = &bucketInfo{bkt: bucket, lastChecked: time.Now()}
+		am.entries[key] = agent
 	}
 
-	return bm.entries[key].bkt, nil
+	return am.entries[key], nil
 }
 
-// Closes and removes the gocb bucket instance with the uuid.
-func (bm *bucketMap) closeGoCBBucket(name, uuid string) {
-	bm.m.Lock()
-	defer bm.m.Unlock()
+// Closes and removes the gocbcore Agent instance with the uuid.
+func (am *gocbAgentMap) closeAgent(name, uuid string) {
+	am.m.Lock()
+	defer am.m.Unlock()
 
 	key := name + ":" + uuid
 
-	bktInfo, exists := bm.entries[key]
-	if exists {
-		bktInfo.bkt.Close()
-		delete(bm.entries, key)
+	if _, exists := am.entries[key]; exists {
+		am.entries[key].Close()
+		delete(am.entries, key)
 	}
 }
 
 // ----------------------------------------------------------------
 
-func cbBucket(sourceName, sourceUUID, sourceParams, serverIn string,
-	options map[string]string) (*gocb.Bucket, error) {
-	/*
-		server, poolName, bucketName :=
-			CouchbaseParseSourceName(serverIn, "default", sourceName)
-	*/
+func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
+	options map[string]string) (*gocbcore.Agent, error) {
+	server, _, bucketName :=
+		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
-	// FIXME: Implement gocbcore.Authenticator
-	// FIXME: Setup connection via a gocb.Bucket or a gocbcore.Agent?
+	config := &gocbcore.AgentConfig{
+		UserString:           "stats",
+		BucketName:           bucketName,
+		ConnectTimeout:       60000 * time.Millisecond,
+		ServerConnectTimeout: 7000 * time.Millisecond,
+		NmvRetryDelay:        100 * time.Millisecond,
+		UseKvErrorMaps:       true,
+		Auth:                 &Authenticator{},
+	}
 
-	return nil, nil
+	svrs := strings.Split(server, ";")
+	if len(svrs) <= 0 {
+		return nil, fmt.Errorf("gocb_helper: newAgent, no servers provided")
+	}
+
+	spec := svrs[0]
+	// FIXME: Get CA cert file from somewhere
+	// spec += "?certpath=" + CACERTFILE
+
+	err := config.FromConnStr(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	return gocbcore.CreateAgent(config)
 }
 
 // ----------------------------------------------------------------
 
 // CBPartitions parses a sourceParams for a couchbase
-// data-sourcec/feed.
-// FIXME: How to fetch the vbucket server map for the bucket??
+// data-source/feed.
 func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (
 	partitions []string, err error) {
+	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
+		sourceParams, serverIn, options)
+	if err != nil {
+		return nil, err
+	}
 
-	return []string{}, nil
+	numVBuckets := agent.NumVbuckets()
+	rv := make([]string, numVBuckets)
+	for i := 0; i < numVBuckets; i++ {
+		rv[i] = strconv.Itoa(i)
+	}
+
+	return rv, nil
 }
 
 // ----------------------------------------------------------------
@@ -135,8 +140,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
-
-	bucket, err := bktMap.fetchGoCBBucket(sourceName, sourceUUID,
+	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
@@ -144,43 +148,66 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 
 	rv := map[string]UUIDSeq{}
 
-	stats, err := bucket.Stats("vbucket-details")
+	signal := make(chan error, 1)
+	op, err := agent.StatsEx(gocbcore.StatsOptions{Key: "vbucket-details"},
+		func(resp *gocbcore.StatsResult, er error) {
+			if resp == nil || er != nil {
+				signal <- er
+				return
+			}
+
+			stats := resp.Servers
+			for _, nodeStats := range stats {
+				if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
+					continue
+				}
+
+				for _, vbid := range vbucketIdStrings {
+					stateVal, ok := nodeStats.Stats["vb_"+vbid]
+					if !ok || stateVal != "active" {
+						continue
+					}
+
+					uuid, ok := nodeStats.Stats["vb_"+vbid+":uuid"]
+					if !ok {
+						continue
+					}
+
+					seqStr, ok := nodeStats.Stats["vb_"+vbid+":high_seqno"]
+					if !ok {
+						continue
+					}
+
+					seq, err := strconv.ParseUint(seqStr, 10, 64)
+					if err == nil {
+						rv[vbid] = UUIDSeq{
+							UUID: uuid,
+							Seq:  seq,
+						}
+					}
+				}
+			}
+
+			signal <- nil
+		})
+
 	if err != nil {
 		return nil, err
 	}
 
-	for _, nodeStats := range stats {
-		if len(nodeStats) <= 0 {
-			continue
+	timeoutTmr := gocbcore.AcquireTimer(30 * time.Second)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return rv, err
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		if !op.Cancel() {
+			err := <-signal
+			return rv, err
 		}
-
-		for _, vbid := range vbucketIdStrings {
-			stateVal, ok := nodeStats["vb_"+vbid]
-			if !ok || stateVal != "active" {
-				continue
-			}
-
-			uuid, ok := nodeStats["vb_"+vbid+":uuid"]
-			if !ok {
-				continue
-			}
-
-			seqStr, ok := nodeStats["vb_"+vbid+":high_seqno"]
-			if !ok {
-				continue
-			}
-
-			seq, err := strconv.ParseUint(seqStr, 10, 64)
-			if err == nil {
-				rv[vbid] = UUIDSeq{
-					UUID: uuid,
-					Seq:  seq,
-				}
-			}
-		}
+		return nil, gocb.ErrTimeout
 	}
-
-	return rv, nil
 }
 
 // ----------------------------------------------------------------
@@ -192,38 +219,65 @@ func CBStats(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string, statsKind string) (
 	map[string]interface{}, error) {
-
-	bucket, err := bktMap.fetchGoCBBucket(sourceName, sourceUUID,
+	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
 	}
 
-	nodesStats, err := bucket.Stats(statsKind)
+	signal := make(chan error, 1)
+	var rv map[string]interface{}
+	op, err := agent.StatsEx(gocbcore.StatsOptions{Key: statsKind},
+		func(resp *gocbcore.StatsResult, er error) {
+			if resp == nil || er != nil {
+				signal <- er
+				return
+			}
+
+			stats := resp.Servers
+			aggStats := map[string]int64{} // Calculate aggregates.
+			for _, nodeStats := range stats {
+				if nodeStats.Error != nil {
+					continue
+				}
+
+				for k, v := range nodeStats.Stats {
+					iv, err := strconv.ParseInt(v, 10, 64)
+					if err == nil {
+						aggStats[k] += iv
+					}
+				}
+			}
+
+			rv = map[string]interface{}{
+				"aggStats":   aggStats,
+				"nodesStats": stats,
+			}
+
+			if statsKind == "" {
+				rv["docCount"] = aggStats["curr_items"]
+			}
+
+			signal <- nil
+		})
+
 	if err != nil {
 		return nil, err
 	}
 
-	aggStats := map[string]int64{} // Calculate aggregates.
-	for _, nodeStats := range nodesStats {
-		for k, v := range nodeStats {
-			iv, err := strconv.ParseInt(v, 10, 64)
-			if err == nil {
-				aggStats[k] += iv
-			}
+	timeoutTmr := gocbcore.AcquireTimer(30 * time.Second)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return rv, err
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		if !op.Cancel() {
+			err := <-signal
+			return rv, err
 		}
+		return nil, gocb.ErrTimeout
 	}
-
-	rv := map[string]interface{}{
-		"aggStats":   aggStats,
-		"nodesStats": nodesStats,
-	}
-
-	if statsKind == "" {
-		rv["docCount"] = aggStats["curr_items"]
-	}
-
-	return rv, nil
 }
 
 // ----------------------------------------------------------------
@@ -232,25 +286,14 @@ func CBStats(sourceType, sourceName, sourceUUID,
 // document ID and index.
 func CBVBucketLookUp(docID, serverIn string,
 	sourceDetails *IndexDef, req *http.Request) (string, error) {
-	server, uname, pwd, err := parseParams(serverIn, req)
+	var config gocbcore.AgentConfig
+	agent, err := gocbcore.CreateAgent(&config)
 	if err != nil {
 		return "", err
 	}
-	authParams := `{"authUser": "` + uname + `",` + `"authPassword":"` + pwd + `"}`
-	if sourceDetails.SourceType != SOURCE_TYPE_COUCHBASE &&
-		sourceDetails.SourceType != SOURCE_TYPE_DCP {
-		return "", fmt.Errorf("operation not supported on " +
-			sourceDetails.SourceType + " type bucket " +
-			sourceDetails.SourceName)
-	}
-	bucket, err := cbBucket(sourceDetails.SourceName, "",
-		authParams, server, nil)
-	if err != nil {
-		return "", err
-	}
-	defer bucket.Close()
+	defer agent.Close()
 
-	vb := bucket.IoRouter().KeyToVbucket([]byte(docID))
+	vb := agent.KeyToVbucket([]byte(docID))
 
 	return strconv.Itoa(int(vb)), nil
 }

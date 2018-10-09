@@ -225,7 +225,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 	cbBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
 
 	// Close associated gocb.Bucket instances
-	bktMap.closeGoCBBucket(indexDef.SourceName, indexDef.SourceUUID)
+	agentMap.closeAgent(indexDef.SourceName, indexDef.SourceUUID)
 
 	indexDefs.UUID = NewUUID()
 	delete(indexDefs.IndexDefs, indexName)
