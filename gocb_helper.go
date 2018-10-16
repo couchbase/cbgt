@@ -97,11 +97,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 		return nil, fmt.Errorf("gocb_helper: newAgent, no servers provided")
 	}
 
-	spec := svrs[0]
-	// FIXME: Get CA cert file from somewhere
-	// spec += "?certpath=" + CACERTFILE
-
-	err := config.FromConnStr(spec)
+	err := config.FromConnStr(svrs[0])
 	if err != nil {
 		return nil, err
 	}

@@ -24,6 +24,8 @@ import (
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
+var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
+
 func init() {
 	RegisterFeedType("gocb", &FeedType{
 		Start:           StartGocbDCPFeed,
@@ -127,30 +129,9 @@ func NewGocbDCPFeed(name, indexName, url,
 		}
 	}
 
-	// FIXME: Plugging in DCP options: NoopTimeInterval, BufferAckThreshold, etc.
-
-	// If feedBufferSizeBytes (to enable DCP flow control) isn't
-	// set, initialize it to the default.
-	if !strings.Contains(paramsStr, "feedBufferSizeBytes") {
-		params.FeedBufferSizeBytes = DCPFeedBufferSizeBytes
-	}
-
-	// If feedBufferAckThreshold (acking for flow control) isn't
-	// set, initialize it to the default.
-	if !strings.Contains(paramsStr, "feedBufferAckThreshold") {
-		params.FeedBufferAckThreshold = DCPFeedBufferAckThreshold
-	}
-
-	// If noopTimeIntervalSecs (to enable DCP noops) isn't
-	// set, initialize it to the default.
-	if !strings.Contains(paramsStr, "noopTimeIntervalSecs") {
-		params.NoopTimeIntervalSecs = DCPNoopTimeIntervalSecs
-	}
-
-	urls := strings.Split(url, ";")
-	if len(urls) <= 0 {
-		return nil, fmt.Errorf("feed_gocb_dcp: NewGocbDCPFeed, no urls provided")
-	}
+	// TODO: Using default settings for flow control; includes parameters:
+	// buffer size, buffer ack threshold, noop time interval;
+	// Maybe make these configurable?
 
 	vbucketIds, err := ParsePartitionsToVBucketIds(dests)
 	if err != nil {
@@ -192,11 +173,12 @@ func NewGocbDCPFeed(name, indexName, url,
 		Auth:                 &Authenticator{},
 	}
 
-	spec := urls[0]
-	// FIXME: Get CA cert file from somewhere
-	// spec += "?certpath=" + CACERTFILE
+	urls := strings.Split(url, ";")
+	if len(urls) <= 0 {
+		return nil, fmt.Errorf("feed_gocb_dcp: NewGocbDCPFeed, no urls provided")
+	}
 
-	err = config.FromConnStr(spec)
+	err = config.FromConnStr(urls[0])
 	if err != nil {
 		return nil, err
 	}
@@ -261,9 +243,45 @@ func (f *GocbDCPFeed) Dests() map[string]Dest {
 	return f.dests
 }
 
+var prefixAgentDCPStats = []byte(`{"agentDCPStats":`)
+
 func (f *GocbDCPFeed) Stats(w io.Writer) error {
-	// FIXME
-	return nil
+	signal := make(chan error, 1)
+	op, err := f.agent.StatsEx(gocbcore.StatsOptions{Key: "dcp"},
+		func(resp *gocbcore.StatsResult, er error) {
+			if resp == nil || er != nil {
+				signal <- er
+				return
+			}
+
+			stats := resp.Servers
+			w.Write(prefixAgentDCPStats)
+			json.NewEncoder(w).Encode(stats)
+
+			w.Write(prefixDestStats)
+			f.stats.WriteJSON(w)
+
+			w.Write(JsonCloseBrace)
+			return
+		})
+
+	if err != nil {
+		return err
+	}
+
+	timeoutTmr := gocbcore.AcquireTimer(30 * time.Second)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return err
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		if !op.Cancel() {
+			err := <-signal
+			return err
+		}
+		return gocb.ErrTimeout
+	}
 }
 
 // ----------------------------------------------------------------
@@ -274,7 +292,7 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 		return err
 	}
 
-	vbuuid := gocbcore.VbUuid(0)
+	var vbuuid uint64
 	if metadataBytes != nil {
 		var metadata *metaData
 		err = json.Unmarshal(metadataBytes, metadata)
@@ -283,10 +301,16 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 		}
 
 		if len(metadata.FailOverLog) > 0 {
-			vbuuid = gocbcore.VbUuid(metadata.FailOverLog[len(metadata.FailOverLog)-1][0])
+			vbuuid = metadata.FailOverLog[0][0]
 		}
 	}
 
+	return f.initiateStreamEx(vbId, isNewStream, gocbcore.VbUuid(vbuuid),
+		gocbcore.SeqNo(lastSeq), max_end_seqno)
+}
+
+func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
+	vbuuid gocbcore.VbUuid, seqStart, seqEnd gocbcore.SeqNo) error {
 	if isNewStream {
 		f.m.Lock()
 		if !f.active[vbId] {
@@ -296,8 +320,6 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 		f.m.Unlock()
 	}
 
-	seqStart := gocbcore.SeqNo(lastSeq)
-	seqEnd := gocbcore.SeqNo(0xffffffffffffffff)
 	snapStart := seqStart
 
 	signal := make(chan bool, 1)
@@ -311,14 +333,14 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 				// TODO: Add a maximum retry-count here maybe?
 				log.Printf("feed_gocb_dcp: Network error received on DCP stream for"+
 					" vb: %v", vbId)
-				f.initiateStream(vbId, false)
+				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 			} else if er == gocb.ErrRollback {
 				log.Printf("feed_gocb_dcp: Received rollback, for vb: %v", vbId)
-				// FIXME: Rollback invocation
-				f.initiateStream(vbId, false)
+				f.complete(vbId)
+				go f.rollbackAndReinitiate(vbId, entries)
 			} else if er != nil {
 				log.Printf("feed_gocb_dcp: Received error on DCP stream for vb: %v,"+
-					" err: %v", vbId, err)
+					" err: %v", vbId, er)
 				f.complete(vbId)
 			}
 
@@ -331,7 +353,7 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 	}
 
 	go func() {
-		timeoutTmr := gocbcore.AcquireTimer(180 * time.Second)
+		timeoutTmr := gocbcore.AcquireTimer(60 * time.Second)
 		select {
 		case <-signal:
 			gocbcore.ReleaseTimer(timeoutTmr, false)
@@ -390,19 +412,11 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 		}
 
 		failoverLog = make([][]uint64, len(entries))
-		var cursor int
-		for i := len(entries) - 1; i >= 0; i-- {
+		// Entries are ordered from highest seqno to lower
+		for i := 0; i < len(entries); i++ {
 			uuid := uint64(entries[i].VbUuid)
 			seqno := uint64(entries[i].SeqNo)
-			if cursor > 0 {
-				if seqno < failoverLog[cursor-1][1] {
-					err = fmt.Errorf("Seqno must be higher than seqno in last" +
-						" log entry")
-					return
-				}
-			}
-			failoverLog[cursor] = []uint64{uuid, seqno}
-			cursor++
+			failoverLog[i] = []uint64{uuid, seqno}
 		}
 	})
 	if err != nil {
@@ -497,15 +511,17 @@ func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 }
 
 func (f *GocbDCPFeed) End(vbId uint16, err error) {
+	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
 		log.Printf("feed_gocb_dcp: DCP stream ended for vb: %v, last seq: %v",
-			vbId, f.lastReceivedSeqno[vbId])
+			vbId, lastReceivedSeqno)
 		f.complete(vbId)
 	} else if err == gocb.ErrStreamStateChanged || err == gocb.ErrStreamTooSlow ||
 		err == gocb.ErrStreamDisconnected {
 		log.Printf("feed_gocb_dcp: DCP stream for vb: %v, closed due to"+
 			" `%s`, will reconnect", vbId, err.Error())
-		f.initiateStream(vbId, false)
+		f.initiateStreamEx(vbId, false, gocbcore.VbUuid(0),
+			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else if err == gocb.ErrStreamClosed {
 		log.Printf("feed_gocb_dcp: DCP stream for vb: %v, closed by consumer", vbId)
 		f.complete(vbId)
@@ -513,7 +529,8 @@ func (f *GocbDCPFeed) End(vbId uint16, err error) {
 		// TODO: Add a maximum retry-count here maybe?
 		log.Printf("feed_gocb_dcp: Network error received on DCP stream for vb: %v",
 			vbId)
-		f.initiateStream(vbId, false)
+		f.initiateStreamEx(vbId, false, gocbcore.VbUuid(0),
+			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else {
 		log.Printf("feed_gocb_dcp: DCP stream closed for vb: %v, last seq: %v,"+
 			" err: `%s`", vbId, f.lastReceivedSeqno[vbId], err)
@@ -568,16 +585,58 @@ func (f *GocbDCPFeed) getMetaData(vbId uint16) (value []byte, lastSeq uint64, er
 
 // ----------------------------------------------------------------
 
-func (f *GocbDCPFeed) rollback(vbId uint16, rollbackSeq uint64) error {
-	// FIXME
+func (f *GocbDCPFeed) rollbackAndReinitiate(vbId uint16, entries []gocbcore.FailoverEntry) {
+	var rollbackVbuuid uint64
+	var rollbackSeqno uint64
 
-	return nil
-}
+	if len(entries) != 0 {
+		metadataBytes, _, err := f.getMetaData(vbId)
+		if err == nil && metadataBytes != nil {
 
-func (f *GocbDCPFeed) rollbackEx(vbId uint16, vbUuid, rollbackSeq uint64) error {
-	// FIXME
+			var metadata *metaData
+			err = json.Unmarshal(metadataBytes, metadata)
+			if err == nil && len(metadata.FailOverLog) > 0 {
 
-	return nil
+				rollbackPointDetermined := false
+				for i := 0; i < len(entries); i++ {
+					for j := 0; j < len(metadata.FailOverLog); j++ {
+						if metadata.FailOverLog[j][1] <= uint64(entries[i].SeqNo) {
+							rollbackVbuuid = metadata.FailOverLog[j][0]
+							rollbackSeqno = metadata.FailOverLog[j][1]
+							rollbackPointDetermined = true
+							break
+						}
+					}
+					if rollbackPointDetermined {
+						break
+					}
+				}
+			}
+		}
+	}
+
+	err := Timer(func() error {
+		partition, dest, err :=
+			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+		if err != nil || f.checkStopAfter(partition) {
+			return err
+		}
+
+		if destEx, ok := dest.(DestEx); ok {
+			return destEx.RollbackEx(partition, rollbackVbuuid, rollbackSeqno)
+		}
+		return dest.Rollback(partition, rollbackSeqno)
+	}, f.stats.TimerRollback)
+
+	if err != nil {
+		// TODO: Better error handling
+		log.Warnf("feed_gocb_dcp: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
+			" failed with err: %v", rollbackSeqno, rollbackVbuuid, vbId, err)
+	}
+
+	// re-initiate stream
+	f.initiateStreamEx(vbId, true, gocbcore.VbUuid(rollbackVbuuid),
+		gocbcore.SeqNo(rollbackSeqno), max_end_seqno)
 }
 
 // ----------------------------------------------------------------
