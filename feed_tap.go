@@ -21,17 +21,19 @@ import (
 	"github.com/couchbase/gomemcached/client"
 )
 
+const source_gocouchbase_tap = "couchbase-tap"
+
 // DEST_EXTRAS_TYPE_TAP represents the extras that comes from TAP
 // protocol.
 const DEST_EXTRAS_TYPE_TAP = DestExtrasType(0x0001)
 
 func init() {
-	RegisterFeedType("couchbase-tap",
+	RegisterFeedType(source_gocouchbase_tap,
 		&FeedType{
 			Start:      StartTAPFeed,
 			Partitions: CouchbasePartitions,
 			Public:     false,
-			Description: "general/couchbase-tap" +
+			Description: "general/" + source_gocouchbase_tap +
 				" - Couchbase Server data source, via TAP protocol",
 			StartSample: &TAPFeedParams{},
 		})

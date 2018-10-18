@@ -24,17 +24,19 @@ import (
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
+const source_gocb = "gocb"
+
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
 
 func init() {
-	RegisterFeedType("gocb", &FeedType{
+	RegisterFeedType(source_gocb, &FeedType{
 		Start:           StartGocbDCPFeed,
 		Partitions:      CBPartitions,
 		PartitionSeqs:   CBPartitionSeqs,
 		Stats:           CBStats,
 		PartitionLookUp: CBVBucketLookUp,
 		Public:          true,
-		Description: "general/couchbase" +
+		Description: "general/" + source_gocb +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),
 	})
