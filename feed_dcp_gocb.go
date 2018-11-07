@@ -426,6 +426,10 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 		return
 	}
 
+	// TODO: Ensure that this is the right place to store the
+	// internal metadata, or does this need to be done after
+	// the first mutation of this snapshot has been received.
+	//
 	// Set internal metadata with info from the snapshot marker
 	f.setMetaData(vbId, &metaData{
 		SeqStart:    0,
