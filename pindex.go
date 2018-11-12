@@ -336,7 +336,6 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
 	planPIndexFilter PlanPIndexFilter, noCache bool) (
 	[]*PIndex, []*RemotePlanPIndex, []string, error) {
-	var ver uint64
 
 	ppf := planPIndexFilter
 	if ppf == nil {
@@ -346,7 +345,6 @@ func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
 			mgr.m.Lock()
 			if mgr.coveringCache != nil {
 				cp = mgr.coveringCache[spec]
-				ver = mgr.coveringCacheVerLOCKED()
 			}
 			mgr.m.Unlock()
 
@@ -372,12 +370,10 @@ func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
 		}
 
 		mgr.m.Lock()
-		if ver == mgr.coveringCacheVerLOCKED() {
-			if mgr.coveringCache == nil {
-				mgr.coveringCache = map[CoveringPIndexesSpec]*CoveringPIndexes{}
-			}
-			mgr.coveringCache[spec] = cp
+		if mgr.coveringCache == nil {
+			mgr.coveringCache = map[CoveringPIndexesSpec]*CoveringPIndexes{}
 		}
+		mgr.coveringCache[spec] = cp
 		mgr.m.Unlock()
 	}
 
