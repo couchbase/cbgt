@@ -336,7 +336,6 @@ func (mgr *Manager) CoveringPIndexesBestEffort(indexName, indexUUID string,
 func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
 	planPIndexFilter PlanPIndexFilter, noCache bool) (
 	[]*PIndex, []*RemotePlanPIndex, []string, error) {
-
 	ppf := planPIndexFilter
 	if ppf == nil {
 		if !noCache {
