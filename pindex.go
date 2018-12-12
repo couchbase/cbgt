@@ -49,6 +49,17 @@ type PIndex struct {
 	closed bool
 }
 
+// Note that these callbacks are invoked within the manager's sync mutex
+// context, it is the responsibility of the user to ensure that they do NOT
+// reacquire the manager mutex or any api that does within the callbacks.
+type PIndexCallbacks struct {
+	OnCreate  func(name string)
+	OnDelete  func(name string)
+	OnRefresh func()
+}
+
+var RegisteredPIndexCallbacks = PIndexCallbacks{}
+
 // Close down a pindex, optionally removing its stored files.
 func (p *PIndex) Close(remove bool) error {
 	p.m.Lock()

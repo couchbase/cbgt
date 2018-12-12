@@ -584,6 +584,10 @@ func (mgr *Manager) registerPIndex(pindex *PIndex) error {
 		mgr.meh.OnRegisterPIndex(pindex)
 	}
 
+	if RegisteredPIndexCallbacks.OnCreate != nil {
+		RegisteredPIndexCallbacks.OnCreate(pindex.Name)
+	}
+
 	return nil
 }
 
@@ -608,6 +612,10 @@ func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex
 
 		if mgr.meh != nil {
 			mgr.meh.OnUnregisterPIndex(pindex)
+		}
+
+		if RegisteredPIndexCallbacks.OnDelete != nil {
+			RegisteredPIndexCallbacks.OnDelete(pindex.Name)
 		}
 	}
 
@@ -694,6 +702,10 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 		mgr.lastNodeDefs[kind] = nodeDefs
 		atomic.AddUint64(&mgr.stats.TotRefreshLastNodeDefs, 1)
 		mgr.coveringCache = nil
+
+		if RegisteredPIndexCallbacks.OnRefresh != nil {
+			RegisteredPIndexCallbacks.OnRefresh()
+		}
 	}
 
 	return nodeDefs, nil
@@ -722,6 +734,10 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 		}
 
 		mgr.coveringCache = nil
+
+		if RegisteredPIndexCallbacks.OnRefresh != nil {
+			RegisteredPIndexCallbacks.OnRefresh()
+		}
 	}
 
 	return mgr.lastIndexDefs, mgr.lastIndexDefsByName, nil
@@ -802,6 +818,10 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 		}
 
 		mgr.coveringCache = nil
+
+		if RegisteredPIndexCallbacks.OnRefresh != nil {
+			RegisteredPIndexCallbacks.OnRefresh()
+		}
 	}
 
 	return mgr.lastPlanPIndexes, mgr.lastPlanPIndexesByName, nil
