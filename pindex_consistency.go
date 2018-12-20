@@ -27,6 +27,12 @@ type ConsistencyParams struct {
 
 	// Keyed by indexName.
 	Vectors map[string]ConsistencyVector `json:"vectors"`
+
+	// A Results value of "complete" means that results will be
+	// returned only if results are acquired from all the partitions,
+	// a default of "" means that results will be returned no matter
+	// if all pindexes are reachable or not (partial or full).
+	Results string `json:"results,omitempty"`
 }
 
 // Key is partition or partition/partitionUUID.  Value is seq.
