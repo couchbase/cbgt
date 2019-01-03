@@ -224,9 +224,12 @@ type QueryCtlParams struct {
 
 // QueryCtl defines the JSON parameters that control query execution
 // and which are independent of any specific pindex type.
-// A PartitionSelection value of "advanced" means we're going
-// follow advanced scatter gather, or otherwise we're only going to
-// target active partitions only.
+//
+// A PartitionSelection value can optionally be specified for performing
+// advanced scatter gather operations, recognized options:
+// - ""                : default behavior - active partitions only
+// - "advanced-local"  : local partitions are favored
+// - "advanced-random" : pseudo-random selection from available options
 type QueryCtl struct {
 	Timeout            int64              `json:"timeout"`
 	Consistency        *ConsistencyParams `json:"consistency"`
