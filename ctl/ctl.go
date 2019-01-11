@@ -356,8 +356,7 @@ func (ctl *Ctl) run() {
 						" err: %v", ev.Key, err)
 					continue
 				}
-				log.Printf("ctl: run, kind: %s, updated memberNodes: %+v",
-					ev.Key, memberNodes)
+				log.Printf("ctl: run, kind: %s", ev.Key)
 				ctl.m.Lock()
 				ctl.memberNodes = memberNodes
 				ctl.incRevNumLOCKED()
