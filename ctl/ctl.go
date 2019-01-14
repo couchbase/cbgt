@@ -356,7 +356,13 @@ func (ctl *Ctl) run() {
 						" err: %v", ev.Key, err)
 					continue
 				}
-				log.Printf("ctl: run, kind: %s", ev.Key)
+				memberUUIDs := "{"
+				for _, node := range memberNodes {
+					memberUUIDs += node.UUID + ";"
+				}
+				memberUUIDs += "}"
+				log.Printf("ctl: run, kind: %s, updated memberNodes: %s",
+					ev.Key, memberUUIDs)
 				ctl.m.Lock()
 				ctl.memberNodes = memberNodes
 				ctl.incRevNumLOCKED()
