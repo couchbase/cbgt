@@ -262,6 +262,7 @@ type CoveringPIndexesSpec struct {
 	IndexName            string
 	IndexUUID            string
 	PlanPIndexFilterName string // See PlanPIndexesFilters.
+	PartitionSelection   string // See QueryCtl.
 }
 
 // CoveringPIndexes represents a non-overlapping, disjoint set of
