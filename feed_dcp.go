@@ -266,7 +266,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 	urls := strings.Split(url, ";")
 
 	options := &cbdatasource.BucketDataSourceOptions{
-		Name: fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31()),
+		Name:                        fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31()),
 		ClusterManagerBackoffFactor: params.ClusterManagerBackoffFactor,
 		ClusterManagerSleepInitMS:   params.ClusterManagerSleepInitMS,
 		ClusterManagerSleepMaxMS:    params.ClusterManagerSleepMaxMS,

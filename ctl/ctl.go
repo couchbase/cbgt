@@ -724,10 +724,10 @@ func (ctl *Ctl) startCtlLOCKED(
 					rebalance.RebalanceOptions{
 						FavorMinNodes:                      ctl.optionsCtl.FavorMinNodes,
 						MaxConcurrentPartitionMovesPerNode: ctl.optionsCtl.MaxConcurrentPartitionMovesPerNode,
-						DryRun:  ctl.optionsCtl.DryRun,
-						Verbose: ctl.optionsCtl.Verbose,
-						HttpGet: httpGetWithAuth,
-						Manager: ctl.optionsCtl.Manager,
+						DryRun:                             ctl.optionsCtl.DryRun,
+						Verbose:                            ctl.optionsCtl.Verbose,
+						HttpGet:                            httpGetWithAuth,
+						Manager:                            ctl.optionsCtl.Manager,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)

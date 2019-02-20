@@ -24,11 +24,11 @@ import (
 
 func init() {
 	RegisterPIndexImplType("blackhole", &PIndexImplType{
-		New:       NewBlackHolePIndexImpl,
-		Open:      OpenBlackHolePIndexImpl,
-		OpenUsing: OpenBlackHolePIndexImplUsing,
-		Count:     nil, // Content of blackhole isn't countable.
-		Query:     nil, // Content of blackhole isn't queryable.
+		New:                    NewBlackHolePIndexImpl,
+		Open:                   OpenBlackHolePIndexImpl,
+		OpenUsing:              OpenBlackHolePIndexImplUsing,
+		Count:                  nil, // Content of blackhole isn't countable.
+		Query:                  nil, // Content of blackhole isn't queryable.
 		AnalyzeIndexDefUpdates: restartOnIndexDefChanges,
 		Description: "advanced/blackhole" +
 			" - a blackhole index ignores all data and is not queryable;" +
