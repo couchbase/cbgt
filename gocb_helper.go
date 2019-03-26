@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
