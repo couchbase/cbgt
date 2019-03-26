@@ -20,7 +20,7 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
