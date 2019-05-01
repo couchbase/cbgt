@@ -55,11 +55,12 @@ type MetaDescIndex struct {
 
 func (h *ManagerMetaHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	maxPartitionsPerPIndex := cbgt.DefaultMaxPartitionsPerPIndex(h.mgr)
+	ps := cbgt.IndexPartitionSettings(h.mgr)
 
 	startSamples := map[string]interface{}{
 		"planParams": &cbgt.PlanParams{
-			MaxPartitionsPerPIndex: maxPartitionsPerPIndex,
+			MaxPartitionsPerPIndex: ps.MaxPartitionsPerPIndex,
+			IndexPartitions:        ps.IndexPartitions,
 		},
 	}
 

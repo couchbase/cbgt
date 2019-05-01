@@ -15,8 +15,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/couchbase/cbgt"
@@ -197,6 +199,17 @@ func (h *CreateIndexHandler) ServeHTTP(
 		}
 	} else {
 		planParams = indexDef.PlanParams
+	}
+
+	if planParams.IndexPartitions > 0 {
+		if options := h.mgr.Options(); options != nil {
+			if numSourcePartitions, ok := options["vbuckets"]; ok {
+				if v, err := strconv.Atoi(numSourcePartitions); err == nil && v > 0 {
+					planParams.MaxPartitionsPerPIndex =
+						int(math.Ceil(float64(v) / float64(planParams.IndexPartitions)))
+				}
+			}
+		}
 	}
 
 	prevIndexUUID := req.FormValue("prevIndexUUID")

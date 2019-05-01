@@ -14,6 +14,7 @@ package cbgt
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -75,6 +76,14 @@ type PlanParams struct {
 	// partitions the planner can assign to or clump into a PIndex (or
 	// index partition).
 	MaxPartitionsPerPIndex int `json:"maxPartitionsPerPIndex,omitempty"`
+
+	// IndexPartitions controls the number of partitions to split
+	// the entire index into.
+	// IndexPartitions will have higher precedence over MaxPartitionsPerPIndex,
+	// as in if both are set to non-zero values, IndexPartitions will
+	// override MaxPartitionsPerPIndex with ..
+	// SourcePartitions / IndexPartitions.
+	IndexPartitions int `json:"indexPartitions,omitempty"`
 
 	// NumReplicas controls the number of replicas for a PIndex, over
 	// the first copy.  The first copy is not counted as a replica.
@@ -548,16 +557,18 @@ func PIndexMatchesPlan(pindex *PIndex, planPIndex *PlanPIndex) bool {
 // ------------------------------------------------------------------------
 
 func NewPlanParams(mgr *Manager) PlanParams {
+	ps := IndexPartitionSettings(mgr)
+
 	return PlanParams{
-		MaxPartitionsPerPIndex: DefaultMaxPartitionsPerPIndex(mgr),
+		MaxPartitionsPerPIndex: ps.MaxPartitionsPerPIndex,
+		IndexPartitions:        ps.IndexPartitions,
 	}
 }
 
 // ------------------------------------------------------------------------
 
-// DefaultMaxPartitionsPerPIndex retrieves the
-// defaultMaxPartitionsPerPIndex from the manager options, if
-// available.
+// DefaultMaxPartitionsPerPIndex retrieves "defaultMaxPartitionsPerPIndex"
+// from the manager options, if available.
 func DefaultMaxPartitionsPerPIndex(mgr *Manager) int {
 	maxPartitionsPerPIndex := 20
 
@@ -573,6 +584,48 @@ func DefaultMaxPartitionsPerPIndex(mgr *Manager) int {
 	}
 
 	return maxPartitionsPerPIndex
+}
+
+type PartitionSettings struct {
+	MaxPartitionsPerPIndex int
+	IndexPartitions        int
+}
+
+// IndexPartitionSettings returns the settings to be used for
+// MaxPartitionsPerPIndex and IndexPartitions.
+func IndexPartitionSettings(mgr *Manager) *PartitionSettings {
+	maxPartitionsPerPIndex := DefaultMaxPartitionsPerPIndex(mgr)
+
+	var indexPartitions int
+	var sourcePartitions int
+
+	options := mgr.Options()
+	if options != nil {
+		v, ok := options["indexPartitions"]
+		if ok {
+			i, err := strconv.Atoi(v)
+			if err == nil && i > 0 {
+				indexPartitions = i
+			}
+		}
+		v, ok = options["sourcePartitions"]
+		if ok {
+			i, err := strconv.Atoi(v)
+			if err == nil && i >= 0 {
+				sourcePartitions = i
+			}
+		}
+	}
+
+	if indexPartitions > 0 && sourcePartitions > 0 {
+		maxPartitionsPerPIndex =
+			int(math.Ceil(float64(sourcePartitions) / float64(indexPartitions)))
+	}
+
+	return &PartitionSettings{
+		MaxPartitionsPerPIndex: maxPartitionsPerPIndex,
+		IndexPartitions:        indexPartitions,
+	}
 }
 
 // ------------------------------------------------------------------------
