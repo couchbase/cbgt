@@ -311,6 +311,13 @@ func (h *QueryHandler) ServeHTTP(
 				}
 			}
 		}
+	} else {
+		if focusStats != nil {
+			atomic.AddUint64(&focusStats.TotInternalRequest, 1)
+
+			atomic.AddUint64(&focusStats.TotInternalRequestTimeNS,
+				uint64(time.Now().Sub(startTime)))
+		}
 	}
 
 	if err != nil {
