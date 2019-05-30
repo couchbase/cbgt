@@ -612,6 +612,8 @@ func (ctl *Ctl) startCtlLOCKED(
 		ctl.prevMemberNodeUUIDs)
 	ctl.prevMemberNodeUUIDs = memberNodeUUIDs
 
+	ctl.optionsCtl.Manager.SetTopologyChange(true)
+
 	// The ctl goroutine.
 	//
 	go func() {
@@ -664,6 +666,8 @@ func (ctl *Ctl) startCtlLOCKED(
 			if ctlOnProgress != nil {
 				ctlOnProgress(0, 0, nil, nil, nil, nil, nil, ctlErrs)
 			}
+
+			ctl.optionsCtl.Manager.SetTopologyChange(false)
 
 			ctl.movingPartitionsCount = 0
 			ctl.m.Unlock()
