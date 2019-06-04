@@ -81,8 +81,6 @@ type Manager struct {
 
 	stats  ManagerStats
 	events *list.List
-
-	topologyChange bool
 }
 
 // ManagerStats represents the stats/metrics tracked by a Manager
@@ -928,18 +926,6 @@ func (mgr *Manager) SetOptions(options map[string]string) {
 	mgr.options = options
 	atomic.AddUint64(&mgr.stats.TotSetOptions, 1)
 	mgr.m.Unlock()
-}
-
-func (mgr *Manager) SetTopologyChange(flag bool) {
-	mgr.m.Lock()
-	mgr.topologyChange = flag
-	mgr.m.Unlock()
-}
-
-func (mgr *Manager) CheckTopologyChange() bool {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
-	return mgr.topologyChange
 }
 
 // Copies the current manager stats to the dst manager stats.
