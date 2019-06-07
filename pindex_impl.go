@@ -250,6 +250,7 @@ var PINDEX_STORE_MAX_ERRORS = 40
 type PIndexStoreStats struct {
 	TimerBatchStore metrics.Timer
 	Errors          *list.List // Capped list of string (json).
+	TotalErrorCount uint64
 }
 
 func (d *PIndexStoreStats) WriteJSON(w io.Writer) {
