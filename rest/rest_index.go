@@ -303,7 +303,7 @@ func (h *QueryHandler) ServeHTTP(
 
 			d := time.Since(startTime)
 			if d > h.slowQueryLogTimeout {
-				log.Printf("slow-query: index: %s,"+
+				log.Warnf("slow-query: index: %s,"+
 					" query: %s, resultset bytes: %v, duration: %v, err: %v",
 					indexName, string(requestBody), resultSetBytes, d, err)
 				if focusStats != nil {
