@@ -372,6 +372,35 @@ func (ctl *Ctl) run() {
 	}
 }
 
+func updateNodePlanParams(indexDef *cbgt.IndexDef,
+	planPIndexesPrev, planPIndexes *cbgt.PlanPIndexes,
+	prevPIndex *cbgt.PlanPIndex, pName string) {
+	planPIndexes.PlanPIndexes[pName] = &cbgt.PlanPIndex{}
+	*planPIndexes.PlanPIndexes[pName] = *prevPIndex
+
+	npp := indexDef.PlanParams.NodePlanParams[""][""]
+	canRead := true
+	canWrite := true
+	// npp could be nil after we reset it back
+	if npp != nil {
+		for _, v := range planPIndexesPrev.PlanPIndexes[pName].Nodes {
+			if v.CanRead != npp.CanRead || v.CanWrite != npp.CanWrite {
+				canRead = npp.CanRead
+				canWrite = npp.CanWrite
+			}
+		}
+	}
+
+	planPIndexes.PlanPIndexes[pName].Nodes =
+		make(map[string]*cbgt.PlanPIndexNode, len(prevPIndex.Nodes))
+	for uuid, node := range prevPIndex.Nodes {
+		planPIndexes.PlanPIndexes[pName].Nodes[uuid] =
+			&cbgt.PlanPIndexNode{CanRead: canRead,
+				CanWrite: canWrite,
+				Priority: node.Priority}
+	}
+}
+
 // ----------------------------------------------------
 
 // When the index definitions have changed, our approach is to run the
@@ -386,13 +415,20 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 				for n, p := range planPIndexesPrev.PlanPIndexes {
 					if p.IndexName == indexDef.Name &&
 						p.IndexUUID == indexDef.UUID {
-						planPIndexes.PlanPIndexes[n] = p
 
+						// non nil NodePlanParams indicates some overrides
+						if indexDef.PlanParams.NodePlanParams != nil {
+							updateNodePlanParams(indexDef,
+								planPIndexesPrev, planPIndexes, p, n)
+						}
+
+						if planPIndexes.PlanPIndexes[n] == nil {
+							planPIndexes.PlanPIndexes[n] = p
+						}
 						// Copy over previous warnings, if any.
 						if planPIndexes.Warnings == nil {
 							planPIndexes.Warnings = map[string][]string{}
 						}
-
 						if planPIndexesPrev.Warnings != nil {
 							prev := planPIndexesPrev.Warnings[indexDef.Name]
 							if prev != nil {
