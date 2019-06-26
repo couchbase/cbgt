@@ -103,6 +103,16 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			" could not start, server: %s, err: %v",
 			mgr.server, err)
 	}
+
+	securityConfigRefreshHandler := func() error {
+		log.Printf("feed_dcp: %s security refresh kick: %s",
+			feed.name, cbdatasource.UpdateSecuritySettings)
+		return feed.bds.Kick(cbdatasource.UpdateSecuritySettings)
+	}
+
+	RegisterConfigRefreshCallback("DCPFeed_"+feed.name,
+		securityConfigRefreshHandler)
+
 	err = mgr.registerFeed(feed)
 	if err != nil {
 		feed.Close()
