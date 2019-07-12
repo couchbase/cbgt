@@ -108,9 +108,12 @@ func (c *SecurityContext) refresh(code uint64) error {
 	atomic.StorePointer(&currentSetting, unsafe.Pointer(newSetting))
 
 	c.mutex.RLock()
-	// this will notify tls config changes to all the subscribers like
+	// This will notify tls config changes to all the subscribers like
 	// dcp feeds, http servers and grpc servers.
-	if hasEnabled || hasEnabled != newSetting.EncryptionEnabled {
+	// We are notifying every certificate change irrespective of
+	// the encryption status.
+	if hasEnabled || hasEnabled != newSetting.EncryptionEnabled ||
+		code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
 		for key, notifier := range c.notifiers {
 			go func(key string, notify ConfigRefreshNotifier) {
 				log.Printf("cbauth: notifying configs change for key: %v", key)
