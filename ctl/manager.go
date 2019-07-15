@@ -32,6 +32,9 @@ import (
 	"github.com/couchbase/cbauth/service"
 )
 
+// Timeout for CtlMgr's exported APIs
+var CtlMgrTimeout = time.Duration(20 * time.Second)
+
 // CtlMgr implements the cbauth/service.Manager interface and
 // provides the adapter or glue between ns-server's service API
 // and cbgt's Ctl implementation.
@@ -119,6 +122,7 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
 			return nil, err
 		}
 
+	OUTER:
 		for haveTasksRevNum == m.tasks.revNum {
 			if m.tasksWaitCh == nil {
 				m.tasksWaitCh = make(chan struct{})
@@ -132,6 +136,13 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
 
 			case <-tasksWaitCh:
 				// FALLTHRU
+
+			case <-time.After(CtlMgrTimeout):
+				// TIMEOUT
+				m.mu.Lock()
+				log.Warnf("ctl/manager: GetTaskList timed out, haveTasksRev: %s,"+
+					" current rev: %v", haveTasksRev, m.tasks.revNum)
+				break OUTER
 			}
 			m.mu.Lock()
 		}
