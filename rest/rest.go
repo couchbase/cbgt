@@ -219,6 +219,16 @@ type HandlerWithRESTMeta struct {
 	focusName string         // A path focus name, ex: "indexName", "pindexName".
 }
 
+func NewHandlerWithRESTMeta(h http.Handler, restMeta *RESTMeta,
+	pathStats *RESTPathStats, focusName string) *HandlerWithRESTMeta {
+	return &HandlerWithRESTMeta{
+		h:         h,
+		RESTMeta:  restMeta,
+		pathStats: pathStats,
+		focusName: focusName,
+	}
+}
+
 func (h *HandlerWithRESTMeta) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	var focusStats *RESTFocusStats
