@@ -159,7 +159,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType = indexDef.Type
 	}
 	if indexType == "" {
-		ShowErrorBody(w, requestBody, "rest_create_index: indexType is required",
+		ShowErrorBody(w, requestBody, "rest_create_index: index type is required",
 			http.StatusBadRequest)
 		return
 	}
