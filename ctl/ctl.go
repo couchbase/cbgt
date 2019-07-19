@@ -384,9 +384,11 @@ func updateNodePlanParams(indexDef *cbgt.IndexDef,
 	// npp could be nil after we reset it back
 	if npp != nil {
 		for _, v := range planPIndexesPrev.PlanPIndexes[pName].Nodes {
-			if v.CanRead != npp.CanRead || v.CanWrite != npp.CanWrite {
+			if (v.CanRead != npp.CanRead || v.CanWrite != npp.CanWrite) ||
+				(canRead != npp.CanRead || canWrite != npp.CanWrite) {
 				canRead = npp.CanRead
 				canWrite = npp.CanWrite
+				break
 			}
 		}
 	}
