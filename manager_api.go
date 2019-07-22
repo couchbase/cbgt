@@ -145,6 +145,18 @@ func (mgr *Manager) CreateIndex(sourceType,
 					" current index UUID: %s, did not match input UUID: %s",
 					prevIndex.UUID, prevIndexUUID)
 			}
+
+			if prevIndex.PlanParams.PlanFrozen {
+				if (prevIndex.PlanParams.MaxPartitionsPerPIndex !=
+					indexDef.PlanParams.MaxPartitionsPerPIndex) ||
+					(prevIndex.PlanParams.NumReplicas !=
+						indexDef.PlanParams.NumReplicas) {
+					return fmt.Errorf("manager_api: cannot update"+
+						" partition count for a planFrozen index,"+
+						" indexName: %s", indexName)
+				}
+			}
+
 		}
 
 		indexUUID := NewUUID()
