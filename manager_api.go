@@ -152,7 +152,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 					(prevIndex.PlanParams.NumReplicas !=
 						indexDef.PlanParams.NumReplicas) {
 					return fmt.Errorf("manager_api: cannot update"+
-						" partition count for a planFrozen index,"+
+						" partition or replica count for a planFrozen index,"+
 						" indexName: %s", indexName)
 				}
 			}
