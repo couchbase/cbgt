@@ -108,31 +108,33 @@ func (h *DiagGetHandler) ServeHTTP(
 	var first = true
 	var visit func(path string, f os.FileInfo, err error) error
 	visit = func(path string, f os.FileInfo, err error) error {
-		m := map[string]interface{}{
-			"Path":    path,
-			"Name":    f.Name(),
-			"Size":    f.Size(),
-			"Mode":    f.Mode(),
-			"ModTime": f.ModTime().Format(time.RFC3339Nano),
-			"IsDir":   f.IsDir(),
-		}
-		if strings.HasPrefix(f.Name(), "PINDEX_") || // Matches PINDEX_xxx_META.
-			strings.HasSuffix(f.Name(), "_META") || // Matches PINDEX_META.
-			strings.HasSuffix(f.Name(), ".json") { // Matches index_meta.json.
-			b, err2 := ioutil.ReadFile(path)
-			if err2 == nil {
-				m["Contents"] = string(b)
+		if f != nil {
+			m := map[string]interface{}{
+				"Path":    path,
+				"Name":    f.Name(),
+				"Size":    f.Size(),
+				"Mode":    f.Mode(),
+				"ModTime": f.ModTime().Format(time.RFC3339Nano),
+				"IsDir":   f.IsDir(),
+			}
+			if strings.HasPrefix(f.Name(), "PINDEX_") || // Matches PINDEX_xxx_META.
+				strings.HasSuffix(f.Name(), "_META") || // Matches PINDEX_META.
+				strings.HasSuffix(f.Name(), ".json") { // Matches index_meta.json.
+				b, err2 := ioutil.ReadFile(path)
+				if err2 == nil {
+					m["Contents"] = string(b)
+				}
+			}
+			buf, err := json.Marshal(m)
+			if err == nil {
+				if !first {
+					w.Write(cbgt.JsonComma)
+				}
+				w.Write(buf)
+				first = false
 			}
 		}
-		buf, err := json.Marshal(m)
-		if err == nil {
-			if !first {
-				w.Write(cbgt.JsonComma)
-			}
-			w.Write(buf)
-			first = false
-		}
-		return nil
+		return err
 	}
 
 	w.Write([]byte(`,"dataDir":[`))
