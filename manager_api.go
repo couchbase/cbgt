@@ -291,6 +291,11 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 		return fmt.Errorf("manager_api: index.UUID mismatched")
 	}
 
+	// refresh the UUID as we are updating the indexDef
+	indexUUID = NewUUID()
+	indexDef.UUID = indexUUID
+	indexDefs.UUID = indexUUID
+
 	if indexDef.PlanParams.NodePlanParams == nil {
 		indexDef.PlanParams.NodePlanParams =
 			map[string]map[string]*NodePlanParam{}
