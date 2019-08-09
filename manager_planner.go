@@ -837,6 +837,16 @@ func BlanceMap(
 	return m
 }
 
+func sameIndexDefsExceptUUID(def1, def2 *IndexDef) bool {
+	return (def1.Type == def2.Type &&
+		def1.Name == def2.Name &&
+		def1.Params == def2.Params &&
+		def1.SourceName == def2.SourceName &&
+		def1.SourceType == def2.SourceType &&
+		def1.SourceUUID == def2.SourceUUID &&
+		def1.SourceParams == def2.SourceParams)
+}
+
 // --------------------------------------------------------
 
 // CasePlanFrozen returns true if the plan for the indexDef is frozen,
@@ -849,10 +859,15 @@ func CasePlanFrozen(indexDef *IndexDef,
 	}
 
 	// Copy over the previous plan, if any, for the index.
+	// If there is a change in the PlanFrozen status, then
+	// the index definition UUID would have bumped. Need to
+	// confirm this before copy over the previous plan.
 	if begPlanPIndexes != nil && endPlanPIndexes != nil {
 		for n, p := range begPlanPIndexes.PlanPIndexes {
 			if p.IndexName == indexDef.Name &&
-				p.IndexUUID == indexDef.UUID {
+				(p.IndexUUID == indexDef.UUID ||
+					sameIndexDefsExceptUUID(indexDef,
+						getIndexDefFromPlanPIndexes([]*PlanPIndex{p}))) {
 				endPlanPIndexes.PlanPIndexes[n] = p
 			}
 		}
