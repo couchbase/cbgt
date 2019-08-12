@@ -140,8 +140,6 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
 			case <-time.After(CtlMgrTimeout):
 				// TIMEOUT
 				m.mu.Lock()
-				log.Warnf("ctl/manager: GetTaskList timed out, haveTasksRev: %s,"+
-					" current rev: %v", haveTasksRev, m.tasks.revNum)
 				break OUTER
 			}
 			m.mu.Lock()
