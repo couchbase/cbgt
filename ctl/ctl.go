@@ -187,20 +187,21 @@ func StartCtl(cfg cbgt.Cfg, server string,
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) int {
+func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) (
+	int, error) {
 	numNewNodes := len(cbgt.StringsRemoveStrings(keepNodeUUIDs, existingNodes))
 
 	nodesToRemove, err := ctl.waitForWantedNodes(keepNodeUUIDs, true, nil)
 	if err != nil {
 		log.Warnf("ctl: getMovingPartitionsCount, waitForWantedNodes failed,"+
 			" err: %v", err)
-		return 0
+		return 0, err
 	}
 	indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
 	if err != nil {
 		log.Warnf("ctl: getMovingPartitionsCount, CfgGetIndexDefs failed,"+
 			" err: %v", err)
-		return 0
+		return 0, err
 	}
 
 	totalPartitions := 0
@@ -237,7 +238,7 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 
 	log.Printf("ctl: getMovingPartitionsCount: %d", mpCount)
 
-	return mpCount
+	return mpCount, nil
 }
 
 // ----------------------------------------------------
@@ -581,7 +582,18 @@ func (ctl *Ctl) dispatchCtl(rev string,
 	mode string, memberNodeUUIDs []string, cb CtlOnProgressFunc) (
 	*CtlTopology, error) {
 	ctl.m.Lock()
-	err := ctl.dispatchCtlLOCKED(rev, mode, memberNodeUUIDs, cb)
+	existingNodes := ctl.prevMemberNodeUUIDs
+	ctl.m.Unlock()
+
+	movingPartitionsCount, err := ctl.getMovingPartitionsCount(memberNodeUUIDs,
+		existingNodes)
+	if err != nil {
+		return nil, err
+	}
+
+	ctl.m.Lock()
+	err = ctl.dispatchCtlLOCKED(rev, mode, memberNodeUUIDs,
+		movingPartitionsCount, cb)
 	topology := ctl.getTopologyLOCKED()
 	ctl.m.Unlock()
 
@@ -592,6 +604,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 	rev string,
 	mode string,
 	memberNodeUUIDs []string,
+	movingPartitionsCount int,
 	ctlOnProgress CtlOnProgressFunc) error {
 	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) {
 		return ErrCtlWrongRev
@@ -613,7 +626,8 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 	if ctl.ctlDoneCh == nil &&
 		mode != "stop" &&
 		mode != "stopChangeTopology" {
-		return ctl.startCtlLOCKED(mode, memberNodeUUIDs, ctlOnProgress)
+		return ctl.startCtlLOCKED(mode, memberNodeUUIDs,
+			movingPartitionsCount, ctlOnProgress)
 	}
 
 	return nil
@@ -624,6 +638,7 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 func (ctl *Ctl) startCtlLOCKED(
 	mode string,
 	memberNodeUUIDs []string,
+	movingPartitionsCount int,
 	ctlOnProgress CtlOnProgressFunc) error {
 	ctl.incRevNumLOCKED()
 
@@ -653,8 +668,7 @@ func (ctl *Ctl) startCtlLOCKED(
 		return http.Get(urlStr)
 	}
 
-	ctl.movingPartitionsCount = ctl.getMovingPartitionsCount(memberNodeUUIDs,
-		ctl.prevMemberNodeUUIDs)
+	ctl.movingPartitionsCount = movingPartitionsCount
 	ctl.prevMemberNodeUUIDs = memberNodeUUIDs
 
 	// The ctl goroutine.
