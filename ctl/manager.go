@@ -134,13 +134,13 @@ func (m *CtlMgr) GetTaskList(haveTasksRev service.Revision,
 			case <-cancelCh:
 				return nil, service.ErrCanceled
 
-			case <-tasksWaitCh:
-				// FALLTHRU
-
 			case <-time.After(CtlMgrTimeout):
 				// TIMEOUT
 				m.mu.Lock()
 				break OUTER
+
+			case <-tasksWaitCh:
+				// FALLTHRU
 			}
 			m.mu.Lock()
 		}

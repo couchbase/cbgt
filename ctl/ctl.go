@@ -491,6 +491,7 @@ func (ctl *Ctl) WaitGetTopology(haveRev string, cancelCh <-chan struct{}) (
 	*CtlTopology, error) {
 	ctl.m.Lock()
 
+OUTER:
 	for haveRev == fmt.Sprintf("%d", ctl.revNum) {
 		if ctl.revNumWaitCh == nil {
 			ctl.revNumWaitCh = make(chan struct{})
@@ -501,6 +502,12 @@ func (ctl *Ctl) WaitGetTopology(haveRev string, cancelCh <-chan struct{}) (
 		select {
 		case <-cancelCh:
 			return nil, ErrCtlCanceled
+
+		case <-time.After(CtlMgrTimeout):
+			// TIMEOUT
+			ctl.m.Lock()
+			break OUTER
+
 		case <-revNumWaitCh:
 			// FALLTHRU
 		}
