@@ -110,6 +110,16 @@ func NewGocbDCPFeed(name, indexName, url,
 	log.Printf("feed_gocb_dcp: NewGocbDCPFeed, name: %s, indexName: %s",
 		name, indexName)
 
+	var optionsMgr map[string]string
+	if mgr != nil {
+		optionsMgr = mgr.Options()
+	}
+
+	auth, err := gocbAuth(paramsStr, optionsMgr)
+	if err != nil {
+		return nil, fmt.Errorf("feed_gocb_dcp: NewGocbDCPFeed gocbAuth, err: %v", err)
+	}
+
 	var stopAfter map[string]UUIDSeq
 
 	params := NewDCPFeedParams()
@@ -172,7 +182,7 @@ func NewGocbDCPFeed(name, indexName, url,
 		ServerConnectTimeout: 7000 * time.Millisecond,
 		NmvRetryDelay:        100 * time.Millisecond,
 		UseKvErrorMaps:       true,
-		Auth:                 &Authenticator{},
+		Auth:                 auth,
 	}
 
 	urls := strings.Split(url, ";")
@@ -296,8 +306,8 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 
 	var vbuuid uint64
 	if metadataBytes != nil {
-		var metadata *metaData
-		err = json.Unmarshal(metadataBytes, metadata)
+		var metadata metaData
+		err = json.Unmarshal(metadataBytes, &metadata)
 		if err != nil {
 			return err
 		}

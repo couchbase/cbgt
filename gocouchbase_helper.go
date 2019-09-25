@@ -132,9 +132,9 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 	server, poolName, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
-	auth, err := CBAuth(sourceName, sourceParams, options)
+	auth, err := cbAuth(sourceName, sourceParams, options)
 	if err != nil {
-		return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket, CBAuth,"+
+		return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket, cbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
@@ -391,14 +391,14 @@ func (d *CBAuthParamsSasl) GetSaslCredentials() (string, string) {
 	return d.AuthSaslUser, d.AuthSaslPassword
 }
 
-func CBAuth(sourceName, sourceParams string, options map[string]string) (
+func cbAuth(sourceName, sourceParams string, options map[string]string) (
 	auth couchbase.AuthHandler, err error) {
 	params := &CBAuthParams{}
 
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), params)
 		if err != nil {
-			return nil, fmt.Errorf("gocouchbase_helper: CBAuth" +
+			return nil, fmt.Errorf("gocouchbase_helper: cbAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")
 		}
 	}

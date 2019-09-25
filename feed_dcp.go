@@ -221,9 +221,9 @@ func NewDCPFeed(name, indexName, url, poolName,
 		optionsMgr = mgr.Options()
 	}
 
-	auth, err := CBAuth(bucketName, paramsStr, optionsMgr)
+	auth, err := cbAuth(bucketName, paramsStr, optionsMgr)
 	if err != nil {
-		return nil, fmt.Errorf("feed_dcp: NewDCPFeed CBAuth, err: %v", err)
+		return nil, fmt.Errorf("feed_dcp: NewDCPFeed cbAuth, err: %v", err)
 	}
 
 	var stopAfter map[string]UUIDSeq

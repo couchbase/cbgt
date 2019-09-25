@@ -12,6 +12,7 @@
 package cbgt
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -82,6 +83,12 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 	server, _, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
+	auth, err := gocbAuth(sourceParams, options)
+	if err != nil {
+		return nil, fmt.Errorf("gocb_helper: newAgent, gocbAuth,"+
+			" bucketName: %s, err: %v", bucketName, err)
+	}
+
 	config := &gocbcore.AgentConfig{
 		UserString:           "stats",
 		BucketName:           bucketName,
@@ -89,7 +96,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 		ServerConnectTimeout: 7000 * time.Millisecond,
 		NmvRetryDelay:        100 * time.Millisecond,
 		UseKvErrorMaps:       true,
-		Auth:                 &Authenticator{},
+		Auth:                 auth,
 	}
 
 	svrs := strings.Split(server, ";")
@@ -97,7 +104,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 		return nil, fmt.Errorf("gocb_helper: newAgent, no servers provided")
 	}
 
-	err := config.FromConnStr(svrs[0])
+	err = config.FromConnStr(svrs[0])
 	if err != nil {
 		return nil, err
 	}
@@ -296,9 +303,38 @@ func CBVBucketLookUp(docID, serverIn string,
 
 // ----------------------------------------------------------------
 
-type Authenticator struct{}
+type AuthParams struct {
+	AuthUser     string `json:"authUser"`
+	AuthPassword string `json:"authPassword"`
 
-func (a *Authenticator) Credentials(req gocbcore.AuthCredsRequest) ([]gocbcore.UserPassPair, error) {
+	AuthSaslUser     string `json:"authSaslUser"`
+	AuthSaslPassword string `json:"authSaslPassword"`
+}
+
+func (a *AuthParams) Credentials(req gocbcore.AuthCredsRequest) (
+	[]gocbcore.UserPassPair, error) {
+	return []gocbcore.UserPassPair{{
+		Username: a.AuthUser,
+		Password: a.AuthPassword,
+	}}, nil
+}
+
+type AuthParamsSasl struct {
+	AuthParams
+}
+
+func (a *AuthParamsSasl) Credentials(req gocbcore.AuthCredsRequest) (
+	[]gocbcore.UserPassPair, error) {
+	return []gocbcore.UserPassPair{{
+		Username: a.AuthSaslUser,
+		Password: a.AuthSaslPassword,
+	}}, nil
+}
+
+type CBAuthenticator struct{}
+
+func (a *CBAuthenticator) Credentials(req gocbcore.AuthCredsRequest) (
+	[]gocbcore.UserPassPair, error) {
 	endpoint := req.Endpoint
 
 	// get rid of the http:// or https:// prefix from the endpoint
@@ -312,4 +348,34 @@ func (a *Authenticator) Credentials(req gocbcore.AuthCredsRequest) ([]gocbcore.U
 		Username: username,
 		Password: password,
 	}}, nil
+}
+
+func gocbAuth(sourceParams string, options map[string]string) (
+	auth gocbcore.AuthProvider, err error) {
+	params := &AuthParams{}
+
+	if sourceParams != "" {
+		err := json.Unmarshal([]byte(sourceParams), params)
+		if err != nil {
+			return nil, fmt.Errorf("gocb_helper: gocbAuth" +
+				" failed to parse sourceParams JSON to CBAuthParams")
+		}
+	}
+
+	auth = params
+
+	if params.AuthSaslUser != "" {
+		auth = &AuthParamsSasl{*params}
+	}
+
+	authType := ""
+	if options != nil {
+		authType = options["authType"]
+	}
+
+	if authType == "cbauth" {
+		auth = &CBAuthenticator{}
+	}
+
+	return auth, nil
 }
