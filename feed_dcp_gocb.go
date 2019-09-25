@@ -26,6 +26,18 @@ import (
 
 const source_gocb = "gocb"
 
+// DEST_EXTRAS_TYPE_GOCB_DCP represents gocb DCP mutation/deletion metadata
+// not included in DataUpdate/DataDelete (GocbDCPExtras).
+const DEST_EXTRAS_TYPE_GOCB_DCP = DestExtrasType(0x0004)
+
+// GocbDCPExtras packages additional DCP mutation metadata for use by
+// DataUpdateEx, DataDeleteEx.
+type GocbDCPExtras struct {
+	Expiry   uint32
+	Flags    uint32
+	Datatype uint8
+}
+
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
 
 func init() {
@@ -461,7 +473,9 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 		}
 
 		if destEx, ok := dest.(DestEx); ok {
-			err = destEx.DataUpdateEx(partition, key, seqNo, value, cas, 0, nil)
+			extras := GocbDCPExtras{Expiry: expiry, Flags: flags, Datatype: datatype}
+			err = destEx.DataUpdateEx(partition, key, seqNo, value, cas,
+				DEST_EXTRAS_TYPE_GOCB_DCP, extras)
 		} else {
 			err = dest.DataUpdate(partition, key, seqNo, value, cas, 0, nil)
 		}
@@ -496,7 +510,9 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 		}
 
 		if destEx, ok := dest.(DestEx); ok {
-			err = destEx.DataDeleteEx(partition, key, seqNo, cas, 0, nil)
+			extras := GocbDCPExtras{Datatype: datatype}
+			err = destEx.DataDeleteEx(partition, key, seqNo, cas,
+				DEST_EXTRAS_TYPE_GOCB_DCP, extras)
 		} else {
 			err = dest.DataDelete(partition, key, seqNo, cas, 0, nil)
 		}
