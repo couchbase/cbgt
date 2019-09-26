@@ -36,6 +36,7 @@ type GocbDCPExtras struct {
 	Expiry   uint32
 	Flags    uint32
 	Datatype uint8
+	Value    []byte // carries xattr information (if available) for DataDeleteEx
 }
 
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
@@ -473,7 +474,11 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 		}
 
 		if destEx, ok := dest.(DestEx); ok {
-			extras := GocbDCPExtras{Expiry: expiry, Flags: flags, Datatype: datatype}
+			extras := GocbDCPExtras{
+				Expiry:   expiry,
+				Flags:    flags,
+				Datatype: datatype,
+			}
 			err = destEx.DataUpdateEx(partition, key, seqNo, value, cas,
 				DEST_EXTRAS_TYPE_GOCB_DCP, extras)
 		} else {
@@ -510,7 +515,10 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 		}
 
 		if destEx, ok := dest.(DestEx); ok {
-			extras := GocbDCPExtras{Datatype: datatype}
+			extras := GocbDCPExtras{
+				Datatype: datatype,
+				Value:    value,
+			}
 			err = destEx.DataDeleteEx(partition, key, seqNo, cas,
 				DEST_EXTRAS_TYPE_GOCB_DCP, extras)
 		} else {
