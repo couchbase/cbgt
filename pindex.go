@@ -186,7 +186,7 @@ func NewPIndex(mgr *Manager, name, uuid,
 
 // OpenPIndex reopens a previously created pindex.  The path argument
 // must be a directory for the pindex.
-func OpenPIndex(mgr *Manager, path string) (*PIndex, error) {
+func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 	buf, err := ioutil.ReadFile(path +
 		string(os.PathSeparator) + PINDEX_META_FILENAME)
 	if err != nil {
@@ -194,7 +194,7 @@ func OpenPIndex(mgr *Manager, path string) (*PIndex, error) {
 			" path: %s, err: %v", path, err)
 	}
 
-	pindex := &PIndex{}
+	pindex = &PIndex{}
 	err = json.Unmarshal(buf, pindex)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: could not parse pindex json,"+
@@ -204,6 +204,13 @@ func OpenPIndex(mgr *Manager, path string) (*PIndex, error) {
 	restart := func() {
 		go restartPIndex(mgr, pindex)
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("pindex: OpenPIndex panic msg: %v \n, %v",
+				r, ReadableStackTrace())
+		}
+	}()
 
 	impl, dest, err := OpenPIndexImplUsing(pindex.IndexType, path,
 		pindex.IndexParams, restart)

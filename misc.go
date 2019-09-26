@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"net/http"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -385,4 +386,36 @@ func CalcMovingPartitionsCount(numKeepNodes, numRemoveNodes, numNewNodes,
 	}
 
 	return partitionsPerNode * (delta + numNewNodes)
+}
+
+var maxCallerStackDepth = 50
+
+const panicCallStack = "panic callstack: \n"
+
+// ReadableStackTrace tries to capture the caller stack frame
+// for the calling function in a panic scenario.
+func ReadableStackTrace() string {
+	callers := make([]uintptr, maxCallerStackDepth)
+	length := runtime.Callers(3, callers[:])
+	callers = callers[:length]
+
+	var result bytes.Buffer
+	frames := callersToFrames(callers)
+	for _, frame := range frames {
+		result.WriteString(fmt.Sprintf("%s:%d (%#x)\n\t%s\n",
+			frame.File, frame.Line, frame.PC, frame.Function))
+	}
+	return panicCallStack + result.String()
+}
+
+func callersToFrames(callers []uintptr) []runtime.Frame {
+	frames := make([]runtime.Frame, 0, len(callers))
+	framesPtr := runtime.CallersFrames(callers)
+	for {
+		frame, more := framesPtr.Next()
+		frames = append(frames, frame)
+		if !more {
+			return frames
+		}
+	}
 }
