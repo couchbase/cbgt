@@ -385,7 +385,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			return
 		case <-timeoutTmr.C:
 			gocbcore.ReleaseTimer(timeoutTmr, true)
-			if !op.Cancel() {
+			if op != nil && !op.Cancel() {
 				<-signal
 				return
 			}
