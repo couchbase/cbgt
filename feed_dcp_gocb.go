@@ -687,15 +687,17 @@ func (f *GocbDCPFeed) wait() {
 
 func (f *GocbDCPFeed) complete(vbId uint16) {
 	f.m.Lock()
-	f.remaining.Done()
-	f.active[vbId] = false
+	if f.active[vbId] {
+		f.active[vbId] = false
+		f.remaining.Done()
+	}
 	f.m.Unlock()
 }
 
 func (f *GocbDCPFeed) forceCompleteLOCKED() {
-	for k, v := range f.active {
-		if v {
-			f.active[k] = false
+	for i := range f.active {
+		if f.active[i] {
+			f.active[i] = false
 			f.remaining.Done()
 		}
 	}
