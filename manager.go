@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -497,8 +498,15 @@ func (mgr *Manager) LoadDataDir() error {
 				// we have already validated the pindex paths, hence feeding directly
 				pindex, err := OpenPIndex(mgr, req.path)
 				if err != nil {
-					log.Printf("manager: could not open pindex path: %s, err: %v",
-						req.path, err)
+					if strings.Contains(err.Error(), panicCallStack) {
+						log.Printf("manager: OpenPIndex error,"+
+							" cleaning up and trying NewPIndex,"+
+							" path: %s, err: %v", req.path, err)
+						os.RemoveAll(req.path)
+					} else {
+						log.Printf("manager: could not open pindex path: %s, err: %v",
+							req.path, err)
+					}
 				} else {
 					mgr.registerPIndex(pindex)
 					// kick the janitor only in case of successful pindex load
