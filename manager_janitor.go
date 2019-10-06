@@ -361,7 +361,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	// check for any pindexes for restart and get classified lists of
 	// pindexes to add, remove and restart
 	planPIndexesToAdd, pindexesToRemove, pindexesToRestart :=
-		classifyAddRemoveRestartPIndexes(addPlanPIndexes, removePIndexes)
+		classifyAddRemoveRestartPIndexes(mgr, addPlanPIndexes, removePIndexes)
 	log.Printf("janitor: pindexes to remove: %d", len(pindexesToRemove))
 	for _, pi := range pindexesToRemove {
 		log.Printf("  %+v", pi)
@@ -440,7 +440,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	return nil
 }
 
-func classifyAddRemoveRestartPIndexes(addPlanPIndexes []*PlanPIndex,
+func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPIndex,
 	removePIndexes []*PIndex) (planPIndexesToAdd []*PlanPIndex,
 	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq) {
 	// if there are no pindexes to be removed as per planner,
@@ -462,6 +462,14 @@ func classifyAddRemoveRestartPIndexes(addPlanPIndexes []*PlanPIndex,
 		indexPlanPIndexMap[addPlan.IndexName] =
 			append(indexPlanPIndexMap[addPlan.IndexName], addPlan)
 	}
+
+	// avoid pindex rebuild on replica updates on index defn
+	// unless overridden
+	if v, ok := mgr.Options()["rebuildOnReplicaUpdate"]; !ok ||
+		v != "true" {
+		return advPIndexClassifier(indexPIndexMap, indexPlanPIndexMap)
+	}
+
 	// take every pindex to remove and check the config change
 	// and sort out the pindexes to add, remove or restart
 	for indexName, pindexes := range indexPIndexMap {
@@ -492,13 +500,108 @@ func classifyAddRemoveRestartPIndexes(addPlanPIndexes []*PlanPIndex,
 				}
 				pindexesToRemove = append(pindexesToRemove, pindexes...)
 				planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
-
 			} else {
 				pindexesToRemove = append(pindexesToRemove, pindexes...)
 			}
 		}
 	}
 	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart
+}
+
+func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
+	indexPlanPIndexMap map[string][]*PlanPIndex) (planPIndexesToAdd []*PlanPIndex,
+	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq) {
+	pindexesToRestart = make([]*pindexRestartReq, 0)
+	pindexesToRemove = make([]*PIndex, 0)
+	planPIndexesToAdd = make([]*PlanPIndex, 0)
+
+	// take every pindex to remove and check the config change
+	// and sort out the pindexes to add, remove or restart
+	for indexName, pindexes := range indexPIndexMap {
+		restartable := make(map[string]struct{}, len(indexPIndexMap))
+		if len(pindexes) > 0 && pindexes[0] != nil {
+			// look for new addPlans the index level
+			if planPIndexes, ok := indexPlanPIndexMap[indexName]; ok {
+				indexDefnCur := getIndexDefFromPlanPIndexes(planPIndexes)
+				indexDefnPrev := getIndexDefFromPIndex(pindexes[0])
+
+				for _, pindex := range pindexes {
+					// get the unique part of the pindex name
+					pName := pindex.Name[strings.LastIndex(pindex.Name, "_")+1:]
+					// look for a new plan for the older pindex
+					var targetPlan *PlanPIndex
+					for _, ppi := range planPIndexes {
+						if pName == ppi.Name[strings.LastIndex(ppi.Name, "_")+1:] {
+							targetPlan = ppi
+							break
+						}
+					}
+					if targetPlan == nil {
+						pindexesToRemove = append(pindexesToRemove, pindex)
+						continue
+					}
+					// check for restartability on the target plan
+					configAnalyzeReq := &ConfigAnalyzeRequest{
+						IndexDefnCur:  indexDefnCur,
+						IndexDefnPrev: indexDefnPrev,
+						SourcePartitionsCur: map[string]bool{
+							targetPlan.SourcePartitions: true},
+						SourcePartitionsPrev: getSourcePartitionsMapFromPIndexes(
+							[]*PIndex{pindex})}
+
+					pindexImplType, exists := PIndexImplTypes[pindex.IndexType]
+					if !exists || pindexImplType == nil {
+						pindexesToRemove = append(pindexesToRemove, pindex)
+						continue
+					}
+					// restartable pindex found from plan
+					if pindexImplType.AnalyzeIndexDefUpdates != nil &&
+						pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq) ==
+							PINDEXES_RESTART {
+						pindexesToRestart = append(pindexesToRestart,
+							newPIndexRestartReq(targetPlan, pindex))
+						restartable[targetPlan.Name] = struct{}{}
+						continue
+					}
+					// upon no restartability, consider the pindex for removal
+					pindexesToRemove = append(pindexesToRemove, pindex)
+				}
+
+				// consider the remaining addPlans
+				for _, ppi := range planPIndexes {
+					if _, done := restartable[ppi.Name]; !done {
+						planPIndexesToAdd = append(planPIndexesToAdd, ppi)
+					}
+				}
+
+				// cleanup as all addPlans already processed for the index
+				delete(indexPlanPIndexMap, indexName)
+			} else {
+				// as there are no new addPlans for the index,
+				// consider complete pindexes/index removal
+				pindexesToRemove = append(pindexesToRemove, pindexes...)
+			}
+		}
+	}
+
+	// include the remaining addPlans for any of the newer indexes
+	for _, addPlans := range indexPlanPIndexMap {
+		planPIndexesToAdd = append(planPIndexesToAdd, addPlans...)
+	}
+
+	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart
+}
+
+func newPIndexRestartReq(addPlanPI *PlanPIndex,
+	pindex *PIndex) *pindexRestartReq {
+	rv := pindex.Clone()
+	rv.IndexUUID = addPlanPI.IndexUUID
+	rv.IndexParams = addPlanPI.IndexParams
+	rv.SourceParams = addPlanPI.SourceParams
+	return &pindexRestartReq{
+		pindex:         rv,
+		planPIndexName: addPlanPI.Name,
+	}
 }
 
 func getPIndexesToRestart(pindexesToRemove []*PIndex,
