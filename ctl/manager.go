@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -273,6 +274,8 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 				fmt.Sprintf("warning: resource: %q -- %s",
 					resourceName, resourceWarning))
 		}
+
+		sort.Strings(rv.Messages)
 	}
 
 	for _, err := range ctlTopology.PrevErrs {
