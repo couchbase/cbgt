@@ -54,7 +54,9 @@ type CtlMgr struct {
 	tasksWaitCh chan struct{} // Closed when the tasks change.
 
 	lastTaskList service.TaskList
-	lastTopology service.Topology
+
+	lastTopologyM sync.Mutex
+	lastTopology  service.Topology
 }
 
 type tasks struct {
@@ -237,7 +239,7 @@ func isBalanced(ctlTopology *CtlTopology) bool {
 func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 	cancelCh service.Cancel) (*service.Topology, error) {
 	ctlTopology, err :=
-		m.ctl.WaitGetTopology(string(haveTopologyRev), cancelCh)
+		m.ctl.WaitGetTopology(haveTopologyRev, cancelCh)
 	if err != nil {
 		if err != service.ErrCanceled {
 			log.Errorf("ctl/manager: GetCurrentTopology,"+
@@ -282,11 +284,11 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 		rv.Messages = append(rv.Messages, fmt.Sprintf("error: %v", err))
 	}
 
-	m.mu.Lock()
+	m.lastTopologyM.Lock()
 	m.lastTopology.Rev = rv.Rev
 	same := reflect.DeepEqual(&m.lastTopology, rv)
 	m.lastTopology = *rv
-	m.mu.Unlock()
+	m.lastTopologyM.Unlock()
 
 	if !same {
 		log.Printf("ctl/manager: GetCurrentTopology, haveTopologyRev: %s,"+
