@@ -488,31 +488,43 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 // WaitGetTopology is like GetTopology() but will synchronously block
 // until there's a rev change.
-func (ctl *Ctl) WaitGetTopology(haveRev string, cancelCh <-chan struct{}) (
-	*CtlTopology, error) {
+func (ctl *Ctl) WaitGetTopology(haveRev service.Revision,
+	cancelCh <-chan struct{}) (*CtlTopology, error) {
 	ctl.m.Lock()
 
-OUTER:
-	for haveRev == fmt.Sprintf("%d", ctl.revNum) {
-		if ctl.revNumWaitCh == nil {
-			ctl.revNumWaitCh = make(chan struct{})
+	if len(haveRev) > 0 {
+		haveRevNum, err := DecodeRev(haveRev)
+		if err != nil {
+			ctl.m.Unlock()
+
+			log.Errorf("ctl/ctl: WaitGetTopology, DecodeRev"+
+				", haveRev: %s, err: %v", haveRev, err)
+
+			return nil, err
 		}
-		revNumWaitCh := ctl.revNumWaitCh // See also incRevNumLOCKED().
 
-		ctl.m.Unlock()
-		select {
-		case <-cancelCh:
-			return nil, ErrCtlCanceled
+	OUTER:
+		for haveRevNum == ctl.revNum {
+			if ctl.revNumWaitCh == nil {
+				ctl.revNumWaitCh = make(chan struct{})
+			}
+			revNumWaitCh := ctl.revNumWaitCh // See also incRevNumLOCKED().
 
-		case <-time.After(CtlMgrTimeout):
-			// TIMEOUT
+			ctl.m.Unlock()
+			select {
+			case <-cancelCh:
+				return nil, ErrCtlCanceled
+
+			case <-time.After(CtlMgrTimeout):
+				// TIMEOUT
+				ctl.m.Lock()
+				break OUTER
+
+			case <-revNumWaitCh:
+				// FALLTHRU
+			}
 			ctl.m.Lock()
-			break OUTER
-
-		case <-revNumWaitCh:
-			// FALLTHRU
 		}
-		ctl.m.Lock()
 	}
 
 	rv := ctl.getTopologyLOCKED()

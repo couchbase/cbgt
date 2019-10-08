@@ -237,7 +237,7 @@ func isBalanced(ctlTopology *CtlTopology) bool {
 func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 	cancelCh service.Cancel) (*service.Topology, error) {
 	ctlTopology, err :=
-		m.ctl.WaitGetTopology(string(haveTopologyRev), cancelCh)
+		m.ctl.WaitGetTopology(haveTopologyRev, cancelCh)
 	if err != nil {
 		if err != service.ErrCanceled {
 			log.Errorf("ctl/manager: GetCurrentTopology,"+
