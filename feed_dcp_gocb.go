@@ -106,14 +106,15 @@ type GocbDCPFeed struct {
 
 	lastReceivedSeqno map[uint16]uint64
 
-	m         sync.Mutex
-	remaining sync.WaitGroup
-	active    map[uint16]bool
-	closed    bool
-	lastErr   error
-	stats     *DestStats
-
+	m                sync.Mutex
+	remaining        sync.WaitGroup
+	active           map[uint16]bool
+	closed           bool
+	lastErr          error
+	stats            *DestStats
 	stopAfterReached map[string]bool // May be nil.
+
+	closeCh chan struct{}
 }
 
 func NewGocbDCPFeed(name, indexName, url,
@@ -182,6 +183,7 @@ func NewGocbDCPFeed(name, indexName, url,
 		lastReceivedSeqno: make(map[uint16]uint64),
 		stats:             NewDestStats(),
 		active:            make(map[uint16]bool),
+		closeCh:           make(chan struct{}),
 	}
 
 	for _, vbid := range vbucketIds {
@@ -248,16 +250,17 @@ func (f *GocbDCPFeed) Start() error {
 }
 
 func (f *GocbDCPFeed) Close() error {
-	f.agent.Close()
 	f.m.Lock()
 	if f.closed {
 		f.m.Unlock()
 		return nil
 	}
+	f.agent.Close()
 	f.closed = true
 	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
+	close(f.closeCh)
 	f.wait()
 
 	log.Printf("feed_gocb_dcp: close, name: %s", f.Name())
@@ -299,10 +302,17 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 	case err := <-signal:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
 		return err
+	case <-f.closeCh:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return gocb.ErrStreamDisconnected
 	case <-timeoutTmr.C:
 		gocbcore.ReleaseTimer(timeoutTmr, true)
-		if !op.Cancel() {
-			err := <-signal
+		if op != nil && !op.Cancel() {
+			select {
+			case err = <-signal:
+			case <-f.closeCh:
+				err = gocb.ErrStreamDisconnected
+			}
 			return err
 		}
 		return gocb.ErrTimeout
@@ -380,13 +390,19 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	go func() {
 		timeoutTmr := gocbcore.AcquireTimer(60 * time.Second)
 		select {
+		case <-f.closeCh:
+			gocbcore.ReleaseTimer(timeoutTmr, false)
+			return
 		case <-signal:
 			gocbcore.ReleaseTimer(timeoutTmr, false)
 			return
 		case <-timeoutTmr.C:
 			gocbcore.ReleaseTimer(timeoutTmr, true)
 			if op != nil && !op.Cancel() {
-				<-signal
+				select {
+				case <-signal:
+				case <-f.closeCh:
+				}
 				return
 			}
 
