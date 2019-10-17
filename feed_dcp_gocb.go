@@ -104,15 +104,14 @@ type GocbDCPFeed struct {
 	agent      *gocbcore.Agent
 	mgr        *Manager
 
+	m                 sync.Mutex
+	remaining         sync.WaitGroup
+	active            map[uint16]bool
+	closed            bool
+	lastErr           error
+	stats             *DestStats
 	lastReceivedSeqno map[uint16]uint64
-
-	m                sync.Mutex
-	remaining        sync.WaitGroup
-	active           map[uint16]bool
-	closed           bool
-	lastErr          error
-	stats            *DestStats
-	stopAfterReached map[string]bool // May be nil.
+	stopAfterReached  map[string]bool // May be nil.
 
 	closeCh chan struct{}
 }
@@ -517,7 +516,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 		log.Warnf("feed_gocb_dcp: Error in accepting a DCP mutation, err: %v",
 			err)
 	} else {
-		f.lastReceivedSeqno[vbId] = seqNo
+		f.updateLastReceivedSeqno(vbId, seqNo)
 	}
 }
 
@@ -557,7 +556,7 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 		log.Warnf("feed_gocb_dcp: Error in accepting a DCP deletion, err: %v",
 			err)
 	} else {
-		f.lastReceivedSeqno[vbId] = seqNo
+		f.updateLastReceivedSeqno(vbId, seqNo)
 	}
 }
 
@@ -567,7 +566,7 @@ func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 }
 
 func (f *GocbDCPFeed) End(vbId uint16, err error) {
-	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
+	lastReceivedSeqno := f.fetchLastReceivedSeqno(vbId)
 	if err == nil {
 		log.Printf("feed_gocb_dcp: DCP stream ended for vb: %v, last seq: %v",
 			vbId, lastReceivedSeqno)
@@ -589,7 +588,7 @@ func (f *GocbDCPFeed) End(vbId uint16, err error) {
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else {
 		log.Printf("feed_gocb_dcp: DCP stream closed for vb: %v, last seq: %v,"+
-			" err: `%s`", vbId, f.lastReceivedSeqno[vbId], err)
+			" err: `%s`", vbId, lastReceivedSeqno, err)
 		f.complete(vbId)
 	}
 }
@@ -720,6 +719,19 @@ func (f *GocbDCPFeed) forceCompleteLOCKED() {
 }
 
 // ----------------------------------------------------------------
+
+func (f *GocbDCPFeed) updateLastReceivedSeqno(vbId uint16, seqNo uint64) {
+	f.m.Lock()
+	f.lastReceivedSeqno[vbId] = seqNo
+	f.m.Unlock()
+}
+
+func (f *GocbDCPFeed) fetchLastReceivedSeqno(vbId uint16) uint64 {
+	f.m.Lock()
+	seqno := f.lastReceivedSeqno[vbId]
+	f.m.Unlock()
+	return seqno
+}
 
 // checkStopAfter checks to see if we've already reached the
 // stopAfterReached state for a partition.
