@@ -250,21 +250,26 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	pi := req.pindex.Clone()
 	pi.Name = req.planPIndexName
 	pi.Path = newPath
-	// update the new indexdef param changes
-	buf, err := json.Marshal(pi)
-	if err != nil {
-		cleanDir(newPath)
-		return fmt.Errorf("janitor: restartPIndex"+
-			" Marshal pindex: %s, err: %v", pi.Name, err)
 
+	// persist PINDEX_META only if manager's dataDir is set
+	if len(mgr.dataDir) > 0 {
+		// update the new indexdef param changes
+		buf, err := json.Marshal(pi)
+		if err != nil {
+			cleanDir(newPath)
+			return fmt.Errorf("janitor: restartPIndex"+
+				" Marshal pindex: %s, err: %v", pi.Name, err)
+
+		}
+		err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
+			PINDEX_META_FILENAME, buf, 0600)
+		if err != nil {
+			cleanDir(pi.Path)
+			return fmt.Errorf("janitor: restartPIndex could not save "+
+				"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err)
+		}
 	}
-	err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
-		PINDEX_META_FILENAME, buf, 0600)
-	if err != nil {
-		cleanDir(pi.Path)
-		return fmt.Errorf("janitor: restartPIndex could not save "+
-			"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err)
-	}
+
 	// open the pindex and register
 	pindex, err := OpenPIndex(mgr, pi.Path)
 	if err != nil {
