@@ -1357,10 +1357,12 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		t.Error("expected pit for uncreated foo index")
 	}
 
-	options := map[string]string{"feedAllotment": FeedAllotmentOnePerPIndex,
-		"maxReplicasAllowed": "10"}
+	options1 := map[string]string{
+		"feedAllotment": FeedAllotmentOnePerPIndex,
+		"maxReplicasAllowed": "10",
+	}
 	m := NewManagerEx(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
-		emptyDir, "some-datasource", nil, options)
+		emptyDir, "some-datasource", nil, options1)
 	if err = m.Start("wanted"); err != nil {
 		t.Errorf("expected Manager.Start() to work, err: %v", err)
 	}
@@ -1463,8 +1465,12 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 	}
 
 	// disable the index restart over manager options
-	options["rebuildOnReplicaUpdate"] = "true"
-	m.SetOptions(options)
+	options2 := map[string]string{
+		"feedAllotment": FeedAllotmentOnePerPIndex,
+		"maxReplicasAllowed": "10",
+		"rebuildOnReplicaUpdate": "true",
+	}
+	m.SetOptions(options2)
 
 	// update the replicaCount to "1"
 	planParams = PlanParams{
@@ -1486,8 +1492,12 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 	}
 
 	// enable the index restart over manager options
-	options["rebuildOnReplicaUpdate"] = "false"
-	m.SetOptions(options)
+	options3 := map[string]string{
+		"feedAllotment": FeedAllotmentOnePerPIndex,
+		"maxReplicasAllowed": "10",
+		"rebuildOnReplicaUpdate": "false",
+	}
+	m.SetOptions(options3)
 
 	// update the replicaCount to "0"
 	planParams = PlanParams{
