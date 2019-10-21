@@ -376,6 +376,10 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				log.Printf("feed_gocb_dcp: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
 				f.complete(vbId)
+			} else {
+				// no error, stream closure
+				f.complete(vbId)
+				return
 			}
 
 			signal <- true
