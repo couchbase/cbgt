@@ -343,6 +343,31 @@ func CfgGetVersion(cfg Cfg) string {
 	return string(v)
 }
 
+// CfgGetClusterOptions returns the cluster level options
+func CfgGetClusterOptions(cfg Cfg) (*ClusterOptions, uint64, error) {
+	v, cas, err := cfg.Get(MANAGER_CLUSTER_OPTIONS_KEY, 0)
+	if err != nil || v == nil {
+		return nil, cas, err
+	}
+	rv := &ClusterOptions{}
+	err = json.Unmarshal(v, rv)
+	if err != nil {
+		return nil, cas, err
+	}
+
+	return rv, cas, nil
+}
+
+// CfgSetClusterOptions sets the cluster level options
+func CfgSetClusterOptions(cfg Cfg, options *ClusterOptions,
+	cas uint64) (uint64, error) {
+	buf, err := json.Marshal(options)
+	if err != nil {
+		return 0, err
+	}
+	return cfg.Set(MANAGER_CLUSTER_OPTIONS_KEY, buf, cas)
+}
+
 // CfgNodeDefsKey returns the Cfg access key for a NodeDef kind.
 func CfgNodeDefsKey(kind string) string {
 	return NODE_DEFS_KEY + "-" + kind
