@@ -153,11 +153,27 @@ type ManagerStats struct {
 	TotRefreshLastPlanPIndexes uint64
 }
 
+// ClusterOptions stores the configurable cluster-level
+// manager options.
+// Follow strict naming guideline for any option additions.
+// Every field in ClusterOptions should have the same exact
+// name as is in the original manager options cache map with
+// the exception of being exported field names.
+type ClusterOptions struct {
+	BleveMaxResultWindow string `json:"bleveMaxResultWindow"`
+	FeedAllotment        string `json:"feedAllotment"`
+	FtsMemoryQuota       string `json:"ftsMemoryQuota"`
+	MaxReplicasAllowed   string `json:"maxReplicasAllowed"`
+	SlowQueryLogTimeout  string `json:"slowQueryLogTimeout"`
+}
+
 var ErrNoIndexDefs = errors.New("no index definitions found")
 
 // MANAGER_MAX_EVENTS limits the number of events tracked by a Manager
 // for diagnosis/debugging.
 const MANAGER_MAX_EVENTS = 10
+
+const MANAGER_CLUSTER_OPTIONS_KEY = "manager_cluster_options_key"
 
 // ManagerEventHandlers represents the callback interface where an
 // application can receive important event callbacks from a Manager.
@@ -254,12 +270,18 @@ func (mgr *Manager) StartCfg() error {
 		go func() {
 			ei := make(chan CfgEvent)
 			mgr.cfg.Subscribe(INDEX_DEFS_KEY, ei)
+			mgr.cfg.Subscribe(MANAGER_CLUSTER_OPTIONS_KEY, ei)
 			for {
 				select {
 				case <-mgr.stopCh:
 					return
-				case <-ei:
-					mgr.GetIndexDefs(true)
+				case e := <-ei:
+					if e.Key == INDEX_DEFS_KEY {
+						mgr.GetIndexDefs(true)
+						continue
+					}
+
+					mgr.RefreshOptions()
 				}
 			}
 		}()
@@ -927,13 +949,57 @@ func (mgr *Manager) GetOptions() map[string]string {
 	return options
 }
 
+// RefreshOptions updates the local managerOptions cache
+func (mgr *Manager) RefreshOptions() error {
+	mo, _, err := CfgGetClusterOptions(mgr.cfg)
+	if err != nil || mo == nil {
+		return err
+	}
+	// apply the newer values from the cluster level options
+	// into the managerOptions cache
+	mgr.m.Lock()
+	opts := mgr.options
+	newOptions := map[string]string{}
+	for k, v := range opts {
+		newOptions[k] = v
+	}
+	oval := reflect.ValueOf(*mo)
+	for i := 0; i < oval.NumField(); i++ {
+		if v, ok := oval.Field(i).Interface().(string); ok && v != "" {
+			optionName := strings.ToLower(string(oval.Type().Field(i).Name[0])) +
+				oval.Type().Field(i).Name[1:]
+			newOptions[optionName] = v
+		}
+	}
+	mgr.options = newOptions
+	mgr.m.Unlock()
+	return err
+}
+
 // SetOptions replaces the options map with the provided map, which
 // should be considered immutable after this call.
-func (mgr *Manager) SetOptions(options map[string]string) {
+func (mgr *Manager) SetOptions(options map[string]string) error {
+	// extract the values to be stored as the cluster options
+	// in metakv from the option map
+	mo := ClusterOptions{}
+	oval := reflect.ValueOf(&mo)
+	for k, v := range options {
+		fName := strings.ToUpper(string(k[0])) + k[1:]
+		f := oval.Elem().FieldByName(fName)
+		if f.IsValid() {
+			f.SetString(v)
+		}
+	}
 	mgr.m.Lock()
+	_, err := CfgSetClusterOptions(mgr.cfg, &mo, 0)
+	if err != nil {
+		mgr.m.Unlock()
+		return err
+	}
 	mgr.options = options
 	atomic.AddUint64(&mgr.stats.TotSetOptions, 1)
 	mgr.m.Unlock()
+	return nil
 }
 
 // Copies the current manager stats to the dst manager stats.
