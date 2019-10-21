@@ -138,8 +138,48 @@ func (t *BlackHole) Stats(w io.Writer) error {
 }
 
 func reloadableIndexDefParamChange(paramPrev, paramCur string) bool {
-	// place holder implementation
-	return true
+	if paramPrev == paramCur {
+		log.Printf("reloadableSourceParamsChange returned true")
+		return true
+	}
+
+	if len(paramPrev) == 0 {
+		// make it a json unmarshal-able string
+		paramPrev = "{}"
+	}
+
+	var prevMap map[string]interface{}
+	err := json.Unmarshal([]byte(paramPrev), &prevMap)
+	if err != nil {
+		log.Printf("pindex_bleve: reloadableSourceParamsChange"+
+			" json parse paramPrev: %s, err: %v",
+			paramPrev, err)
+		return false
+	}
+
+	if len(paramCur) == 0 {
+		// make it a json unmarshal-able string
+		paramCur = "{}"
+	}
+
+	var curMap map[string]interface{}
+	err = json.Unmarshal([]byte(paramCur), &curMap)
+	if err != nil {
+		log.Printf("pindex_bleve: reloadableSourceParamsChange"+
+			" json parse paramCur: %s, err: %v",
+			paramCur, err)
+		return false
+	}
+
+	// any parsing err doesn't matter here.
+	po, _ := ParseFeedAllotmentOption(paramPrev)
+	co, _ := ParseFeedAllotmentOption(paramCur)
+	if po != co {
+		prevMap["feedAllotment"] = ""
+		curMap["feedAllotment"] = ""
+	}
+
+	return reflect.DeepEqual(prevMap, curMap)
 }
 
 func reloadableSourceParamsChange(paramPrev, paramCur string) bool {

@@ -1347,3 +1347,180 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 	}
 
 }
+
+func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
+	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+	cfg := NewCfgMem()
+	pit, err := PIndexImplTypeForIndex(cfg, "foo")
+	if err == nil || pit != nil {
+		t.Error("expected pit for uncreated foo index")
+	}
+
+	options1 := map[string]string{
+		"feedAllotment":      FeedAllotmentOnePerPIndex,
+		"maxReplicasAllowed": "10",
+	}
+	m := NewManagerEx(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil, options1)
+	if err = m.Start("wanted"); err != nil {
+		t.Errorf("expected Manager.Start() to work, err: %v", err)
+	}
+	sourceParams := "{\"numPartitions\":6}"
+	planParams := PlanParams{
+		MaxPartitionsPerPIndex: 1,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams,
+		"bad-prevIndexUUID"); err == nil {
+		t.Errorf("expected CreateIndex() err on create-with-prevIndexUUID")
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, ""); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams,
+		"bad-prevIndexUUID"); err == nil {
+		t.Errorf("expected CreateIndex() err update wrong prevIndexUUID")
+	}
+
+	feeds, pindexes := m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+
+	// update the replicaCount to "1"
+	planParams = PlanParams{
+		MaxPartitionsPerPIndex: 1,
+		NumReplicas:            1,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 6 {
+		t.Errorf("expected pindex restarted count to be 6, but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	// update the replicaCount to "0"
+	planParams = PlanParams{
+		MaxPartitionsPerPIndex: 1,
+		NumReplicas:            0,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 12 {
+		t.Errorf("expected pindex restarted count to be 12 but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	// update the replicaCount to "2"
+	planParams = PlanParams{
+		MaxPartitionsPerPIndex: 1,
+		NumReplicas:            2,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 18 {
+		t.Errorf("expected pindex restarted count to be 18 but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	// update the sourceParams and ensure that pindexes aren't restarting
+	indexParams := "{\"store\": {\"indexType\": \"scorch\"}}"
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", indexParams, planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 18 {
+		t.Errorf("expected pindex restarted count to be 18 but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	// disable the index restart over manager options
+	options2 := map[string]string{
+		"feedAllotment":          FeedAllotmentOnePerPIndex,
+		"maxReplicasAllowed":     "10",
+		"rebuildOnReplicaUpdate": "true",
+	}
+	m.SetOptions(options2)
+
+	// update the replicaCount to "1"
+	planParams = PlanParams{
+		MaxPartitionsPerPIndex: 1,
+		NumReplicas:            1,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 18 {
+		t.Errorf("expected pindex restarted count to be 18 but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	// enable the index restart over manager options
+	options3 := map[string]string{
+		"feedAllotment":          FeedAllotmentOnePerPIndex,
+		"maxReplicasAllowed":     "10",
+		"rebuildOnReplicaUpdate": "false",
+	}
+	m.SetOptions(options3)
+
+	// update the replicaCount to "0"
+	planParams = PlanParams{
+		MaxPartitionsPerPIndex: 1,
+		NumReplicas:            0,
+	}
+	if err = m.CreateIndex("primary", "default", "123", sourceParams,
+		"blackhole", "foo", "", planParams, "*"); err != nil {
+		t.Errorf("expected CreateIndex() to work, err: %v", err)
+	}
+	feeds, pindexes = m.CurrentMaps()
+	if len(feeds) != 6 || len(pindexes) != 6 {
+		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
+			feeds, pindexes)
+	}
+	if m.stats.TotJanitorRestartPIndex != 24 {
+		t.Errorf("expected pindex restarted count to be 24 but got: %d",
+			m.stats.TotJanitorRestartPIndex)
+	}
+
+	err = m.DeleteIndex("foo")
+	if err != nil {
+		t.Errorf("expected index: foo to get deleted, err: %+v", err)
+	}
+
+}
