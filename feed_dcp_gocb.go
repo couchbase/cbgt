@@ -41,6 +41,9 @@ type GocbDCPExtras struct {
 
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
 
+var StatsTimeout = time.Duration(30 * time.Second)
+var OpenStreamTimeout = time.Duration(60 * time.Second)
+
 func init() {
 	RegisterFeedType(source_gocb, &FeedType{
 		Start:           StartGocbDCPFeed,
@@ -279,7 +282,10 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 	op, err := f.agent.StatsEx(gocbcore.StatsOptions{Key: "dcp"},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
-				signal <- er
+				select {
+				case <-f.closeCh:
+				case signal <- er:
+				}
 				return
 			}
 
@@ -291,14 +297,18 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 			f.stats.WriteJSON(w)
 
 			w.Write(JsonCloseBrace)
-			return
+
+			select {
+			case <-f.closeCh:
+			case signal <- nil:
+			}
 		})
 
 	if err != nil {
 		return err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(30 * time.Second)
+	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
 	select {
 	case err := <-signal:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
@@ -382,7 +392,10 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				return
 			}
 
-			signal <- true
+			select {
+			case signal <- true:
+			case <-f.closeCh:
+			}
 		})
 	if err != nil && err != gocb.ErrShutdown {
 		log.Warnf("feed_gocb_dcp: DCP stream closed for vbID: %v, due to client"+
@@ -390,7 +403,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	}
 
 	go func() {
-		timeoutTmr := gocbcore.AcquireTimer(60 * time.Second)
+		timeoutTmr := gocbcore.AcquireTimer(OpenStreamTimeout)
 		select {
 		case <-f.closeCh:
 			gocbcore.ReleaseTimer(timeoutTmr, false)
