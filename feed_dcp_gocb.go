@@ -104,14 +104,16 @@ type GocbDCPFeed struct {
 	agent      *gocbcore.Agent
 	mgr        *Manager
 
-	m                 sync.Mutex
-	remaining         sync.WaitGroup
-	active            map[uint16]bool
-	closed            bool
-	lastErr           error
-	stats             *DestStats
+	seqnoM            sync.Mutex
 	lastReceivedSeqno map[uint16]uint64
-	stopAfterReached  map[string]bool // May be nil.
+
+	m                sync.Mutex
+	remaining        sync.WaitGroup
+	active           map[uint16]bool
+	closed           bool
+	lastErr          error
+	stats            *DestStats
+	stopAfterReached map[string]bool // May be nil.
 
 	closeCh chan struct{}
 }
@@ -377,17 +379,14 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					" err: %v", vbId, er)
 				f.complete(vbId)
 			} else {
-				// no error, stream closure
-				f.complete(vbId)
 				return
 			}
 
 			signal <- true
 		})
-	if err != nil {
+	if err != nil && err != gocb.ErrShutdown {
 		log.Warnf("feed_gocb_dcp: DCP stream closed for vbID: %v, due to client"+
 			" error: `%s`", vbId, err)
-		f.complete(vbId)
 	}
 
 	go func() {
@@ -725,15 +724,15 @@ func (f *GocbDCPFeed) forceCompleteLOCKED() {
 // ----------------------------------------------------------------
 
 func (f *GocbDCPFeed) updateLastReceivedSeqno(vbId uint16, seqNo uint64) {
-	f.m.Lock()
+	f.seqnoM.Lock()
 	f.lastReceivedSeqno[vbId] = seqNo
-	f.m.Unlock()
+	f.seqnoM.Unlock()
 }
 
 func (f *GocbDCPFeed) fetchLastReceivedSeqno(vbId uint16) uint64 {
-	f.m.Lock()
+	f.seqnoM.Lock()
 	seqno := f.lastReceivedSeqno[vbId]
-	f.m.Unlock()
+	f.seqnoM.Unlock()
 	return seqno
 }
 
