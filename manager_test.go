@@ -12,6 +12,7 @@
 package cbgt
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -1262,10 +1263,9 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 		t.Errorf("expected CreateIndex() err update wrong prevIndexUUID")
 	}
 
-	feeds, pindexes := m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 
 	// update the feedAllotment to "oneFeedPerIndex" for `foo`
@@ -1275,10 +1275,9 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 		"blackhole", "foo", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 1 || len(pindexes) != 6 {
-		t.Errorf("expected 1 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 1, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 6 {
 		t.Errorf("expected pindex restarted count to be 6, but got: %d",
@@ -1296,10 +1295,9 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 		"blackhole", "foo_second", "", planParams, ""); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex for index: foo_second,"+
-			"feeds: %+v, pindexes: %+v", feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	err = m.DeleteIndex("foo_second")
 	if err != nil {
@@ -1311,10 +1309,9 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 		"blackhole", "foo_third", "", planParams, ""); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 
 	// update the feedAllotment to "oneFeedPerIndex" for `foo`
@@ -1324,10 +1321,9 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 		"blackhole", "foo_third", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 1 || len(pindexes) != 6 {
-		t.Errorf("expected 1 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 1, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 12 {
 		t.Errorf("expected total pindex restarted count to be 12, but got: %d",
@@ -1340,12 +1336,10 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 		"blackhole", "foo_third", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex for index: foo_second,"+
-			"feeds: %+v, pindexes: %+v", feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
-
 }
 
 func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
@@ -1385,10 +1379,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		t.Errorf("expected CreateIndex() err update wrong prevIndexUUID")
 	}
 
-	feeds, pindexes := m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 
 	// update the replicaCount to "1"
@@ -1400,10 +1393,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		"blackhole", "foo", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 6 {
 		t.Errorf("expected pindex restarted count to be 6, but got: %d",
@@ -1419,10 +1411,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		"blackhole", "foo", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 12 {
 		t.Errorf("expected pindex restarted count to be 12 but got: %d",
@@ -1438,10 +1429,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		"blackhole", "foo", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 18 {
 		t.Errorf("expected pindex restarted count to be 18 but got: %d",
@@ -1454,10 +1444,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		"blackhole", "foo", indexParams, planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 18 {
 		t.Errorf("expected pindex restarted count to be 18 but got: %d",
@@ -1481,10 +1470,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		"blackhole", "foo", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 18 {
 		t.Errorf("expected pindex restarted count to be 18 but got: %d",
@@ -1508,10 +1496,9 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		"blackhole", "foo", "", planParams, "*"); err != nil {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
-	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 6 || len(pindexes) != 6 {
-		t.Errorf("expected 6 feed, 6 pindex, feeds: %+v, pindexes: %+v",
-			feeds, pindexes)
+	err = verifyMgrCurrentMap(m, 6, 6, 1)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 	if m.stats.TotJanitorRestartPIndex != 24 {
 		t.Errorf("expected pindex restarted count to be 24 but got: %d",
@@ -1523,4 +1510,22 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		t.Errorf("expected index: foo to get deleted, err: %+v", err)
 	}
 
+}
+
+func verifyMgrCurrentMap(m *Manager, feedsCount,
+	pindexesCount, maxAttempts int) error {
+	var attempts int
+	for {
+		feeds, pindexes := m.CurrentMaps()
+		if len(feeds) == feedsCount && len(pindexes) == pindexesCount {
+			return nil
+		}
+		attempts++
+		if attempts > maxAttempts {
+			return fmt.Errorf("expected %d feeds, %d pindexes,"+
+				" but got feeds: %+v, \n pindexes: %+v",
+				feedsCount, pindexesCount, feeds, pindexes)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
