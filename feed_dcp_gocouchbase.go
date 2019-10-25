@@ -80,6 +80,34 @@ func init() {
 	})
 }
 
+type UpdateBucketDataSourceOptionsFunc func(
+	params *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions
+
+// Registry of callback functions (of type UpdateBucketDataSourceOptionsFunc)
+// for indexes created against a couchbase cluster (tracked with manager's uuid).
+// The key for this map is the indexname concatenated with manager's uuid.
+// The client can optionally register the callback before invoking the manager
+// api: CreateIndex. This callback if registered will be invoked during DCP feed
+// setup and the client will be allowed to update the feed options (of type
+// go-couchbase/cbdatasource's BucketDataSourceOptions).
+var bucketDataSourceOptionsM sync.RWMutex
+var bucketDataSourceOptionsCBMap = make(map[string]UpdateBucketDataSourceOptionsFunc)
+
+func RegisterBucketDataSourceOptionsCallback(
+	indexName, managerUUID string, f UpdateBucketDataSourceOptionsFunc) {
+	bucketDataSourceOptionsM.Lock()
+	bucketDataSourceOptionsCBMap[indexName+managerUUID] = f
+	bucketDataSourceOptionsM.Unlock()
+}
+
+func fetchBucketDataSourceOptionsCallback(
+	indexName, managerUUID string) UpdateBucketDataSourceOptionsFunc {
+	bucketDataSourceOptionsM.RLock()
+	f := bucketDataSourceOptionsCBMap[indexName+managerUUID]
+	bucketDataSourceOptionsM.RUnlock()
+	return f
+}
+
 // StartDCPFeed starts a DCP related feed and is registered at
 // init/startup time with the system via RegisterFeedType().
 func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
@@ -234,6 +262,15 @@ func NewDCPFeed(name, indexName, url, poolName,
 		Logf:                        log.Printf,
 		TraceCapacity:               20,
 		IncludeXAttrs:               params.IncludeXAttrs,
+	}
+
+	// Allow client to update cbdatasource.BucketDataSourceOptions
+	if mgr != nil {
+		bucketDataSourceOptionsCB := fetchBucketDataSourceOptionsCallback(
+			indexName, mgr.uuid)
+		if bucketDataSourceOptionsCB != nil {
+			options = bucketDataSourceOptionsCB(options)
+		}
 	}
 
 	feed := &DCPFeed{
