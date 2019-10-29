@@ -599,12 +599,11 @@ func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
 
 func newPIndexRestartReq(addPlanPI *PlanPIndex,
 	pindex *PIndex) *pindexRestartReq {
-	rv := pindex.Clone()
-	rv.IndexUUID = addPlanPI.IndexUUID
-	rv.IndexParams = addPlanPI.IndexParams
-	rv.SourceParams = addPlanPI.SourceParams
+	pindex.IndexUUID = addPlanPI.IndexUUID
+	pindex.IndexParams = addPlanPI.IndexParams
+	pindex.SourceParams = addPlanPI.SourceParams
 	return &pindexRestartReq{
-		pindex:         rv,
+		pindex:         pindex,
 		planPIndexName: addPlanPI.Name,
 	}
 }
