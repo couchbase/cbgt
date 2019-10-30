@@ -120,20 +120,20 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
 		mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
-		return fmt.Errorf("feed_dcp:"+
+		return fmt.Errorf("feed_dcp_gocouchbase:"+
 			" could not prepare DCP feed, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
 			mgr.server, bucketName, indexName, err)
 	}
 	err = feed.Start()
 	if err != nil {
-		return fmt.Errorf("feed_dcp:"+
+		return fmt.Errorf("feed_dcp_gocouchbase:"+
 			" could not start, server: %s, err: %v",
 			mgr.server, err)
 	}
 
 	securityConfigRefreshHandler := func() error {
-		log.Printf("feed_dcp: %s security refresh kick: %s",
+		log.Printf("feed_dcp_gocouchbase: %s security refresh kick: %s",
 			feed.name, cbdatasource.UpdateSecuritySettings)
 		return feed.bds.Kick(cbdatasource.UpdateSecuritySettings)
 	}
@@ -186,7 +186,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*DCPFeed, error) {
-	log.Printf("feed_dcp: NewDCPFeed, name: %s, indexName: %s",
+	log.Printf("feed_dcp_gocouchbase: NewDCPFeed, name: %s, indexName: %s",
 		name, indexName)
 
 	var optionsMgr map[string]string
@@ -196,7 +196,7 @@ func NewDCPFeed(name, indexName, url, poolName,
 
 	auth, err := cbAuth(bucketName, paramsStr, optionsMgr)
 	if err != nil {
-		return nil, fmt.Errorf("feed_dcp: NewDCPFeed cbAuth, err: %v", err)
+		return nil, fmt.Errorf("feed_dcp_gocouchbase: NewDCPFeed cbAuth, err: %v", err)
 	}
 
 	var stopAfter map[string]UUIDSeq
@@ -310,11 +310,11 @@ func (t *DCPFeed) IndexName() string {
 
 func (t *DCPFeed) Start() error {
 	if t.disable {
-		log.Printf("feed_dcp: disabled, name: %s", t.Name())
+		log.Printf("feed_dcp_gocouchbase: disabled, name: %s", t.Name())
 		return nil
 	}
 
-	log.Printf("feed_dcp: start, name: %s", t.Name())
+	log.Printf("feed_dcp_gocouchbase: start, name: %s", t.Name())
 	return t.bds.Start()
 }
 
@@ -327,7 +327,7 @@ func (t *DCPFeed) Close() error {
 	t.closed = true
 	t.m.Unlock()
 
-	log.Printf("feed_dcp: close, name: %s", t.Name())
+	log.Printf("feed_dcp_gocouchbase: close, name: %s", t.Name())
 	return t.bds.Close()
 }
 
@@ -404,7 +404,7 @@ func (r *DCPFeed) updateStopAfter(partition string, seq uint64) {
 func (r *DCPFeed) OnError(err error) {
 	// TODO: Check the type of the error if it's something
 	// serious / not-recoverable / needs user attention.
-	log.Printf("feed_dcp: OnError, name: %s:"+
+	log.Printf("feed_dcp_gocouchbase: OnError, name: %s:"+
 		" bucketName: %s, bucketUUID: %s, err: %v\n",
 		r.name, r.bucketName, r.bucketUUID, err)
 
@@ -436,7 +436,7 @@ func (r *DCPFeed) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 		}
 
 		if err != nil {
-			return fmt.Errorf("feed_dcp: DataUpdate,"+
+			return fmt.Errorf("feed_dcp_gocouchbase: DataUpdate,"+
 				" name: %s, partition: %s, key: %v, seq: %d, err: %v",
 				r.name, partition,
 				log.Tag(log.UserData, key), seq, err)
@@ -466,7 +466,7 @@ func (r *DCPFeed) DataDelete(vbucketId uint16, key []byte, seq uint64,
 		}
 
 		if err != nil {
-			return fmt.Errorf("feed_dcp: DataDelete,"+
+			return fmt.Errorf("feed_dcp_gocouchbase: DataDelete,"+
 				" name: %s, partition: %s, key: %v, seq: %d, err: %v",
 				r.name, partition,
 				log.Tag(log.UserData, key), seq, err)
@@ -541,7 +541,7 @@ func (r *DCPFeed) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 			return err
 		}
 
-		log.Printf("feed_dcp: rollback, name: %s: vbucketId: %d,"+
+		log.Printf("feed_dcp_gocouchbase: rollback, name: %s: vbucketId: %d,"+
 			" rollbackSeq: %d, partition: %s, opaqueValue: %s, lastSeq: %d",
 			r.name, vbucketId, rollbackSeq,
 			partition, opaqueValue, lastSeq)
@@ -563,7 +563,7 @@ func (r *DCPFeed) RollbackEx(vbucketId uint16, vBucketUUID uint64, rollbackSeq u
 			return err
 		}
 
-		log.Printf("feed_dcp: rollback, name: %s: vbucketId: %d,"+
+		log.Printf("feed_dcp_gocouchbase: rollback, name: %s: vbucketId: %d,"+
 			" rollbackSeq: %d, partition: %s, opaqueValue: %s, lastSeq: %d",
 			r.name, vbucketId, rollbackSeq,
 			partition, opaqueValue, lastSeq)
