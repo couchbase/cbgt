@@ -381,7 +381,8 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					" vb: %v", vbId)
 				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 			} else if er == gocb.ErrRollback {
-				log.Printf("feed_gocb_dcp: Received rollback, for vb: %v", vbId)
+				log.Printf("feed_gocb_dcp: Received rollback, for vb: %v,"+
+					" seqno requested: %v", vbId, seqStart)
 				f.complete(vbId)
 				go f.rollbackAndReinitiate(vbId, entries)
 			} else if er != nil {
