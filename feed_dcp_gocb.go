@@ -454,7 +454,7 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 
 	if err != nil {
 		log.Warnf("feed_gocb_dcp: Error in accepting a DCP snapshot marker,"+
-			" err: %v", err)
+			" vbId: %v, err: %v", vbId, err)
 		return
 	}
 
@@ -475,7 +475,8 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 		}
 	})
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in fetching failover log, err: %v", err)
+		log.Warnf("feed_gocb_dcp: Error in fetching failover log,"+
+			" vbId: %v, err: %v", vbId, err)
 		return
 	}
 
@@ -528,8 +529,8 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in accepting a DCP mutation, err: %v",
-			err)
+		log.Warnf("feed_gocb_dcp: Error in accepting a DCP mutation,"+
+			" vbId: %v, err: %v", vbId, err)
 	} else {
 		f.updateLastReceivedSeqno(vbId, seqNo)
 	}
@@ -568,8 +569,8 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in accepting a DCP deletion, err: %v",
-			err)
+		log.Warnf("feed_gocb_dcp: Error in accepting a DCP deletion,"+
+			" vbId: %v, err: %v", vbId, err)
 	} else {
 		f.updateLastReceivedSeqno(vbId, seqNo)
 	}
