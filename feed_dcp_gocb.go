@@ -363,6 +363,8 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	snapStart := seqStart
 
 	signal := make(chan bool, 1)
+	log.Debugf("feed_gocb_dcp: Initiating DCP stream request for vb: %v,"+
+		" vbUUID: %v, seqStart: %v", vbId, vbuuid, seqStart)
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f,
 		func(entries []gocbcore.FailoverEntry, er error) {
@@ -378,7 +380,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				log.Printf("feed_gocb_dcp: Received rollback, for vb: %v,"+
 					" seqno requested: %v", vbId, seqStart)
 				f.complete(vbId)
-				go f.rollbackAndReinitiate(vbId, entries)
+				go f.rollback(vbId, entries)
 			} else if er != nil {
 				log.Printf("feed_gocb_dcp: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
@@ -421,7 +423,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		}
 	}()
 
-	return nil
+	return err
 }
 
 // ----------------------------------------------------------------
@@ -511,10 +513,9 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 		}
 
 		if err != nil {
-			return fmt.Errorf("feed_gocb_dcp: Mutation,"+
-				" name: %s, partition: %s, key: %v, seq: %d, err: %v",
-				f.name, partition,
-				log.Tag(log.UserData, key), seqNo, err)
+			return fmt.Errorf("Mutation => name: %s, partition: %s,"+
+				" key: %v, seq: %d, err: %v",
+				f.name, partition, log.Tag(log.UserData, key), seqNo, err)
 		}
 
 		f.updateStopAfter(partition, seqNo)
@@ -551,10 +552,9 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 		}
 
 		if err != nil {
-			return fmt.Errorf("feed_gocb_dcp: Deletion,"+
-				" name: %s, partition: %s, key: %v, seq: %d, err: %v",
-				f.name, partition,
-				log.Tag(log.UserData, key), seqNo, err)
+			return fmt.Errorf("Deletion => name: %s, partition: %s,"+
+				"key: %v, seq: %d, err: %v",
+				f.name, partition, log.Tag(log.UserData, key), seqNo, err)
 		}
 
 		f.updateStopAfter(partition, seqNo)
@@ -650,7 +650,7 @@ func (f *GocbDCPFeed) getMetaData(vbId uint16) (value []byte, lastSeq uint64, er
 
 // ----------------------------------------------------------------
 
-func (f *GocbDCPFeed) rollbackAndReinitiate(vbId uint16, entries []gocbcore.FailoverEntry) {
+func (f *GocbDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry) {
 	var rollbackVbuuid uint64
 	var rollbackSeqno uint64
 
@@ -698,10 +698,6 @@ func (f *GocbDCPFeed) rollbackAndReinitiate(vbId uint16, entries []gocbcore.Fail
 		log.Warnf("feed_gocb_dcp: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
 			" failed with err: %v", rollbackSeqno, rollbackVbuuid, vbId, err)
 	}
-
-	// re-initiate stream
-	f.initiateStreamEx(vbId, true, gocbcore.VbUuid(rollbackVbuuid),
-		gocbcore.SeqNo(rollbackSeqno), max_end_seqno)
 }
 
 // ----------------------------------------------------------------
