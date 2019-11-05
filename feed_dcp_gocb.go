@@ -281,26 +281,20 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 	signal := make(chan error, 1)
 	op, err := f.agent.StatsEx(gocbcore.StatsOptions{Key: "dcp"},
 		func(resp *gocbcore.StatsResult, er error) {
-			if resp == nil || er != nil {
-				select {
-				case <-f.closeCh:
-				case signal <- er:
-				}
-				return
+			if resp != nil {
+				stats := resp.Servers
+				w.Write(prefixAgentDCPStats)
+				json.NewEncoder(w).Encode(stats)
+
+				w.Write(prefixDestStats)
+				f.stats.WriteJSON(w)
+
+				w.Write(JsonCloseBrace)
 			}
-
-			stats := resp.Servers
-			w.Write(prefixAgentDCPStats)
-			json.NewEncoder(w).Encode(stats)
-
-			w.Write(prefixDestStats)
-			f.stats.WriteJSON(w)
-
-			w.Write(JsonCloseBrace)
 
 			select {
 			case <-f.closeCh:
-			case signal <- nil:
+			case signal <- er:
 			}
 		})
 
