@@ -125,7 +125,7 @@ func NewGocbDCPFeed(name, indexName, url,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbDCPFeed, error) {
-	log.Printf("feed_gocb_dcp: NewGocbDCPFeed, name: %s, indexName: %s",
+	log.Printf("feed_dcp_gocb: NewGocbDCPFeed, name: %s, indexName: %s",
 		name, indexName)
 
 	var optionsMgr map[string]string
@@ -135,7 +135,7 @@ func NewGocbDCPFeed(name, indexName, url,
 
 	auth, err := gocbAuth(paramsStr, optionsMgr)
 	if err != nil {
-		return nil, fmt.Errorf("feed_gocb_dcp: NewGocbDCPFeed gocbAuth, err: %v", err)
+		return nil, fmt.Errorf("feed_dcp_gocb: NewGocbDCPFeed gocbAuth, err: %v", err)
 	}
 
 	var stopAfter map[string]UUIDSeq
@@ -168,7 +168,7 @@ func NewGocbDCPFeed(name, indexName, url,
 		return nil, err
 	}
 	if len(vbucketIds) == 0 {
-		return nil, fmt.Errorf("feed_gocb_dcp: No vbucketids for this feed")
+		return nil, fmt.Errorf("feed_dcp_gocb: No vbucketids for this feed")
 	}
 
 	feed := &GocbDCPFeed{
@@ -206,7 +206,7 @@ func NewGocbDCPFeed(name, indexName, url,
 
 	urls := strings.Split(url, ";")
 	if len(urls) <= 0 {
-		return nil, fmt.Errorf("feed_gocb_dcp: NewGocbDCPFeed, no urls provided")
+		return nil, fmt.Errorf("feed_dcp_gocb: NewGocbDCPFeed, no urls provided")
 	}
 
 	err = config.FromConnStr(urls[0])
@@ -236,16 +236,16 @@ func (f *GocbDCPFeed) IndexName() string {
 
 func (f *GocbDCPFeed) Start() error {
 	if f.disable {
-		log.Printf("feed_gocb_dcp: disabled, name: %s", f.Name())
+		log.Printf("feed_dcp_gocb: disabled, name: %s", f.Name())
 		return nil
 	}
 
-	log.Printf("feed_gocb_dcp: start, name: %s", f.Name())
+	log.Printf("feed_dcp_gocb: start, name: %s", f.Name())
 
 	for vbid := range f.lastReceivedSeqno {
 		err := f.initiateStream(uint16(vbid), true)
 		if err != nil {
-			return fmt.Errorf("feed_gocb_dcp: start, name: %s, vbid: %v, err: %v",
+			return fmt.Errorf("feed_dcp_gocb: start, name: %s, vbid: %v, err: %v",
 				f.Name(), vbid, err)
 		}
 	}
@@ -267,7 +267,7 @@ func (f *GocbDCPFeed) Close() error {
 	close(f.closeCh)
 	f.wait()
 
-	log.Printf("feed_gocb_dcp: close, name: %s", f.Name())
+	log.Printf("feed_dcp_gocb: close, name: %s", f.Name())
 	return nil
 }
 
@@ -363,26 +363,26 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	snapStart := seqStart
 
 	signal := make(chan bool, 1)
-	log.Debugf("feed_gocb_dcp: Initiating DCP stream request for vb: %v,"+
+	log.Debugf("feed_dcp_gocb: Initiating DCP stream request for vb: %v,"+
 		" vbUUID: %v, seqStart: %v", vbId, vbuuid, seqStart)
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if er == gocb.ErrShutdown {
-				log.Printf("feed_gocb_dcp: DCP stream for vb: %v was shutdown", vbId)
+				log.Printf("feed_dcp_gocb: DCP stream for vb: %v was shutdown", vbId)
 				f.complete(vbId)
 			} else if er == gocb.ErrNetwork {
 				// TODO: Add a maximum retry-count here maybe?
-				log.Printf("feed_gocb_dcp: Network error received on DCP stream for"+
+				log.Printf("feed_dcp_gocb: Network error received on DCP stream for"+
 					" vb: %v", vbId)
 				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 			} else if er == gocb.ErrRollback {
-				log.Printf("feed_gocb_dcp: Received rollback, for vb: %v,"+
+				log.Printf("feed_dcp_gocb: Received rollback, for vb: %v,"+
 					" seqno requested: %v", vbId, seqStart)
 				f.complete(vbId)
 				go f.rollback(vbId, entries)
 			} else if er != nil {
-				log.Printf("feed_gocb_dcp: Received error on DCP stream for vb: %v,"+
+				log.Printf("feed_dcp_gocb: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
 				f.complete(vbId)
 			}
@@ -393,7 +393,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			}
 		})
 	if err != nil && err != gocb.ErrShutdown {
-		log.Warnf("feed_gocb_dcp: DCP stream closed for vbID: %v, due to client"+
+		log.Warnf("feed_dcp_gocb: DCP stream closed for vbID: %v, due to client"+
 			" error: `%s`", vbId, err)
 	}
 
@@ -449,7 +449,7 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}, f.stats.TimerSnapshotStart)
 
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in accepting a DCP snapshot marker,"+
+		log.Warnf("feed_dcp_gocb: Error in accepting a DCP snapshot marker,"+
 			" vbId: %v, err: %v", vbId, err)
 		return
 	}
@@ -471,7 +471,7 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 		}
 	})
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in fetching failover log,"+
+		log.Warnf("feed_dcp_gocb: Error in fetching failover log,"+
 			" vbId: %v, err: %v", vbId, err)
 		return
 	}
@@ -524,7 +524,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in accepting a DCP mutation,"+
+		log.Warnf("feed_dcp_gocb: Error in accepting a DCP mutation,"+
 			" vbId: %v, err: %v", vbId, err)
 	} else {
 		f.updateLastReceivedSeqno(vbId, seqNo)
@@ -563,7 +563,7 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		log.Warnf("feed_gocb_dcp: Error in accepting a DCP deletion,"+
+		log.Warnf("feed_dcp_gocb: Error in accepting a DCP deletion,"+
 			" vbId: %v, err: %v", vbId, err)
 	} else {
 		f.updateLastReceivedSeqno(vbId, seqNo)
@@ -578,26 +578,26 @@ func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 func (f *GocbDCPFeed) End(vbId uint16, err error) {
 	lastReceivedSeqno := f.fetchLastReceivedSeqno(vbId)
 	if err == nil {
-		log.Printf("feed_gocb_dcp: DCP stream ended for vb: %v, last seq: %v",
+		log.Printf("feed_dcp_gocb: DCP stream ended for vb: %v, last seq: %v",
 			vbId, lastReceivedSeqno)
 		f.complete(vbId)
 	} else if err == gocb.ErrStreamStateChanged || err == gocb.ErrStreamTooSlow ||
 		err == gocb.ErrStreamDisconnected {
-		log.Printf("feed_gocb_dcp: DCP stream for vb: %v, closed due to"+
+		log.Printf("feed_dcp_gocb: DCP stream for vb: %v, closed due to"+
 			" `%s`, will reconnect", vbId, err.Error())
 		f.initiateStreamEx(vbId, false, gocbcore.VbUuid(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else if err == gocb.ErrStreamClosed {
-		log.Printf("feed_gocb_dcp: DCP stream for vb: %v, closed by consumer", vbId)
+		log.Printf("feed_dcp_gocb: DCP stream for vb: %v, closed by consumer", vbId)
 		f.complete(vbId)
 	} else if err == gocb.ErrNetwork {
 		// TODO: Add a maximum retry-count here maybe?
-		log.Printf("feed_gocb_dcp: Network error received on DCP stream for vb: %v",
+		log.Printf("feed_dcp_gocb: Network error received on DCP stream for vb: %v",
 			vbId)
 		f.initiateStreamEx(vbId, false, gocbcore.VbUuid(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else {
-		log.Printf("feed_gocb_dcp: DCP stream closed for vb: %v, last seq: %v,"+
+		log.Printf("feed_dcp_gocb: DCP stream closed for vb: %v, last seq: %v,"+
 			" err: `%s`", vbId, lastReceivedSeqno, err)
 		f.complete(vbId)
 	}
@@ -695,7 +695,7 @@ func (f *GocbDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry) {
 
 	if err != nil {
 		// TODO: Better error handling
-		log.Warnf("feed_gocb_dcp: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
+		log.Warnf("feed_dcp_gocb: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
 			" failed with err: %v", rollbackSeqno, rollbackVbuuid, vbId, err)
 	}
 }
