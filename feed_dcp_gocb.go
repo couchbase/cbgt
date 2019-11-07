@@ -87,6 +87,12 @@ func StartGocbDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	return nil
 }
 
+type vbucketState struct {
+	snapStart uint64
+	snapEnd   uint64
+	snapSaved bool // True when snapStart/snapEnd have been persisted
+}
+
 // A GocbDCPFeed implements both Feed and gocb.StreamObserver
 // interfaces, and forwards any incoming gocb.StreamObserver
 // callbacks to the relevant, hooked-up Dest instances.
@@ -109,6 +115,9 @@ type GocbDCPFeed struct {
 
 	seqnoM            sync.Mutex
 	lastReceivedSeqno map[uint16]uint64
+
+	currVBsM sync.Mutex
+	currVBs  map[uint16]*vbucketState
 
 	m                sync.Mutex
 	remaining        sync.WaitGroup
@@ -187,11 +196,13 @@ func NewGocbDCPFeed(name, indexName, url,
 		lastReceivedSeqno: make(map[uint16]uint64),
 		stats:             NewDestStats(),
 		active:            make(map[uint16]bool),
+		currVBs:           make(map[uint16]*vbucketState),
 		closeCh:           make(chan struct{}),
 	}
 
 	for _, vbid := range vbucketIds {
 		feed.lastReceivedSeqno[vbid] = 0
+		feed.currVBs[vbid] = &vbucketState{}
 	}
 
 	config := &gocbcore.AgentConfig{
@@ -327,22 +338,14 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 // ----------------------------------------------------------------
 
 func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
-	metadataBytes, lastSeq, err := f.getMetaData(vbId)
+	vbMetaData, lastSeq, err := f.getMetaData(vbId)
 	if err != nil {
 		return err
 	}
 
 	var vbuuid uint64
-	if metadataBytes != nil {
-		var metadata metaData
-		err = json.Unmarshal(metadataBytes, &metadata)
-		if err != nil {
-			return err
-		}
-
-		if len(metadata.FailOverLog) > 0 {
-			vbuuid = metadata.FailOverLog[0][0]
-		}
+	if len(vbMetaData.FailOverLog) > 0 {
+		vbuuid = vbMetaData.FailOverLog[0][0]
 	}
 
 	return f.initiateStreamEx(vbId, isNewStream, gocbcore.VbUuid(vbuuid),
@@ -385,6 +388,26 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				log.Printf("feed_dcp_gocb: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
 				f.complete(vbId)
+			} else {
+				// er == nil
+				failoverLog := make([][]uint64, len(entries))
+				for i := 0; i < len(entries); i++ {
+					failoverLog[i] = []uint64{
+						uint64(entries[i].VbUuid),
+						uint64(entries[i].SeqNo),
+					}
+				}
+
+				v, _, err := f.getMetaData(vbId)
+				if err == nil {
+					v.FailOverLog = failoverLog
+					err = f.setMetaData(vbId, v)
+				}
+
+				if err != nil {
+					log.Warnf("feed_dcp_gocb: Error in fetching/setting metadata"+
+						" for vb: %d, err: %v", vbId, err)
+				}
 			}
 
 			select {
@@ -430,6 +453,20 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, snapshotType gocbcore.SnapshotState) {
+	f.currVBsM.Lock()
+	if f.currVBs[vbId] == nil {
+		// TODO: OnError close feed
+		log.Warnf("feed_dcp_gocb: SnapshotMarker for a non-running vb: %v,"+
+			" vbucketState: %#v", vbId, f.currVBs[vbId])
+		f.currVBsM.Unlock()
+		return
+	}
+
+	f.currVBs[vbId].snapStart = startSeqNo
+	f.currVBs[vbId].snapEnd = endSeqNo
+	f.currVBs[vbId].snapSaved = false
+	f.currVBsM.Unlock()
+
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
@@ -449,50 +486,58 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}, f.stats.TimerSnapshotStart)
 
 	if err != nil {
+		// TODO: OnError close feed
 		log.Warnf("feed_dcp_gocb: Error in accepting a DCP snapshot marker,"+
 			" vbId: %v, err: %v", vbId, err)
 		return
 	}
+}
 
-	// Get Latest failover log
-	var failoverLog [][]uint64
-	f.agent.GetFailoverLog(vbId, func(entries []gocbcore.FailoverEntry, er error) {
-		if er != nil {
-			err = er
-			return
-		}
-
-		failoverLog = make([][]uint64, len(entries))
-		// Entries are ordered from highest seqno to lower
-		for i := 0; i < len(entries); i++ {
-			uuid := uint64(entries[i].VbUuid)
-			seqno := uint64(entries[i].SeqNo)
-			failoverLog[i] = []uint64{uuid, seqno}
-		}
-	})
-	if err != nil {
-		log.Warnf("feed_dcp_gocb: Error in fetching failover log,"+
-			" vbId: %v, err: %v", vbId, err)
-		return
+func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
+	// FIXME: Lock contention here could cause a bottle neck?
+	f.currVBsM.Lock()
+	defer f.currVBsM.Unlock()
+	if f.currVBs[vbId] == nil {
+		// TODO: OnError close feed
+		log.Warnf("feed_dcp_gocb: Error: Data change received for vb: %d,"+
+			" wrong vbucketState: %#v", vbId, f.currVBs[vbId])
+		return false
 	}
 
-	// TODO: Ensure that this is the right place to store the
-	// internal metadata, or does this need to be done after
-	// the first mutation of this snapshot has been received.
-	//
-	// Set internal metadata with info from the snapshot marker
-	f.setMetaData(vbId, &metaData{
-		SeqStart:    0,
-		SeqEnd:      0,
-		SnapStart:   startSeqNo,
-		SnapEnd:     endSeqNo,
-		FailOverLog: failoverLog,
-	})
+	if !f.currVBs[vbId].snapSaved {
+		v, _, err := f.getMetaData(vbId)
+		if err != nil || v == nil {
+			// TODO: OnError close feed
+			log.Warnf("feed_dcp_gocb: Error: Data change,"+
+				" couldn't fetch metadata for vb: %d, err: %v", vbId, err)
+			return false
+		}
+
+		v.SnapStart = f.currVBs[vbId].snapStart
+		v.SnapEnd = f.currVBs[vbId].snapEnd
+
+		err = f.setMetaData(vbId, v)
+		if err != nil {
+			// TODO: OnError close feed
+			log.Warnf("feed_dcp_gocb: Error: Failed to update metadata,"+
+				" vb: %d, err: %v", vbId, err)
+			return false
+		}
+
+		f.currVBs[vbId].snapSaved = true
+	}
+
+	return true
 }
 
 func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	key, value []byte) {
+	if !f.checkAndUpdateVBucketState(vbId) {
+		// TODO: OnError close feed
+		return
+	}
+
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, key)
@@ -533,6 +578,11 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 
 func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	vbId uint16, key, value []byte) {
+	if !f.checkAndUpdateVBucketState(vbId) {
+		// TODO: OnError close feed
+		return
+	}
+
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, key)
@@ -632,20 +682,32 @@ func (f *GocbDCPFeed) setMetaData(vbId uint16, m *metaData) error {
 	}, f.stats.TimerOpaqueSet)
 }
 
-func (f *GocbDCPFeed) getMetaData(vbId uint16) (value []byte, lastSeq uint64, err error) {
-	err = Timer(func() error {
-		partition, dest, err :=
+func (f *GocbDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
+	vbMetaData := &metaData{}
+	var lastSeq uint64
+	err := Timer(func() error {
+		partition, dest, er :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if err != nil || f.checkStopAfter(partition) {
-			return err
+		if er != nil || f.checkStopAfter(partition) {
+			return er
 		}
 
-		value, lastSeq, err = dest.OpaqueGet(partition)
+		buf, seq, er := dest.OpaqueGet(partition)
+		if er != nil {
+			return er
+		}
 
-		return err
+		if len(buf) > 0 {
+			if er = json.Unmarshal(buf, vbMetaData); er != nil {
+				return er
+			}
+			lastSeq = seq
+		}
+
+		return nil
 	}, f.stats.TimerOpaqueGet)
 
-	return value, lastSeq, err
+	return vbMetaData, lastSeq, err
 }
 
 // ----------------------------------------------------------------
@@ -655,26 +717,20 @@ func (f *GocbDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry) {
 	var rollbackSeqno uint64
 
 	if len(entries) != 0 {
-		metadataBytes, _, err := f.getMetaData(vbId)
-		if err == nil && metadataBytes != nil {
-
-			var metadata *metaData
-			err = json.Unmarshal(metadataBytes, metadata)
-			if err == nil && len(metadata.FailOverLog) > 0 {
-
-				rollbackPointDetermined := false
-				for i := 0; i < len(entries); i++ {
-					for j := 0; j < len(metadata.FailOverLog); j++ {
-						if metadata.FailOverLog[j][1] <= uint64(entries[i].SeqNo) {
-							rollbackVbuuid = metadata.FailOverLog[j][0]
-							rollbackSeqno = metadata.FailOverLog[j][1]
-							rollbackPointDetermined = true
-							break
-						}
-					}
-					if rollbackPointDetermined {
+		vbMetaData, _, err := f.getMetaData(vbId)
+		if err == nil && len(vbMetaData.FailOverLog) > 0 {
+			rollbackPointDetermined := false
+			for i := 0; i < len(entries); i++ {
+				for j := 0; j < len(vbMetaData.FailOverLog); j++ {
+					if vbMetaData.FailOverLog[j][1] <= uint64(entries[i].SeqNo) {
+						rollbackVbuuid = vbMetaData.FailOverLog[j][0]
+						rollbackSeqno = vbMetaData.FailOverLog[j][1]
+						rollbackPointDetermined = true
 						break
 					}
+				}
+				if rollbackPointDetermined {
+					break
 				}
 			}
 		}

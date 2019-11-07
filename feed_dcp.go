@@ -11,6 +11,11 @@
 
 package cbgt
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // DCPFeedParams are DCP data-source/feed specific connection
 // parameters that may be part of a sourceParams JSON and is a
 // superset of CBAuthParams.  DCPFeedParams holds the information used
@@ -64,4 +69,25 @@ type DCPFeedParams struct {
 // values.
 func NewDCPFeedParams() *DCPFeedParams {
 	return &DCPFeedParams{}
+}
+
+// -------------------------------------------------------
+
+type VBucketMetaData struct {
+	FailOverLog [][]uint64 `json:"failOverLog"`
+}
+
+func ParseOpaqueToUUID(b []byte) string {
+	vmd := &VBucketMetaData{}
+	err := json.Unmarshal(b, &vmd)
+	if err != nil {
+		return ""
+	}
+
+	flogLen := len(vmd.FailOverLog)
+	if flogLen < 1 || len(vmd.FailOverLog[flogLen-1]) < 1 {
+		return ""
+	}
+
+	return fmt.Sprintf("%d", vmd.FailOverLog[flogLen-1][0])
 }

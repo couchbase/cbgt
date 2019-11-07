@@ -606,24 +606,3 @@ func (r *DCPFeed) VerifyBucketNotExists() (bool, error) {
 func (r *DCPFeed) GetBucketDetails() (name, uuid string) {
 	return r.bucketName, r.bucketUUID
 }
-
-// -------------------------------------------------------
-
-type VBucketMetaData struct {
-	FailOverLog [][]uint64 `json:"failOverLog"`
-}
-
-func ParseOpaqueToUUID(b []byte) string {
-	vmd := &VBucketMetaData{}
-	err := json.Unmarshal(b, &vmd)
-	if err != nil {
-		return ""
-	}
-
-	flogLen := len(vmd.FailOverLog)
-	if flogLen < 1 || len(vmd.FailOverLog[flogLen-1]) < 1 {
-		return ""
-	}
-
-	return fmt.Sprintf("%d", vmd.FailOverLog[flogLen-1][0])
-}
