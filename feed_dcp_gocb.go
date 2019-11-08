@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -113,11 +114,9 @@ type GocbDCPFeed struct {
 	agent      *gocbcore.Agent
 	mgr        *Manager
 
-	seqnoM            sync.Mutex
-	lastReceivedSeqno map[uint16]uint64
-
-	currVBsM sync.Mutex
-	currVBs  map[uint16]*vbucketState
+	vbucketIds        []uint16
+	lastReceivedSeqno []uint64
+	currVBs           []*vbucketState
 
 	m                sync.Mutex
 	remaining        sync.WaitGroup
@@ -180,27 +179,31 @@ func NewGocbDCPFeed(name, indexName, url,
 	}
 
 	feed := &GocbDCPFeed{
-		name:              name,
-		indexName:         indexName,
-		url:               url,
-		bucketName:        bucketName,
-		bucketUUID:        bucketUUID,
-		paramsStr:         paramsStr,
-		params:            params,
-		pf:                pf,
-		dests:             dests,
-		disable:           disable,
-		stopAfter:         stopAfter,
-		mgr:               mgr,
-		lastReceivedSeqno: make(map[uint16]uint64),
-		stats:             NewDestStats(),
-		active:            make(map[uint16]bool),
-		currVBs:           make(map[uint16]*vbucketState),
-		closeCh:           make(chan struct{}),
+		name:       name,
+		indexName:  indexName,
+		url:        url,
+		bucketName: bucketName,
+		bucketUUID: bucketUUID,
+		paramsStr:  paramsStr,
+		params:     params,
+		pf:         pf,
+		dests:      dests,
+		disable:    disable,
+		stopAfter:  stopAfter,
+		mgr:        mgr,
+		vbucketIds: vbucketIds,
+		stats:      NewDestStats(),
+		active:     make(map[uint16]bool),
+		closeCh:    make(chan struct{}),
 	}
 
+	// sort the vbucketIds list to determine the largest vbucketId
+	sort.Slice(vbucketIds, func(i, j int) bool { return vbucketIds[i] < vbucketIds[j] })
+	largestVBId := vbucketIds[len(vbucketIds)-1]
+	feed.lastReceivedSeqno = make([]uint64, largestVBId+1)
+
+	feed.currVBs = make([]*vbucketState, largestVBId+1)
 	for _, vbid := range vbucketIds {
-		feed.lastReceivedSeqno[vbid] = 0
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
@@ -252,7 +255,7 @@ func (f *GocbDCPFeed) Start() error {
 
 	log.Printf("feed_dcp_gocb: start, name: %s", f.Name())
 
-	for vbid := range f.lastReceivedSeqno {
+	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid), true)
 		if err != nil {
 			return fmt.Errorf("feed_dcp_gocb: start, name: %s, vbid: %v, err: %v",
@@ -452,19 +455,16 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, snapshotType gocbcore.SnapshotState) {
-	f.currVBsM.Lock()
 	if f.currVBs[vbId] == nil {
 		// TODO: OnError close feed
 		log.Warnf("feed_dcp_gocb: SnapshotMarker for a non-running vb: %v,"+
 			" vbucketState: %#v", vbId, f.currVBs[vbId])
-		f.currVBsM.Unlock()
 		return
 	}
 
 	f.currVBs[vbId].snapStart = startSeqNo
 	f.currVBs[vbId].snapEnd = endSeqNo
 	f.currVBs[vbId].snapSaved = false
-	f.currVBsM.Unlock()
 
 	err := Timer(func() error {
 		partition, dest, err :=
@@ -493,11 +493,7 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 }
 
 func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
-	// FIXME: Lock contention here could cause a bottle neck?
-	f.currVBsM.Lock()
-	defer f.currVBsM.Unlock()
 	if f.currVBs[vbId] == nil {
-		// TODO: OnError close feed
 		log.Warnf("feed_dcp_gocb: Error: Data change received for vb: %d,"+
 			" wrong vbucketState: %#v", vbId, f.currVBs[vbId])
 		return false
@@ -506,7 +502,6 @@ func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
 	if !f.currVBs[vbId].snapSaved {
 		v, _, err := f.getMetaData(vbId)
 		if err != nil || v == nil {
-			// TODO: OnError close feed
 			log.Warnf("feed_dcp_gocb: Error: Data change,"+
 				" couldn't fetch metadata for vb: %d, err: %v", vbId, err)
 			return false
@@ -517,7 +512,6 @@ func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
 
 		err = f.setMetaData(vbId, v)
 		if err != nil {
-			// TODO: OnError close feed
 			log.Warnf("feed_dcp_gocb: Error: Failed to update metadata,"+
 				" vb: %d, err: %v", vbId, err)
 			return false
@@ -571,7 +565,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 		log.Warnf("feed_dcp_gocb: Error in accepting a DCP mutation,"+
 			" vbId: %v, err: %v", vbId, err)
 	} else {
-		f.updateLastReceivedSeqno(vbId, seqNo)
+		f.lastReceivedSeqno[vbId] = seqNo
 	}
 }
 
@@ -615,7 +609,7 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 		log.Warnf("feed_dcp_gocb: Error in accepting a DCP deletion,"+
 			" vbId: %v, err: %v", vbId, err)
 	} else {
-		f.updateLastReceivedSeqno(vbId, seqNo)
+		f.lastReceivedSeqno[vbId] = seqNo
 	}
 }
 
@@ -625,7 +619,7 @@ func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 }
 
 func (f *GocbDCPFeed) End(vbId uint16, err error) {
-	lastReceivedSeqno := f.fetchLastReceivedSeqno(vbId)
+	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
 		log.Printf("feed_dcp_gocb: DCP stream ended for vb: %v, last seq: %v",
 			vbId, lastReceivedSeqno)
@@ -780,19 +774,6 @@ func (f *GocbDCPFeed) forceCompleteLOCKED() {
 }
 
 // ----------------------------------------------------------------
-
-func (f *GocbDCPFeed) updateLastReceivedSeqno(vbId uint16, seqNo uint64) {
-	f.seqnoM.Lock()
-	f.lastReceivedSeqno[vbId] = seqNo
-	f.seqnoM.Unlock()
-}
-
-func (f *GocbDCPFeed) fetchLastReceivedSeqno(vbId uint16) uint64 {
-	f.seqnoM.Lock()
-	seqno := f.lastReceivedSeqno[vbId]
-	f.seqnoM.Unlock()
-	return seqno
-}
 
 // checkStopAfter checks to see if we've already reached the
 // stopAfterReached state for a partition.
