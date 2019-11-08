@@ -123,7 +123,6 @@ type GocbDCPFeed struct {
 	remaining        sync.WaitGroup
 	active           map[uint16]bool
 	closed           bool
-	lastErr          error
 	stats            *DestStats
 	stopAfterReached map[string]bool // May be nil.
 
