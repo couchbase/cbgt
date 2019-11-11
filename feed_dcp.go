@@ -63,6 +63,10 @@ type DCPFeedParams struct {
 	// Used to specify whether the applications are interested
 	// in receiving the xattrs information in a dcp stream.
 	IncludeXAttrs bool `json:"includeXAttrs,omitempty"`
+
+	// Used to specify whether the applications are not interested
+	// in receiving the value for mutations in a dcp stream.
+	NoValue bool `json:"noValue,omitempty"`
 }
 
 // NewDCPFeedParams returns a DCPFeedParams initialized with default

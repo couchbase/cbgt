@@ -227,7 +227,15 @@ func NewGocbDCPFeed(name, indexName, url,
 		return nil, err
 	}
 
-	flags := gocbcore.DcpOpenFlagProducer | gocbcore.DcpOpenFlagIncludeXattrs
+	flags := gocbcore.DcpOpenFlagProducer
+
+	if params.IncludeXAttrs {
+		flags |= gocbcore.DcpOpenFlagIncludeXattrs
+	}
+
+	if params.NoValue {
+		flags |= gocbcore.DcpOpenFlagNoValue
+	}
 
 	feed.agent, err = gocbcore.CreateDcpAgent(config, name, flags)
 	if err != nil {
