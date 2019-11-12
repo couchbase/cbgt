@@ -386,7 +386,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				f.complete(vbId)
 			} else if er == gocb.ErrNetwork {
 				// TODO: Add a maximum retry-count here maybe?
-				log.Printf("feed_dcp_gocb: Network error received on DCP stream for"+
+				log.Warnf("feed_dcp_gocb: Network error received on DCP stream for"+
 					" vb: %v", vbId)
 				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 			} else if er == gocb.ErrRollback {
@@ -395,7 +395,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				f.complete(vbId)
 				go f.rollback(vbId, entries)
 			} else if er != nil {
-				log.Printf("feed_dcp_gocb: Received error on DCP stream for vb: %v,"+
+				log.Warnf("feed_dcp_gocb: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
 				f.complete(vbId)
 			} else {
