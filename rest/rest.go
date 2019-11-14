@@ -537,6 +537,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "x/Advanced|x/Index partition querying",
 				"version introduced": "0.2.0",
 			})
+		handle("/api/index/{indexName}/tasks", "POST",
+			NewTaskRequestHandler(mgr),
+			map[string]string{
+				"_category":          "Indexing|Index level task requests",
+				"_about":             `Index level task requests, eg: Compact an index storage.`,
+				"version introduced": "7.0.0",
+			})
 	}
 	handle("/api/index/{indexName}/pindexLookup", "POST", NewPIndexLookUpHandler(mgr),
 		map[string]string{

@@ -104,6 +104,11 @@ type PIndexImplType struct {
 	// Optional, invoked for checking whether the pindex implementations
 	// can effect the config changes through a restart of pindexes.
 	AnalyzeIndexDefUpdates func(configUpdates *ConfigAnalyzeRequest) ResultCode
+
+	// Invoked by the manager when it wants to trigger generic operations
+	// on the index.
+	SubmitTaskRequest func(mgr *Manager, indexName,
+		indexUUID string, req []byte) (*TaskRequestStatus, error)
 }
 
 // ConfigAnalyzeRequest wraps up the various configuration

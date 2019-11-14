@@ -417,6 +417,61 @@ func (h *IndexControlHandler) ServeHTTP(
 	MustEncode(w, rv)
 }
 
+// ---------------------------------------------------
+
+// TaskRequestHandler is a REST handler for submitting a task
+// request on an index.
+type TaskRequestHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewTaskRequestHandler(mgr *cbgt.Manager) *TaskRequestHandler {
+	return &TaskRequestHandler{mgr: mgr}
+}
+
+func (h *TaskRequestHandler) RESTOpts(opts map[string]string) {
+	opts["param: indexName"] =
+		"required, string, URL path parameter\n\n" +
+			"The name of the index on which the task is to be triggered."
+}
+
+func (h *TaskRequestHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	indexName := IndexNameLookup(req)
+	if indexName == "" {
+		ShowError(w, req, "rest_index: index name is required", http.StatusBadRequest)
+		return
+	}
+
+	indexUUID := req.FormValue("indexUUID")
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		ShowErrorBody(w, nil, fmt.Sprintf("rest_index: TaskRequestHandler,"+
+			" could not read request body, indexName: %s",
+			indexName), http.StatusBadRequest)
+		return
+	}
+
+	pindexImplType, err := cbgt.PIndexImplTypeForIndex(h.mgr.Cfg(), indexName)
+	if err != nil || pindexImplType.SubmitTaskRequest == nil {
+		ShowError(w, req, fmt.Sprintf("rest_index: SubmitTaskRequest,"+
+			" no pindexImplType, indexName: %s, err: %v",
+			indexName, err), http.StatusBadRequest)
+		return
+	}
+
+	var rv *cbgt.TaskRequestStatus
+	rv, err = pindexImplType.SubmitTaskRequest(h.mgr, indexName, indexUUID, requestBody)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_index: SubmitTaskRequest,"+
+			" indexName: %s, err: %v",
+			indexName, err), http.StatusInternalServerError)
+		return
+	}
+
+	MustEncode(w, rv)
+}
+
 // ------------------------------------------------------------------
 
 // ListPIndexHandler is a REST handler for listing pindexes.
