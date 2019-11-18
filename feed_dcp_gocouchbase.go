@@ -580,7 +580,7 @@ func (r *DCPFeed) RollbackEx(vbucketId uint16, vBucketUUID uint64, rollbackSeq u
 // rejected auth or connection failure, for example, results in false.
 func (r *DCPFeed) VerifyBucketNotExists() (bool, error) {
 	urls := strings.Split(r.url, ";")
-	if len(urls) <= 0 {
+	if len(urls) == 0 {
 		return false, nil
 	}
 

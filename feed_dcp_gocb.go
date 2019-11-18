@@ -111,6 +111,7 @@ type GocbDCPFeed struct {
 	dests      map[string]Dest
 	disable    bool
 	stopAfter  map[string]UUIDSeq
+	config     *gocbcore.AgentConfig
 	agent      *gocbcore.Agent
 	mgr        *Manager
 
@@ -226,6 +227,8 @@ func NewGocbDCPFeed(name, indexName, url,
 	if err != nil {
 		return nil, err
 	}
+
+	feed.config = config
 
 	flags := gocbcore.DcpOpenFlagProducer
 
@@ -822,4 +825,32 @@ func (f *GocbDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 			go f.Close()
 		}
 	}
+}
+
+// ----------------------------------------------------------------
+
+func (f *GocbDCPFeed) VerifyBucketNotExists() (bool, error) {
+	agent, err := gocbcore.CreateAgent(f.config)
+	if err != nil {
+		if err == gocbcore.ErrNoBucket || err == gocbcore.ErrAuthError {
+			// bucket not found
+			return true, err
+		}
+		return false, err
+	}
+
+	uuid := agent.BucketUUID()
+	agent.Close()
+
+	if uuid != f.bucketUUID {
+		// bucket UUID mismatched, so the bucket being looked
+		// up must've been deleted
+		return true, err
+	}
+
+	return false, nil
+}
+
+func (f *GocbDCPFeed) GetBucketDetails() (string, string) {
+	return f.bucketName, f.bucketUUID
 }
