@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/couchbase/clog"
@@ -116,11 +117,11 @@ type GocbDCPFeed struct {
 	vbucketIds        []uint16
 	lastReceivedSeqno []uint64
 	currVBs           []*vbucketState
+	closed            uint32 // sync.atomic
 
 	m                sync.Mutex
 	remaining        sync.WaitGroup
 	active           map[uint16]bool
-	closed           bool
 	stats            *DestStats
 	stopAfterReached map[string]bool // May be nil.
 
@@ -274,13 +275,12 @@ func (f *GocbDCPFeed) Start() error {
 }
 
 func (f *GocbDCPFeed) Close() error {
-	f.m.Lock()
-	if f.closed {
-		f.m.Unlock()
+	if !atomic.CompareAndSwapUint32(&f.closed, 0, 1) {
 		return nil
 	}
+
+	f.m.Lock()
 	f.agent.Close()
-	f.closed = true
 	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
@@ -460,12 +460,22 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 // ----------------------------------------------------------------
 
+// onError is to be invoked in case of errors encountered while
+// processing DCP messages.
+func (f *GocbDCPFeed) onError(err error) {
+	log.Warnf("feed_dcp_gocb: onError, name: %s,"+
+		" bucketName: %s, bucketUUID: %s, err: %v",
+		f.name, f.bucketName, f.bucketUUID, err)
+
+	if atomic.LoadUint32(&f.closed) == 0 {
+		go f.Close()
+	}
+}
+
 func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, snapshotType gocbcore.SnapshotState) {
 	if f.currVBs[vbId] == nil {
-		// TODO: OnError close feed
-		log.Warnf("feed_dcp_gocb: SnapshotMarker for a non-running vb: %v,"+
-			" vbucketState: %#v", vbId, f.currVBs[vbId])
+		f.onError(fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
 		return
 	}
 
@@ -492,25 +502,18 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}, f.stats.TimerSnapshotStart)
 
 	if err != nil {
-		// TODO: OnError close feed
-		log.Warnf("feed_dcp_gocb: Error in accepting a DCP snapshot marker,"+
-			" vbId: %v, err: %v", vbId, err)
-		return
+		f.onError(fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
 	}
 }
 
 func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
 	if f.currVBs[vbId] == nil {
-		log.Warnf("feed_dcp_gocb: Error: Data change received for vb: %d,"+
-			" wrong vbucketState: %#v", vbId, f.currVBs[vbId])
 		return false
 	}
 
 	if !f.currVBs[vbId].snapSaved {
 		v, _, err := f.getMetaData(vbId)
 		if err != nil || v == nil {
-			log.Warnf("feed_dcp_gocb: Error: Data change,"+
-				" couldn't fetch metadata for vb: %d, err: %v", vbId, err)
 			return false
 		}
 
@@ -519,8 +522,6 @@ func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
 
 		err = f.setMetaData(vbId, v)
 		if err != nil {
-			log.Warnf("feed_dcp_gocb: Error: Failed to update metadata,"+
-				" vb: %d, err: %v", vbId, err)
 			return false
 		}
 
@@ -534,7 +535,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	key, value []byte) {
 	if !f.checkAndUpdateVBucketState(vbId) {
-		// TODO: OnError close feed
+		f.onError(fmt.Errorf("Mutation, invalid vb: %d", vbId))
 		return
 	}
 
@@ -569,8 +570,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		log.Warnf("feed_dcp_gocb: Error in accepting a DCP mutation,"+
-			" vbId: %v, err: %v", vbId, err)
+		f.onError(fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
 	} else {
 		f.lastReceivedSeqno[vbId] = seqNo
 	}
@@ -579,7 +579,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	vbId uint16, key, value []byte) {
 	if !f.checkAndUpdateVBucketState(vbId) {
-		// TODO: OnError close feed
+		f.onError(fmt.Errorf("Deletion, invalid vb: %d", vbId))
 		return
 	}
 
@@ -613,8 +613,7 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		log.Warnf("feed_dcp_gocb: Error in accepting a DCP deletion,"+
-			" vbId: %v, err: %v", vbId, err)
+		f.onError(fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
 	} else {
 		f.lastReceivedSeqno[vbId] = seqNo
 	}

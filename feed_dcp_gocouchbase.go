@@ -404,8 +404,8 @@ func (r *DCPFeed) updateStopAfter(partition string, seq uint64) {
 func (r *DCPFeed) OnError(err error) {
 	// TODO: Check the type of the error if it's something
 	// serious / not-recoverable / needs user attention.
-	log.Printf("feed_dcp_gocouchbase: OnError, name: %s:"+
-		" bucketName: %s, bucketUUID: %s, err: %v\n",
+	log.Warnf("feed_dcp_gocouchbase: OnError, name: %s,"+
+		" bucketName: %s, bucketUUID: %s, err: %v",
 		r.name, r.bucketName, r.bucketUUID, err)
 
 	atomic.AddUint64(&r.stats.TotError, 1)
