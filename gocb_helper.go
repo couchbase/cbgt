@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
-	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -209,7 +208,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 			err := <-signal
 			return rv, err
 		}
-		return nil, gocb.ErrTimeout
+		return nil, gocbcore.ErrTimeout
 	}
 }
 
@@ -279,7 +278,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 			err := <-signal
 			return rv, err
 		}
-		return nil, gocb.ErrTimeout
+		return nil, gocbcore.ErrTimeout
 	}
 }
 

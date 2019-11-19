@@ -21,7 +21,6 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -330,18 +329,18 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 		return err
 	case <-f.closeCh:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return gocb.ErrStreamDisconnected
+		return gocbcore.ErrStreamDisconnected
 	case <-timeoutTmr.C:
 		gocbcore.ReleaseTimer(timeoutTmr, true)
 		if op != nil && !op.Cancel() {
 			select {
 			case err = <-signal:
 			case <-f.closeCh:
-				err = gocb.ErrStreamDisconnected
+				err = gocbcore.ErrStreamDisconnected
 			}
 			return err
 		}
-		return gocb.ErrTimeout
+		return gocbcore.ErrTimeout
 	}
 }
 
@@ -381,15 +380,15 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f,
 		func(entries []gocbcore.FailoverEntry, er error) {
-			if er == gocb.ErrShutdown {
+			if er == gocbcore.ErrShutdown {
 				log.Printf("feed_dcp_gocb: DCP stream for vb: %v was shutdown", vbId)
 				f.complete(vbId)
-			} else if er == gocb.ErrNetwork {
+			} else if er == gocbcore.ErrNetwork {
 				// TODO: Add a maximum retry-count here maybe?
 				log.Warnf("feed_dcp_gocb: Network error received on DCP stream for"+
 					" vb: %v", vbId)
 				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
-			} else if er == gocb.ErrRollback {
+			} else if er == gocbcore.ErrRollback {
 				log.Printf("feed_dcp_gocb: Received rollback, for vb: %v,"+
 					" seqno requested: %v", vbId, seqStart)
 				f.complete(vbId)
@@ -425,7 +424,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			case <-f.closeCh:
 			}
 		})
-	if err != nil && err != gocb.ErrShutdown {
+	if err != nil && err != gocbcore.ErrShutdown {
 		log.Warnf("feed_dcp_gocb: DCP stream closed for vbID: %v, due to client"+
 			" error: `%s`", vbId, err)
 	}
@@ -632,16 +631,16 @@ func (f *GocbDCPFeed) End(vbId uint16, err error) {
 		log.Printf("feed_dcp_gocb: DCP stream ended for vb: %v, last seq: %v",
 			vbId, lastReceivedSeqno)
 		f.complete(vbId)
-	} else if err == gocb.ErrStreamStateChanged || err == gocb.ErrStreamTooSlow ||
-		err == gocb.ErrStreamDisconnected {
+	} else if err == gocbcore.ErrStreamStateChanged || err == gocbcore.ErrStreamTooSlow ||
+		err == gocbcore.ErrStreamDisconnected {
 		log.Printf("feed_dcp_gocb: DCP stream for vb: %v, closed due to"+
 			" `%s`, will reconnect", vbId, err.Error())
 		f.initiateStreamEx(vbId, false, gocbcore.VbUuid(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
-	} else if err == gocb.ErrStreamClosed {
+	} else if err == gocbcore.ErrStreamClosed {
 		log.Printf("feed_dcp_gocb: DCP stream for vb: %v, closed by consumer", vbId)
 		f.complete(vbId)
-	} else if err == gocb.ErrNetwork {
+	} else if err == gocbcore.ErrNetwork {
 		// TODO: Add a maximum retry-count here maybe?
 		log.Printf("feed_dcp_gocb: Network error received on DCP stream for vb: %v",
 			vbId)
