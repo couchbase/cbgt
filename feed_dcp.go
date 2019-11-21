@@ -16,6 +16,22 @@ import (
 	"fmt"
 )
 
+// DCPFeedPrefix should be immutable after process init()'ialization.
+var DCPFeedPrefix string
+
+// DCPFeedBufferSizeBytes is representative of connection_buffer_size
+// for DCP to enable flow control, defaults at 20MB.
+var DCPFeedBufferSizeBytes = uint32(20 * 1024 * 1024)
+
+// DCPFeedBufferAckThreshold is representative of the percentage of
+// the connection_buffer_size when the consumer will ack back to
+// the producer.
+var DCPFeedBufferAckThreshold = float32(0.8)
+
+// DCPNoopTimeIntervalSecs is representative of set_noop_interval
+// for DCP to enable no-op messages, defaults at 2min.
+var DCPNoopTimeIntervalSecs = uint32(120)
+
 // DCPFeedParams are DCP data-source/feed specific connection
 // parameters that may be part of a sourceParams JSON and is a
 // superset of CBAuthParams.  DCPFeedParams holds the information used

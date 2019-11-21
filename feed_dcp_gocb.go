@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -239,13 +240,14 @@ func NewGocbDCPFeed(name, indexName, url,
 		flags |= gocbcore.DcpOpenFlagNoValue
 	}
 
-	feed.agent, err = gocbcore.CreateDcpAgent(config, name, flags)
+	dcp_conn_name := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31())
+	feed.agent, err = gocbcore.CreateDcpAgent(config, dcp_conn_name, flags)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("feed_dcp_gocb: NewGocbDCPFeed, name: %s, indexName: %s",
-		name, indexName)
+	log.Printf("feed_dcp_gocb: NewGocbDCPFeed, name: %s, indexName: %s, server: %v",
+		name, indexName, urls[0])
 
 	return feed, nil
 }
@@ -386,7 +388,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	signal := make(chan bool, 1)
 	log.Debugf("feed_dcp_gocb: Initiating DCP stream request for vb: %v,"+
-		" vbUUID: %v, seqStart: %v", vbId, vbuuid, seqStart)
+		" vbUUID: %v, seqStart: %v, seqEnd: %v", vbId, vbuuid, seqStart, seqEnd)
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f,
 		func(entries []gocbcore.FailoverEntry, er error) {
