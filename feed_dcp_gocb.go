@@ -272,7 +272,7 @@ func (f *GocbDCPFeed) Start() error {
 		f.Name(), len(f.vbucketIds))
 
 	for _, vbid := range f.vbucketIds {
-		err := f.initiateStream(uint16(vbid), true)
+		err := f.initiateStream(uint16(vbid))
 		if err != nil {
 			return fmt.Errorf("feed_dcp_gocb: Start, name: %s, vbid: %v, err: %v",
 				f.Name(), vbid, err)
@@ -358,7 +358,7 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 
 // ----------------------------------------------------------------
 
-func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
+func (f *GocbDCPFeed) initiateStream(vbId uint16) error {
 	vbMetaData, lastSeq, err := f.getMetaData(vbId)
 	if err != nil {
 		return err
@@ -369,7 +369,7 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16, isNewStream bool) error {
 		vbuuid = vbMetaData.FailOverLog[0][0]
 	}
 
-	return f.initiateStreamEx(vbId, isNewStream, gocbcore.VbUuid(vbuuid),
+	return f.initiateStreamEx(vbId, true, gocbcore.VbUuid(vbuuid),
 		gocbcore.SeqNo(lastSeq), max_end_seqno)
 }
 
