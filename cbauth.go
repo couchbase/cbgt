@@ -49,11 +49,8 @@ func GetSecuritySetting() *SecuritySetting {
 
 var securityCtx *SecurityContext
 
-func InitSecurityCtxAndRegisterWithCBAuth() {
-	securityCtx = &SecurityContext{
-		notifiers: make(map[string]ConfigRefreshNotifier),
-	}
-
+// RegisterSecurityNotifications registers for the cbauth's security callbacks
+func RegisterSecurityNotifications() {
 	cbauth.RegisterConfigRefreshCallback(securityCtx.refresh)
 }
 
