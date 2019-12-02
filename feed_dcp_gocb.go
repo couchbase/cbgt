@@ -23,7 +23,7 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"gopkg.in/couchbase/gocbcore.v7"
+	"github.com/couchbase/gocbcore"
 )
 
 const source_gocb = "gocb"
@@ -55,6 +55,7 @@ func setupAgentConfig() *gocbcore.AgentConfig {
 		ServerConnectTimeout: GocbServerConnectTimeout,
 		NmvRetryDelay:        GocbNmvRetryDelay,
 		UseKvErrorMaps:       true,
+		UseCollections:       true,
 	}
 }
 
@@ -136,6 +137,8 @@ type GocbDCPFeed struct {
 	currVBs           []*vbucketState
 	shutdownVbs       uint32
 	closed            uint32 // sync.atomic
+
+	streamFilter *gocbcore.StreamFilter
 
 	m                sync.Mutex
 	remaining        sync.WaitGroup
@@ -286,8 +289,52 @@ func (f *GocbDCPFeed) Start() error {
 		return nil
 	}
 
-	log.Printf("feed_dcp_gocb: Start, name: %s, num streams: %d",
-		f.Name(), len(f.vbucketIds))
+	signal := make(chan error, 1)
+	// FIXME: initial support for _default collection within _default scope
+	op, err := f.agent.GetCollectionID("_default", "_default",
+		gocbcore.GetCollectionIDOptions{},
+		func(manifestID uint64, collectionId uint32, er error) {
+			if er == nil {
+				f.streamFilter = &gocbcore.StreamFilter{
+					ManifestUid: manifestID,
+					Collections: []uint32{collectionId},
+				}
+			}
+
+			select {
+			case <-f.closeCh:
+			case signal <- er:
+			}
+		})
+	if err != nil {
+		return fmt.Errorf("feed_dcp_gocb: Start, GetCollectionID, err: %v", err)
+	}
+
+	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		if err != nil {
+			return err
+		}
+	case <-f.closeCh:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return gocbcore.ErrStreamDisconnected
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		if op != nil && !op.Cancel() {
+			select {
+			case err = <-signal:
+			case <-f.closeCh:
+				err = gocbcore.ErrStreamDisconnected
+			}
+			return err
+		}
+		return gocbcore.ErrTimeout
+	}
+
+	log.Printf("feed_dcp_gocb: Start, name: %s, num streams: %d,"+
+		" streamFilter: %+v", f.Name(), len(f.vbucketIds), f.streamFilter)
 
 	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid))
@@ -403,12 +450,12 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	}
 
 	snapStart := seqStart
-
 	signal := make(chan error, 1)
 	log.Debugf("feed_dcp_gocb: Initiating DCP stream request for vb: %v,"+
-		" vbUUID: %v, seqStart: %v, seqEnd: %v", vbId, vbuuid, seqStart, seqEnd)
+		" vbUUID: %v, seqStart: %v, seqEnd: %v, streamFilter: %+v",
+		vbId, vbuuid, seqStart, seqEnd, f.streamFilter)
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
-		vbuuid, seqStart, seqEnd, snapStart, snapStart, f,
+		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamFilter,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if er == gocbcore.ErrShutdown {
 				log.Printf("feed_dcp_gocb: DCP stream for vb: %v was shutdown", vbId)
@@ -510,7 +557,8 @@ func (f *GocbDCPFeed) onError(isShutdown bool, err error) {
 // ----------------------------------------------------------------
 
 func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
-	vbId uint16, snapshotType gocbcore.SnapshotState) {
+	vbId uint16, streamId uint16, snapshotType gocbcore.SnapshotState) {
+	// FIXME Handle streamId
 	if f.currVBs[vbId] == nil {
 		f.onError(false, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
 		return
@@ -545,7 +593,8 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 
 func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
-	key, value []byte) {
+	collectionId uint32, streamId uint16, key, value []byte) {
+	// FIXME Handle collectionId and streamId
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
 		f.onError(false, fmt.Errorf("Mutation, %v", err))
 		return
@@ -589,7 +638,8 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 }
 
 func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
-	vbId uint16, key, value []byte) {
+	vbId uint16, collectionId uint32, streamId uint16, key, value []byte) {
+	// FIXME Handle collectionId and streamId
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
 		f.onError(false, fmt.Errorf("Deletion, %v", err))
 		return
@@ -632,11 +682,12 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 }
 
 func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
-	key []byte) {
-	f.Deletion(seqNo, revNo, cas, 0, vbId, key, nil)
+	collectionId uint32, streamId uint16, key []byte) {
+	f.Deletion(seqNo, revNo, cas, 0, vbId, collectionId, streamId, key, nil)
 }
 
-func (f *GocbDCPFeed) End(vbId uint16, err error) {
+func (f *GocbDCPFeed) End(vbId uint16, streamId uint16, err error) {
+	// FIXME Handle streamId
 	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
 		log.Printf("feed_dcp_gocb: DCP stream ended for vb: %v, last seq: %v",
@@ -662,6 +713,40 @@ func (f *GocbDCPFeed) End(vbId uint16, err error) {
 			" err: `%s`", vbId, lastReceivedSeqno, err)
 		f.complete(vbId)
 	}
+}
+
+// ----------------------------------------------------------------
+
+func (f *GocbDCPFeed) CreateCollection(seqNo uint64, version uint8,
+	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
+	ttl uint32, streamId uint16, key []byte) {
+	// FIXME
+}
+
+func (f *GocbDCPFeed) DeleteCollection(seqNo uint64, version uint8,
+	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
+	streamId uint16) {
+	// FIXME
+}
+
+func (f *GocbDCPFeed) FlushCollection(seqNo uint64, version uint8,
+	vbId uint16, manifestUid uint64, collectionId uint32) {
+	// FIXME
+}
+
+func (f *GocbDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
+	manifestUid uint64, scopeId uint32, streamId uint16, key []byte) {
+	// FIXME
+}
+
+func (f *GocbDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
+	manifestUid uint64, scopeId uint32, streamId uint16) {
+	// FIXME
+}
+
+func (f *GocbDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
+	manifestUid uint64, collectionId uint32, ttl uint32, streamId uint16) {
+	// FIXME
 }
 
 // ----------------------------------------------------------------

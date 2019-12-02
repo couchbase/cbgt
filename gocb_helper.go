@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/cbauth"
-	"gopkg.in/couchbase/gocbcore.v7"
+	"github.com/couchbase/gocbcore"
 )
 
 // ----------------------------------------------------------------
