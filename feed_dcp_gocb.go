@@ -336,12 +336,12 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 
 	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
 	select {
-	case err := <-signal:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return err
 	case <-f.closeCh:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
 		return gocbcore.ErrStreamDisconnected
+	case err = <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return err
 	case <-timeoutTmr.C:
 		gocbcore.ReleaseTimer(timeoutTmr, true)
 		if op != nil && !op.Cancel() {
@@ -386,7 +386,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	snapStart := seqStart
 
-	signal := make(chan bool, 1)
+	signal := make(chan error, 1)
 	log.Debugf("feed_dcp_gocb: Initiating DCP stream request for vb: %v,"+
 		" vbUUID: %v, seqStart: %v, seqEnd: %v", vbId, vbuuid, seqStart, seqEnd)
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
@@ -426,48 +426,47 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				}
 
 				if err != nil {
-					log.Warnf("feed_dcp_gocb: Error in fetching/setting metadata"+
+					er = fmt.Errorf("error in fetching/setting metadata"+
 						" for vb: %d, err: %v", vbId, err)
 				}
 			}
 
 			select {
-			case signal <- true:
 			case <-f.closeCh:
+			case signal <- er:
 			}
 		})
+
 	if err != nil && err != gocbcore.ErrShutdown {
 		log.Warnf("feed_dcp_gocb: DCP stream closed for vbID: %v, due to client"+
 			" error: `%s`", vbId, err)
+		return err
 	}
 
-	go func() {
-		timeoutTmr := gocbcore.AcquireTimer(OpenStreamTimeout)
-		select {
-		case <-f.closeCh:
-			gocbcore.ReleaseTimer(timeoutTmr, false)
-			return
-		case <-signal:
-			gocbcore.ReleaseTimer(timeoutTmr, false)
-			return
-		case <-timeoutTmr.C:
-			gocbcore.ReleaseTimer(timeoutTmr, true)
-			if op != nil && !op.Cancel() {
-				select {
-				case <-signal:
-				case <-f.closeCh:
-				}
-				return
+	timeoutTmr := gocbcore.AcquireTimer(OpenStreamTimeout)
+	select {
+	case <-f.closeCh:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return gocbcore.ErrStreamDisconnected
+	case err = <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return err
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		if op != nil && !op.Cancel() {
+			select {
+			case err = <-signal:
+			case <-f.closeCh:
+				err = gocbcore.ErrStreamDisconnected
 			}
-
-			// TODO: On stream request timeout, configure a maximum number
-			// of retry attempts perhaps?
-			f.complete(vbId)
-			return
+			return err
 		}
-	}()
 
-	return err
+		// TODO: On stream request timeout, configure a maximum number
+		// of retry attempts perhaps?
+		f.complete(vbId)
+		return gocbcore.ErrTimeout
+	}
 }
 
 // ----------------------------------------------------------------
