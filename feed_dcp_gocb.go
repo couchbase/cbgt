@@ -240,14 +240,15 @@ func NewGocbDCPFeed(name, indexName, url,
 		flags |= gocbcore.DcpOpenFlagNoValue
 	}
 
-	dcp_conn_name := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31())
-	feed.agent, err = gocbcore.CreateDcpAgent(config, dcp_conn_name, flags)
+	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31())
+	feed.agent, err = gocbcore.CreateDcpAgent(config, dcpConnName, flags)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("feed_dcp_gocb: NewGocbDCPFeed, name: %s, indexName: %s, server: %v",
-		name, indexName, urls[0])
+	log.Printf("feed_dcp_gocb: NewGocbDCPFeed, name: %s, indexName: %s,"+
+		" server: %v, connection name: %s",
+		name, indexName, urls[0], dcpConnName)
 
 	return feed, nil
 }
