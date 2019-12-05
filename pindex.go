@@ -137,7 +137,13 @@ func NewPIndex(mgr *Manager, name, uuid,
 		go restartPIndex(mgr, pindex)
 	}
 
-	impl, dest, err := NewPIndexImpl(indexType, indexParams, path, restart)
+	params := IndexPrepParams{SourceName: sourceName, Params: indexParams}
+	pBytes, err := json.Marshal(&params)
+	if err != nil {
+		return nil, fmt.Errorf("pindex: NewPIndex, json marshal err: %v", err)
+	}
+
+	impl, dest, err := NewPIndexImpl(indexType, string(pBytes), path, restart)
 	if err != nil {
 		os.RemoveAll(path)
 		return nil, fmt.Errorf("pindex: new indexType: %s, indexParams: %s,"+

@@ -28,10 +28,6 @@ type PIndexImpl interface{}
 // PIndexImplType defines the functions that every pindex
 // implementation type must register on startup.
 type PIndexImplType struct {
-	// Prepare indexParams by setting any unset parameters to the
-	// default.
-	PrepareParams func(indexParams string) (string, error)
-
 	// Prepare provides a way to customize the index definition.
 	Prepare func(indexDef *IndexDef) (*IndexDef, error)
 

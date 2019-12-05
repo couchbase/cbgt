@@ -23,6 +23,13 @@ import (
 // INDEX_NAME_REGEXP is used to validate index definition names.
 const INDEX_NAME_REGEXP = `^[A-Za-z][0-9A-Za-z_\-]*$`
 
+// IndexPrepParams can be used to override any of the
+// unset index parameters.
+type IndexPrepParams struct {
+	Params     string `json:"params,omitempty"`
+	SourceName string `json:"sourceName,omitempty"`
+}
+
 // Creates a logical index definition.  A non-"" prevIndexUUID means
 // an update to an existing index.
 func (mgr *Manager) CreateIndex(sourceType,
@@ -69,14 +76,6 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		return "", fmt.Errorf("manager_api: CreateIndex,"+
 			" unknown indexType: %s", indexType)
 	}
-	if pindexImplType.PrepareParams != nil {
-		indexParams, err = pindexImplType.PrepareParams(indexParams)
-		if err != nil {
-			return "", fmt.Errorf("manager_api: CreateIndex, PrepareParams failed,"+
-				" err: %v", err)
-		}
-	}
-	indexDef.Params = indexParams
 
 	if pindexImplType.Prepare != nil {
 		indexDef, err = pindexImplType.Prepare(indexDef)
@@ -85,6 +84,8 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				" err: %v", err)
 		}
 	}
+	sourceParams = indexDef.SourceParams
+	indexParams = indexDef.Params
 
 	if pindexImplType.Validate != nil {
 		err = pindexImplType.Validate(indexType, indexName, indexParams)
