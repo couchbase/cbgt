@@ -135,12 +135,12 @@ func NewGocbDCPFeed(name, indexName, url,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbDCPFeed, error) {
-	var optionsMgr map[string]string
+	var options map[string]string
 	if mgr != nil {
-		optionsMgr = mgr.Options()
+		options = mgr.Options()
 	}
 
-	auth, err := gocbAuth(paramsStr, optionsMgr)
+	auth, err := gocbAuth(paramsStr, options)
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocb: NewGocbDCPFeed gocbAuth, err: %v", err)
 	}
@@ -227,6 +227,13 @@ func NewGocbDCPFeed(name, indexName, url,
 	if err != nil {
 		return nil, err
 	}
+
+	tlsConfig, err := FetchSecuritySetting(options)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp_gocb: NewGocbDCPFeed,"+
+			" error in fetching tlsConfig, err: %v", err)
+	}
+	config.TlsConfig = tlsConfig
 
 	feed.config = config
 

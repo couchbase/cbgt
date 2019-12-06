@@ -13,6 +13,8 @@ package cbgt
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"io/ioutil"
 	"sync"
 	"sync/atomic"
@@ -191,4 +193,55 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 	}
 
 	return nil
+}
+
+// ----------------------------------------------------------------
+
+func FetchSecuritySetting(options map[string]string) (*tls.Config, error) {
+	if options != nil && options["authType"] == "cbauth" {
+		currentSetting := GetSecuritySetting()
+		if currentSetting.EncryptionEnabled {
+			certificates := []tls.Certificate{*currentSetting.Certificate}
+			roots := x509.NewCertPool()
+			ok := roots.AppendCertsFromPEM(currentSetting.CertInBytes)
+			if !ok {
+				return nil, fmt.Errorf("Error appending certificates (cbauth)")
+			}
+
+			return &tls.Config{
+				RootCAs:      roots,
+				Certificates: certificates,
+			}, nil
+		}
+	} else if len(TLSCertFile) > 0 {
+		// In the case the authType isn't cbauth, check if user has
+		// set TLSCertFile and/or TLSKeyFile
+		var certificates []tls.Certificate
+		if len(TLSKeyFile) > 0 {
+			cert, err := tls.LoadX509KeyPair(TLSCertFile, TLSKeyFile)
+			if err != nil {
+				return nil, err
+			}
+
+			certificates = []tls.Certificate{cert}
+		}
+
+		certInBytes, err := ioutil.ReadFile(TLSCertFile)
+		if err != nil {
+			return nil, err
+		}
+
+		roots := x509.NewCertPool()
+		ok := roots.AppendCertsFromPEM(certInBytes)
+		if !ok {
+			return nil, fmt.Errorf("Error appending certificates")
+		}
+
+		return &tls.Config{
+			RootCAs:      roots,
+			Certificates: certificates,
+		}, nil
+	}
+
+	return nil, nil
 }
