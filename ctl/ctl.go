@@ -207,7 +207,11 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 	totalPartitions := 0
 	if indexDefs != nil {
 		for _, indexDef := range indexDefs.IndexDefs {
-			partitions, err := cbgt.CouchbasePartitions(indexDef.SourceType,
+			feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
+			if !exists || feedType == nil {
+				continue
+			}
+			partitions, err := feedType.Partitions(indexDef.SourceType,
 				indexDef.SourceName, indexDef.SourceUUID,
 				indexDef.SourceParams,
 				ctl.optionsCtl.Manager.Server(),
