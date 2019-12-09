@@ -197,7 +197,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(30 * time.Second)
+	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
 	select {
 	case err := <-signal:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
@@ -267,7 +267,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(30 * time.Second)
+	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
 	select {
 	case err := <-signal:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
