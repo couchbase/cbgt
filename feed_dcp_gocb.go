@@ -56,6 +56,10 @@ func setupAgentConfig() *gocbcore.AgentConfig {
 		NmvRetryDelay:        GocbNmvRetryDelay,
 		UseKvErrorMaps:       true,
 		UseCollections:       true,
+		AuthMechanisms: []gocbcore.AuthMechanism{
+			gocbcore.ScramSha512AuthMechanism,
+			gocbcore.PlainAuthMechanism,
+		},
 	}
 }
 
