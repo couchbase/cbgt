@@ -90,9 +90,10 @@ func StartGocbDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 }
 
 type vbucketState struct {
-	snapStart uint64
-	snapEnd   uint64
-	snapSaved bool // True when snapStart/snapEnd have been persisted
+	snapStart   uint64
+	snapEnd     uint64
+	failoverLog [][]uint64
+	snapSaved   bool // True when snapStart/snapEnd have been persisted
 }
 
 // A GocbDCPFeed implements both Feed and gocb.StreamObserver
@@ -427,6 +428,8 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					}
 				}
 
+				f.currVBs[vbId].failoverLog = failoverLog
+
 				v, _, err := f.getMetaData(vbId)
 				if err == nil {
 					v.FailOverLog = failoverLog
@@ -535,15 +538,13 @@ func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
 	}
 
 	if !f.currVBs[vbId].snapSaved {
-		v, _, err := f.getMetaData(vbId)
-		if err != nil || v == nil {
-			return false
+		v := &metaData{
+			SnapStart:   f.currVBs[vbId].snapStart,
+			SnapEnd:     f.currVBs[vbId].snapEnd,
+			FailOverLog: f.currVBs[vbId].failoverLog,
 		}
 
-		v.SnapStart = f.currVBs[vbId].snapStart
-		v.SnapEnd = f.currVBs[vbId].snapEnd
-
-		err = f.setMetaData(vbId, v)
+		err := f.setMetaData(vbId, v)
 		if err != nil {
 			return false
 		}
