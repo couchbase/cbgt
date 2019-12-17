@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/couchbase/cbauth"
 	"gopkg.in/couchbase/gocbcore.v7"
@@ -88,15 +87,10 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
-	config := &gocbcore.AgentConfig{
-		UserString:           "stats",
-		BucketName:           bucketName,
-		ConnectTimeout:       60000 * time.Millisecond,
-		ServerConnectTimeout: 7000 * time.Millisecond,
-		NmvRetryDelay:        100 * time.Millisecond,
-		UseKvErrorMaps:       true,
-		Auth:                 auth,
-	}
+	config := setupAgentConfig()
+	config.UserString = "stats"
+	config.BucketName = bucketName
+	config.Auth = auth
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) <= 0 {
@@ -197,7 +191,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
+	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
 	select {
 	case err := <-signal:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
@@ -267,7 +261,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
+	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
 	select {
 	case err := <-signal:
 		gocbcore.ReleaseTimer(timeoutTmr, false)

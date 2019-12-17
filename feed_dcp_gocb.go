@@ -43,8 +43,22 @@ type GocbDCPExtras struct {
 
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
 
-var StatsTimeout = time.Duration(30 * time.Second)
-var OpenStreamTimeout = time.Duration(60 * time.Second)
+var GocbStatsTimeout = time.Duration(30 * time.Second)
+var GocbOpenStreamTimeout = time.Duration(60 * time.Second)
+var GocbConnectTimeout = time.Duration(60000 * time.Millisecond)
+var GocbServerConnectTimeout = time.Duration(7000 * time.Millisecond)
+var GocbNmvRetryDelay = time.Duration(100 * time.Millisecond)
+
+func setupAgentConfig() *gocbcore.AgentConfig {
+	return &gocbcore.AgentConfig{
+		ConnectTimeout:       GocbConnectTimeout,
+		ServerConnectTimeout: GocbServerConnectTimeout,
+		NmvRetryDelay:        GocbNmvRetryDelay,
+		UseKvErrorMaps:       true,
+	}
+}
+
+// ----------------------------------------------------------------
 
 func init() {
 	RegisterFeedType(source_gocb, &FeedType{
@@ -209,15 +223,10 @@ func NewGocbDCPFeed(name, indexName, url,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	config := &gocbcore.AgentConfig{
-		UserString:           name,
-		BucketName:           bucketName,
-		ConnectTimeout:       60000 * time.Millisecond,
-		ServerConnectTimeout: 7000 * time.Millisecond,
-		NmvRetryDelay:        100 * time.Millisecond,
-		UseKvErrorMaps:       true,
-		Auth:                 auth,
-	}
+	config := setupAgentConfig()
+	config.UserString = name
+	config.BucketName = bucketName
+	config.Auth = auth
 
 	urls := strings.Split(url, ";")
 	if len(urls) <= 0 {
@@ -343,7 +352,7 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 		return err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(StatsTimeout)
+	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
 	select {
 	case <-f.closeCh:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
@@ -454,7 +463,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		return err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(OpenStreamTimeout)
+	timeoutTmr := gocbcore.AcquireTimer(GocbOpenStreamTimeout)
 	select {
 	case <-f.closeCh:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
@@ -498,6 +507,8 @@ func (f *GocbDCPFeed) onError(isShutdown bool, err error) {
 	}
 }
 
+// ----------------------------------------------------------------
+
 func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, snapshotType gocbcore.SnapshotState) {
 	if f.currVBs[vbId] == nil {
@@ -532,34 +543,11 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}
 }
 
-func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) bool {
-	if f.currVBs[vbId] == nil {
-		return false
-	}
-
-	if !f.currVBs[vbId].snapSaved {
-		v := &metaData{
-			SnapStart:   f.currVBs[vbId].snapStart,
-			SnapEnd:     f.currVBs[vbId].snapEnd,
-			FailOverLog: f.currVBs[vbId].failoverLog,
-		}
-
-		err := f.setMetaData(vbId, v)
-		if err != nil {
-			return false
-		}
-
-		f.currVBs[vbId].snapSaved = true
-	}
-
-	return true
-}
-
 func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	key, value []byte) {
-	if !f.checkAndUpdateVBucketState(vbId) {
-		f.onError(false, fmt.Errorf("Mutation, invalid vb: %d", vbId))
+	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
+		f.onError(false, fmt.Errorf("Mutation, %v", err))
 		return
 	}
 
@@ -602,8 +590,8 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 
 func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	vbId uint16, key, value []byte) {
-	if !f.checkAndUpdateVBucketState(vbId) {
-		f.onError(false, fmt.Errorf("Deletion, invalid vb: %d", vbId))
+	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
+		f.onError(false, fmt.Errorf("Deletion, %v", err))
 		return
 	}
 
@@ -686,6 +674,29 @@ type metaData struct {
 	SnapStart   uint64     `json:"snapStart"`
 	SnapEnd     uint64     `json:"snapEnd"`
 	FailOverLog [][]uint64 `json:"failOverLog"`
+}
+
+func (f *GocbDCPFeed) checkAndUpdateVBucketState(vbId uint16) error {
+	if f.currVBs[vbId] == nil {
+		return fmt.Errorf("invalid vb: %v", vbId)
+	}
+
+	if !f.currVBs[vbId].snapSaved {
+		v := &metaData{
+			SnapStart:   f.currVBs[vbId].snapStart,
+			SnapEnd:     f.currVBs[vbId].snapEnd,
+			FailOverLog: f.currVBs[vbId].failoverLog,
+		}
+
+		err := f.setMetaData(vbId, v)
+		if err != nil {
+			return err
+		}
+
+		f.currVBs[vbId].snapSaved = true
+	}
+
+	return nil
 }
 
 func (f *GocbDCPFeed) setMetaData(vbId uint16, m *metaData) error {
