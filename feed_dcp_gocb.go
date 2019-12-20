@@ -136,6 +136,9 @@ type GocbDCPFeed struct {
 	agent      *gocbcore.Agent
 	mgr        *Manager
 
+	scope       string
+	collections []string
+
 	vbucketIds        []uint16
 	lastReceivedSeqno []uint64
 	currVBs           []*vbucketState
@@ -220,6 +223,18 @@ func NewGocbDCPFeed(name, indexName, url,
 		closeCh:    make(chan struct{}),
 	}
 
+	if len(params.Scope) > 0 {
+		feed.scope = params.Scope
+	} else {
+		feed.scope = "_default"
+	}
+
+	if len(params.Collections) > 0 {
+		feed.collections = params.Collections
+	} else {
+		feed.collections = []string{"_default"}
+	}
+
 	// sort the vbucketIds list to determine the largest vbucketId
 	sort.Slice(vbucketIds, func(i, j int) bool { return vbucketIds[i] < vbucketIds[j] })
 	largestVBId := vbucketIds[len(vbucketIds)-1]
@@ -293,48 +308,53 @@ func (f *GocbDCPFeed) Start() error {
 		return nil
 	}
 
+	f.streamFilter = &gocbcore.StreamFilter{}
+
 	signal := make(chan error, 1)
-	// FIXME: initial support for _default collection within _default scope
-	op, err := f.agent.GetCollectionID("_default", "_default",
-		gocbcore.GetCollectionIDOptions{},
-		func(manifestID uint64, collectionId uint32, er error) {
-			if er == nil {
-				f.streamFilter = &gocbcore.StreamFilter{
-					ManifestUid: manifestID,
-					Collections: []uint32{collectionId},
+	for _, coll := range f.collections {
+		op, err := f.agent.GetCollectionID(f.scope, coll,
+			gocbcore.GetCollectionIDOptions{},
+			func(manifestID uint64, collectionID uint32, er error) {
+				// FIXME sdk to support fetching scope ID as well
+				// FIXME potential race in fetching ManifetUid/collection ids here?
+				if er == nil {
+					f.streamFilter.ManifestUid = manifestID
+					f.streamFilter.Collections =
+						append(f.streamFilter.Collections, collectionID)
 				}
-			}
 
-			select {
-			case <-f.closeCh:
-			case signal <- er:
-			}
-		})
-	if err != nil {
-		return fmt.Errorf("feed_dcp_gocb: Start, GetCollectionID, err: %v", err)
-	}
-
-	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
-	select {
-	case err := <-signal:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
+				select {
+				case <-f.closeCh:
+				case signal <- er:
+				}
+			})
 		if err != nil {
-			return err
+			return fmt.Errorf("feed_dcp_gocb: Start, GetCollectionID,"+
+				" collection: %v, err: %v", coll, err)
 		}
-	case <-f.closeCh:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return gocbcore.ErrStreamDisconnected
-	case <-timeoutTmr.C:
-		gocbcore.ReleaseTimer(timeoutTmr, true)
-		if op != nil && !op.Cancel() {
-			select {
-			case err = <-signal:
-			case <-f.closeCh:
-				err = gocbcore.ErrStreamDisconnected
+
+		timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
+		select {
+		case err := <-signal:
+			gocbcore.ReleaseTimer(timeoutTmr, false)
+			if err != nil {
+				return err
 			}
-			return err
+		case <-f.closeCh:
+			gocbcore.ReleaseTimer(timeoutTmr, false)
+			return gocbcore.ErrStreamDisconnected
+		case <-timeoutTmr.C:
+			gocbcore.ReleaseTimer(timeoutTmr, true)
+			if op != nil && !op.Cancel() {
+				select {
+				case err = <-signal:
+				case <-f.closeCh:
+					err = gocbcore.ErrStreamDisconnected
+				}
+				return err
+			}
+			return gocbcore.ErrTimeout
 		}
-		return gocbcore.ErrTimeout
 	}
 
 	log.Printf("feed_dcp_gocb: Start, name: %s, num streams: %d,"+

@@ -83,6 +83,12 @@ type DCPFeedParams struct {
 	// Used to specify whether the applications are not interested
 	// in receiving the value for mutations in a dcp stream.
 	NoValue bool `json:"noValue,omitempty"`
+
+	// Scope within the bucket to stream data from.
+	Scope string `json:"scope,omitempty"`
+
+	// Collections within the scope that the feed would cover.
+	Collections []string `json:"collections,omitempty"`
 }
 
 // NewDCPFeedParams returns a DCPFeedParams initialized with default
