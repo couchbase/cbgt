@@ -369,15 +369,17 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		classifyAddRemoveRestartPIndexes(mgr, addPlanPIndexes, removePIndexes)
 	log.Printf("janitor: pindexes to remove: %d", len(pindexesToRemove))
 	for _, pi := range pindexesToRemove {
-		log.Printf("  %+v", pi)
+		log.Printf("  pindex: %v; UUID: %v", pi.Name, pi.IndexUUID)
 	}
 	log.Printf("janitor: pindexes to add: %d", len(planPIndexesToAdd))
 	for _, ppi := range planPIndexesToAdd {
-		log.Printf("  %+v", ppi)
+		log.Printf("  pindex: %v; UUID: %v", ppi.Name, ppi.IndexUUID)
 	}
 	log.Printf("janitor: pindexes to restart: %d", len(pindexesToRestart))
 	for _, pi := range pindexesToRestart {
-		log.Printf(" %+v", pi)
+		if pi.pindex != nil {
+			log.Printf("  pindex: %v; UUID: %v", pi.pindex.Name, pi.pindex.IndexUUID)
+		}
 	}
 	// restart any of the pindexes so that they can
 	// adopt the updated indexDef parameters, ex: storeOptions
