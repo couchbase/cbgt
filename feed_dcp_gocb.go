@@ -56,6 +56,8 @@ var GocbConnectTimeout = time.Duration(60000 * time.Millisecond)
 var GocbServerConnectTimeout = time.Duration(7000 * time.Millisecond)
 var GocbNmvRetryDelay = time.Duration(100 * time.Millisecond)
 
+// ----------------------------------------------------------------
+
 func setupAgentConfig() *gocbcore.AgentConfig {
 	return &gocbcore.AgentConfig{
 		ConnectTimeout:       GocbConnectTimeout,
@@ -67,6 +69,25 @@ func setupAgentConfig() *gocbcore.AgentConfig {
 			gocbcore.ScramSha512AuthMechanism,
 			gocbcore.PlainAuthMechanism,
 		},
+	}
+}
+
+func waitForResponse(signal <-chan error, closeCh <-chan struct{},
+	op gocbcore.CancellablePendingOp, timeout time.Duration) error {
+	timeoutTmr := gocbcore.AcquireTimer(timeout)
+	select {
+	case err := <-signal:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return err
+	case <-closeCh:
+		gocbcore.ReleaseTimer(timeoutTmr, false)
+		return gocbcore.ErrStreamDisconnected
+	case <-timeoutTmr.C:
+		gocbcore.ReleaseTimer(timeoutTmr, true)
+		if op != nil {
+			op.Cancel()
+		}
+		return gocbcore.ErrTimeout
 	}
 }
 
@@ -340,27 +361,9 @@ func (f *GocbDCPFeed) Start() error {
 				" collection: %v, err: %v", coll, err)
 		}
 
-		timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
-		select {
-		case err := <-signal:
-			gocbcore.ReleaseTimer(timeoutTmr, false)
-			if err != nil {
-				return err
-			}
-		case <-f.closeCh:
-			gocbcore.ReleaseTimer(timeoutTmr, false)
-			return gocbcore.ErrStreamDisconnected
-		case <-timeoutTmr.C:
-			gocbcore.ReleaseTimer(timeoutTmr, true)
-			if op != nil && !op.Cancel() {
-				select {
-				case err = <-signal:
-				case <-f.closeCh:
-					err = gocbcore.ErrStreamDisconnected
-				}
-				return err
-			}
-			return gocbcore.ErrTimeout
+		err = waitForResponse(signal, f.closeCh, op, GocbStatsTimeout)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -430,26 +433,7 @@ func (f *GocbDCPFeed) Stats(w io.Writer) error {
 		return err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
-	select {
-	case <-f.closeCh:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return gocbcore.ErrStreamDisconnected
-	case err = <-signal:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return err
-	case <-timeoutTmr.C:
-		gocbcore.ReleaseTimer(timeoutTmr, true)
-		if op != nil && !op.Cancel() {
-			select {
-			case err = <-signal:
-			case <-f.closeCh:
-				err = gocbcore.ErrStreamDisconnected
-			}
-			return err
-		}
-		return gocbcore.ErrTimeout
-	}
+	return waitForResponse(signal, f.closeCh, op, GocbStatsTimeout)
 }
 
 // ----------------------------------------------------------------
@@ -541,30 +525,14 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		return err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(GocbOpenStreamTimeout)
-	select {
-	case <-f.closeCh:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return gocbcore.ErrStreamDisconnected
-	case err = <-signal:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return err
-	case <-timeoutTmr.C:
-		gocbcore.ReleaseTimer(timeoutTmr, true)
-		if op != nil && !op.Cancel() {
-			select {
-			case err = <-signal:
-			case <-f.closeCh:
-				err = gocbcore.ErrStreamDisconnected
-			}
-			return err
-		}
-
+	err = waitForResponse(signal, f.closeCh, op, GocbOpenStreamTimeout)
+	if err == gocbcore.ErrTimeout {
 		// TODO: On stream request timeout, configure a maximum number
 		// of retry attempts perhaps?
 		f.complete(vbId)
-		return gocbcore.ErrTimeout
 	}
+
+	return err
 }
 
 // ----------------------------------------------------------------

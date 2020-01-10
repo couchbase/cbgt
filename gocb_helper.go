@@ -191,19 +191,8 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
-	select {
-	case err := <-signal:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return rv, err
-	case <-timeoutTmr.C:
-		gocbcore.ReleaseTimer(timeoutTmr, true)
-		if !op.Cancel() {
-			err := <-signal
-			return rv, err
-		}
-		return nil, gocbcore.ErrTimeout
-	}
+	err = waitForResponse(signal, nil, op, GocbStatsTimeout)
+	return rv, err
 }
 
 // ----------------------------------------------------------------
@@ -261,19 +250,8 @@ func CBStats(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	timeoutTmr := gocbcore.AcquireTimer(GocbStatsTimeout)
-	select {
-	case err := <-signal:
-		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return rv, err
-	case <-timeoutTmr.C:
-		gocbcore.ReleaseTimer(timeoutTmr, true)
-		if !op.Cancel() {
-			err := <-signal
-			return rv, err
-		}
-		return nil, gocbcore.ErrTimeout
-	}
+	err = waitForResponse(signal, nil, op, GocbStatsTimeout)
+	return rv, err
 }
 
 // ----------------------------------------------------------------
