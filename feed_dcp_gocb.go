@@ -336,19 +336,63 @@ func (f *GocbDCPFeed) Start() error {
 		return nil
 	}
 
-	f.streamFilter = &gocbcore.StreamFilter{}
-
 	signal := make(chan error, 1)
+
+	var manifest gocbcore.Manifest
+	op, err := f.agent.GetCollectionManifest(
+		gocbcore.GetCollectionManifestOptions{},
+		func(manifestBytes []byte, er error) {
+			if er == nil {
+				er = manifest.UnmarshalJSON(manifestBytes)
+			}
+
+			select {
+			case <-f.closeCh:
+			case signal <- er:
+			}
+		})
+
+	if err != nil {
+		return fmt.Errorf("feed_dcp_gocb: Start, GetCollectionManifest,"+
+			" err: %v", err)
+	}
+
+	err = waitForResponse(signal, f.closeCh, op, GocbStatsTimeout)
+	if err != nil {
+		return fmt.Errorf("feed_dcp_gocb: Start, Failed to get manifest,"+
+			"err: %v", err)
+	}
+
+	var scopeID *uint32
+	for _, manifestScope := range manifest.Scopes {
+		if manifestScope.Name == f.scope {
+			*scopeID = manifestScope.UID
+			break
+		}
+	}
+
+	if scopeID == nil {
+		return fmt.Errorf("feed_dcp_gocb: Start, scope not found: %v",
+			f.scope)
+	}
+
+	f.streamFilter = &gocbcore.StreamFilter{
+		ManifestUid: manifest.UID,
+		Scope:       *scopeID,
+	}
+
 	for _, coll := range f.collections {
-		op, err := f.agent.GetCollectionID(f.scope, coll,
+		op, err = f.agent.GetCollectionID(f.scope, coll,
 			gocbcore.GetCollectionIDOptions{},
 			func(manifestID uint64, collectionID uint32, er error) {
-				// FIXME sdk to support fetching scope ID as well
-				// FIXME potential race in fetching ManifetUid/collection ids here?
 				if er == nil {
-					f.streamFilter.ManifestUid = manifestID
-					f.streamFilter.Collections =
-						append(f.streamFilter.Collections, collectionID)
+					if manifestID != f.streamFilter.ManifestUid {
+						er = fmt.Errorf("manifestID mismatch, %v != %v",
+							manifestID, f.streamFilter.ManifestUid)
+					} else {
+						f.streamFilter.Collections =
+							append(f.streamFilter.Collections, collectionID)
+					}
 				}
 
 				select {
@@ -363,7 +407,8 @@ func (f *GocbDCPFeed) Start() error {
 
 		err = waitForResponse(signal, f.closeCh, op, GocbStatsTimeout)
 		if err != nil {
-			return err
+			return fmt.Errorf("feed_dcp_gocb: Start, Failed to get collection ID,"+
+				"err : %v", err)
 		}
 	}
 
@@ -557,7 +602,6 @@ func (f *GocbDCPFeed) onError(isShutdown bool, err error) {
 
 func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, streamId uint16, snapshotType gocbcore.SnapshotState) {
-	// FIXME Handle streamId
 	if f.currVBs[vbId] == nil {
 		f.onError(false, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
 		return
@@ -698,7 +742,6 @@ func (f *GocbDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 }
 
 func (f *GocbDCPFeed) End(vbId uint16, streamId uint16, err error) {
-	// FIXME Handle streamId
 	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
 		log.Printf("feed_dcp_gocb: DCP stream ended for vb: %v, last seq: %v",
