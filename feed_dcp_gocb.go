@@ -54,26 +54,19 @@ var GocbStatsTimeout = time.Duration(30 * time.Second)
 var GocbOpenStreamTimeout = time.Duration(60 * time.Second)
 var GocbConnectTimeout = time.Duration(60000 * time.Millisecond)
 var GocbServerConnectTimeout = time.Duration(7000 * time.Millisecond)
-var GocbNmvRetryDelay = time.Duration(100 * time.Millisecond)
 
 // ----------------------------------------------------------------
 
 func setupAgentConfig() *gocbcore.AgentConfig {
 	return &gocbcore.AgentConfig{
-		ConnectTimeout:       GocbConnectTimeout,
-		ServerConnectTimeout: GocbServerConnectTimeout,
-		NmvRetryDelay:        GocbNmvRetryDelay,
-		UseKvErrorMaps:       true,
-		UseCollections:       true,
-		AuthMechanisms: []gocbcore.AuthMechanism{
-			gocbcore.ScramSha512AuthMechanism,
-			gocbcore.PlainAuthMechanism,
-		},
+		ConnectTimeout: GocbConnectTimeout,
+		UseCollections: true,
+		UseDCPStreamID: true,
 	}
 }
 
 func waitForResponse(signal <-chan error, closeCh <-chan struct{},
-	op gocbcore.CancellablePendingOp, timeout time.Duration) error {
+	op gocbcore.PendingOp, timeout time.Duration) error {
 	timeoutTmr := gocbcore.AcquireTimer(timeout)
 	select {
 	case err := <-signal:
@@ -81,11 +74,11 @@ func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 		return err
 	case <-closeCh:
 		gocbcore.ReleaseTimer(timeoutTmr, false)
-		return gocbcore.ErrStreamDisconnected
+		return gocbcore.ErrDCPStreamDisconnected
 	case <-timeoutTmr.C:
 		gocbcore.ReleaseTimer(timeoutTmr, true)
 		if op != nil {
-			op.Cancel()
+			op.Cancel(gocbcore.ErrTimeout)
 		}
 		return gocbcore.ErrTimeout
 	}
@@ -274,7 +267,7 @@ func NewGocbDCPFeed(name, indexName, url,
 	}
 
 	config := setupAgentConfig()
-	config.UserString = name
+	config.UserAgent = name
 	config.BucketName = bucketName
 	config.Auth = auth
 
@@ -293,7 +286,11 @@ func NewGocbDCPFeed(name, indexName, url,
 		return nil, fmt.Errorf("feed_dcp_gocb: NewGocbDCPFeed,"+
 			" error in fetching tlsConfig, err: %v", err)
 	}
-	config.TlsConfig = tlsConfig
+	if tlsConfig != nil {
+		config.TLSRootCAs = tlsConfig.RootCAs
+	} else {
+		config.TLSSkipVerify = true
+	}
 
 	feed.config = config
 
@@ -312,6 +309,8 @@ func NewGocbDCPFeed(name, indexName, url,
 	if err != nil {
 		return nil, err
 	}
+
+	feed.agent.SetServerConnectTimeout(GocbServerConnectTimeout)
 
 	log.Printf("feed_dcp_gocb: NewGocbDCPFeed, name: %s, indexName: %s,"+
 		" server: %v, connection name: %s",
@@ -377,7 +376,7 @@ func (f *GocbDCPFeed) Start() error {
 	}
 
 	f.streamFilter = &gocbcore.StreamFilter{
-		ManifestUid: manifest.UID,
+		ManifestUID: manifest.UID,
 		Scope:       *scopeID,
 	}
 
@@ -386,9 +385,9 @@ func (f *GocbDCPFeed) Start() error {
 			gocbcore.GetCollectionIDOptions{},
 			func(manifestID uint64, collectionID uint32, er error) {
 				if er == nil {
-					if manifestID != f.streamFilter.ManifestUid {
+					if manifestID != f.streamFilter.ManifestUID {
 						er = fmt.Errorf("manifestID mismatch, %v != %v",
-							manifestID, f.streamFilter.ManifestUid)
+							manifestID, f.streamFilter.ManifestUID)
 					} else {
 						f.streamFilter.Collections =
 							append(f.streamFilter.Collections, collectionID)
@@ -494,12 +493,12 @@ func (f *GocbDCPFeed) initiateStream(vbId uint16) error {
 		vbuuid = vbMetaData.FailOverLog[0][0]
 	}
 
-	return f.initiateStreamEx(vbId, true, gocbcore.VbUuid(vbuuid),
+	return f.initiateStreamEx(vbId, true, gocbcore.VbUUID(vbuuid),
 		gocbcore.SeqNo(lastSeq), max_end_seqno)
 }
 
 func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
-	vbuuid gocbcore.VbUuid, seqStart, seqEnd gocbcore.SeqNo) error {
+	vbuuid gocbcore.VbUUID, seqStart, seqEnd gocbcore.SeqNo) error {
 	if isNewStream {
 		f.m.Lock()
 		if !f.active[vbId] {
@@ -520,12 +519,12 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			if er == gocbcore.ErrShutdown {
 				log.Printf("feed_dcp_gocb: DCP stream for vb: %v was shutdown", vbId)
 				f.complete(vbId)
-			} else if er == gocbcore.ErrNetwork {
+			} else if er == gocbcore.ErrSocketClosed {
 				// TODO: Add a maximum retry-count here maybe?
 				log.Warnf("feed_dcp_gocb: Network error received on DCP stream for"+
 					" vb: %v", vbId)
 				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
-			} else if er == gocbcore.ErrRollback {
+			} else if er == gocbcore.ErrMemdRollback {
 				log.Printf("feed_dcp_gocb: Received rollback, for vb: %v,"+
 					" seqno requested: %v", vbId, seqStart)
 				f.complete(vbId)
@@ -539,7 +538,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				failoverLog := make([][]uint64, len(entries))
 				for i := 0; i < len(entries); i++ {
 					failoverLog[i] = []uint64{
-						uint64(entries[i].VbUuid),
+						uint64(entries[i].VbUUID),
 						uint64(entries[i].SeqNo),
 					}
 				}
@@ -747,19 +746,20 @@ func (f *GocbDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		log.Printf("feed_dcp_gocb: DCP stream ended for vb: %v, last seq: %v",
 			vbId, lastReceivedSeqno)
 		f.complete(vbId)
-	} else if err == gocbcore.ErrShutdown || err == gocbcore.ErrNetwork {
+	} else if err == gocbcore.ErrShutdown || err == gocbcore.ErrSocketClosed {
 		// count the number of Shutdowns received
 		if atomic.AddUint32(&f.shutdownVbs, 1) >= uint32(len(f.vbucketIds)) {
 			// initiate a feed closure
 			f.onError(true, err)
 		}
-	} else if err == gocbcore.ErrStreamStateChanged || err == gocbcore.ErrStreamTooSlow ||
-		err == gocbcore.ErrStreamDisconnected {
+	} else if err == gocbcore.ErrDCPStreamStateChanged ||
+		err == gocbcore.ErrDCPStreamTooSlow ||
+		err == gocbcore.ErrDCPStreamDisconnected {
 		log.Printf("feed_dcp_gocb: DCP stream for vb: %v, closed due to"+
 			" `%s`, will reconnect", vbId, err.Error())
-		f.initiateStreamEx(vbId, false, gocbcore.VbUuid(0),
+		f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
-	} else if err == gocbcore.ErrStreamClosed {
+	} else if err == gocbcore.ErrDCPStreamClosed {
 		log.Printf("feed_dcp_gocb: DCP stream for vb: %v, closed by consumer", vbId)
 		f.complete(vbId)
 	} else {
@@ -1003,7 +1003,8 @@ func (f *GocbDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 func (f *GocbDCPFeed) VerifyBucketNotExists() (bool, error) {
 	agent, err := gocbcore.CreateAgent(f.config)
 	if err != nil {
-		if err == gocbcore.ErrNoBucket || err == gocbcore.ErrAuthError {
+		if err == gocbcore.ErrBucketNotFound ||
+			err == gocbcore.ErrAuthenticationFailure {
 			// bucket not found
 			return true, err
 		}

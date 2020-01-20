@@ -12,6 +12,7 @@
 package cbgt
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -88,7 +89,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 	}
 
 	config := setupAgentConfig()
-	config.UserString = "stats"
+	config.UserAgent = "stats"
 	config.BucketName = bucketName
 	config.Auth = auth
 
@@ -290,6 +291,19 @@ func (a *AuthParams) Credentials(req gocbcore.AuthCredsRequest) (
 	}}, nil
 }
 
+func (a *AuthParams) Certificate(req gocbcore.AuthCertRequest) (
+	*tls.Certificate, error) {
+	return nil, nil
+}
+
+func (a *AuthParams) SupportsTLS() bool {
+	return true
+}
+
+func (a *AuthParams) SupportsNonTLS() bool {
+	return true
+}
+
 type AuthParamsSasl struct {
 	AuthParams
 }
@@ -300,6 +314,19 @@ func (a *AuthParamsSasl) Credentials(req gocbcore.AuthCredsRequest) (
 		Username: a.AuthSaslUser,
 		Password: a.AuthSaslPassword,
 	}}, nil
+}
+
+func (a *AuthParamsSasl) Certificate(req gocbcore.AuthCertRequest) (
+	*tls.Certificate, error) {
+	return nil, nil
+}
+
+func (a *AuthParamsSasl) SupportsTLS() bool {
+	return true
+}
+
+func (a *AuthParamsSasl) SupportsNonTLS() bool {
+	return true
 }
 
 type CBAuthenticator struct{}
@@ -319,6 +346,19 @@ func (a *CBAuthenticator) Credentials(req gocbcore.AuthCredsRequest) (
 		Username: username,
 		Password: password,
 	}}, nil
+}
+
+func (a *CBAuthenticator) Certificate(req gocbcore.AuthCertRequest) (
+	*tls.Certificate, error) {
+	return nil, nil
+}
+
+func (a *CBAuthenticator) SupportsTLS() bool {
+	return true
+}
+
+func (a *CBAuthenticator) SupportsNonTLS() bool {
+	return true
 }
 
 func gocbAuth(sourceParams string, options map[string]string) (
