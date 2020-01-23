@@ -55,7 +55,7 @@ function IndexesCtrl($scope, $http, $routeParams, $log, $sce, $location) {
     };
 
     $scope.deleteIndex = function(name) {
-        if (!confirm("Are you sure you want to permanenty delete the index '"
+        if (!confirm("Are you sure you want to permanently delete the index '"
                      + name + "'?")) {
             return;
         }
