@@ -59,9 +59,10 @@ var GocbServerConnectTimeout = time.Duration(7000 * time.Millisecond)
 
 func setupAgentConfig() *gocbcore.AgentConfig {
 	return &gocbcore.AgentConfig{
-		ConnectTimeout: GocbConnectTimeout,
-		UseCollections: true,
-		UseDCPStreamID: true,
+		ConnectTimeout:   GocbConnectTimeout,
+		UseCollections:   true,
+		UseDCPStreamID:   true,
+		DcpAgentPriority: gocbcore.DcpAgentPriorityMed,
 	}
 }
 
