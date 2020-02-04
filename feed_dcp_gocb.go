@@ -637,7 +637,6 @@ func (f *GocbDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	collectionId uint32, streamId uint16, key, value []byte) {
-	// FIXME To obtain scopeId as well: GOCBC-684
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
 		f.onError(false, fmt.Errorf("Mutation, %v", err))
 		return
@@ -652,7 +651,7 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbDCPExtras{
-				ScopeId:      0, // FIXME GOCBC-684
+				ScopeId:      f.streamFilter.Scope,
 				CollectionId: collectionId,
 				Expiry:       expiry,
 				Flags:        flags,
@@ -661,8 +660,8 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 			err = destEx.DataUpdateEx(partition, key, seqNo, value, cas,
 				DEST_EXTRAS_TYPE_GOCB_DCP, extras)
 		} else {
-			extras := make([]byte, 8)                    // 8 bytes needed to hold 2 uint32s
-			binary.LittleEndian.PutUint32(extras[0:], 0) // FIXME GOCBC-684
+			extras := make([]byte, 8) // 8 bytes needed to hold 2 uint32s
+			binary.LittleEndian.PutUint32(extras[0:], f.streamFilter.Scope)
 			binary.LittleEndian.PutUint32(extras[4:], collectionId)
 			err = dest.DataUpdate(partition, key, seqNo, value, cas,
 				DEST_EXTRAS_TYPE_GOCB_SCOPE_COLLECTION, extras)
@@ -688,7 +687,6 @@ func (f *GocbDCPFeed) Mutation(seqNo, revNo uint64,
 
 func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	vbId uint16, collectionId uint32, streamId uint16, key, value []byte) {
-	// FIXME To obtain scopeId as well: GOCBC-684
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
 		f.onError(false, fmt.Errorf("Deletion, %v", err))
 		return
@@ -703,7 +701,7 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbDCPExtras{
-				ScopeId:      0, // FIXME GOCBC-684
+				ScopeId:      f.streamFilter.Scope,
 				CollectionId: collectionId,
 				Datatype:     datatype,
 				Value:        value,
@@ -711,8 +709,8 @@ func (f *GocbDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 			err = destEx.DataDeleteEx(partition, key, seqNo, cas,
 				DEST_EXTRAS_TYPE_GOCB_DCP, extras)
 		} else {
-			extras := make([]byte, 8)                    // 8 bytes needed to hold 2 uint32s
-			binary.LittleEndian.PutUint32(extras[0:], 0) // FIXME GOCBC-684
+			extras := make([]byte, 8) // 8 bytes needed to hold 2 uint32s
+			binary.LittleEndian.PutUint32(extras[0:], f.streamFilter.Scope)
 			binary.LittleEndian.PutUint32(extras[4:], collectionId)
 			err = dest.DataDelete(partition, key, seqNo, cas,
 				DEST_EXTRAS_TYPE_GOCB_SCOPE_COLLECTION, extras)
