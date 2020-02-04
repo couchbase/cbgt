@@ -88,10 +88,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
-	config := setupAgentConfig()
-	config.UserAgent = "stats"
-	config.BucketName = bucketName
-	config.Auth = auth
+	config := setupAgentConfig("stats", bucketName, auth)
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) <= 0 {

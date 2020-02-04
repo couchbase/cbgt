@@ -57,8 +57,12 @@ var GocbServerConnectTimeout = time.Duration(7000 * time.Millisecond)
 
 // ----------------------------------------------------------------
 
-func setupAgentConfig() *gocbcore.AgentConfig {
+func setupAgentConfig(name, bucketName string,
+	auth gocbcore.AuthProvider) *gocbcore.AgentConfig {
 	return &gocbcore.AgentConfig{
+		UserAgent:        name,
+		BucketName:       bucketName,
+		Auth:             auth,
 		ConnectTimeout:   GocbConnectTimeout,
 		UseCollections:   true,
 		UseDCPStreamID:   true,
@@ -148,7 +152,6 @@ type GocbDCPFeed struct {
 	url        string
 	bucketName string
 	bucketUUID string
-	paramsStr  string
 	params     *DCPFeedParams
 	pf         DestPartitionFunc
 	dests      map[string]Dest
@@ -232,7 +235,6 @@ func NewGocbDCPFeed(name, indexName, url,
 		url:        url,
 		bucketName: bucketName,
 		bucketUUID: bucketUUID,
-		paramsStr:  paramsStr,
 		params:     params,
 		pf:         pf,
 		dests:      dests,
@@ -267,10 +269,7 @@ func NewGocbDCPFeed(name, indexName, url,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	config := setupAgentConfig()
-	config.UserAgent = name
-	config.BucketName = bucketName
-	config.Auth = auth
+	config := setupAgentConfig(name, bucketName, auth)
 
 	urls := strings.Split(url, ";")
 	if len(urls) <= 0 {
