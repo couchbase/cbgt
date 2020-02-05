@@ -122,13 +122,14 @@ func StartGocbDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	}
 	err = mgr.registerFeed(feed)
 	if err != nil {
-		return err
+		return feed.onError(false, err)
 	}
 	err = feed.Start()
 	if err != nil {
-		return fmt.Errorf("feed_dcp_gocb: StartGocbDCPFeed,"+
-			" could not start, server: %s, err: %v",
-			mgr.server, err)
+		return feed.onError(false,
+			fmt.Errorf("feed_dcp_gocb: StartGocbDCPFeed,"+
+				" could not start, server: %s, err: %v",
+				mgr.server, err))
 	}
 
 	return nil
@@ -585,7 +586,7 @@ func (f *GocbDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
-func (f *GocbDCPFeed) onError(isShutdown bool, err error) {
+func (f *GocbDCPFeed) onError(isShutdown bool, err error) error {
 	log.Warnf("feed_dcp_gocb: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, err: %v",
 		f.name, f.bucketName, f.bucketUUID, err)
@@ -595,6 +596,8 @@ func (f *GocbDCPFeed) onError(isShutdown bool, err error) {
 	if isShutdown && f.mgr != nil && f.mgr.meh != nil {
 		go f.mgr.meh.OnFeedError("couchbase", f, err)
 	}
+
+	return err
 }
 
 // ----------------------------------------------------------------
