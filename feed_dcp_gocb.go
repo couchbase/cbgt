@@ -120,17 +120,17 @@ func StartGocbDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			" bucketName: %s, indexName: %s, err: %v",
 			mgr.server, bucketName, indexName, err)
 	}
+	err = mgr.registerFeed(feed)
+	if err != nil {
+		return err
+	}
 	err = feed.Start()
 	if err != nil {
 		return fmt.Errorf("feed_dcp_gocb: StartGocbDCPFeed,"+
 			" could not start, server: %s, err: %v",
 			mgr.server, err)
 	}
-	err = mgr.registerFeed(feed)
-	if err != nil {
-		feed.Close()
-		return err
-	}
+
 	return nil
 }
 
@@ -168,12 +168,12 @@ type GocbDCPFeed struct {
 	lastReceivedSeqno []uint64
 	currVBs           []*vbucketState
 	shutdownVbs       uint32
-	closed            uint32 // sync.atomic
 
 	streamFilter *gocbcore.StreamFilter
 
 	m                sync.Mutex
 	remaining        sync.WaitGroup
+	closed           bool
 	active           map[uint16]bool
 	stats            *DestStats
 	stopAfterReached map[string]bool // May be nil.
@@ -427,18 +427,19 @@ func (f *GocbDCPFeed) Start() error {
 }
 
 func (f *GocbDCPFeed) Close() error {
-	if !atomic.CompareAndSwapUint32(&f.closed, 0, 1) {
+	f.m.Lock()
+	if f.closed {
+		f.m.Unlock()
 		return nil
 	}
+	f.closed = true
+	f.agent.Close()
+	f.forceCompleteLOCKED()
+	f.m.Unlock()
 
 	if f.mgr != nil {
 		f.mgr.unregisterFeed(f.Name())
 	}
-
-	f.m.Lock()
-	f.agent.Close()
-	f.forceCompleteLOCKED()
-	f.m.Unlock()
 
 	close(f.closeCh)
 	f.wait()
@@ -589,9 +590,7 @@ func (f *GocbDCPFeed) onError(isShutdown bool, err error) {
 		" bucketName: %s, bucketUUID: %s, err: %v",
 		f.name, f.bucketName, f.bucketUUID, err)
 
-	if atomic.LoadUint32(&f.closed) == 0 {
-		go f.Close()
-	}
+	go f.Close()
 
 	if isShutdown && f.mgr != nil && f.mgr.meh != nil {
 		go f.mgr.meh.OnFeedError("couchbase", f, err)
