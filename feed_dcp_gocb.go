@@ -366,6 +366,7 @@ func (f *GocbDCPFeed) Start() error {
 	var scopeID *uint32
 	for _, manifestScope := range manifest.Scopes {
 		if manifestScope.Name == f.scope {
+			scopeID = new(uint32)
 			*scopeID = manifestScope.UID
 			break
 		}
