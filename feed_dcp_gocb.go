@@ -65,7 +65,6 @@ func setupAgentConfig(name, bucketName string,
 		Auth:             auth,
 		ConnectTimeout:   GocbConnectTimeout,
 		UseCollections:   true,
-		UseDCPStreamID:   true,
 		DcpAgentPriority: gocbcore.DcpAgentPriorityMed,
 	}
 }
@@ -165,12 +164,14 @@ type GocbDCPFeed struct {
 	scope       string
 	collections []string
 
+	scopeID       uint32
+	collectionIDs []uint32
+	streamFilter  *gocbcore.StreamFilter
+
 	vbucketIds        []uint16
 	lastReceivedSeqno []uint64
 	currVBs           []*vbucketState
 	shutdownVbs       uint32
-
-	streamFilter *gocbcore.StreamFilter
 
 	m                sync.Mutex
 	remaining        sync.WaitGroup
@@ -363,54 +364,60 @@ func (f *GocbDCPFeed) Start() error {
 			"err: %v", err)
 	}
 
-	var scopeID *uint32
+	var scopeIDFound bool
 	for _, manifestScope := range manifest.Scopes {
 		if manifestScope.Name == f.scope {
-			scopeID = new(uint32)
-			*scopeID = manifestScope.UID
+			f.scopeID = manifestScope.UID
+			scopeIDFound = true
 			break
 		}
 	}
 
-	if scopeID == nil {
+	if !scopeIDFound {
 		return fmt.Errorf("feed_dcp_gocb: Start, scope not found: %v",
 			f.scope)
 	}
 
-	f.streamFilter = &gocbcore.StreamFilter{
-		ManifestUID: manifest.UID,
-		Scope:       *scopeID,
-	}
+	f.streamFilter = gocbcore.NewStreamFilter()
+	f.streamFilter.ManifestUID = manifest.UID
 
-	for _, coll := range f.collections {
-		op, err = f.agent.GetCollectionID(f.scope, coll,
-			gocbcore.GetCollectionIDOptions{},
-			func(manifestID uint64, collectionID uint32, er error) {
-				if er == nil {
-					if manifestID != f.streamFilter.ManifestUID {
-						er = fmt.Errorf("manifestID mismatch, %v != %v",
-							manifestID, f.streamFilter.ManifestUID)
-					} else {
-						f.streamFilter.Collections =
-							append(f.streamFilter.Collections, collectionID)
+	if len(f.collections) == 0 {
+		// if no collections were specified, set up stream requests for
+		// the entire scope.
+		f.streamFilter.Scope = f.scopeID
+	} else {
+		for _, coll := range f.collections {
+			op, err = f.agent.GetCollectionID(f.scope, coll,
+				gocbcore.GetCollectionIDOptions{},
+				func(manifestID uint64, collectionID uint32, er error) {
+					if er == nil {
+						if manifestID != f.streamFilter.ManifestUID {
+							er = fmt.Errorf("manifestID mismatch, %v != %v",
+								manifestID, f.streamFilter.ManifestUID)
+						} else {
+							f.collectionIDs =
+								append(f.collectionIDs, collectionID)
+						}
 					}
-				}
 
-				select {
-				case <-f.closeCh:
-				case signal <- er:
-				}
-			})
-		if err != nil {
-			return fmt.Errorf("feed_dcp_gocb: Start, GetCollectionID,"+
-				" collection: %v, err: %v", coll, err)
+					select {
+					case <-f.closeCh:
+					case signal <- er:
+					}
+				})
+			if err != nil {
+				return fmt.Errorf("feed_dcp_gocb: Start, GetCollectionID,"+
+					" collection: %v, err: %v", coll, err)
+			}
+
+			err = waitForResponse(signal, f.closeCh, op, GocbStatsTimeout)
+			if err != nil {
+				return fmt.Errorf("feed_dcp_gocb: Start, Failed to get collection ID,"+
+					"err : %v", err)
+			}
 		}
 
-		err = waitForResponse(signal, f.closeCh, op, GocbStatsTimeout)
-		if err != nil {
-			return fmt.Errorf("feed_dcp_gocb: Start, Failed to get collection ID,"+
-				"err : %v", err)
-		}
+		f.streamFilter.Collections = f.collectionIDs
 	}
 
 	log.Printf("feed_dcp_gocb: Start, name: %s, num streams: %d,"+
