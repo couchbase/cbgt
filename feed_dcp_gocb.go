@@ -249,16 +249,12 @@ func NewGocbDCPFeed(name, indexName, url,
 		closeCh:    make(chan struct{}),
 	}
 
-	if len(params.Scope) > 0 {
-		feed.scope = params.Scope
-	} else {
+	if len(params.Scope) == 0 && len(params.Collections) == 0 {
 		feed.scope = "_default"
-	}
-
-	if len(params.Collections) > 0 {
-		feed.collections = params.Collections
-	} else {
 		feed.collections = []string{"_default"}
+	} else {
+		feed.scope = params.Scope
+		feed.collections = params.Collections
 	}
 
 	// sort the vbucketIds list to determine the largest vbucketId
