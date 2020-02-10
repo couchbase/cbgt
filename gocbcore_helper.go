@@ -26,24 +26,24 @@ import (
 
 // ----------------------------------------------------------------
 
-type gocbAgentMap struct {
+type gocbcoreAgentMap struct {
 	// Mutex to serialize access to entries
 	m sync.Mutex
 	// Map of gocbcore.Agent instances by bucket <name>:<uuid>
 	entries map[string]*gocbcore.Agent
 }
 
-var agentMap *gocbAgentMap
+var agentMap *gocbcoreAgentMap
 
 func init() {
-	agentMap = &gocbAgentMap{
+	agentMap = &gocbcoreAgentMap{
 		entries: make(map[string]*gocbcore.Agent),
 	}
 }
 
 // Fetches a gocbcore agent instance for the bucket (name:uuid),
 // if not found creates a new instance and stashes it in the map.
-func (am *gocbAgentMap) fetchAgent(name, uuid, params, server string,
+func (am *gocbcoreAgentMap) fetchAgent(name, uuid, params, server string,
 	options map[string]string) (*gocbcore.Agent, error) {
 	am.m.Lock()
 	defer am.m.Unlock()
@@ -63,7 +63,7 @@ func (am *gocbAgentMap) fetchAgent(name, uuid, params, server string,
 }
 
 // Closes and removes the gocbcore Agent instance with the uuid.
-func (am *gocbAgentMap) closeAgent(name, uuid string) {
+func (am *gocbcoreAgentMap) closeAgent(name, uuid string) {
 	am.m.Lock()
 	defer am.m.Unlock()
 
@@ -84,7 +84,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	auth, err := gocbAuth(sourceParams, options)
 	if err != nil {
-		return nil, fmt.Errorf("gocb_helper: newAgent, gocbAuth,"+
+		return nil, fmt.Errorf("gocbcore_helper: newAgent, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
@@ -92,7 +92,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) <= 0 {
-		return nil, fmt.Errorf("gocb_helper: newAgent, no servers provided")
+		return nil, fmt.Errorf("gocbcore_helper: newAgent, no servers provided")
 	}
 
 	err = config.FromConnStr(svrs[0])
@@ -189,7 +189,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	err = waitForResponse(signal, nil, op, GocbStatsTimeout)
+	err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout)
 	return rv, err
 }
 
@@ -248,7 +248,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
-	err = waitForResponse(signal, nil, op, GocbStatsTimeout)
+	err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout)
 	return rv, err
 }
 
@@ -365,7 +365,7 @@ func gocbAuth(sourceParams string, options map[string]string) (
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), params)
 		if err != nil {
-			return nil, fmt.Errorf("gocb_helper: gocbAuth" +
+			return nil, fmt.Errorf("gocbcore_helper: gocbAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")
 		}
 	}
