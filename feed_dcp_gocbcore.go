@@ -27,7 +27,7 @@ import (
 	"github.com/couchbase/gocbcore"
 )
 
-const source_gocbcore = "gocbcore"
+const SOURCE_GOCBCORE = "gocbcore"
 
 // DEST_EXTRAS_TYPE_GOCBCORE_DCP represents gocb DCP mutation/deletion metadata
 // not included in DataUpdate/DataDelete (GocbcoreDCPExtras).
@@ -91,14 +91,14 @@ func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 // ----------------------------------------------------------------
 
 func init() {
-	RegisterFeedType(source_gocbcore, &FeedType{
+	RegisterFeedType(SOURCE_GOCBCORE, &FeedType{
 		Start:           StartGocbcoreDCPFeed,
 		Partitions:      CBPartitions,
 		PartitionSeqs:   CBPartitionSeqs,
 		Stats:           CBStats,
 		PartitionLookUp: CBVBucketLookUp,
 		Public:          true,
-		Description: "general/" + source_gocbcore +
+		Description: "general/" + SOURCE_GOCBCORE +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),
 	})

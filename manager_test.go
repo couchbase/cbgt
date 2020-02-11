@@ -491,8 +491,8 @@ func TestManagerRegisterFeed(t *testing.T) {
 }
 
 func TestManagerStartDCPFeed(t *testing.T) {
-	testManagerStartDCPFeed(t, source_gocouchbase)
-	testManagerStartDCPFeed(t, source_gocouchbase_dcp)
+	testManagerStartDCPFeed(t, SOURCE_GOCOUCHBASE)
+	testManagerStartDCPFeed(t, SOURCE_GOCOUCHBASE_DCP)
 }
 
 func testManagerStartDCPFeed(t *testing.T, sourceType string) {
@@ -550,7 +550,7 @@ func TestManagerStartTAPFeed(t *testing.T) {
 	}
 	sourceParams := ""
 	err := mgr.startFeedByType("feedName",
-		"indexName", "indexUUID", source_gocouchbase_tap,
+		"indexName", "indexUUID", SOURCE_GOCOUCHBASE_TAP,
 		"sourceName", "sourceUUID", sourceParams, nil)
 	if err != nil {
 		t.Errorf("expected startFeedByType ok for simple sourceType")
@@ -567,13 +567,13 @@ func TestManagerStartTAPFeed(t *testing.T) {
 		t.Errorf("expected a TAPFeed")
 	}
 	err = mgr.startFeedByType("feedName",
-		"indexName", "indexUUID", source_gocouchbase_tap,
+		"indexName", "indexUUID", SOURCE_GOCOUCHBASE_TAP,
 		"sourceName", "sourceUUID", sourceParams, nil)
 	if err == nil {
 		t.Errorf("expected re-startFeedByType to fail")
 	}
 	err = mgr.startFeedByType("feedName2",
-		"indexName2", "indexUUID2", source_gocouchbase_tap,
+		"indexName2", "indexUUID2", SOURCE_GOCOUCHBASE_TAP,
 		"sourceName2", "sourceUUID2", "NOT-VALID-JSON-sourceParams", nil)
 	if err == nil {
 		t.Errorf("expected startFeedByType fail on non-json sourceParams")

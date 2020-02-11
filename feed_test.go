@@ -77,19 +77,19 @@ func TestDataSourcePartitions(t *testing.T) {
 		t.Errorf("expected fake data source type to error")
 	}
 
-	a, err = DataSourcePartitions(source_gocouchbase,
+	a, err = DataSourcePartitions(SOURCE_GOCOUCHBASE,
 		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected couchbase source type to error on bad server url")
 	}
 
-	a, err = DataSourcePartitions(source_gocouchbase_dcp,
+	a, err = DataSourcePartitions(SOURCE_GOCOUCHBASE_DCP,
 		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected couchbase source type to error on bad server url")
 	}
 
-	a, err = DataSourcePartitions(source_gocouchbase_tap,
+	a, err = DataSourcePartitions(SOURCE_GOCOUCHBASE_TAP,
 		"sourceName", "sourceUUID", "sourceParams", "serverURL", nil)
 	if err == nil || a != nil {
 		t.Errorf("expected couchbase source type to error on bad server url")

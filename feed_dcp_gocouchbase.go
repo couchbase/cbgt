@@ -27,8 +27,8 @@ import (
 	"github.com/couchbase/gomemcached"
 )
 
-const source_gocouchbase = "couchbase"
-const source_gocouchbase_dcp = "couchbase-dcp"
+const SOURCE_GOCOUCHBASE = "couchbase"
+const SOURCE_GOCOUCHBASE_DCP = "couchbase-dcp"
 
 // DEST_EXTRAS_TYPE_DCP represents the extras that comes from DCP
 // protocol.
@@ -39,25 +39,25 @@ const DEST_EXTRAS_TYPE_DCP = DestExtrasType(0x0002)
 const DEST_EXTRAS_TYPE_MCREQUEST = DestExtrasType(0x0003)
 
 func init() {
-	RegisterFeedType(source_gocouchbase, &FeedType{
+	RegisterFeedType(SOURCE_GOCOUCHBASE, &FeedType{
 		Start:           StartDCPFeed,
 		Partitions:      CouchbasePartitions,
 		PartitionSeqs:   CouchbasePartitionSeqs,
 		Stats:           CouchbaseStats,
 		PartitionLookUp: CouchbaseSourceVBucketLookUp,
 		Public:          true,
-		Description: "general/" + source_gocouchbase +
+		Description: "general/" + SOURCE_GOCOUCHBASE +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),
 	})
-	RegisterFeedType(source_gocouchbase_dcp, &FeedType{
+	RegisterFeedType(SOURCE_GOCOUCHBASE_DCP, &FeedType{
 		Start:           StartDCPFeed,
 		Partitions:      CouchbasePartitions,
 		PartitionSeqs:   CouchbasePartitionSeqs,
 		Stats:           CouchbaseStats,
 		PartitionLookUp: CouchbaseSourceVBucketLookUp,
 		Public:          false, // Won't be listed in /api/managerMeta output.
-		Description: "general/" + source_gocouchbase_dcp +
+		Description: "general/" + SOURCE_GOCOUCHBASE_DCP +
 			" - a Couchbase Server bucket will be the data source," +
 			" via DCP protocol",
 		StartSample: NewDCPFeedParams(),
