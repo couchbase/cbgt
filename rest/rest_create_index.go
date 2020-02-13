@@ -220,7 +220,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		}
 	}
 
-	err = h.mgr.CreateIndex(sourceType, sourceName,
+	indexUUID, err := h.mgr.CreateIndexEx(sourceType, sourceName,
 		sourceUUID, sourceParams,
 		indexType, indexName, string(indexParams),
 		planParams, prevIndexUUID)
@@ -234,7 +234,11 @@ func (h *CreateIndexHandler) ServeHTTP(
 	MustEncode(w, struct {
 		// TODO: Should return created vs 200 HTTP code?
 		Status string `json:"status"`
-	}{Status: "ok"})
+		UUID   string `json:"uuid"`
+	}{
+		Status: "ok",
+		UUID:   indexUUID,
+	})
 }
 
 func ExtractSourceTypeName(req *http.Request, indexDef *cbgt.IndexDef, indexName string) (string, string) {

@@ -29,16 +29,27 @@ func (mgr *Manager) CreateIndex(sourceType,
 	sourceName, sourceUUID, sourceParams,
 	indexType, indexName, indexParams string, planParams PlanParams,
 	prevIndexUUID string) error {
+	_, err := mgr.CreateIndexEx(sourceType, sourceName, sourceUUID,
+		sourceParams, indexType, indexName, indexParams, planParams,
+		prevIndexUUID)
+
+	return err
+}
+
+func (mgr *Manager) CreateIndexEx(sourceType,
+	sourceName, sourceUUID, sourceParams,
+	indexType, indexName, indexParams string, planParams PlanParams,
+	prevIndexUUID string) (string, error) {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
 	matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(indexName))
 	if err != nil {
-		return fmt.Errorf("manager_api: CreateIndex,"+
+		return "", fmt.Errorf("manager_api: CreateIndex,"+
 			" indexName parsing problem,"+
 			" indexName: %s, err: %v", indexName, err)
 	}
 	if !matched {
-		return fmt.Errorf("manager_api: CreateIndex,"+
+		return "", fmt.Errorf("manager_api: CreateIndex,"+
 			" indexName is invalid, indexName: %q", indexName)
 	}
 
@@ -55,13 +66,13 @@ func (mgr *Manager) CreateIndex(sourceType,
 
 	pindexImplType, exists := PIndexImplTypes[indexType]
 	if !exists {
-		return fmt.Errorf("manager_api: CreateIndex,"+
+		return "", fmt.Errorf("manager_api: CreateIndex,"+
 			" unknown indexType: %s", indexType)
 	}
 	if pindexImplType.PrepareParams != nil {
 		indexParams, err = pindexImplType.PrepareParams(indexParams)
 		if err != nil {
-			return fmt.Errorf("manager_api: CreateIndex, PrepareParams failed,"+
+			return "", fmt.Errorf("manager_api: CreateIndex, PrepareParams failed,"+
 				" err: %v", err)
 		}
 	}
@@ -70,7 +81,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 	if pindexImplType.Prepare != nil {
 		indexDef, err = pindexImplType.Prepare(indexDef)
 		if err != nil {
-			return fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
+			return "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
 				" err: %v", err)
 		}
 	}
@@ -78,7 +89,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 	if pindexImplType.Validate != nil {
 		err = pindexImplType.Validate(indexType, indexName, indexParams)
 		if err != nil {
-			return fmt.Errorf("manager_api: CreateIndex, invalid,"+
+			return "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
 				" err: %v", err)
 		}
 	}
@@ -87,7 +98,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 	sourceParams, err = DataSourcePrepParams(sourceType,
 		sourceName, sourceUUID, sourceParams, mgr.server, mgr.Options())
 	if err != nil {
-		return fmt.Errorf("manager_api: failed to connect to"+
+		return "", fmt.Errorf("manager_api: failed to connect to"+
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			sourceType, sourceName, sourceUUID, err)
@@ -97,7 +108,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 	// Validate maxReplicasAllowed here.
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if planParams.NumReplicas < 0 || planParams.NumReplicas > maxReplicasAllowed {
-		return fmt.Errorf("manager_api: CreateIndex, maxReplicasAllowed:"+
+		return "", fmt.Errorf("manager_api: CreateIndex, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, planParams.NumReplicas)
 	}
 
@@ -106,19 +117,19 @@ func (mgr *Manager) CreateIndex(sourceType,
 	for {
 		tries += 1
 		if tries > 100 {
-			return fmt.Errorf("manager_api: CreateIndex,"+
+			return "", fmt.Errorf("manager_api: CreateIndex,"+
 				" too many tries: %d", tries)
 		}
 
 		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
-			return fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
+			return "", fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
 		}
 		if indexDefs == nil {
 			indexDefs = NewIndexDefs(version)
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-			return fmt.Errorf("manager_api: could not create index,"+
+			return "", fmt.Errorf("manager_api: could not create index,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)
 		}
@@ -126,7 +137,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 		prevIndex, exists := indexDefs.IndexDefs[indexName]
 		if prevIndexUUID == "" { // New index creation.
 			if exists || prevIndex != nil {
-				return fmt.Errorf("manager_api: cannot create index because"+
+				return "", fmt.Errorf("manager_api: cannot create index because"+
 					" an index with the same name already exists: %s",
 					indexName)
 			}
@@ -136,11 +147,11 @@ func (mgr *Manager) CreateIndex(sourceType,
 			}
 		} else { // Update index definition.
 			if !exists || prevIndex == nil {
-				return fmt.Errorf("manager_api: index missing for update,"+
+				return "", fmt.Errorf("manager_api: index missing for update,"+
 					" indexName: %s", indexName)
 			}
 			if prevIndex.UUID != prevIndexUUID {
-				return fmt.Errorf("manager_api:"+
+				return "", fmt.Errorf("manager_api:"+
 					" perhaps there was concurrent index definition update,"+
 					" current index UUID: %s, did not match input UUID: %s",
 					prevIndex.UUID, prevIndexUUID)
@@ -151,7 +162,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 					indexDef.PlanParams.MaxPartitionsPerPIndex) ||
 					(prevIndex.PlanParams.NumReplicas !=
 						indexDef.PlanParams.NumReplicas) {
-					return fmt.Errorf("manager_api: cannot update"+
+					return "", fmt.Errorf("manager_api: cannot update"+
 						" partition or replica count for a planFrozen index,"+
 						" indexName: %s", indexName)
 				}
@@ -174,7 +185,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 				continue // Retry on CAS mismatch.
 			}
 
-			return fmt.Errorf("manager_api: could not save indexDefs,"+
+			return "", fmt.Errorf("manager_api: could not save indexDefs,"+
 				" err: %v", err)
 		}
 
@@ -194,12 +205,12 @@ func (mgr *Manager) CreateIndex(sourceType,
 	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
-	return nil
+	return indexDef.UUID, nil
 }
 
 // DeleteIndex deletes a logical index definition.
 func (mgr *Manager) DeleteIndex(indexName string) error {
-	err := mgr.DeleteIndexEx(indexName, "")
+	_, err := mgr.DeleteIndexEx(indexName, "")
 	log.Errorf("manager_api: DeleteIndex, indexname: %s, err: %v",
 		indexName, err)
 	return err
@@ -207,29 +218,30 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 
 // DeleteIndexEx deletes a logical index definition, with an optional
 // indexUUID ("" means don't care).
-func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
+func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
+	string, error) {
 	atomic.AddUint64(&mgr.stats.TotDeleteIndex, 1)
 
 	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if indexDefs == nil {
-		return fmt.Errorf("manager_api: no indexes on deletion"+
+		return "", fmt.Errorf("manager_api: no indexes on deletion"+
 			" of indexName: %s", indexName)
 	}
 	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		return fmt.Errorf("manager_api: could not delete index,"+
+		return "", fmt.Errorf("manager_api: could not delete index,"+
 			" indexDefs.ImplVersion: %s > mgr.version: %s",
 			indexDefs.ImplVersion, mgr.version)
 	}
 	indexDef, exists := indexDefs.IndexDefs[indexName]
 	if !exists {
-		return fmt.Errorf("manager_api: index to delete missing,"+
+		return "", fmt.Errorf("manager_api: index to delete missing,"+
 			" indexName: %s", indexName)
 	}
 	if indexUUID != "" && indexDef.UUID != indexUUID {
-		return fmt.Errorf("manager_api: index to delete wrong UUID,"+
+		return "", fmt.Errorf("manager_api: index to delete wrong UUID,"+
 			" indexName: %s", indexName)
 	}
 
@@ -248,7 +260,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 
 	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 	if err != nil {
-		return fmt.Errorf("manager_api: could not save indexDefs,"+
+		return "", fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
 	}
 
@@ -259,7 +271,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
-	return nil
+	return indexDef.UUID, nil
 }
 
 // IndexControl is used to change runtime properties of an index
@@ -415,7 +427,7 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 			log.Printf("manager_api: DeleteAllIndexFromSource,"+
 				" indexName: %s, sourceType: %s, sourceName: %s, sourceUUID: %s",
 				indexName, sourceType, sourceName, sourceUUID)
-			err = mgr.DeleteIndexEx(indexName, indexDef.UUID)
+			_, err = mgr.DeleteIndexEx(indexName, indexDef.UUID)
 			if err != nil {
 				if outerErr == nil {
 					outerErr = err

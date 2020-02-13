@@ -42,7 +42,7 @@ func (h *DeleteIndexHandler) ServeHTTP(
 		return
 	}
 
-	err := h.mgr.DeleteIndex(indexName)
+	indexUUID, err := h.mgr.DeleteIndexEx(indexName, "")
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_delete_index:"+
 			" error deleting index, err: %v", err), http.StatusBadRequest)
@@ -51,7 +51,9 @@ func (h *DeleteIndexHandler) ServeHTTP(
 
 	MustEncode(w, struct {
 		Status string `json:"status"`
+		UUID   string `json:"uuid"`
 	}{
 		Status: "ok",
+		UUID:   indexUUID,
 	})
 }
