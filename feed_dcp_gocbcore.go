@@ -768,8 +768,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		f.complete(vbId)
 	} else {
 		log.Printf("feed_dcp_gocbcore: DCP stream closed for vb: %v, last seq: %v,"+
-			" err: `%s`", vbId, lastReceivedSeqno, err)
-		f.complete(vbId)
+			" err: `%s`", vbId, lastReceivedSeqno, err.Error())
 	}
 }
 
