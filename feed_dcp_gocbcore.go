@@ -570,7 +570,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		})
 
 	if err != nil && err != gocbcore.ErrShutdown {
-		log.Warnf("feed_dcp_gocbcore: DCP stream closed for vbID: %v, due to client"+
+		log.Printf("feed_dcp_gocbcore: DCP stream closed for vb: %v, due to client"+
 			" error: `%s`", vbId, err)
 		return err
 	}
@@ -767,7 +767,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed by consumer", vbId)
 		f.complete(vbId)
 	} else {
-		log.Printf("feed_dcp_gocbcore: DCP stream closed for vb: %v, last seq: %v,"+
+		log.Debugf("feed_dcp_gocbcore: DCP stream closed for vb: %v, last seq: %v,"+
 			" err: `%s`", vbId, lastReceivedSeqno, err.Error())
 	}
 }
