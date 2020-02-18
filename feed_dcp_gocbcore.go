@@ -539,12 +539,14 @@ func (f *GocbcoreDCPFeed) initiateStream(vbId uint16) error {
 		vbuuid = vbMetaData.FailOverLog[0][0]
 	}
 
-	return f.initiateStreamEx(vbId, true, gocbcore.VbUUID(vbuuid),
+	go f.initiateStreamEx(vbId, true, gocbcore.VbUUID(vbuuid),
 		gocbcore.SeqNo(lastSeq), max_end_seqno)
+
+	return nil
 }
 
 func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
-	vbuuid gocbcore.VbUUID, seqStart, seqEnd gocbcore.SeqNo) error {
+	vbuuid gocbcore.VbUUID, seqStart, seqEnd gocbcore.SeqNo) {
 	if isNewStream {
 		f.m.Lock()
 		if !f.active[vbId] {
@@ -611,19 +613,15 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		})
 
 	if err != nil && err != gocbcore.ErrShutdown {
-		log.Printf("feed_dcp_gocbcore: DCP stream closed for vb: %v, due to client"+
-			" error: `%s`", vbId, err)
-		return err
+		f.onError(false, fmt.Errorf("OpenStream error for vb: %v, err: %v",
+			vbId, err))
 	}
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreOpenStreamTimeout)
-	if err == gocbcore.ErrTimeout {
-		// TODO: On stream request timeout, configure a maximum number
-		// of retry attempts perhaps?
-		f.complete(vbId)
+	if err != nil {
+		f.onError(false, fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v",
+			vbId, err))
 	}
-
-	return err
 }
 
 // ----------------------------------------------------------------
