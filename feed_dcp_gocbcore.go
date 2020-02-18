@@ -666,7 +666,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 				DEST_EXTRAS_TYPE_GOCBCORE_DCP, extras)
 		} else {
 			extras := make([]byte, 8) // 8 bytes needed to hold 2 uint32s
-			binary.LittleEndian.PutUint32(extras[0:], f.streamFilter.Scope)
+			binary.LittleEndian.PutUint32(extras[0:], f.scopeID)
 			binary.LittleEndian.PutUint32(extras[4:], collectionId)
 			err = dest.DataUpdate(partition, key, seqNo, value, cas,
 				DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION, extras)
@@ -715,7 +715,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 				DEST_EXTRAS_TYPE_GOCBCORE_DCP, extras)
 		} else {
 			extras := make([]byte, 8) // 8 bytes needed to hold 2 uint32s
-			binary.LittleEndian.PutUint32(extras[0:], f.streamFilter.Scope)
+			binary.LittleEndian.PutUint32(extras[0:], f.scopeID)
 			binary.LittleEndian.PutUint32(extras[4:], collectionId)
 			err = dest.DataDelete(partition, key, seqNo, cas,
 				DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION, extras)
