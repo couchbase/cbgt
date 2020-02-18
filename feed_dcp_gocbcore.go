@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -173,6 +174,8 @@ type GocbcoreDCPFeed struct {
 	currVBs           []*vbucketState
 	shutdownVbs       uint32
 
+	dcpStats *gocbcoreDCPFeedStats
+
 	m                sync.Mutex
 	remaining        sync.WaitGroup
 	closed           bool
@@ -181,6 +184,45 @@ type GocbcoreDCPFeed struct {
 	stopAfterReached map[string]bool // May be nil.
 
 	closeCh chan struct{}
+}
+
+type gocbcoreDCPFeedStats struct {
+	// TODO: Add more stats
+	TotDCPStreamReqs uint64
+	TotDCPStreamEnds uint64
+	TotDCPRollbacks  uint64
+
+	TotDCPSnapshotMarkers uint64
+	TotDCPMutations       uint64
+	TotDCPDeletions       uint64
+}
+
+// atomicCopyTo copies metrics from s to r (or, from source to
+// result), and also applies an optional fn function. The fn is
+// invoked with metrics from s and r, and can be used to compute
+// additions, subtractions, negatoions, etc. When fn is nil,
+// atomicCopyTo behaves as a straight copier.
+func (s *gocbcoreDCPFeedStats) atomicCopyTo(r *gocbcoreDCPFeedStats,
+	fn func(sv uint64, rv uint64) uint64) {
+	// Using reflection rather than a whole slew of explicit
+	// invocations of atomic.LoadUint64()/StoreUint64()'s.
+	if fn == nil {
+		fn = func(sv uint64, rv uint64) uint64 { return sv }
+	}
+	rve := reflect.ValueOf(r).Elem()
+	sve := reflect.ValueOf(s).Elem()
+	svet := sve.Type()
+	for i := 0; i < svet.NumField(); i++ {
+		rvef := rve.Field(i)
+		svef := sve.Field(i)
+		if rvef.CanAddr() && svef.CanAddr() {
+			rvefp := rvef.Addr().Interface()
+			svefp := svef.Addr().Interface()
+			rv := atomic.LoadUint64(rvefp.(*uint64))
+			sv := atomic.LoadUint64(svefp.(*uint64))
+			atomic.StoreUint64(rvefp.(*uint64), fn(sv, rv))
+		}
+	}
 }
 
 func NewGocbcoreDCPFeed(name, indexName, url,
@@ -244,6 +286,7 @@ func NewGocbcoreDCPFeed(name, indexName, url,
 		stopAfter:  stopAfter,
 		mgr:        mgr,
 		vbucketIds: vbucketIds,
+		dcpStats:   &gocbcoreDCPFeedStats{},
 		stats:      NewDestStats(),
 		active:     make(map[uint16]bool),
 		closeCh:    make(chan struct{}),
@@ -459,31 +502,28 @@ func (f *GocbcoreDCPFeed) Dests() map[string]Dest {
 var prefixAgentDCPStats = []byte(`{"agentDCPStats":`)
 
 func (f *GocbcoreDCPFeed) Stats(w io.Writer) error {
-	signal := make(chan error, 1)
-	op, err := f.agent.StatsEx(gocbcore.StatsOptions{Key: "dcp"},
-		func(resp *gocbcore.StatsResult, er error) {
-			if resp != nil {
-				stats := resp.Servers
-				w.Write(prefixAgentDCPStats)
-				json.NewEncoder(w).Encode(stats)
+	dcpStats := &gocbcoreDCPFeedStats{}
+	f.dcpStats.atomicCopyTo(dcpStats, nil)
 
-				w.Write(prefixDestStats)
-				f.stats.WriteJSON(w)
-
-				w.Write(JsonCloseBrace)
-			}
-
-			select {
-			case <-f.closeCh:
-			case signal <- er:
-			}
-		})
-
+	_, err := w.Write(prefixAgentDCPStats)
 	if err != nil {
 		return err
 	}
 
-	return waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
+	err = json.NewEncoder(w).Encode(dcpStats)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(prefixDestStats)
+	if err != nil {
+		return err
+	}
+
+	f.stats.WriteJSON(w)
+
+	_, err = w.Write(JsonCloseBrace)
+	return err
 }
 
 // ----------------------------------------------------------------
@@ -541,6 +581,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				f.complete(vbId)
 			} else {
 				// er == nil
+				atomic.AddUint64(&f.dcpStats.TotDCPStreamReqs, 1)
 				failoverLog := make([][]uint64, len(entries))
 				for i := 0; i < len(entries); i++ {
 					failoverLog[i] = []uint64{
@@ -637,6 +678,8 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	if err != nil {
 		f.onError(false, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
 	}
+
+	atomic.AddUint64(&f.dcpStats.TotDCPSnapshotMarkers, 1)
 }
 
 func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
@@ -688,6 +731,8 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	} else {
 		f.lastReceivedSeqno[vbId] = seqNo
 	}
+
+	atomic.AddUint64(&f.dcpStats.TotDCPMutations, 1)
 }
 
 func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
@@ -737,6 +782,8 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	} else {
 		f.lastReceivedSeqno[vbId] = seqNo
 	}
+
+	atomic.AddUint64(&f.dcpStats.TotDCPDeletions, 1)
 }
 
 func (f *GocbcoreDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
@@ -745,6 +792,7 @@ func (f *GocbcoreDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
 }
 
 func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
+	atomic.AddUint64(&f.dcpStats.TotDCPStreamEnds, 1)
 	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
 		log.Printf("feed_dcp_gocbcore: DCP stream ended for vb: %v, last seq: %v",
@@ -930,6 +978,8 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry
 		log.Warnf("feed_dcp_gocbcore: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
 			" failed with err: %v", rollbackSeqno, rollbackVbuuid, vbId, err)
 	}
+
+	atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
 }
 
 // ----------------------------------------------------------------
