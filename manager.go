@@ -161,6 +161,7 @@ type ManagerStats struct {
 // the exception of being exported field names.
 type ClusterOptions struct {
 	BleveMaxResultWindow string `json:"bleveMaxResultWindow"`
+	BleveMaxClauseCount  string `json:"bleveMaxClauseCount"`
 	FeedAllotment        string `json:"feedAllotment"`
 	FtsMemoryQuota       string `json:"ftsMemoryQuota"`
 	MaxReplicasAllowed   string `json:"maxReplicasAllowed"`
