@@ -394,7 +394,7 @@ func (r *DCPFeed) OnError(err error) {
 
 	atomic.AddUint64(&r.stats.TotError, 1)
 	if r.mgr != nil && r.mgr.meh != nil {
-		go r.mgr.meh.OnFeedError("couchbase", r, err)
+		go r.mgr.meh.OnFeedError(SOURCE_GOCOUCHBASE, r, err)
 	}
 
 	r.m.Lock()

@@ -70,7 +70,7 @@ func (am *gocbcoreAgentMap) closeAgent(name, uuid string) {
 	key := name + ":" + uuid
 
 	if _, exists := am.entries[key]; exists {
-		am.entries[key].Close()
+		go am.entries[key].Close()
 		delete(am.entries, key)
 	}
 }
