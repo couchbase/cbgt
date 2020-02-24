@@ -481,7 +481,7 @@ func (f *GocbcoreDCPFeed) Close() error {
 		return nil
 	}
 	f.closed = true
-	f.agent.Close()
+	go f.agent.Close()
 	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
@@ -613,8 +613,9 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			}
 		})
 
-	if err != nil && errors.Is(err, gocbcore.ErrShutdown) {
-		f.onError(false, fmt.Errorf("OpenStream error for vb: %v, err: %v",
+	if err != nil && (errors.Is(err, gocbcore.ErrShutdown) ||
+		errors.Is(err, gocbcore.ErrSocketClosed)) {
+		f.onError(true, fmt.Errorf("OpenStream error for vb: %v, err: %v",
 			vbId, err))
 	}
 
@@ -634,7 +635,7 @@ func (f *GocbcoreDCPFeed) onError(isShutdown bool, err error) error {
 		" bucketName: %s, bucketUUID: %s, isShutdown: %v, err: %v",
 		f.name, f.bucketName, f.bucketUUID, isShutdown, err)
 
-	go f.Close()
+	f.Close()
 
 	if isShutdown && f.mgr != nil && f.mgr.meh != nil {
 		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
@@ -1046,7 +1047,7 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 		f.m.Unlock()
 
 		if allDone {
-			go f.Close()
+			f.Close()
 		}
 	}
 }
