@@ -103,7 +103,7 @@ func NewDCPFeedParams() *DCPFeedParams {
 // for a DCP Feed. These functions will be invoked by the manager's error
 // handlers to decide on the course of the feed.
 type FeedEx interface {
-	VerifyBucketNotExists() (bool, error)
+	VerifySourceNotExists() (bool, string, error)
 	GetBucketDetails() (string, string)
 }
 

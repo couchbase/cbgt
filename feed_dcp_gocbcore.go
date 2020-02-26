@@ -113,9 +113,9 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	server, _, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
-	feed, err := NewGocbcoreDCPFeed(feedName, indexName, server,
-		bucketName, bucketUUID, params, BasicPartitionFunc, dests,
-		mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
+	feed, err := NewGocbcoreDCPFeed(feedName, indexName, indexUUID,
+		server, bucketName, bucketUUID, params, BasicPartitionFunc,
+		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 			" could not prepare DCP feed, server: %s,"+
@@ -152,6 +152,7 @@ type vbucketState struct {
 type GocbcoreDCPFeed struct {
 	name       string
 	indexName  string
+	indexUUID  string
 	url        string
 	bucketName string
 	bucketUUID string
@@ -227,7 +228,7 @@ func (s *gocbcoreDCPFeedStats) atomicCopyTo(r *gocbcoreDCPFeedStats,
 	}
 }
 
-func NewGocbcoreDCPFeed(name, indexName, url,
+func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbcoreDCPFeed, error) {
@@ -278,6 +279,7 @@ func NewGocbcoreDCPFeed(name, indexName, url,
 	feed := &GocbcoreDCPFeed{
 		name:       name,
 		indexName:  indexName,
+		indexUUID:  indexUUID,
 		url:        url,
 		bucketName: bucketName,
 		bucketUUID: bucketUUID,
@@ -1062,27 +1064,79 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 
 // ----------------------------------------------------------------
 
-func (f *GocbcoreDCPFeed) VerifyBucketNotExists() (bool, error) {
+// VerifySourceNotExists returns true if it's sure the bucket
+// does not exist anymore (including if UUID's no longer match).
+// It is however possible that the bucket is around but the index's
+// source scope/collections are dropped, in which case the index
+// needs to be dropped, the index UUID is passed on in this
+// scenario.
+func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 	agent, err := gocbcore.CreateAgent(f.config)
 	if err != nil {
 		if errors.Is(err, gocbcore.ErrBucketNotFound) ||
 			errors.Is(err, gocbcore.ErrAuthenticationFailure) {
 			// bucket not found
-			return true, err
+			return true, "", err
 		}
-		return false, err
+		return false, "", err
 	}
+	defer agent.Close()
 
 	uuid := agent.BucketUUID()
-	agent.Close()
 
 	if uuid != f.bucketUUID {
 		// bucket UUID mismatched, so the bucket being looked
 		// up must've been deleted
-		return true, err
+		return true, "", err
 	}
 
-	return false, nil
+	signal := make(chan error, 1)
+	var manifest gocbcore.Manifest
+	op, err := agent.GetCollectionManifest(
+		gocbcore.GetCollectionManifestOptions{},
+		func(manifestBytes []byte, er error) {
+			if er == nil {
+				er = manifest.UnmarshalJSON(manifestBytes)
+			}
+
+			select {
+			case <-f.closeCh:
+			case signal <- er:
+			}
+		})
+
+	if err != nil {
+		return false, "", err
+	}
+
+	err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
+	if err != nil {
+		return false, "", err
+	}
+
+	if manifest.UID == f.streamFilter.ManifestUID {
+		// no manifest update => safe to assume that no scope/collection
+		// have been added/dropped
+		return false, "", nil
+	}
+
+	for i := range manifest.Scopes {
+		if manifest.Scopes[i].Name == f.scope &&
+			manifest.Scopes[i].UID == f.scopeID {
+			// scope found, now check if ANY of the collections are still around
+			for j := range f.collectionIDs {
+				for _, coll := range manifest.Scopes[i].Collections {
+					if f.collections[j] == coll.Name &&
+						f.collectionIDs[j] == coll.UID {
+						return false, "", nil
+					}
+				}
+			}
+		}
+	}
+
+	// drop index
+	return true, f.indexUUID, nil
 }
 
 func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {

@@ -561,32 +561,32 @@ func (r *DCPFeed) RollbackEx(vbucketId uint16, vBucketUUID uint64, rollbackSeq u
 	}, r.stats.TimerRollback)
 }
 
-// VerifyBucketNotExists returns true only if it's sure the bucket
-// does not exist anymore (including if UUID's no longer match).  A
+// VerifySourceNotExists returns true only if it's sure the bucket
+// does not exist anymore (including if UUID's no longer match). A
 // rejected auth or connection failure, for example, results in false.
-func (r *DCPFeed) VerifyBucketNotExists() (bool, error) {
+func (r *DCPFeed) VerifySourceNotExists() (bool, string, error) {
 	urls := strings.Split(r.url, ";")
 	if len(urls) == 0 {
-		return false, nil
+		return false, "", nil
 	}
 
 	bucket, err := CouchbaseBucket(r.bucketName, r.bucketUUID, r.paramsStr,
 		urls[0], r.mgr.Options())
 	if err != nil {
 		if _, ok := err.(*couchbase.BucketNotFoundError); ok {
-			return true, err
+			return true, "", err
 		}
 
 		if err == ErrCouchbaseMismatchedBucketUUID {
-			return true, err
+			return true, "", err
 		}
 
-		return false, err
+		return false, "", err
 	}
 
 	bucket.Close()
 
-	return false, nil
+	return false, "", nil
 }
 
 func (r *DCPFeed) GetBucketDetails() (name, uuid string) {
