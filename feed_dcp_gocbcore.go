@@ -638,7 +638,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
 func (f *GocbcoreDCPFeed) onError(isShutdown bool, err error) error {
-	log.Warnf("feed_dcp_gocbcore: onError, name: %s,"+
+	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, isShutdown: %v, err: %v",
 		f.name, f.bucketName, f.bucketUUID, isShutdown, err)
 
