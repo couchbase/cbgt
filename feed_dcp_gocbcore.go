@@ -354,9 +354,16 @@ func NewGocbcoreDCPFeed(name, indexName, url,
 
 	feed.agent.SetServerConnectTimeout(GocbcoreServerConnectTimeout)
 
+	if len(bucketUUID) == 0 {
+		// the sourceUUID setting in the index definition is optional,
+		// so make sure the feed's bucketUUID is set to the correct
+		// value if in case it wasn't provided
+		feed.bucketUUID = feed.agent.BucketUUID()
+	}
+
 	log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, name: %s, indexName: %s,"+
-		" server: %v, connection name: %s",
-		name, indexName, urls[0], dcpConnName)
+		" server: %v, bucketName: %s, bucketUUID: %s, connection name: %s",
+		name, indexName, urls[0], feed.bucketName, feed.bucketUUID, dcpConnName)
 
 	return feed, nil
 }
