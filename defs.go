@@ -402,6 +402,16 @@ func CfgSetNodeDefs(cfg Cfg, kind string, nodeDefs *NodeDefs,
 
 // CfgRemoveNodeDef removes a NodeDef with the given uuid from the Cfg.
 func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
+	return removeNodeDef(cfg, kind, uuid, version, false)
+}
+
+// CfgRemoveNodeDefForce removes a NodeDef with the given uuid
+// from the Cfg ignoring the cas checks.
+func CfgRemoveNodeDefForce(cfg Cfg, kind, uuid, version string) error {
+	return removeNodeDef(cfg, kind, uuid, version, true)
+}
+
+func removeNodeDef(cfg Cfg, kind, uuid, version string, force bool) error {
 	nodeDefs, cas, err := CfgGetNodeDefs(cfg, kind)
 	if err != nil {
 		return err
@@ -420,6 +430,10 @@ func CfgRemoveNodeDef(cfg Cfg, kind, uuid, version string) error {
 
 	nodeDefs.UUID = NewUUID()
 	nodeDefs.ImplVersion = version
+
+	if force {
+		cas = CFG_CAS_FORCE
+	}
 
 	_, err = CfgSetNodeDefs(cfg, kind, nodeDefs, cas)
 

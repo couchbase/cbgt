@@ -448,6 +448,11 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 			append(ctlChangeTopology.MemberNodeUUIDs, nodeUUID)
 	}
 
+	for _, node := range change.EjectNodes {
+		ctlChangeTopology.EjectNodeUUIDs =
+			append(ctlChangeTopology.EjectNodeUUIDs, string(node.NodeID))
+	}
+
 	taskId := "rebalance:" + change.ID
 
 	// The progressEntries is a map of pindex ->

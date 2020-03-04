@@ -149,6 +149,10 @@ type CtlChangeTopology struct {
 	// any new nodes added to the MemberNodes (only service node
 	// removal is allowed on failover).
 	MemberNodeUUIDs []string
+
+	// The EjectNodeUUIDs are the service nodes that should be removed from
+	// the service cluster after the topology change is finished.
+	EjectNodeUUIDs []string
 }
 
 // CtlOnProgressFunc defines the callback func signature that's
@@ -571,6 +575,74 @@ func (ctl *Ctl) getTopologyLOCKED() *CtlTopology {
 	}
 }
 
+func (ctl *Ctl) getKnownNodeUUIDs() ([]string, error) {
+	nodeDefsKnown, _, err :=
+		cbgt.CfgGetNodeDefs(ctl.cfg, cbgt.NODE_DEFS_KNOWN)
+	if err != nil {
+		return nil, err
+	}
+	var rv []string
+	for _, nodeDef := range nodeDefsKnown.NodeDefs {
+		rv = append(rv, nodeDef.UUID)
+	}
+	return rv, nil
+}
+
+func removeNodeDefs(cfg cbgt.Cfg, uuids []string) error {
+	v := cbgt.CfgGetVersion(cfg)
+	var err error
+	for i := 0; i < len(uuids); i++ {
+		err = cbgt.CfgRemoveNodeDefForce(cfg,
+			cbgt.NODE_DEFS_KNOWN, uuids[i], v)
+		if err != nil {
+			log.Printf("ctl: removeNodeDefs, "+
+				"CfgRemoveNodeDefForce err: %v", err)
+			return err
+		}
+		err = cbgt.CfgRemoveNodeDefForce(cfg,
+			cbgt.NODE_DEFS_WANTED, uuids[i], v)
+		if err != nil {
+			log.Printf("ctl: removeNodeDefs"+
+				"CfgRemoveNodeDefForce err: %v", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (ctl *Ctl) purgeStalePlanAndClusterNodes(changeTopology *CtlChangeTopology) {
+	if changeTopology.Mode == "rebalance" {
+		// With rebalance operations, if there are any unknown/stale
+		// nodes present in the cluster then we can infer that
+		// there could be some stale cluster information like node
+		// definitions/plans in metadata which ought to be cleaned.
+		knownNodeUUIDs, err := ctl.getKnownNodeUUIDs()
+		if err != nil {
+			return
+		}
+		var clusterNodeUUIDs []string
+		clusterNodeUUIDs = changeTopology.MemberNodeUUIDs
+		clusterNodeUUIDs = append(clusterNodeUUIDs, changeTopology.EjectNodeUUIDs...)
+
+		staleNodes := cbgt.StringsRemoveStrings(knownNodeUUIDs, clusterNodeUUIDs)
+		if len(staleNodes) > 0 {
+			// remove or unregister all the stale node defs.
+			err := removeNodeDefs(ctl.cfg, staleNodes)
+			if err != nil {
+				return
+			}
+			// reset the plan.
+			emptyPlan := cbgt.NewPlanPIndexes(cbgt.CfgGetVersion(ctl.cfg))
+			_, err = cbgt.CfgSetPlanPIndexes(ctl.cfg, emptyPlan, cbgt.CFG_CAS_FORCE)
+			if err != nil {
+				log.Printf("ctl: purgeStalePlanAndClusterNodes, "+
+					"set plan err: %v", err)
+				return
+			}
+		}
+	}
+}
+
 // ----------------------------------------------------
 
 // ChangeTopology starts an asynchonous change topology operation, if
@@ -579,6 +651,11 @@ func (ctl *Ctl) getTopologyLOCKED() *CtlTopology {
 // kicking off the new change topology operation.
 func (ctl *Ctl) ChangeTopology(changeTopology *CtlChangeTopology,
 	cb CtlOnProgressFunc) (topology *CtlTopology, err error) {
+
+	// Handle any stale cluster informations like plans and
+	// nodes explicitly,
+	ctl.purgeStalePlanAndClusterNodes(changeTopology)
+
 	return ctl.dispatchCtl(
 		changeTopology.Rev,
 		changeTopology.Mode,
