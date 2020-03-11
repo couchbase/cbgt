@@ -106,6 +106,19 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	}
 	indexDef.SourceParams = sourceParams
 
+	if len(sourceUUID) == 0 {
+		// If sourceUUID isn't available, fetch the sourceUUID for
+		// the sourceName by setting up a connection.
+		sourceUUID, err = DataSourceUUID(sourceType, sourceName, sourceParams,
+			mgr.server, mgr.Options())
+		if err != nil {
+			return "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
+				" for sourceName: %s, sourceType: %s, err: %v",
+				sourceName, sourceType, err)
+		}
+		indexDef.SourceUUID = sourceUUID
+	}
+
 	// Validate maxReplicasAllowed here.
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if planParams.NumReplicas < 0 || planParams.NumReplicas > maxReplicasAllowed {

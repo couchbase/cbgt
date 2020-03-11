@@ -272,6 +272,46 @@ func CBVBucketLookUp(docID, serverIn string,
 
 // ----------------------------------------------------------------
 
+// CBSourceUUIDLookUp fetches the sourceUUID for the provided sourceName.
+func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
+	options map[string]string) (string, error) {
+	server, _, bucketName :=
+		CouchbaseParseSourceName(serverIn, "default", sourceName)
+
+	auth, err := gocbAuth(sourceParams, options)
+	if err != nil {
+		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp, gocbAuth,"+
+			" bucketName: %s, err: %v", bucketName, err)
+	}
+
+	config := setupAgentConfig("cb-source-uuid", bucketName, auth)
+
+	svrs := strings.Split(server, ";")
+	if len(svrs) <= 0 {
+		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp," +
+			" no servers provided")
+	}
+
+	err = config.FromConnStr(svrs[0])
+	if err != nil {
+		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
+			" unable to build config, err: %v", err)
+	}
+
+	agent, err := gocbcore.CreateAgent(config)
+	if err != nil {
+		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
+			" unable to create agent, err: %v", err)
+	}
+
+	uuid := agent.BucketUUID()
+	agent.Close()
+
+	return uuid, nil
+}
+
+// ----------------------------------------------------------------
+
 type AuthParams struct {
 	AuthUser     string `json:"authUser"`
 	AuthPassword string `json:"authPassword"`

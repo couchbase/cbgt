@@ -364,6 +364,23 @@ func CouchbaseSourceVBucketLookUp(docID, serverIn string,
 
 // ----------------------------------------------------------------
 
+// CouchbaseSourceUUIDLookUp fetches the sourceUUID for the provided sourceName.
+func CouchbaseSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
+	options map[string]string) (string, error) {
+	bucket, err := CouchbaseBucket(sourceName, "", sourceParams, serverIn, options)
+	if err != nil {
+		return "", fmt.Errorf("gocouchbase_helper: CouchbaseSourceUUIDLookUp,"+
+			" bucketName: %v, err: %v", sourceName, err)
+	}
+
+	uuid := bucket.GetUUID()
+	bucket.Close()
+
+	return uuid, nil
+}
+
+// ----------------------------------------------------------------
+
 // CBAuthParams are common couchbase data-source/feed specific
 // connection parameters that may be part of a sourceParams JSON.
 type CBAuthParams struct {

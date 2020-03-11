@@ -94,12 +94,13 @@ func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 
 func init() {
 	RegisterFeedType(SOURCE_GOCBCORE, &FeedType{
-		Start:           StartGocbcoreDCPFeed,
-		Partitions:      CBPartitions,
-		PartitionSeqs:   CBPartitionSeqs,
-		Stats:           CBStats,
-		PartitionLookUp: CBVBucketLookUp,
-		Public:          true,
+		Start:            StartGocbcoreDCPFeed,
+		Partitions:       CBPartitions,
+		PartitionSeqs:    CBPartitionSeqs,
+		Stats:            CBStats,
+		PartitionLookUp:  CBVBucketLookUp,
+		SourceUUIDLookUp: CBSourceUUIDLookUp,
+		Public:           true,
 		Description: "general/" + SOURCE_GOCBCORE +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),

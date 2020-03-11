@@ -49,15 +49,16 @@ var FeedTypes = make(map[string]*FeedType) // Key is sourceType.
 // A FeedType represents an immutable registration of a single feed
 // type or data source type.
 type FeedType struct {
-	Start           FeedStartFunc
-	Partitions      FeedPartitionsFunc
-	PartitionSeqs   FeedPartitionSeqsFunc   // Optional.
-	Stats           FeedStatsFunc           // Optional.
-	PartitionLookUp FeedPartitionLookUpFunc // Optional.
-	Public          bool
-	Description     string
-	StartSample     interface{}
-	StartSampleDocs map[string]string
+	Start            FeedStartFunc
+	Partitions       FeedPartitionsFunc
+	PartitionSeqs    FeedPartitionSeqsFunc    // Optional.
+	Stats            FeedStatsFunc            // Optional.
+	PartitionLookUp  FeedPartitionLookUpFunc  // Optional.
+	SourceUUIDLookUp FeedSourceUUIDLookUpFunc // Optional.
+	Public           bool
+	Description      string
+	StartSample      interface{}
+	StartSampleDocs  map[string]string
 }
 
 // A FeedStartFunc is part of a FeedType registration as is invoked by
@@ -96,6 +97,10 @@ type FeedStatsFunc func(sourceType, sourceName, sourceUUID,
 type FeedPartitionLookUpFunc func(docID, server string,
 	sourceDetails *IndexDef,
 	req *http.Request) (string, error)
+
+// Returns the sourceUUID for a data source.
+type FeedSourceUUIDLookUpFunc func(sourceName, sourceParams, server string,
+	options map[string]string) (string, error)
 
 // StopAfterSourceParams defines optional fields for the sourceParams
 // that can stop the data source feed (i.e., index ingest) if the seqs
@@ -195,4 +200,23 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 	}
 
 	return sourceParams, nil
+}
+
+// ------------------------------------------------------------------------
+
+// DataSourceUUID is a helper function that fetches the sourceUUID for
+// the sourceName.
+func DataSourceUUID(sourceType, sourceName, sourceParams, server string,
+	options map[string]string) (string, error) {
+	feedType, exists := FeedTypes[sourceType]
+	if !exists || feedType == nil {
+		return "", fmt.Errorf("feed: DataSourceUUID"+
+			" unknown sourceType: %s", sourceType)
+	}
+
+	if feedType.SourceUUIDLookUp == nil {
+		return "", nil
+	}
+
+	return feedType.SourceUUIDLookUp(sourceName, sourceParams, server, options)
 }

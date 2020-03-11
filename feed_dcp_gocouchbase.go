@@ -40,23 +40,25 @@ const DEST_EXTRAS_TYPE_MCREQUEST = DestExtrasType(0x0003)
 
 func init() {
 	RegisterFeedType(SOURCE_GOCOUCHBASE, &FeedType{
-		Start:           StartDCPFeed,
-		Partitions:      CouchbasePartitions,
-		PartitionSeqs:   CouchbasePartitionSeqs,
-		Stats:           CouchbaseStats,
-		PartitionLookUp: CouchbaseSourceVBucketLookUp,
-		Public:          true,
+		Start:            StartDCPFeed,
+		Partitions:       CouchbasePartitions,
+		PartitionSeqs:    CouchbasePartitionSeqs,
+		Stats:            CouchbaseStats,
+		PartitionLookUp:  CouchbaseSourceVBucketLookUp,
+		SourceUUIDLookUp: CouchbaseSourceUUIDLookUp,
+		Public:           true,
 		Description: "general/" + SOURCE_GOCOUCHBASE +
 			" - a Couchbase Server bucket will be the data source",
 		StartSample: NewDCPFeedParams(),
 	})
 	RegisterFeedType(SOURCE_GOCOUCHBASE_DCP, &FeedType{
-		Start:           StartDCPFeed,
-		Partitions:      CouchbasePartitions,
-		PartitionSeqs:   CouchbasePartitionSeqs,
-		Stats:           CouchbaseStats,
-		PartitionLookUp: CouchbaseSourceVBucketLookUp,
-		Public:          false, // Won't be listed in /api/managerMeta output.
+		Start:            StartDCPFeed,
+		Partitions:       CouchbasePartitions,
+		PartitionSeqs:    CouchbasePartitionSeqs,
+		Stats:            CouchbaseStats,
+		PartitionLookUp:  CouchbaseSourceVBucketLookUp,
+		SourceUUIDLookUp: CouchbaseSourceUUIDLookUp,
+		Public:           false, // Won't be listed in /api/managerMeta output.
 		Description: "general/" + SOURCE_GOCOUCHBASE_DCP +
 			" - a Couchbase Server bucket will be the data source," +
 			" via DCP protocol",
