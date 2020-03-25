@@ -306,6 +306,11 @@ func CouchbaseStats(sourceType, sourceName, sourceUUID,
 		return nil, err
 	}
 
+	if statsKind == "collections" {
+		// collections not supported via go-couchbase
+		statsKind = ""
+	}
+
 	nodesStats := bucket.GetStats(statsKind)
 
 	aggStats := map[string]int64{} // Calculate aggregates.

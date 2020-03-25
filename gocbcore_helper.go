@@ -219,6 +219,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 
 			stats := resp.Servers
 			aggStats := map[string]int64{} // Calculate aggregates.
+			otherStats := map[string]string{}
 			for _, nodeStats := range stats {
 				if nodeStats.Error != nil {
 					continue
@@ -228,6 +229,8 @@ func CBStats(sourceType, sourceName, sourceUUID,
 					iv, err := strconv.ParseInt(v, 10, 64)
 					if err == nil {
 						aggStats[k] += iv
+					} else {
+						otherStats[k] = v
 					}
 				}
 			}
@@ -239,6 +242,31 @@ func CBStats(sourceType, sourceName, sourceUUID,
 
 			if statsKind == "" {
 				rv["docCount"] = aggStats["curr_items"]
+			} else if statsKind == "collections" {
+				scope := "_default"
+				collections := []string{"_default"}
+				params := NewDCPFeedParams()
+				if len(sourceParams) > 0 {
+					err = json.Unmarshal([]byte(sourceParams), params)
+					if err == nil {
+						if len(params.Scope) > 0 {
+							scope = params.Scope
+						}
+						if len(params.Collections) > 0 {
+							collections = params.Collections
+						}
+					}
+				}
+
+				var docCount int64
+				for i := range collections {
+					if collID, exists :=
+						otherStats[scope+":"+collections[i]+":id"]; exists {
+						docCount += aggStats["collection:"+collID+":items"]
+					}
+				}
+
+				rv["docCount"] = docCount
 			}
 
 			signal <- nil
