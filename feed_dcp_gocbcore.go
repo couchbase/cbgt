@@ -558,14 +558,18 @@ func (f *GocbcoreDCPFeed) initiateStream(vbId uint16) error {
 
 func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	vbuuid gocbcore.VbUUID, seqStart, seqEnd gocbcore.SeqNo) {
+	f.m.Lock()
+	if f.closed {
+		f.m.Unlock()
+		return
+	}
 	if isNewStream {
-		f.m.Lock()
 		if !f.active[vbId] {
 			f.remaining.Add(1)
 			f.active[vbId] = true
 		}
-		f.m.Unlock()
 	}
+	f.m.Unlock()
 
 	snapStart := seqStart
 	signal := make(chan error, 1)
@@ -575,19 +579,16 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamFilter,
 		func(entries []gocbcore.FailoverEntry, er error) {
-			if errors.Is(er, gocbcore.ErrShutdown) {
-				log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v was shutdown", vbId)
+			if errors.Is(er, gocbcore.ErrShutdown) ||
+				errors.Is(er, gocbcore.ErrSocketClosed) {
+				log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v was shutdown,"+
+					"err: %v", vbId, er)
 				f.complete(vbId)
-			} else if errors.Is(er, gocbcore.ErrSocketClosed) {
-				// TODO: Add a maximum retry-count here maybe?
-				log.Warnf("feed_dcp_gocbcore: Network error received on DCP stream for"+
-					" vb: %v", vbId)
-				f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
 				log.Printf("feed_dcp_gocbcore: Received rollback, for vb: %v,"+
 					" seqno requested: %v", vbId, seqStart)
 				f.complete(vbId)
-				go f.rollback(vbId, entries)
+				er = f.rollback(vbId, entries)
 			} else if er != nil {
 				log.Warnf("feed_dcp_gocbcore: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
@@ -811,8 +812,8 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed) {
 		if atomic.AddUint32(&f.shutdownVbs, 1) >= uint32(len(f.vbucketIds)) {
-			// initiate a feed closure, if a shutdown message has been received
-			// for all vbuckets accounted for
+			// initiate a feed closure, if a shutdown message or socket closure
+			// has been received for all vbuckets accounted for
 			f.onError(true, err)
 		}
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) ||
@@ -820,7 +821,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
 		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
 			" `%s`, will reconnect", vbId, err.Error())
-		f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
+		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
 		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed by consumer", vbId)
@@ -947,7 +948,7 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 
 // ----------------------------------------------------------------
 
-func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry) {
+func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry) error {
 	var rollbackVbuuid uint64
 	var rollbackSeqno uint64
 
@@ -988,9 +989,11 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry
 		// TODO: Better error handling
 		log.Warnf("feed_dcp_gocbcore: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
 			" failed with err: %v", rollbackSeqno, rollbackVbuuid, vbId, err)
+	} else {
+		atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
 	}
 
-	atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
+	return err
 }
 
 // ----------------------------------------------------------------
