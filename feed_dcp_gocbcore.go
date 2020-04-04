@@ -122,10 +122,18 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			" bucketName: %s, indexName: %s, err: %v",
 			mgr.server, bucketName, indexName, err)
 	}
+
+	// check if all requested vbuckets' states are active
+	if err = feed.checkVbStates(); err != nil {
+		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
+			" err: %v", err)
+	}
+
 	err = mgr.registerFeed(feed)
 	if err != nil {
 		return feed.onError(false, err)
 	}
+
 	err = feed.Start()
 	if err != nil {
 		return feed.onError(false,
@@ -388,7 +396,6 @@ func (f *GocbcoreDCPFeed) Start() error {
 	}
 
 	signal := make(chan error, 1)
-
 	var manifest gocbcore.Manifest
 	op, err := f.agent.GetCollectionManifest(
 		gocbcore.GetCollectionManifestOptions{},
@@ -404,14 +411,12 @@ func (f *GocbcoreDCPFeed) Start() error {
 		})
 
 	if err != nil {
-		return fmt.Errorf("feed_dcp_gocbcore: Start, GetCollectionManifest,"+
-			" err: %v", err)
+		return fmt.Errorf("Start, GetCollectionManifest, err: %v", err)
 	}
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
 	if err != nil {
-		return fmt.Errorf("feed_dcp_gocbcore: Start, Failed to get manifest,"+
-			"err: %v", err)
+		return fmt.Errorf("Start, Failed to get manifest, err: %v", err)
 	}
 
 	var scopeIDFound bool
@@ -424,8 +429,7 @@ func (f *GocbcoreDCPFeed) Start() error {
 	}
 
 	if !scopeIDFound {
-		return fmt.Errorf("feed_dcp_gocbcore: Start, scope not found: %v",
-			f.scope)
+		return fmt.Errorf("Start, scope not found: %v", f.scope)
 	}
 
 	f.streamFilter = gocbcore.NewStreamFilter()
@@ -456,14 +460,13 @@ func (f *GocbcoreDCPFeed) Start() error {
 					}
 				})
 			if err != nil {
-				return fmt.Errorf("feed_dcp_gocbcore: Start, GetCollectionID,"+
-					" collection: %v, err: %v", coll, err)
+				return fmt.Errorf("Start, GetCollectionID, collection: %v, err: %v",
+					coll, err)
 			}
 
 			err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
 			if err != nil {
-				return fmt.Errorf("feed_dcp_gocbcore: Start, Failed to get collection ID,"+
-					"err : %v", err)
+				return fmt.Errorf("Start, Failed to get collection ID, err : %v", err)
 			}
 		}
 
@@ -476,7 +479,7 @@ func (f *GocbcoreDCPFeed) Start() error {
 	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid))
 		if err != nil {
-			return fmt.Errorf("feed_dcp_gocbcore: Start, name: %s, vbid: %v, err: %v",
+			return fmt.Errorf("Start, name: %s, vbid: %v, err: %v",
 				f.Name(), vbid, err)
 		}
 	}
@@ -585,8 +588,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					"err: %v", vbId, er)
 				f.complete(vbId)
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
-				log.Printf("feed_dcp_gocbcore: Received rollback, for vb: %v,"+
-					" seqno requested: %v", vbId, seqStart)
+				log.Printf("feed_dcp_gocbcore: [%s] Received rollback, for vb: %v,"+
+					" seqno requested: %v", f.Name(), vbId, seqStart)
 				f.complete(vbId)
 				er = f.rollback(vbId, entries)
 			} else if er != nil {
@@ -653,6 +656,12 @@ func (f *GocbcoreDCPFeed) onError(isShutdown bool, err error) error {
 	}
 
 	return err
+}
+
+func (f *GocbcoreDCPFeed) alertMgr() {
+	if f.mgr != nil {
+		f.mgr.Kick("gocbcore-feed")
+	}
 }
 
 // ----------------------------------------------------------------
@@ -816,8 +825,13 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 			// has been received for all vbuckets accounted for
 			f.onError(true, err)
 		}
-	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) ||
-		errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
+	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
+		log.Warnf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
+			" `%s`, closing feed and alert the mgr", vbId, err.Error())
+		f.onError(false, err)
+		// alert manager of feed closure
+		f.alertMgr()
+	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
 		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
 			" `%s`, will reconnect", vbId, err.Error())
@@ -1144,4 +1158,85 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 
 func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {
 	return f.bucketName, f.bucketUUID
+}
+
+// ----------------------------------------------------------------
+
+// The following API checks if all the requested vbuckets' states
+// are active, within the GocbcoreServerConnectTimeout.
+func (f *GocbcoreDCPFeed) checkVbStates() error {
+	signal := make(chan error, 1)
+	currentVbStates := func() (map[uint16]string, error) {
+		vbStates := map[uint16]string{}
+		op, err := f.agent.StatsEx(gocbcore.StatsOptions{Key: "vbucket"},
+			func(resp *gocbcore.StatsResult, er error) {
+				if resp == nil || er != nil {
+					signal <- er
+					return
+				}
+
+				stats := resp.Servers
+				for _, nodeStats := range stats {
+					if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
+						continue
+					}
+
+					for i, vbid := range vbucketIdStrings {
+						stateVal, ok := nodeStats.Stats["vb_"+vbid]
+						if !ok {
+							continue
+						}
+
+						vbStates[uint16(i)] = stateVal
+					}
+				}
+
+				signal <- nil
+			})
+
+		if err != nil {
+			return nil, err
+		}
+
+		err = waitForResponse(signal, f.closeCh, op, GocbcoreServerConnectTimeout)
+		return vbStates, err
+	}
+
+	timeoutTick := time.Tick(GocbcoreServerConnectTimeout)
+OUTER:
+	for {
+		vbStates, err := currentVbStates()
+		if err != nil {
+			return err
+		}
+
+		vbsAvailable := true
+		for _, i := range f.vbucketIds {
+			if state, exists := vbStates[i]; exists {
+				if state != "active" {
+					return fmt.Errorf("vb: %d state has changed", i)
+				}
+			} else {
+				vbsAvailable = false
+				break
+			}
+		}
+
+		if vbsAvailable {
+			return nil
+		}
+
+		select {
+		case <-f.closeCh:
+			break OUTER
+
+		case <-timeoutTick:
+			break OUTER
+
+		default:
+			// continue
+		}
+	}
+
+	return fmt.Errorf("couldn't determine vbs states within time")
 }
