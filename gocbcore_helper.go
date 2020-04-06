@@ -143,54 +143,132 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	rv := map[string]UUIDSeq{}
 
 	signal := make(chan error, 1)
-	op, err := agent.StatsEx(gocbcore.StatsOptions{Key: "vbucket-details"},
+
+	var manifest gocbcore.Manifest
+	op, err := agent.GetCollectionManifest(gocbcore.GetCollectionManifestOptions{},
+		func(manifestBytes []byte, er error) {
+			if er == nil {
+				er = manifest.UnmarshalJSON(manifestBytes)
+			}
+
+			signal <- er
+		})
+	if err != nil {
+		return nil, err
+	}
+	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
+		return nil, err
+	}
+
+	var collectionUIDs []string
+	var scopeCollectionNames []string
+	for _, manifestScope := range manifest.Scopes {
+		for _, coll := range manifestScope.Collections {
+			collectionUIDs = append(collectionUIDs, fmt.Sprintf("0x%x", coll.UID))
+			scopeCollectionNames = append(scopeCollectionNames,
+				manifestScope.Name+":"+coll.Name)
+		}
+	}
+
+	var vbucketNodeStats map[string]gocbcore.SingleServerStats
+	op, err = agent.StatsEx(gocbcore.StatsOptions{Key: "vbucket-details"},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
 				signal <- er
 				return
 			}
 
-			stats := resp.Servers
-			for _, nodeStats := range stats {
-				if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
-					continue
-				}
-
-				for _, vbid := range vbucketIdStrings {
-					stateVal, ok := nodeStats.Stats["vb_"+vbid]
-					if !ok || stateVal != "active" {
-						continue
-					}
-
-					uuid, ok := nodeStats.Stats["vb_"+vbid+":uuid"]
-					if !ok {
-						continue
-					}
-
-					seqStr, ok := nodeStats.Stats["vb_"+vbid+":high_seqno"]
-					if !ok {
-						continue
-					}
-
-					seq, err := strconv.ParseUint(seqStr, 10, 64)
-					if err == nil {
-						rv[vbid] = UUIDSeq{
-							UUID: uuid,
-							Seq:  seq,
-						}
-					}
-				}
-			}
-
+			vbucketNodeStats = resp.Servers
 			signal <- nil
 		})
-
 	if err != nil {
 		return nil, err
 	}
+	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
+		return nil, err
+	}
 
-	err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout)
-	return rv, err
+	var collectionsStats map[string]gocbcore.SingleServerStats
+	op, err = agent.StatsEx(gocbcore.StatsOptions{Key: "collections-details"},
+		func(resp *gocbcore.StatsResult, er error) {
+			if resp == nil || er != nil {
+				signal <- er
+				return
+			}
+
+			collectionsStats = resp.Servers
+			signal <- nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
+		return nil, err
+	}
+
+	for k, nodeStats := range vbucketNodeStats {
+		if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
+			continue
+		}
+
+		for _, vbid := range vbucketIdStrings {
+			vbPrefix := "vb_" + vbid
+			stateVal, ok := nodeStats.Stats[vbPrefix]
+			if !ok || stateVal != "active" {
+				continue
+			}
+
+			uuid, ok := nodeStats.Stats[vbPrefix+":uuid"]
+			if !ok {
+				continue
+			}
+
+			seqStr, ok := nodeStats.Stats[vbPrefix+":high_seqno"]
+			if !ok {
+				continue
+			}
+
+			seq, err := strconv.ParseUint(seqStr, 10, 64)
+			if err == nil {
+				rv[vbid] = UUIDSeq{
+					UUID: uuid,
+					Seq:  seq,
+				}
+			}
+
+			for i, collID := range collectionUIDs {
+				collSeqStr, ok :=
+					collectionsStats[k].Stats[vbPrefix+":collection:"+collID+":entry:high_seqno"]
+				if !ok {
+					continue
+				}
+
+				collSeq, err := strconv.ParseUint(collSeqStr, 10, 64)
+				if err == nil {
+					rv[vbid+":"+scopeCollectionNames[i]+":high_seqno"] = UUIDSeq{
+						UUID: collID,
+						Seq:  collSeq,
+					}
+				}
+
+				collSeqStr, ok =
+					collectionsStats[k].Stats[vbPrefix+":collection:"+collID+":entry:start_seqno"]
+				if !ok {
+					continue
+				}
+
+				collSeq, err = strconv.ParseUint(collSeqStr, 10, 64)
+				if err == nil {
+					rv[vbid+":"+scopeCollectionNames[i]+":start_seqno"] = UUIDSeq{
+						UUID: collID,
+						Seq:  collSeq,
+					}
+				}
+			}
+		}
+	}
+
+	return rv, nil
 }
 
 // ----------------------------------------------------------------
