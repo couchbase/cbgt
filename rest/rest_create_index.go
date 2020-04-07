@@ -252,7 +252,8 @@ func ExtractSourceTypeName(req *http.Request, indexDef *cbgt.IndexDef, indexName
 	}
 	if sourceName == "" {
 		// NOTE: Some sourceTypes (like "nil") don't care if sourceName is "".
-		if sourceType == "couchbase" {
+		if sourceType == cbgt.SOURCE_GOCOUCHBASE ||
+			sourceType == cbgt.SOURCE_GOCBCORE {
 			// TODO: Revisit default sourceName as indexName.
 			sourceName = indexName
 		}
