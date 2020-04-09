@@ -53,7 +53,6 @@ type GocbcoreDCPExtras struct {
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
 
 var GocbcoreStatsTimeout = time.Duration(30 * time.Second)
-var GocbcoreOpenStreamTimeout = time.Duration(60 * time.Second)
 var GocbcoreConnectTimeout = time.Duration(60000 * time.Millisecond)
 var GocbcoreServerConnectTimeout = time.Duration(7000 * time.Millisecond)
 
@@ -123,20 +122,20 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			mgr.server, bucketName, indexName, err)
 	}
 
-	// check if all requested vbuckets' states are active
-	if err = feed.checkVbStates(); err != nil {
+	// check if all requested vbuckets are ready to be streamed from
+	if err = feed.waitForVBsToBecomeReady(); err != nil {
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 			" err: %v", err)
 	}
 
 	err = mgr.registerFeed(feed)
 	if err != nil {
-		return feed.onError(false, err)
+		return feed.onError(false, false, err)
 	}
 
 	err = feed.Start()
 	if err != nil {
-		return feed.onError(false,
+		return feed.onError(false, false,
 			fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 				" could not start, server: %s, err: %v",
 				mgr.server, err))
@@ -591,7 +590,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				log.Printf("feed_dcp_gocbcore: [%s] Received rollback, for vb: %v,"+
 					" seqno requested: %v", f.Name(), vbId, seqStart)
 				f.complete(vbId)
-				er = f.rollback(vbId, entries)
+				go f.rollback(vbId, entries)
 			} else if er != nil {
 				log.Warnf("feed_dcp_gocbcore: Received error on DCP stream for vb: %v,"+
 					" err: %v", vbId, er)
@@ -629,14 +628,15 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	if err != nil && (errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed)) {
-		f.onError(true, fmt.Errorf("OpenStream error for vb: %v, err: %v",
+		f.onError(true, false, fmt.Errorf("OpenStream error for vb: %v, err: %v",
 			vbId, err))
 	}
 
-	err = waitForResponse(signal, f.closeCh, op, GocbcoreOpenStreamTimeout)
+	err = waitForResponse(signal, f.closeCh, op, GocbcoreServerConnectTimeout)
 	if err != nil {
-		f.onError(false, fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v",
-			vbId, err))
+		// notify mgr on feed closure due to timeout
+		f.onError(false, err == gocbcore.ErrTimeout,
+			fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
 	}
 }
 
@@ -644,7 +644,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
-func (f *GocbcoreDCPFeed) onError(isShutdown bool, err error) error {
+func (f *GocbcoreDCPFeed) onError(isShutdown, alertMgr bool, err error) error {
 	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, isShutdown: %v, err: %v",
 		f.name, f.bucketName, f.bucketUUID, isShutdown, err)
@@ -655,13 +655,11 @@ func (f *GocbcoreDCPFeed) onError(isShutdown bool, err error) error {
 		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
 	}
 
-	return err
-}
-
-func (f *GocbcoreDCPFeed) alertMgr() {
-	if f.mgr != nil {
+	if alertMgr && f.mgr != nil {
 		f.mgr.Kick("gocbcore-feed")
 	}
+
+	return err
 }
 
 // ----------------------------------------------------------------
@@ -669,7 +667,7 @@ func (f *GocbcoreDCPFeed) alertMgr() {
 func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, streamId uint16, snapshotType gocbcore.SnapshotState) {
 	if f.currVBs[vbId] == nil {
-		f.onError(false, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
+		f.onError(false, false, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
 		return
 	}
 
@@ -696,7 +694,7 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}, f.stats.TimerSnapshotStart)
 
 	if err != nil {
-		f.onError(false, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
+		f.onError(false, false, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
 	}
 
 	atomic.AddUint64(&f.dcpStats.TotDCPSnapshotMarkers, 1)
@@ -706,7 +704,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	collectionId uint32, streamId uint16, key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(false, fmt.Errorf("Mutation, %v", err))
+		f.onError(false, false, fmt.Errorf("Mutation, %v", err))
 		return
 	}
 
@@ -747,7 +745,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		f.onError(false, fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
+		f.onError(false, false, fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
 	} else {
 		f.lastReceivedSeqno[vbId] = seqNo
 	}
@@ -758,7 +756,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	vbId uint16, collectionId uint32, streamId uint16, key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(false, fmt.Errorf("Deletion, %v", err))
+		f.onError(false, false, fmt.Errorf("Deletion, %v", err))
 		return
 	}
 
@@ -798,7 +796,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		f.onError(false, fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
+		f.onError(false, false, fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
 	} else {
 		f.lastReceivedSeqno[vbId] = seqNo
 	}
@@ -823,14 +821,12 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		if atomic.AddUint32(&f.shutdownVbs, 1) >= uint32(len(f.vbucketIds)) {
 			// initiate a feed closure, if a shutdown message or socket closure
 			// has been received for all vbuckets accounted for
-			f.onError(true, err)
+			f.onError(true, false, err)
 		}
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
 		log.Warnf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
 			" `%s`, closing feed and alert the mgr", vbId, err.Error())
-		f.onError(false, err)
-		// alert manager of feed closure
-		f.alertMgr()
+		f.onError(false, true, err)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
 		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
@@ -1162,9 +1158,9 @@ func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {
 
 // ----------------------------------------------------------------
 
-// The following API checks if all the requested vbuckets' states
-// are active, within the GocbcoreServerConnectTimeout.
-func (f *GocbcoreDCPFeed) checkVbStates() error {
+// The following API checks and waits for all the requested vbuckets to
+// be ready to be streamed from, within the GocbcoreServerConnectTimeout.
+func (f *GocbcoreDCPFeed) waitForVBsToBecomeReady() error {
 	signal := make(chan error, 1)
 	currentVbStates := func() (map[uint16]string, error) {
 		vbStates := map[uint16]string{}
@@ -1212,11 +1208,8 @@ OUTER:
 
 		vbsAvailable := true
 		for _, i := range f.vbucketIds {
-			if state, exists := vbStates[i]; exists {
-				if state != "active" {
-					return fmt.Errorf("vb: %d state has changed", i)
-				}
-			} else {
+			state, exists := vbStates[i]
+			if !exists || (state == "dead" || state == "pending") {
 				vbsAvailable = false
 				break
 			}
