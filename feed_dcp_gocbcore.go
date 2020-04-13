@@ -403,10 +403,7 @@ func (f *GocbcoreDCPFeed) Start() error {
 				er = manifest.UnmarshalJSON(manifestBytes)
 			}
 
-			select {
-			case <-f.closeCh:
-			case signal <- er:
-			}
+			signal <- er
 		})
 
 	if err != nil {
@@ -453,10 +450,7 @@ func (f *GocbcoreDCPFeed) Start() error {
 						}
 					}
 
-					select {
-					case <-f.closeCh:
-					case signal <- er:
-					}
+					signal <- er
 				})
 			if err != nil {
 				return fmt.Errorf("Start, GetCollectionID, collection: %v, err: %v",
@@ -620,10 +614,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				}
 			}
 
-			select {
-			case <-f.closeCh:
-			case signal <- er:
-			}
+			signal <- er
 		})
 
 	if err != nil && (errors.Is(err, gocbcore.ErrShutdown) ||
@@ -1112,10 +1103,7 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 				er = manifest.UnmarshalJSON(manifestBytes)
 			}
 
-			select {
-			case <-f.closeCh:
-			case signal <- er:
-			}
+			signal <- er
 		})
 
 	if err != nil {
