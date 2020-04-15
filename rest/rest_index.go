@@ -193,6 +193,8 @@ func (h *CountHandler) ServeHTTP(
 
 // ---------------------------------------------------
 
+const SLOW_QUERY_LOG_TIMEOUT_SECS = int64(5)
+
 // QueryHandler is a REST handler for querying an index.
 type QueryHandler struct {
 	mgr *cbgt.Manager
@@ -203,7 +205,7 @@ type QueryHandler struct {
 }
 
 func NewQueryHandler(mgr *cbgt.Manager, pathStats *RESTPathStats) *QueryHandler {
-	slowQueryLogTimeout := time.Duration(0)
+	slowQueryLogTimeout := time.Duration(SLOW_QUERY_LOG_TIMEOUT_SECS)
 	slowQueryLogTimeoutV := mgr.Options()["slowQueryLogTimeout"]
 	if slowQueryLogTimeoutV != "" {
 		d, err := time.ParseDuration(slowQueryLogTimeoutV)
