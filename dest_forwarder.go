@@ -123,6 +123,20 @@ func (t *DestForwarder) RollbackEx(partition string,
 		" partition %s", partition)
 }
 
+func (t *DestForwarder) PrepareFeedParams(partition string,
+	params *DCPFeedParams) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.PrepareFeedParams(partition, params)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found for partition %s", partition)
+}
+
 func (t *DestForwarder) ConsistencyWait(partition, partitionUUID string,
 	consistencyLevel string,
 	consistencySeq uint64,

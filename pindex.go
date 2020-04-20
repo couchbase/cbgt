@@ -137,7 +137,8 @@ func NewPIndex(mgr *Manager, name, uuid,
 		go restartPIndex(mgr, pindex)
 	}
 
-	params := IndexPrepParams{SourceName: sourceName, Params: indexParams}
+	params := IndexPrepParams{SourceName: sourceName, IndexName: indexName,
+		Params: indexParams}
 	pBytes, err := json.Marshal(&params)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: NewPIndex, json marshal err: %v", err)

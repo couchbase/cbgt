@@ -151,6 +151,14 @@ type vbucketState struct {
 	snapSaved   bool // True when snapStart/snapEnd have been persisted
 }
 
+// DestCollection interface needs to be implemented by the dest/pindex
+// implementations which consumes data from the collections.
+type DestCollection interface {
+	// PrepareFeedParams provides a way for the pindex
+	// implementation to customise any DCPFeedParams.
+	PrepareFeedParams(partition string, params *DCPFeedParams) error
+}
+
 // A GocbcoreDCPFeed implements both Feed and gocb.StreamObserver
 // interfaces, and forwards any incoming gocb.StreamObserver
 // callbacks to the relevant, hooked-up Dest instances.
@@ -301,6 +309,16 @@ func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 		stats:      NewDestStats(),
 		active:     make(map[uint16]bool),
 		closeCh:    make(chan struct{}),
+	}
+
+	for partition, dest := range dests {
+		if destColl, ok := dest.(DestCollection); ok {
+			err := destColl.PrepareFeedParams(partition, params)
+			if err != nil {
+				log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, "+
+					"PrepareFeedParams err: %v", err)
+			}
+		}
 	}
 
 	if len(params.Scope) == 0 && len(params.Collections) == 0 {

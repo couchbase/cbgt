@@ -28,6 +28,7 @@ const INDEX_NAME_REGEXP = `^[A-Za-z][0-9A-Za-z_\-]*$`
 type IndexPrepParams struct {
 	Params     string `json:"params,omitempty"`
 	SourceName string `json:"sourceName,omitempty"`
+	IndexName  string `json:"indexName,omitempty"`
 }
 
 // Creates a logical index definition.  A non-"" prevIndexUUID means
