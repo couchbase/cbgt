@@ -950,7 +950,13 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	streamId uint16) {
-	// FIXME
+	if f.mgr != nil && f.mgr.meh != nil {
+		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f,
+			fmt.Errorf("DeleteCollection, collection uid: %d",
+				collectionId))
+		return
+	}
+
 }
 
 func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
@@ -965,7 +971,13 @@ func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
 
 func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16) {
-	// FIXME
+	// FIXME Looks like this callback isn't working.
+	if f.mgr != nil && f.mgr.meh != nil {
+		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f,
+			fmt.Errorf("DeleteScope, scope uid: %d",
+				scopeId))
+		return
+	}
 }
 
 func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
@@ -1252,23 +1264,28 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 		return false, "", nil
 	}
 
+	// as any collection lifecycle events affects the scope UUID, skipping
+	// that for the comparisons here.
+	var scopeFound bool
 	for i := range manifest.Scopes {
-		if manifest.Scopes[i].Name == f.scope &&
-			manifest.Scopes[i].UID == f.scopeID {
-			// scope found, now check if ANY of the collections are still around
+		if manifest.Scopes[i].Name == f.scope {
+			scopeFound = true
+			// check if any of the source collections got deleted.
+		OUTER:
 			for j := range f.collectionIDs {
 				for _, coll := range manifest.Scopes[i].Collections {
 					if f.collections[j] == coll.Name &&
 						f.collectionIDs[j] == coll.UID {
-						return false, "", nil
+						continue OUTER
 					}
 				}
+				return true, f.indexUUID, nil
 			}
+			break
 		}
 	}
 
-	// drop index
-	return true, f.indexUUID, nil
+	return !scopeFound, f.indexUUID, nil
 }
 
 func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {
