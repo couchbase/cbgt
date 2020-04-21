@@ -132,13 +132,13 @@ func (c *SecurityContext) refresh(code uint64) error {
 func (c *SecurityContext) refreshConfig(configs *SecuritySetting) error {
 	TLSConfig, err := cbauth.GetTLSConfig()
 	if err != nil {
-		log.Printf("cbauth: GetTLSConfig failed, err: %v", err)
+		log.Warnf("cbauth: GetTLSConfig failed, err: %v", err)
 		return err
 	}
 
 	ClientAuthType, err := cbauth.GetClientCertAuthType()
 	if err != nil {
-		log.Printf("cbauth: GetClientCertAuthType failed, err: %v", err)
+		log.Warnf("cbauth: GetClientCertAuthType failed, err: %v", err)
 		return err
 	}
 
@@ -174,21 +174,26 @@ func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
 func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 	cfg, err := cbauth.GetClusterEncryptionConfig()
 	if err != nil {
-		log.Printf("cbauth: GetClusterEncryptionConfig err: %v", err)
+		log.Warnf("cbauth: GetClusterEncryptionConfig err: %v", err)
 		return err
 	}
 
 	configs.EncryptionEnabled = cfg.EncryptData
 	configs.DisableNonSSLPorts = cfg.DisableNonSSLPorts
 
-	err = cbdatasource.UpdateSecurityConfig(&cbdatasource.SecurityConfig{
+	if err = updateGocbcoreSecurityConfig(cfg.EncryptData); err != nil {
+		log.Warnf("cbauth: Error updating gocbcore's TLS data, err: %v", err)
+		return err
+	}
+
+	if err = cbdatasource.UpdateSecurityConfig(&cbdatasource.SecurityConfig{
 		EncryptData:        cfg.EncryptData,
 		DisableNonSSLPorts: cfg.DisableNonSSLPorts,
 		CertFile:           TLSCertFile,
 		KeyFile:            TLSKeyFile,
-	})
-	if err != nil {
-		log.Printf("cbauth: Error updating TLS data, err: %v", err)
+	}); err != nil {
+		log.Warnf("cbauth: Error updating go-couchbase/cbdatasource's"+
+			" TLS data, err: %v", err)
 		return err
 	}
 
@@ -197,51 +202,48 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 
 // ----------------------------------------------------------------
 
-func FetchSecuritySetting(options map[string]string) (*tls.Config, error) {
-	if options != nil && options["authType"] == "cbauth" {
-		currentSetting := GetSecuritySetting()
-		if currentSetting.EncryptionEnabled {
-			certificates := []tls.Certificate{*currentSetting.Certificate}
-			roots := x509.NewCertPool()
-			ok := roots.AppendCertsFromPEM(currentSetting.CertInBytes)
-			if !ok {
-				return nil, fmt.Errorf("Error appending certificates (cbauth)")
-			}
+// security config for gocbcore DCP Agents
+type gocbcoreSecurityConfig struct {
+	encryptData bool
+	rootCAs     *x509.CertPool
+}
 
-			return &tls.Config{
-				RootCAs:      roots,
-				Certificates: certificates,
-			}, nil
-		}
-	} else if len(TLSCertFile) > 0 {
-		// In the case the authType isn't cbauth, check if user has
-		// set TLSCertFile and/or TLSKeyFile
-		var certificates []tls.Certificate
-		if len(TLSKeyFile) > 0 {
-			cert, err := tls.LoadX509KeyPair(TLSCertFile, TLSKeyFile)
-			if err != nil {
-				return nil, err
-			}
+var currGocbcoreSecurityConfigMutex sync.RWMutex
+var currGocbcoreSecurityConfig *gocbcoreSecurityConfig
 
-			certificates = []tls.Certificate{cert}
-		}
+func init() {
+	currGocbcoreSecurityConfig = &gocbcoreSecurityConfig{}
+}
 
+func updateGocbcoreSecurityConfig(encryptData bool) error {
+	currGocbcoreSecurityConfigMutex.Lock()
+	defer currGocbcoreSecurityConfigMutex.Unlock()
+
+	currGocbcoreSecurityConfig.encryptData = encryptData
+	if encryptData && len(TLSCertFile) > 0 {
 		certInBytes, err := ioutil.ReadFile(TLSCertFile)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		roots := x509.NewCertPool()
-		ok := roots.AppendCertsFromPEM(certInBytes)
+		rootCAs := x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM(certInBytes)
 		if !ok {
-			return nil, fmt.Errorf("Error appending certificates")
+			return fmt.Errorf("error appending certificates")
 		}
 
-		return &tls.Config{
-			RootCAs:      roots,
-			Certificates: certificates,
-		}, nil
+		currGocbcoreSecurityConfig.rootCAs = rootCAs
 	}
 
-	return nil, nil
+	return nil
+}
+
+func FetchGocbcoreSecurityConfig() *x509.CertPool {
+	var rootCAs *x509.CertPool
+	currGocbcoreSecurityConfigMutex.RLock()
+	if currGocbcoreSecurityConfig.encryptData {
+		rootCAs = currGocbcoreSecurityConfig.rootCAs
+	}
+	currGocbcoreSecurityConfigMutex.RUnlock()
+	return rootCAs
 }

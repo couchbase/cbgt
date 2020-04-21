@@ -12,11 +12,13 @@
 package cbgt
 
 import (
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"reflect"
 	"sort"
@@ -26,7 +28,8 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/gocbcore"
+	"github.com/couchbase/gocbcore/v9"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 const SOURCE_GOCBCORE = "gocbcore"
@@ -53,22 +56,51 @@ type GocbcoreDCPExtras struct {
 var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
 
 var GocbcoreStatsTimeout = time.Duration(30 * time.Second)
-var GocbcoreConnectTimeout = time.Duration(60000 * time.Millisecond)
-var GocbcoreServerConnectTimeout = time.Duration(7000 * time.Millisecond)
+var GocbcoreConnectTimeout = time.Duration(60 * time.Second)
+var GocbcoreKVConnectTimeout = time.Duration(7 * time.Second)
+var GocbcoreAgentSetupTimeout = time.Duration(10 * time.Second)
 
 // ----------------------------------------------------------------
 
-func setupAgentConfig(name, bucketName string,
-	auth gocbcore.AuthProvider) *gocbcore.AgentConfig {
-	return &gocbcore.AgentConfig{
+func setupDCPAgentConfig(name, bucketName string,
+	auth gocbcore.AuthProvider) *gocbcore.DCPAgentConfig {
+	return &gocbcore.DCPAgentConfig{
 		UserAgent:        name,
 		BucketName:       bucketName,
 		Auth:             auth,
 		ConnectTimeout:   GocbcoreConnectTimeout,
+		KVConnectTimeout: GocbcoreKVConnectTimeout,
 		UseCollections:   true,
-		DcpAgentPriority: gocbcore.DcpAgentPriorityMed,
+		UseOSOBackfill:   true,
+		AgentPriority:    gocbcore.DcpAgentPriorityMed,
 	}
 }
+
+func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
+	connName string, flags memd.DcpOpenFlag) (
+	*gocbcore.DCPAgent, error) {
+	agent, err := gocbcore.CreateDcpAgent(config, connName, flags)
+	if err != nil {
+		return nil, err
+	}
+
+	options := gocbcore.WaitUntilReadyOptions{
+		DesiredState: gocbcore.ClusterStateOnline,
+		ServiceTypes: []gocbcore.ServiceType{gocbcore.MemdService},
+	}
+
+	signal := make(chan error, 1)
+	if _, err = agent.WaitUntilReady(time.Now().Add(GocbcoreAgentSetupTimeout),
+		options, func(res *gocbcore.WaitUntilReadyResult, er error) {
+			signal <- er
+		}); err != nil {
+		return nil, err
+	}
+
+	return agent, <-signal
+}
+
+// ----------------------------------------------------------------
 
 func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 	op gocbcore.PendingOp, timeout time.Duration) error {
@@ -83,7 +115,7 @@ func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 	case <-timeoutTmr.C:
 		gocbcore.ReleaseTimer(timeoutTmr, true)
 		if op != nil {
-			op.Cancel(gocbcore.ErrTimeout)
+			op.Cancel()
 		}
 		return gocbcore.ErrTimeout
 	}
@@ -112,7 +144,7 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	server, _, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
-	feed, err := NewGocbcoreDCPFeed(feedName, indexName, indexUUID,
+	feed, err := newGocbcoreDCPFeed(feedName, indexName, indexUUID,
 		server, bucketName, bucketUUID, params, BasicPartitionFunc,
 		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
@@ -176,8 +208,8 @@ type GocbcoreDCPFeed struct {
 	dests      map[string]Dest
 	disable    bool
 	stopAfter  map[string]UUIDSeq
-	config     *gocbcore.AgentConfig
-	agent      *gocbcore.Agent
+	config     *gocbcore.DCPAgentConfig
+	agent      *gocbcore.DCPAgent
 	mgr        *Manager
 
 	scope       string
@@ -185,7 +217,8 @@ type GocbcoreDCPFeed struct {
 
 	scopeID       uint32
 	collectionIDs []uint32
-	streamFilter  *gocbcore.StreamFilter
+
+	streamOptions gocbcore.OpenStreamOptions
 
 	vbucketIds        []uint16
 	lastReceivedSeqno []uint64
@@ -243,7 +276,7 @@ func (s *gocbcoreDCPFeedStats) atomicCopyTo(r *gocbcoreDCPFeedStats,
 	}
 }
 
-func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
+func newGocbcoreDCPFeed(name, indexName, indexUUID, url,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbcoreDCPFeed, error) {
@@ -254,7 +287,7 @@ func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 
 	auth, err := gocbAuth(paramsStr, options)
 	if err != nil {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: NewGocbcoreDCPFeed gocbAuth, err: %v", err)
+		return nil, fmt.Errorf("newGocbcoreDCPFeed gocbAuth, err: %v", err)
 	}
 
 	var stopAfter map[string]UUIDSeq
@@ -264,13 +297,14 @@ func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 	if paramsStr != "" {
 		err := json.Unmarshal([]byte(paramsStr), params)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("newGocbcoreDCPFeed params, err: %v", err)
 		}
 
 		stopAfterSourceParams := StopAfterSourceParams{}
 		err = json.Unmarshal([]byte(paramsStr), &stopAfterSourceParams)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("newGocbcoreDCPFeed stopAfterSourceParams,"+
+				" err: %v", err)
 		}
 
 		if stopAfterSourceParams.StopAfter == "markReached" {
@@ -284,11 +318,11 @@ func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 
 	vbucketIds, err := ParsePartitionsToVBucketIds(dests)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("newGocbcoreDCPFeed, err: %v", err)
 	}
 	if len(vbucketIds) == 0 {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: NewGocbcoreDCPFeed," +
-			" No vbucketids for this feed")
+		return nil, fmt.Errorf("newGocbcoreDCPFeed:" +
+			" no vbucketids for this feed")
 	}
 
 	feed := &GocbcoreDCPFeed{
@@ -339,54 +373,65 @@ func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	config := setupAgentConfig(name, bucketName, auth)
+	config := setupDCPAgentConfig(name, bucketName, auth)
 
 	urls := strings.Split(url, ";")
 	if len(urls) <= 0 {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, no urls provided")
+		return nil, fmt.Errorf("newGocbcoreDCPFeed: no urls provided")
 	}
 
 	err = config.FromConnStr(urls[0])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("newGocbcoreDCPFeed config, err: %v", err)
 	}
 
-	tlsConfig, err := FetchSecuritySetting(options)
-	if err != nil {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: NewGocbcoreDCPFeed,"+
-			" error in fetching tlsConfig, err: %v", err)
-	}
-	if tlsConfig != nil {
-		config.TLSRootCAs = tlsConfig.RootCAs
+	// setup rootCAs provider
+	if options != nil && options["authType"] == "cbauth" {
+		config.TLSRootCAProvider = FetchGocbcoreSecurityConfig
 	} else {
-		config.TLSSkipVerify = true
+		// in the case the authType isn't cbauth, check if user has
+		// set TLSCertFile
+		var rootCAs *x509.CertPool
+		if len(TLSCertFile) > 0 {
+			certInBytes, err := ioutil.ReadFile(TLSCertFile)
+			if err != nil {
+				return nil, fmt.Errorf("newGocbcoreDcpFeed tls, err: %v", err)
+			}
+
+			rootCAs = x509.NewCertPool()
+			ok := rootCAs.AppendCertsFromPEM(certInBytes)
+			if !ok {
+				return nil, fmt.Errorf("newGocbcoreDCPFeed: " +
+					" error appending certificates")
+			}
+		}
+
+		config.TLSRootCAProvider = func() *x509.CertPool {
+			return rootCAs
+		}
 	}
 
 	feed.config = config
 
-	flags := gocbcore.DcpOpenFlagProducer
+	if err = feed.setupStreamOptions(); err != nil {
+		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
+			" error in setting up feed's stream options, err: %v", err)
+	}
+
+	flags := memd.DcpOpenFlagProducer
 
 	if params.IncludeXAttrs {
-		flags |= gocbcore.DcpOpenFlagIncludeXattrs
+		flags |= memd.DcpOpenFlagIncludeXattrs
 	}
 
 	if params.NoValue {
-		flags |= gocbcore.DcpOpenFlagNoValue
+		flags |= memd.DcpOpenFlagNoValue
 	}
 
 	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31())
-	feed.agent, err = gocbcore.CreateDcpAgent(config, dcpConnName, flags)
+	feed.agent, err = setupGocbcoreDCPAgent(config, dcpConnName, flags)
 	if err != nil {
-		return nil, err
-	}
-
-	feed.agent.SetServerConnectTimeout(GocbcoreServerConnectTimeout)
-
-	if len(bucketUUID) == 0 {
-		// the sourceUUID setting in the index definition is optional,
-		// so make sure the feed's bucketUUID is set to the correct
-		// value if in case it wasn't provided
-		feed.bucketUUID = feed.agent.BucketUUID()
+		return nil, fmt.Errorf("newGocbcoreFeed DCPAgent, err: %v", err)
 	}
 
 	log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, name: %s, indexName: %s,"+
@@ -394,6 +439,120 @@ func NewGocbcoreDCPFeed(name, indexName, indexUUID, url,
 		name, indexName, urls[0], feed.bucketName, feed.bucketUUID, dcpConnName)
 
 	return feed, nil
+}
+
+func (f *GocbcoreDCPFeed) setupStreamOptions() error {
+	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
+	err := config.FromConnStr(strings.Split(f.url, ";")[0])
+	if err != nil {
+		return err
+	}
+
+	agent, err := setupGocbcoreAgent(config)
+	if err != nil {
+		return err
+	}
+	defer agent.Close()
+
+	if len(f.bucketUUID) == 0 {
+		// the sourceUUID setting in the index definition is optional,
+		// so make sure the feed's bucketUUID is set to the correct
+		// value if in case it wasn't provided
+		snapshot, err := agent.ConfigSnapshot()
+		if err != nil {
+			return err
+		}
+
+		f.bucketUUID = snapshot.BucketUUID()
+	}
+
+	signal := make(chan error, 1)
+	var manifest gocbcore.Manifest
+	op, err := agent.GetCollectionManifest(
+		gocbcore.GetCollectionManifestOptions{},
+		func(res *gocbcore.GetCollectionManifestResult, er error) {
+			if er == nil && res == nil {
+				er = fmt.Errorf("manifest not retrieved")
+			}
+
+			if er == nil {
+				er = manifest.UnmarshalJSON(res.Manifest)
+			}
+
+			signal <- er
+		})
+
+	if err != nil {
+		return fmt.Errorf("GetCollectionManifest, err: %v", err)
+	}
+
+	err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to get manifest, err: %v", err)
+	}
+
+	var scopeIDFound bool
+	for _, manifestScope := range manifest.Scopes {
+		if manifestScope.Name == f.scope {
+			f.scopeID = manifestScope.UID
+			scopeIDFound = true
+			break
+		}
+	}
+
+	if !scopeIDFound {
+		return fmt.Errorf("scope not found: %v", f.scope)
+	}
+
+	f.streamOptions = gocbcore.OpenStreamOptions{}
+	f.streamOptions.ManifestOptions = &gocbcore.OpenStreamManifestOptions{
+		ManifestUID: manifest.UID,
+	}
+
+	if len(f.collections) == 0 {
+		// if no collections were specified, set up stream requests for
+		// the entire scope.
+		f.streamOptions.FilterOptions = &gocbcore.OpenStreamFilterOptions{
+			ScopeID: f.scopeID,
+		}
+	} else {
+		for _, coll := range f.collections {
+			op, err = agent.GetCollectionID(f.scope, coll,
+				gocbcore.GetCollectionIDOptions{},
+				func(res *gocbcore.GetCollectionIDResult, er error) {
+					if er == nil && res == nil {
+						er = fmt.Errorf("collection ID not retrieved")
+					}
+
+					if er == nil {
+						if res.ManifestID != f.streamOptions.ManifestOptions.ManifestUID {
+							er = fmt.Errorf("manifestID mismatch, %v != %v",
+								res.ManifestID, f.streamOptions.ManifestOptions.ManifestUID)
+						} else {
+							f.collectionIDs =
+								append(f.collectionIDs, res.CollectionID)
+						}
+					}
+
+					signal <- er
+				})
+			if err != nil {
+				return fmt.Errorf("GetCollectionID, collection: %v, err: %v",
+					coll, err)
+			}
+
+			err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
+			if err != nil {
+				return fmt.Errorf("failed to get collection ID, err : %v", err)
+			}
+		}
+
+		f.streamOptions.FilterOptions = &gocbcore.OpenStreamFilterOptions{
+			CollectionIDs: f.collectionIDs,
+		}
+	}
+
+	return nil
 }
 
 // ----------------------------------------------------------------
@@ -412,80 +571,8 @@ func (f *GocbcoreDCPFeed) Start() error {
 		return nil
 	}
 
-	signal := make(chan error, 1)
-	var manifest gocbcore.Manifest
-	op, err := f.agent.GetCollectionManifest(
-		gocbcore.GetCollectionManifestOptions{},
-		func(manifestBytes []byte, er error) {
-			if er == nil {
-				er = manifest.UnmarshalJSON(manifestBytes)
-			}
-
-			signal <- er
-		})
-
-	if err != nil {
-		return fmt.Errorf("Start, GetCollectionManifest, err: %v", err)
-	}
-
-	err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
-	if err != nil {
-		return fmt.Errorf("Start, Failed to get manifest, err: %v", err)
-	}
-
-	var scopeIDFound bool
-	for _, manifestScope := range manifest.Scopes {
-		if manifestScope.Name == f.scope {
-			f.scopeID = manifestScope.UID
-			scopeIDFound = true
-			break
-		}
-	}
-
-	if !scopeIDFound {
-		return fmt.Errorf("Start, scope not found: %v", f.scope)
-	}
-
-	f.streamFilter = gocbcore.NewStreamFilter()
-	f.streamFilter.ManifestUID = manifest.UID
-
-	if len(f.collections) == 0 {
-		// if no collections were specified, set up stream requests for
-		// the entire scope.
-		f.streamFilter.Scope = f.scopeID
-	} else {
-		for _, coll := range f.collections {
-			op, err = f.agent.GetCollectionID(f.scope, coll,
-				gocbcore.GetCollectionIDOptions{},
-				func(manifestID uint64, collectionID uint32, er error) {
-					if er == nil {
-						if manifestID != f.streamFilter.ManifestUID {
-							er = fmt.Errorf("manifestID mismatch, %v != %v",
-								manifestID, f.streamFilter.ManifestUID)
-						} else {
-							f.collectionIDs =
-								append(f.collectionIDs, collectionID)
-						}
-					}
-
-					signal <- er
-				})
-			if err != nil {
-				return fmt.Errorf("Start, GetCollectionID, collection: %v, err: %v",
-					coll, err)
-			}
-
-			err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
-			if err != nil {
-				return fmt.Errorf("Start, Failed to get collection ID, err : %v", err)
-			}
-		}
-
-		f.streamFilter.Collections = f.collectionIDs
-	}
-
 	log.Printf("feed_dcp_gocbcore: Start, name: %s, num streams: %d,"+
-		" streamFilter: %+v", f.Name(), len(f.vbucketIds), f.streamFilter)
+		" streamOptions: %+v", f.Name(), len(f.vbucketIds), f.streamOptions)
 
 	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid))
@@ -588,10 +675,10 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	snapStart := seqStart
 	signal := make(chan error, 1)
 	log.Debugf("feed_dcp_gocbcore: Initiating DCP stream request for vb: %v,"+
-		" vbUUID: %v, seqStart: %v, seqEnd: %v, streamFilter: %+v",
-		vbId, vbuuid, seqStart, seqEnd, f.streamFilter)
-	op, err := f.agent.OpenStream(vbId, gocbcore.DcpStreamAddFlagStrictVBUUID,
-		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamFilter,
+		" vbUUID: %v, seqStart: %v, seqEnd: %v, streamOptions: %+v",
+		vbId, vbuuid, seqStart, seqEnd, f.streamOptions)
+	op, err := f.agent.OpenStream(vbId, memd.DcpStreamAddFlagStrictVBUUID,
+		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamOptions,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if errors.Is(er, gocbcore.ErrShutdown) ||
 				errors.Is(er, gocbcore.ErrSocketClosed) {
@@ -641,7 +728,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			vbId, err))
 	}
 
-	err = waitForResponse(signal, f.closeCh, op, GocbcoreServerConnectTimeout)
+	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
 	if err != nil {
 		// notify mgr on feed closure due to timeout
 		f.onError(false, err == gocbcore.ErrTimeout,
@@ -726,7 +813,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbcoreDCPExtras{
-				ScopeId:      f.streamFilter.Scope,
+				ScopeId:      f.streamOptions.FilterOptions.ScopeID,
 				CollectionId: collectionId,
 				Expiry:       expiry,
 				Flags:        flags,
@@ -762,8 +849,9 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	atomic.AddUint64(&f.dcpStats.TotDCPMutations, 1)
 }
 
-func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
-	vbId uint16, collectionId uint32, streamId uint16, key, value []byte) {
+func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
+	cas uint64, datatype uint8, vbId uint16, collectionId uint32, streamId uint16,
+	key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
 		f.onError(false, false, fmt.Errorf("Deletion, %v", err))
 		return
@@ -778,7 +866,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbcoreDCPExtras{
-				ScopeId:      f.streamFilter.Scope,
+				ScopeId:      f.streamOptions.FilterOptions.ScopeID,
 				CollectionId: collectionId,
 				Datatype:     datatype,
 				Value:        value,
@@ -813,9 +901,9 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo, cas uint64, datatype uint8,
 	atomic.AddUint64(&f.dcpStats.TotDCPDeletions, 1)
 }
 
-func (f *GocbcoreDCPFeed) Expiration(seqNo, revNo, cas uint64, vbId uint16,
-	collectionId uint32, streamId uint16, key []byte) {
-	f.Deletion(seqNo, revNo, cas, 0, vbId, collectionId, streamId, key, nil)
+func (f *GocbcoreDCPFeed) Expiration(seqNo, revNo uint64, deleteTime uint32,
+	cas uint64, vbId uint16, collectionId uint32, streamId uint16, key []byte) {
+	f.Deletion(seqNo, revNo, deleteTime, cas, 0, vbId, collectionId, streamId, key, nil)
 }
 
 func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
@@ -882,6 +970,18 @@ func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 
 func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, collectionId uint32, ttl uint32, streamId uint16) {
+	// FIXME
+}
+
+// ----------------------------------------------------------------
+
+func (f *GocbcoreDCPFeed) OSOSnapshot(vbID uint16, snapshotType uint32,
+	streamID uint16) {
+	// FIXME
+}
+
+func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbID uint16, bySeqno uint64,
+	streamID uint16) {
 	// FIXME
 }
 
@@ -1093,7 +1193,13 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 // needs to be dropped, the index UUID is passed on in this
 // scenario.
 func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
-	agent, err := gocbcore.CreateAgent(f.config)
+	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
+	err := config.FromConnStr(strings.Split(f.url, ";")[0])
+	if err != nil {
+		return false, "", err
+	}
+
+	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
 		if errors.Is(err, gocbcore.ErrBucketNotFound) ||
 			errors.Is(err, gocbcore.ErrAuthenticationFailure) {
@@ -1104,9 +1210,12 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 	}
 	defer agent.Close()
 
-	uuid := agent.BucketUUID()
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return false, "", err
+	}
 
-	if uuid != f.bucketUUID {
+	if snapshot.BucketUUID() != f.bucketUUID {
 		// bucket UUID mismatched, so the bucket being looked
 		// up must've been deleted
 		return true, "", err
@@ -1116,9 +1225,13 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 	var manifest gocbcore.Manifest
 	op, err := agent.GetCollectionManifest(
 		gocbcore.GetCollectionManifestOptions{},
-		func(manifestBytes []byte, er error) {
+		func(res *gocbcore.GetCollectionManifestResult, er error) {
+			if er == nil && res == nil {
+				er = fmt.Errorf("manifest not retrieved")
+			}
+
 			if er == nil {
-				er = manifest.UnmarshalJSON(manifestBytes)
+				er = manifest.UnmarshalJSON(res.Manifest)
 			}
 
 			signal <- er
@@ -1133,7 +1246,7 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 		return false, "", err
 	}
 
-	if manifest.UID == f.streamFilter.ManifestUID {
+	if manifest.UID == f.streamOptions.ManifestOptions.ManifestUID {
 		// no manifest update => safe to assume that no scope/collection
 		// have been added/dropped
 		return false, "", nil
@@ -1165,12 +1278,23 @@ func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {
 // ----------------------------------------------------------------
 
 // The following API checks and waits for all the requested vbuckets to
-// be ready to be streamed from, within the GocbcoreServerConnectTimeout.
+// be ready to be streamed from, within the GocbcoreKVConnectTimeout.
 func (f *GocbcoreDCPFeed) waitForVBsToBecomeReady() error {
+	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
+	err := config.FromConnStr(strings.Split(f.url, ";")[0])
+	if err != nil {
+		return err
+	}
+
+	agent, err := setupGocbcoreAgent(config)
+	if err != nil {
+		return err
+	}
+
 	signal := make(chan error, 1)
 	currentVbStates := func() (map[uint16]string, error) {
 		vbStates := map[uint16]string{}
-		op, err := f.agent.StatsEx(gocbcore.StatsOptions{Key: "vbucket"},
+		op, err := agent.Stats(gocbcore.StatsOptions{Key: "vbucket"},
 			func(resp *gocbcore.StatsResult, er error) {
 				if resp == nil || er != nil {
 					signal <- er
@@ -1200,11 +1324,11 @@ func (f *GocbcoreDCPFeed) waitForVBsToBecomeReady() error {
 			return nil, err
 		}
 
-		err = waitForResponse(signal, f.closeCh, op, GocbcoreServerConnectTimeout)
+		err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
 		return vbStates, err
 	}
 
-	timeoutTick := time.Tick(GocbcoreServerConnectTimeout)
+	timeoutTick := time.Tick(GocbcoreKVConnectTimeout)
 OUTER:
 	for {
 		vbStates, err := currentVbStates()

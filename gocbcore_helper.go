@@ -19,10 +19,48 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/gocbcore"
+	"github.com/couchbase/gocbcore/v9"
 )
+
+// ----------------------------------------------------------------
+
+func setupAgentConfig(name, bucketName string,
+	auth gocbcore.AuthProvider) *gocbcore.AgentConfig {
+	return &gocbcore.AgentConfig{
+		UserAgent:        name,
+		BucketName:       bucketName,
+		Auth:             auth,
+		ConnectTimeout:   GocbcoreConnectTimeout,
+		KVConnectTimeout: GocbcoreKVConnectTimeout,
+		UseCollections:   true,
+	}
+}
+
+func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
+	*gocbcore.Agent, error) {
+	agent, err := gocbcore.CreateAgent(config)
+	if err != nil {
+		return nil, err
+	}
+
+	options := gocbcore.WaitUntilReadyOptions{
+		DesiredState: gocbcore.ClusterStateOnline,
+		ServiceTypes: []gocbcore.ServiceType{gocbcore.MemdService},
+	}
+
+	signal := make(chan error, 1)
+	if _, err = agent.WaitUntilReady(time.Now().Add(GocbcoreAgentSetupTimeout),
+		options, func(res *gocbcore.WaitUntilReadyResult, er error) {
+			signal <- er
+		}); err != nil {
+		return nil, err
+	}
+
+	return agent, <-signal
+}
 
 // ----------------------------------------------------------------
 
@@ -75,8 +113,6 @@ func (am *gocbcoreAgentMap) closeAgent(name, uuid string) {
 	}
 }
 
-// ----------------------------------------------------------------
-
 func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 	options map[string]string) (*gocbcore.Agent, error) {
 	server, _, bucketName :=
@@ -100,7 +136,7 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 		return nil, err
 	}
 
-	return gocbcore.CreateAgent(config)
+	return setupGocbcoreAgent(config)
 }
 
 // ----------------------------------------------------------------
@@ -116,7 +152,16 @@ func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 		return nil, err
 	}
 
-	numVBuckets := agent.NumVbuckets()
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return nil, err
+	}
+
+	numVBuckets, err := snapshot.NumVbuckets()
+	if err != nil {
+		return nil, err
+	}
+
 	rv := make([]string, numVBuckets)
 	for i := 0; i < numVBuckets; i++ {
 		rv[i] = strconv.Itoa(i)
@@ -145,14 +190,20 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	signal := make(chan error, 1)
 
 	var manifest gocbcore.Manifest
-	op, err := agent.GetCollectionManifest(gocbcore.GetCollectionManifestOptions{},
-		func(manifestBytes []byte, er error) {
+	op, err := agent.GetCollectionManifest(
+		gocbcore.GetCollectionManifestOptions{},
+		func(res *gocbcore.GetCollectionManifestResult, er error) {
+			if er == nil && res == nil {
+				er = fmt.Errorf("manifest not retrieved")
+			}
+
 			if er == nil {
-				er = manifest.UnmarshalJSON(manifestBytes)
+				er = manifest.UnmarshalJSON(res.Manifest)
 			}
 
 			signal <- er
 		})
+
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +222,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	}
 
 	var vbucketNodeStats map[string]gocbcore.SingleServerStats
-	op, err = agent.StatsEx(gocbcore.StatsOptions{Key: "vbucket-details"},
+	op, err = agent.Stats(gocbcore.StatsOptions{Key: "vbucket-details"},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
 				signal <- er
@@ -189,7 +240,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	}
 
 	var collectionsStats map[string]gocbcore.SingleServerStats
-	op, err = agent.StatsEx(gocbcore.StatsOptions{Key: "collections-details"},
+	op, err = agent.Stats(gocbcore.StatsOptions{Key: "collections-details"},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
 				signal <- er
@@ -288,7 +339,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 
 	signal := make(chan error, 1)
 	var rv map[string]interface{}
-	op, err := agent.StatsEx(gocbcore.StatsOptions{Key: statsKind},
+	op, err := agent.Stats(gocbcore.StatsOptions{Key: statsKind},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
 				signal <- er
@@ -359,13 +410,22 @@ func CBStats(sourceType, sourceName, sourceUUID,
 func CBVBucketLookUp(docID, serverIn string,
 	sourceDetails *IndexDef, req *http.Request) (string, error) {
 	var config gocbcore.AgentConfig
-	agent, err := gocbcore.CreateAgent(&config)
+	agent, err := setupGocbcoreAgent(&config)
 	if err != nil {
 		return "", err
 	}
+
 	defer agent.Close()
 
-	vb := agent.KeyToVbucket([]byte(docID))
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return "", err
+	}
+
+	vb, err := snapshot.KeyToVbucket([]byte(docID))
+	if err != nil {
+		return "", err
+	}
 
 	return strconv.Itoa(int(vb)), nil
 }
@@ -398,16 +458,21 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 			" unable to build config, err: %v", err)
 	}
 
-	agent, err := gocbcore.CreateAgent(config)
+	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
 		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
 			" unable to create agent, err: %v", err)
 	}
 
-	uuid := agent.BucketUUID()
-	agent.Close()
+	defer agent.Close()
 
-	return uuid, nil
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
+			" unable to fetch agent's config snapshot, err: %v", err)
+	}
+
+	return snapshot.BucketUUID(), nil
 }
 
 // ----------------------------------------------------------------
