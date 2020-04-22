@@ -26,7 +26,7 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/gocbcore"
+	"github.com/couchbase/gocbcore/v8"
 )
 
 const SOURCE_GOCBCORE = "gocbcore"
