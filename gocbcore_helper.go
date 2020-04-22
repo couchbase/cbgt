@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/gocbcore/v8"
+	"github.com/couchbase/gocbcore"
 )
 
 // ----------------------------------------------------------------
