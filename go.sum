@@ -11,6 +11,8 @@ github.com/couchbase/gocbcore/v9 v9.0.0 h1:e4KEdGOvm31M8x3B8ww2qVPqppude3R5n5tAb
 github.com/couchbase/gocbcore/v9 v9.0.0/go.mod h1:p3BZ7E01GfP73ebLCrOuBcRxy57hMnhp0c2+7Z+6vLs=
 github.com/couchbase/gocbcore/v9 v9.0.1-0.20200422120353-fbc14bdecee4 h1:C1SEf329WamC8uPdJiyqhCOdjUxgNZVpBDQVLEgQYsE=
 github.com/couchbase/gocbcore/v9 v9.0.1-0.20200422120353-fbc14bdecee4/go.mod h1:p3BZ7E01GfP73ebLCrOuBcRxy57hMnhp0c2+7Z+6vLs=
+github.com/couchbase/gocbcore/v9 v9.0.1-0.20200423152833-876a908d521a h1:cwTmsAIAzfte8nm7UYBoUseICwY+5iyr3rZzvnGri/E=
+github.com/couchbase/gocbcore/v9 v9.0.1-0.20200423152833-876a908d521a/go.mod h1:p3BZ7E01GfP73ebLCrOuBcRxy57hMnhp0c2+7Z+6vLs=
 github.com/couchbase/gomemcached v0.0.0-20200407171316-70e4e9d75df1 h1:yfUyNIDoWGjVi/mUHkyt9GNtei0gIsh75qQeuKsJDUw=
 github.com/couchbase/gomemcached v0.0.0-20200407171316-70e4e9d75df1/go.mod h1:srVSlQLB8iXBVXHgnqemxUXqN6FCvClgCMPCsjBDR7c=
 github.com/couchbase/goutils v0.0.0-20191018232750-b49639060d85 h1:0WMIDtuXCKEm4wtAJgAAXa/qtM5O9MariLwgHaRlYmk=
