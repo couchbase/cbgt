@@ -177,14 +177,6 @@ type vbucketState struct {
 	snapSaved   bool // True when snapStart/snapEnd have been persisted
 }
 
-// DestCollection interface needs to be implemented by the dest/pindex
-// implementations which consumes data from the collections.
-type DestCollection interface {
-	// PrepareFeedParams provides a way for the pindex
-	// implementation to customise any DCPFeedParams.
-	PrepareFeedParams(partition string, params *DCPFeedParams) error
-}
-
 // A GocbcoreDCPFeed implements both Feed and gocb.StreamObserver
 // interfaces, and forwards any incoming gocb.StreamObserver
 // callbacks to the relevant, hooked-up Dest instances.
@@ -240,6 +232,7 @@ type gocbcoreDCPFeedStats struct {
 	TotDCPSnapshotMarkers uint64
 	TotDCPMutations       uint64
 	TotDCPDeletions       uint64
+	TotDCPSeqNoAdvanceds  uint64
 }
 
 // atomicCopyTo copies metrics from s to r (or, from source to
@@ -737,7 +730,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
-func (f *GocbcoreDCPFeed) onError(isShutdown, alertMgr bool, err error) error {
+func (f *GocbcoreDCPFeed) onError(isShutdown, notifyMgr bool, err error) error {
 	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, isShutdown: %v, err: %v",
 		f.name, f.bucketName, f.bucketUUID, isShutdown, err)
@@ -748,7 +741,7 @@ func (f *GocbcoreDCPFeed) onError(isShutdown, alertMgr bool, err error) error {
 
 	f.Close()
 
-	if alertMgr && f.mgr != nil {
+	if notifyMgr && f.mgr != nil {
 		f.mgr.Kick("gocbcore-feed")
 	}
 
@@ -798,7 +791,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	collectionId uint32, streamId uint16, key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(false, false, fmt.Errorf("Mutation, %v", err))
+		f.onError(false, true, fmt.Errorf("Mutation, %v", err))
 		return
 	}
 
@@ -839,7 +832,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		f.onError(false, false, fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
+		f.onError(false, true, fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
 		return
 	}
 
@@ -852,7 +845,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 	cas uint64, datatype uint8, vbId uint16, collectionId uint32, streamId uint16,
 	key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(false, false, fmt.Errorf("Deletion, %v", err))
+		f.onError(false, true, fmt.Errorf("Deletion, %v", err))
 		return
 	}
 
@@ -892,7 +885,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		f.onError(false, false, fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
+		f.onError(false, true, fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
 		return
 	}
 
@@ -922,7 +915,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		}
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
 		log.Warnf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
-			" `%s`, closing feed and alert the mgr", vbId, err.Error())
+			" `%s`, closing feed and notify the mgr", vbId, err.Error())
 		f.onError(false, true, err)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
@@ -987,14 +980,47 @@ func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uin
 
 // ----------------------------------------------------------------
 
-func (f *GocbcoreDCPFeed) OSOSnapshot(vbID uint16, snapshotType uint32,
+func (f *GocbcoreDCPFeed) OSOSnapshot(vbId uint16, snapshotType uint32,
 	streamID uint16) {
 	// FIXME
 }
 
-func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbID uint16, bySeqno uint64,
+func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 	streamID uint16) {
-	// FIXME
+	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
+		f.onError(false, true, fmt.Errorf("SeqNoAdvanced, %v", err))
+		return
+	}
+
+	err := Timer(func() error {
+		partition, dest, err :=
+			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+		if err != nil || f.checkStopAfter(partition) {
+			return err
+		}
+
+		if destColl, ok := dest.(DestCollection); ok {
+			err = destColl.SeqNoAdvanced(partition, seqNo)
+		}
+
+		if err != nil {
+			return fmt.Errorf("SeqNoAdvanced => name: %s, partition: %s,"+
+				" seq: %d, err: %v", f.name, partition, seqNo, err)
+		}
+
+		f.updateStopAfter(partition, seqNo)
+
+		return nil
+	}, f.stats.TimerSeqNoAdvanced)
+
+	if err != nil {
+		f.onError(false, true, fmt.Errorf("SeqNoAdvanced, vb: %d, err: %v", vbId, err))
+		return
+	}
+
+	f.lastReceivedSeqno[vbId] = seqNo
+
+	atomic.AddUint64(&f.dcpStats.TotDCPSeqNoAdvanceds, 1)
 }
 
 // ----------------------------------------------------------------

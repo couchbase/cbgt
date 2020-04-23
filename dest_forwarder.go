@@ -81,6 +81,20 @@ func (t *DestForwarder) SnapshotStart(partition string,
 	return dest.SnapshotStart(partition, snapStart, snapEnd)
 }
 
+func (t *DestForwarder) SeqNoAdvanced(partition string,
+	seq uint64) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.SeqNoAdvanced(partition, seq)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found for partition %s", partition)
+}
+
 func (t *DestForwarder) OpaqueGet(partition string) (
 	value []byte, lastSeq uint64, err error) {
 	dest, err := t.DestProvider.Dest(partition)

@@ -136,6 +136,18 @@ type DestExtrasType uint16
 // Dest.DataUpdate/DataDelete invocation.
 const DEST_EXTRAS_TYPE_NIL = DestExtrasType(0)
 
+// DestCollection interface needs to be implemented by the dest/pindex
+// implementations which consumes data from the collections.
+type DestCollection interface {
+	// PrepareFeedParams provides a way for the pindex
+	// implementation to customise any DCPFeedParams.
+	PrepareFeedParams(partition string, params *DCPFeedParams) error
+
+	// Invoked when there's a new message indicating that the seqno
+	// for the partition has to be advanced.
+	SeqNoAdvanced(partition string, seq uint64) error
+}
+
 // DestStats holds the common stats or metrics for a Dest.
 type DestStats struct {
 	TotError uint64
@@ -146,6 +158,7 @@ type DestStats struct {
 	TimerOpaqueGet     metrics.Timer
 	TimerOpaqueSet     metrics.Timer
 	TimerRollback      metrics.Timer
+	TimerSeqNoAdvanced metrics.Timer
 }
 
 // NewDestStats creates a new, ready-to-use DestStats.
@@ -157,6 +170,7 @@ func NewDestStats() *DestStats {
 		TimerOpaqueGet:     metrics.NewTimer(),
 		TimerOpaqueSet:     metrics.NewTimer(),
 		TimerRollback:      metrics.NewTimer(),
+		TimerSeqNoAdvanced: metrics.NewTimer(),
 	}
 }
 
@@ -176,6 +190,8 @@ func (d *DestStats) WriteJSON(w io.Writer) {
 	WriteTimerJSON(w, d.TimerOpaqueSet)
 	w.Write([]byte(`,"TimerRollback":`))
 	WriteTimerJSON(w, d.TimerRollback)
+	w.Write([]byte(`,"TimerSeqNoAdvanced":`))
+	WriteTimerJSON(w, d.TimerSeqNoAdvanced)
 
 	w.Write(JsonCloseBrace)
 }
