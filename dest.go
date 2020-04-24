@@ -16,6 +16,7 @@ import (
 	"io"
 	"sync/atomic"
 
+	log "github.com/couchbase/clog"
 	"github.com/rcrowley/go-metrics"
 )
 
@@ -204,5 +205,6 @@ func BasicPartitionFunc(partition string, key []byte,
 		return dest, nil
 	}
 	return nil, fmt.Errorf("dest: no dest for key: %s,"+
-		" partition: %s, dests: %#v", key, partition, dests)
+		" partition: %s, dests: %#v", log.Tag(log.UserData, key),
+		partition, dests)
 }
