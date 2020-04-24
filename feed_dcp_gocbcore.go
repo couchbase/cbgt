@@ -571,7 +571,9 @@ func (f *GocbcoreDCPFeed) Start() error {
 	}
 
 	log.Printf("feed_dcp_gocbcore: Start, name: %s, num streams: %d,"+
-		" streamOptions: %+v", f.Name(), len(f.vbucketIds), f.streamOptions)
+		" streamOptions: {ManifestOptions: %+v, FilterOptions: %+v}",
+		f.Name(), len(f.vbucketIds),
+		f.streamOptions.ManifestOptions, f.streamOptions.FilterOptions)
 
 	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid))
@@ -674,8 +676,9 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	snapStart := seqStart
 	signal := make(chan error, 1)
 	log.Debugf("feed_dcp_gocbcore: Initiating DCP stream request for vb: %v,"+
-		" vbUUID: %v, seqStart: %v, seqEnd: %v, streamOptions: %+v",
-		vbId, vbuuid, seqStart, seqEnd, f.streamOptions)
+		" vbUUID: %v, seqStart: %v, seqEnd: %v, streamOptions: {%+v, %+v}",
+		vbId, vbuuid, seqStart, seqEnd,
+		f.streamOptions.ManifestOptions, f.streamOptions.FilterOptions)
 	op, err := f.agent.OpenStream(vbId, memd.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamOptions,
 		func(entries []gocbcore.FailoverEntry, er error) {
