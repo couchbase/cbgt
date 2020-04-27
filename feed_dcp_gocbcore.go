@@ -349,8 +349,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, url,
 		if destColl, ok := dest.(DestCollection); ok {
 			err := destColl.PrepareFeedParams(partition, params)
 			if err != nil {
-				log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, "+
-					"PrepareFeedParams err: %v", err)
+				return nil, err
 			}
 		}
 	}
