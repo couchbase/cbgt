@@ -726,6 +726,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		errors.Is(err, gocbcore.ErrSocketClosed)) {
 		f.onError(true, false, fmt.Errorf("OpenStream error for vb: %v, err: %v",
 			vbId, err))
+		return
 	}
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
@@ -745,11 +746,11 @@ func (f *GocbcoreDCPFeed) onError(isShutdown, alertMgr bool, err error) error {
 		" bucketName: %s, bucketUUID: %s, isShutdown: %v, err: %v",
 		f.name, f.bucketName, f.bucketUUID, isShutdown, err)
 
-	f.Close()
-
 	if isShutdown && f.mgr != nil && f.mgr.meh != nil {
-		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
+		f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
 	}
+
+	f.Close()
 
 	if alertMgr && f.mgr != nil {
 		f.mgr.Kick("gocbcore-feed")
@@ -791,6 +792,7 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 
 	if err != nil {
 		f.onError(false, false, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
+		return
 	}
 
 	atomic.AddUint64(&f.dcpStats.TotDCPSnapshotMarkers, 1)
@@ -842,9 +844,10 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 
 	if err != nil {
 		f.onError(false, false, fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
-	} else {
-		f.lastReceivedSeqno[vbId] = seqNo
+		return
 	}
+
+	f.lastReceivedSeqno[vbId] = seqNo
 
 	atomic.AddUint64(&f.dcpStats.TotDCPMutations, 1)
 }
@@ -894,9 +897,10 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 
 	if err != nil {
 		f.onError(false, false, fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
-	} else {
-		f.lastReceivedSeqno[vbId] = seqNo
+		return
 	}
+
+	f.lastReceivedSeqno[vbId] = seqNo
 
 	atomic.AddUint64(&f.dcpStats.TotDCPDeletions, 1)
 }
