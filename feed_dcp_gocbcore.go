@@ -154,12 +154,6 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			mgr.server, bucketName, indexName, err)
 	}
 
-	// check if all requested vbuckets are ready to be streamed from
-	if err = feed.waitForVBsToBecomeReady(); err != nil {
-		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
-			" err: %v", err)
-	}
-
 	err = mgr.registerFeed(feed)
 	if err != nil {
 		return feed.onError(false, false, err)
@@ -1296,93 +1290,4 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 
 func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {
 	return f.bucketName, f.bucketUUID
-}
-
-// ----------------------------------------------------------------
-
-// The following API checks and waits for all the requested vbuckets to
-// be ready to be streamed from, within the GocbcoreKVConnectTimeout.
-func (f *GocbcoreDCPFeed) waitForVBsToBecomeReady() error {
-	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
-	err := config.FromConnStr(strings.Split(f.url, ";")[0])
-	if err != nil {
-		return err
-	}
-
-	agent, err := setupGocbcoreAgent(config)
-	if err != nil {
-		return err
-	}
-
-	signal := make(chan error, 1)
-	currentVbStates := func() (map[uint16]string, error) {
-		vbStates := map[uint16]string{}
-		op, err := agent.Stats(gocbcore.StatsOptions{Key: "vbucket"},
-			func(resp *gocbcore.StatsResult, er error) {
-				if resp == nil || er != nil {
-					signal <- er
-					return
-				}
-
-				stats := resp.Servers
-				for _, nodeStats := range stats {
-					if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
-						continue
-					}
-
-					for i, vbid := range vbucketIdStrings {
-						stateVal, ok := nodeStats.Stats["vb_"+vbid]
-						if !ok {
-							continue
-						}
-
-						vbStates[uint16(i)] = stateVal
-					}
-				}
-
-				signal <- nil
-			})
-
-		if err != nil {
-			return nil, err
-		}
-
-		err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
-		return vbStates, err
-	}
-
-	timeoutTick := time.Tick(GocbcoreKVConnectTimeout)
-OUTER:
-	for {
-		vbStates, err := currentVbStates()
-		if err != nil {
-			return err
-		}
-
-		vbsAvailable := true
-		for _, i := range f.vbucketIds {
-			state, exists := vbStates[i]
-			if !exists || (state == "dead" || state == "pending") {
-				vbsAvailable = false
-				break
-			}
-		}
-
-		if vbsAvailable {
-			return nil
-		}
-
-		select {
-		case <-f.closeCh:
-			break OUTER
-
-		case <-timeoutTick:
-			break OUTER
-
-		default:
-			// continue
-		}
-	}
-
-	return fmt.Errorf("couldn't determine vbs states within time")
 }
