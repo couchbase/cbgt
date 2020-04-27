@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	log "github.com/couchbase/clog"
 	"github.com/couchbase/gocbcore/v9"
 )
 
@@ -591,4 +592,34 @@ func gocbAuth(sourceParams string, options map[string]string) (
 	}
 
 	return auth, nil
+}
+
+// -------------------------------------------------------
+
+type GocbcoreLogger struct {
+}
+
+var gocbcoreLogger GocbcoreLogger
+
+func (l GocbcoreLogger) Log(level gocbcore.LogLevel, offset int, format string,
+	args ...interface{}) error {
+	prefixedFormat := "(GOCBCORE) " + format
+	switch level {
+	case gocbcore.LogError:
+		log.Errorf(prefixedFormat, args)
+	case gocbcore.LogWarn:
+		log.Warnf(prefixedFormat, args)
+	case gocbcore.LogInfo:
+		log.Printf(prefixedFormat, args)
+	case gocbcore.LogDebug:
+		log.Debugf(prefixedFormat, args)
+	default:
+		// don't log any thing else for now
+	}
+
+	return nil
+}
+
+func init() {
+	gocbcore.SetLogger(gocbcoreLogger)
 }
