@@ -606,13 +606,13 @@ func (l GocbcoreLogger) Log(level gocbcore.LogLevel, offset int, format string,
 	prefixedFormat := "(GOCBCORE) " + format
 	switch level {
 	case gocbcore.LogError:
-		log.Errorf(prefixedFormat, args)
+		log.Errorf(prefixedFormat, args...)
 	case gocbcore.LogWarn:
-		log.Warnf(prefixedFormat, args)
+		log.Warnf(prefixedFormat, args...)
 	case gocbcore.LogInfo:
-		log.Printf(prefixedFormat, args)
+		log.Printf(prefixedFormat, args...)
 	case gocbcore.LogDebug, gocbcore.LogSched:
-		log.Debugf(prefixedFormat, args)
+		log.Debugf(prefixedFormat, args...)
 	default:
 		// not logging LogTrace
 	}
