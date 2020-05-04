@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -186,7 +187,7 @@ type GocbcoreDCPFeed struct {
 	name       string
 	indexName  string
 	indexUUID  string
-	url        string
+	urls       string
 	bucketName string
 	bucketUUID string
 	params     *DCPFeedParams
@@ -194,9 +195,11 @@ type GocbcoreDCPFeed struct {
 	dests      map[string]Dest
 	disable    bool
 	stopAfter  map[string]UUIDSeq
-	config     *gocbcore.DCPAgentConfig
-	agent      *gocbcore.DCPAgent
 	mgr        *Manager
+
+	connStr string
+	config  *gocbcore.DCPAgentConfig
+	agent   *gocbcore.DCPAgent
 
 	scope       string
 	collections []string
@@ -263,7 +266,7 @@ func (s *gocbcoreDCPFeedStats) atomicCopyTo(r *gocbcoreDCPFeedStats,
 	}
 }
 
-func newGocbcoreDCPFeed(name, indexName, indexUUID, url,
+func newGocbcoreDCPFeed(name, indexName, indexUUID, urls,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbcoreDCPFeed, error) {
@@ -316,7 +319,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, url,
 		name:       name,
 		indexName:  indexName,
 		indexUUID:  indexUUID,
-		url:        url,
+		urls:       urls,
 		bucketName: bucketName,
 		bucketUUID: bucketUUID,
 		params:     params,
@@ -361,14 +364,26 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, url,
 
 	config := setupDCPAgentConfig(name, bucketName, auth)
 
-	urls := strings.Split(url, ";")
-	if len(urls) <= 0 {
+	urlArr := strings.Split(urls, ";")
+	if len(urlArr) <= 0 {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed: no urls provided")
 	}
 
-	err = config.FromConnStr(urls[0])
+	feed.connStr = urlArr[0]
+	if connURL, err := url.Parse(urlArr[0]); err == nil {
+		if strings.HasPrefix(connURL.Scheme, "http") {
+			// tack on an option: bootstrap_on=http for gocbcore SDK
+			// connections to force HTTP config polling
+			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
+				feed.connStr = ret.String()
+			}
+		}
+	}
+
+	err = config.FromConnStr(feed.connStr)
 	if err != nil {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed config, err: %v", err)
+		return nil, fmt.Errorf("newGocbcoreDCPFeed config, connStr: %s, err: %v",
+			feed.connStr, err)
 	}
 
 	// setup rootCAs provider
@@ -429,7 +444,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, url,
 
 func (f *GocbcoreDCPFeed) setupStreamOptions() error {
 	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
-	err := config.FromConnStr(strings.Split(f.url, ";")[0])
+	err := config.FromConnStr(f.connStr)
 	if err != nil {
 		return err
 	}
@@ -1232,7 +1247,7 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 // scenario.
 func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
-	err := config.FromConnStr(strings.Split(f.url, ";")[0])
+	err := config.FromConnStr(f.connStr)
 	if err != nil {
 		return false, "", err
 	}

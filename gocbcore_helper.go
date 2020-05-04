@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,9 +133,22 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 		return nil, fmt.Errorf("gocbcore_helper: newAgent, no servers provided")
 	}
 
-	err = config.FromConnStr(svrs[0])
+	connStr := svrs[0]
+	if connURL, err := url.Parse(svrs[0]); err == nil {
+		if strings.HasPrefix(connURL.Scheme, "http") {
+			// tack on an option: bootstrap_on=http for gocbcore SDK
+			// connections to force HTTP config polling
+			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
+				connStr = ret.String()
+			}
+		}
+	}
+
+	err = config.FromConnStr(connStr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gocbcore_helper: agent setup,"+
+			" unable to build config from connStr: %s, err: %v", connStr, err)
+
 	}
 
 	return setupGocbcoreAgent(config)
@@ -453,10 +467,21 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 			" no servers provided")
 	}
 
-	err = config.FromConnStr(svrs[0])
+	connStr := svrs[0]
+	if connURL, err := url.Parse(svrs[0]); err == nil {
+		if strings.HasPrefix(connURL.Scheme, "http") {
+			// tack on an option: bootstrap_on=http for gocbcore SDK
+			// connections to force HTTP config polling
+			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
+				connStr = ret.String()
+			}
+		}
+	}
+
+	err = config.FromConnStr(connStr)
 	if err != nil {
 		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
-			" unable to build config, err: %v", err)
+			" unable to build config from connStr: %s, err: %v", connStr, err)
 	}
 
 	agent, err := setupGocbcoreAgent(config)
