@@ -381,31 +381,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 				"nodesStats": stats,
 			}
 
-			if statsKind == "" {
-				rv["docCount"] = aggStats["curr_items"]
-			} else if statsKind == "collections" {
-				scope := "_default"
-				collections := []string{"_default"}
-				params := NewDCPFeedParams()
-				if len(sourceParams) > 0 {
-					err = json.Unmarshal([]byte(sourceParams), params)
-					if err == nil {
-						if len(params.Scope) > 0 {
-							scope = params.Scope
-						}
-						if len(params.Collections) > 0 {
-							collections = params.Collections
-						}
-					}
-				}
-
-				var docCount int64
-				for i := range collections {
-					docCount += aggStats[scope+":"+collections[i]+":items"]
-				}
-
-				rv["docCount"] = docCount
-			}
+			rv["docCount"] = aggStats["curr_items"]
 
 			signal <- nil
 		})
