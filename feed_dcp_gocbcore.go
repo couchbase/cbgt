@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"reflect"
 	"sort"
@@ -1239,6 +1240,34 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 
 // ----------------------------------------------------------------
 
+func doHTTPGetFromURL(url string) ([]byte, error) {
+	u, err := CBAuthURL(url)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	respBuf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(respBuf) == 0 {
+		return nil, fmt.Errorf("empty response for url: %v", url)
+	}
+
+	return respBuf, nil
+}
+
 // VerifySourceNotExists returns true if it's sure the bucket
 // does not exist anymore (including if UUID's no longer match).
 // It is however possible that the bucket is around but the index's
@@ -1246,56 +1275,35 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 // needs to be dropped, the index UUID is passed on in this
 // scenario.
 func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
-	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
-	err := config.FromConnStr(f.connStr)
+	url := f.mgr.Server() + "/pools/default/buckets/" + f.bucketName
+	resp, err := doHTTPGetFromURL(url)
 	if err != nil {
 		return false, "", err
 	}
 
-	agent, err := setupGocbcoreAgent(config)
-	if err != nil {
-		if errors.Is(err, gocbcore.ErrBucketNotFound) ||
-			errors.Is(err, gocbcore.ErrAuthenticationFailure) {
-			// bucket not found
-			return true, "", err
-		}
-		return false, "", err
-	}
-	defer agent.Close()
+	rv := struct {
+		Name string `json:"name"`
+		UUID string `json:"uuid"`
+	}{}
 
-	snapshot, err := agent.ConfigSnapshot()
-	if err != nil {
-		return false, "", err
-	}
-
-	if snapshot.BucketUUID() != f.bucketUUID {
-		// bucket UUID mismatched, so the bucket being looked
-		// up must've been deleted
+	err = json.Unmarshal(resp, &rv)
+	if err != nil || f.bucketUUID != rv.UUID {
+		// safe to assume that bucket is deleted
+		// - respBuf carries: `Requested resource not found.`
+		// - bucketUUID didn't match, so the bucket being looked up
+		//   must've been deleted
 		return true, "", err
 	}
 
-	signal := make(chan error, 1)
-	var manifest gocbcore.Manifest
-	op, err := agent.GetCollectionManifest(
-		gocbcore.GetCollectionManifestOptions{},
-		func(res *gocbcore.GetCollectionManifestResult, er error) {
-			if er == nil && res == nil {
-				er = fmt.Errorf("manifest not retrieved")
-			}
-
-			if er == nil {
-				er = manifest.UnmarshalJSON(res.Manifest)
-			}
-
-			signal <- er
-		})
-
+	url = fmt.Sprintf("%s/pools/default/buckets/%s/collections",
+		f.mgr.Server(), f.bucketName)
+	resp, err = doHTTPGetFromURL(url)
 	if err != nil {
 		return false, "", err
 	}
 
-	err = waitForResponse(signal, f.closeCh, op, GocbcoreStatsTimeout)
-	if err != nil {
+	var manifest gocbcore.Manifest
+	if err = manifest.UnmarshalJSON(resp); err != nil {
 		return false, "", err
 	}
 
