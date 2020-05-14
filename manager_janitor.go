@@ -103,10 +103,8 @@ func (mgr *Manager) JanitorLoop() {
 				atomic.AddUint64(&mgr.stats.TotJanitorNOOPOk, 1)
 			} else if m.op == JANITOR_CLOSE_PINDEX {
 				mgr.stopPIndex(m.obj.(*PIndex), false)
-				atomic.AddUint64(&mgr.stats.TotJanitorClosePIndex, 1)
 			} else if m.op == JANITOR_REMOVE_PINDEX {
 				mgr.stopPIndex(m.obj.(*PIndex), true)
-				atomic.AddUint64(&mgr.stats.TotJanitorRemovePIndex, 1)
 			} else if m.op == JANITOR_LOAD_DATA_DIR {
 				mgr.LoadDataDir()
 				atomic.AddUint64(&mgr.stats.TotJanitorLoadDataDir, 1)
@@ -969,6 +967,12 @@ func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 	if pindexUnreg != nil && pindexUnreg != pindex {
 		return fmt.Errorf("janitor: unregistered pindex during stopPIndex,"+
 			" pindex: %#v, pindexUnreg: %#v", pindex, pindexUnreg)
+	}
+
+	if remove {
+		atomic.AddUint64(&mgr.stats.TotJanitorRemovePIndex, 1)
+	} else {
+		atomic.AddUint64(&mgr.stats.TotJanitorClosePIndex, 1)
 	}
 
 	return pindex.Close(remove)
