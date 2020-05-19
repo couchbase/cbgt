@@ -462,7 +462,10 @@ func (f *GocbcoreDCPFeed) setupStreamOptions() error {
 	if err != nil {
 		return err
 	}
-	defer agent.Close()
+
+	defer func() {
+		go agent.Close()
+	}()
 
 	if len(f.bucketUUID) == 0 {
 		// the sourceUUID setting in the index definition is optional,

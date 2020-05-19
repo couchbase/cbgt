@@ -413,7 +413,9 @@ func CBVBucketLookUp(docID, serverIn string,
 		return "", err
 	}
 
-	defer agent.Close()
+	defer func() {
+		go agent.Close()
+	}()
 
 	snapshot, err := agent.ConfigSnapshot()
 	if err != nil {
@@ -473,7 +475,9 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 			" unable to create agent, err: %v", err)
 	}
 
-	defer agent.Close()
+	defer func() {
+		go agent.Close()
+	}()
 
 	snapshot, err := agent.ConfigSnapshot()
 	if err != nil {
