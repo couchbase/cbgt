@@ -769,7 +769,7 @@ func (f *GocbcoreDCPFeed) onError(isShutdown, notifyMgr bool, err error) error {
 func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, streamId uint16, snapshotType gocbcore.SnapshotState) {
 	if f.currVBs[vbId] == nil {
-		f.onError(false, false, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
+		f.onError(false, true, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
 		return
 	}
 
@@ -796,7 +796,7 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}, f.stats.TimerSnapshotStart)
 
 	if err != nil {
-		f.onError(false, false, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
+		f.onError(false, true, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
 		return
 	}
 
