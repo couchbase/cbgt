@@ -753,12 +753,12 @@ func (f *GocbcoreDCPFeed) onError(isShutdown, notifyMgr bool, err error) error {
 
 	if isShutdown && f.mgr != nil && f.mgr.meh != nil {
 		f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
-	}
+	} else {
+		f.Close()
 
-	f.Close()
-
-	if notifyMgr && f.mgr != nil {
-		f.mgr.Kick("gocbcore-feed")
+		if notifyMgr && f.mgr != nil {
+			f.mgr.Kick("gocbcore-feed")
+		}
 	}
 
 	return err
@@ -965,7 +965,6 @@ func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 				collectionId))
 		return
 	}
-
 }
 
 func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
