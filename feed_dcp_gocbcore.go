@@ -959,11 +959,11 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	streamId uint16) {
-	if f.mgr != nil && f.mgr.meh != nil {
-		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f,
-			fmt.Errorf("DeleteCollection, collection uid: %d",
-				collectionId))
-		return
+	if atomic.AddUint32(&f.shutdownVbs, 1) >= uint32(len(f.vbucketIds)) {
+		// initiate a feed closure on collection delete, once all vbuckets
+		// have been accounted for
+		f.onError(true, false,
+			fmt.Errorf("DeleteCollection, collection uid: %d", collectionId))
 	}
 }
 
@@ -979,12 +979,11 @@ func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
 
 func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16) {
-	// FIXME Looks like this callback isn't working.
-	if f.mgr != nil && f.mgr.meh != nil {
-		go f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f,
-			fmt.Errorf("DeleteScope, scope uid: %d",
-				scopeId))
-		return
+	if atomic.AddUint32(&f.shutdownVbs, 1) >= uint32(len(f.vbucketIds)) {
+		// initiate a feed closure on scope delete, once all vbuckets
+		// have been accounted for
+		f.onError(true, false,
+			fmt.Errorf("DeleteScope, scope uid: %d", scopeId))
 	}
 }
 
