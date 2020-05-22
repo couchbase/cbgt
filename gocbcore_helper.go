@@ -88,9 +88,9 @@ func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 // ----------------------------------------------------------------
 
 type gocbcoreAgentMap struct {
-	// Mutex to serialize access to entries
+	// mutex to serialize access to entries
 	m sync.Mutex
-	// Map of gocbcore.Agent instances by bucket <name>:<uuid>
+	// map of gocbcore.Agent instances by bucket <name>:<uuid>
 	entries map[string]*gocbcore.Agent
 }
 
@@ -103,55 +103,32 @@ func init() {
 }
 
 // Fetches a gocbcore agent instance for the bucket (name:uuid),
-// if not found creates a new instance and stashes it in the map.
-func (am *gocbcoreAgentMap) fetchAgent(name, uuid, params, server string,
-	options map[string]string) (*gocbcore.Agent, error) {
+// if not found creates a new instance and stashes it in the map,
+// before returning it.
+func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
+	serverIn string, options map[string]string) (*gocbcore.Agent, error) {
 	am.m.Lock()
 	defer am.m.Unlock()
 
-	key := name + ":" + uuid
-
-	if _, exists := am.entries[key]; !exists {
-		agent, err := newAgent(name, uuid, params, server, options)
-		if err != nil {
-			return nil, err
-		}
-
-		am.entries[key] = agent
-	}
-
-	return am.entries[key], nil
-}
-
-// Closes and removes the gocbcore Agent instance with the uuid.
-func (am *gocbcoreAgentMap) closeAgent(name, uuid string) {
-	am.m.Lock()
-	defer am.m.Unlock()
-
-	key := name + ":" + uuid
-
+	key := sourceName + ":" + sourceUUID
 	if _, exists := am.entries[key]; exists {
-		go am.entries[key].Close()
-		delete(am.entries, key)
+		return am.entries[key], nil
 	}
-}
 
-func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
-	options map[string]string) (*gocbcore.Agent, error) {
 	server, _, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
 	auth, err := gocbAuth(sourceParams, options)
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_helper: newAgent, gocbAuth,"+
+		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
 	config := setupAgentConfig("stats", bucketName, auth)
 
 	svrs := strings.Split(server, ";")
-	if len(svrs) <= 0 {
-		return nil, fmt.Errorf("gocbcore_helper: newAgent, no servers provided")
+	if len(svrs) == 0 {
+		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, no servers provided")
 	}
 
 	connStr := svrs[0]
@@ -167,12 +144,30 @@ func newAgent(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	err = config.FromConnStr(connStr)
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_helper: agent setup,"+
+		return nil, fmt.Errorf("gocbcore_helper: fetchAgent,"+
 			" unable to build config from connStr: %s, err: %v", connStr, err)
 
 	}
 
-	return setupGocbcoreAgent(config)
+	agent, err := setupGocbcoreAgent(config)
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, setup err: %v", err)
+	}
+
+	am.entries[key] = agent
+
+	return am.entries[key], nil
+}
+
+// Closes and removes the gocbcore Agent instance with the name:uuid.
+func (am *gocbcoreAgentMap) closeAgent(sourceName, sourceUUID string) {
+	key := sourceName + ":" + sourceUUID
+	am.m.Lock()
+	if _, exists := am.entries[key]; exists {
+		go am.entries[key].Close()
+		delete(am.entries, key)
+	}
+	am.m.Unlock()
 }
 
 // ----------------------------------------------------------------

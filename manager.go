@@ -172,6 +172,7 @@ type ClusterOptions struct {
 	MaxReplicasAllowed   string `json:"maxReplicasAllowed"`
 	SlowQueryLogTimeout  string `json:"slowQueryLogTimeout"`
 	EnableVerboseLogging string `json:"enableVerboseLogging"`
+	MaxFeedsPerDCPAgent  string `json:"maxFeedsPerDCPAgent"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")

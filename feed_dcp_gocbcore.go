@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -64,6 +65,192 @@ var GocbcoreAgentSetupTimeout = time.Duration(10 * time.Second)
 
 // ----------------------------------------------------------------
 
+var streamID uint64
+
+func newStreamID() uint16 {
+	// OpenStreamOptions needs streamID to be of type uint16.
+	// Here we do a mod operation, to circle around in case of an overflow.
+	return uint16(atomic.AddUint64(&streamID, 1) % 65536)
+}
+
+// ----------------------------------------------------------------
+
+// Function overrride to set up a gocbcore.DCPAgent
+// servers: single URL or multiple URLs delimited by ';'
+var FetchDCPAgent func(bucketName, bucketUUID, paramsStr, servers string,
+	options map[string]string) (*gocbcore.DCPAgent, error)
+
+// Function overrride to close a gocbcore.DCPAgent
+var CloseDCPAgent func(bucketName, bucketUUID string, agent *gocbcore.DCPAgent) error
+
+// ----------------------------------------------------------------
+
+// Map to hold a pool of gocbcore.DCPAgents for every bucket, each
+// gocbcore.DCPAgent will be allowed a maximum reference count controlled
+// by maxFeedsPerDCPAgent.
+type gocbcoreDCPAgentMap struct {
+	// mutex to serialize access to entries/refCount
+	m sync.Mutex
+	// map of gocbcore.DCPAgents with ref counts for bucket <name>:<uuid>
+	entries map[string]map[*gocbcore.DCPAgent]uint32
+}
+
+// Max references for a gocbcore.DCPAgent
+var DefaultMaxFeedsPerDCPAgent = uint32(6)
+
+var dcpAgentMap *gocbcoreDCPAgentMap
+
+func init() {
+	dcpAgentMap = &gocbcoreDCPAgentMap{
+		entries: make(map[string]map[*gocbcore.DCPAgent]uint32),
+	}
+
+	FetchDCPAgent = dcpAgentMap.fetchAgent
+	CloseDCPAgent = dcpAgentMap.closeAgent
+}
+
+// Fetches a gocbcore DCPAgent instance for the bucket (name:uuid),
+// if not found creates a new instance and stashes it in the map,
+// before returning it.
+func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
+	servers string, options map[string]string) (*gocbcore.DCPAgent, error) {
+	var maxFeedsPerDCPAgent uint32
+	if v, exists := options["maxFeedsPerDCPAgent"]; exists {
+		if i, err := strconv.Atoi(v); err == nil {
+			maxFeedsPerDCPAgent = uint32(i)
+		}
+	}
+	if maxFeedsPerDCPAgent <= 0 {
+		maxFeedsPerDCPAgent = DefaultMaxFeedsPerDCPAgent
+	}
+
+	dm.m.Lock()
+	defer dm.m.Unlock()
+
+	key := bucketName + ":" + bucketUUID
+	if _, exists := dm.entries[key]; exists {
+		for agent, refs := range dm.entries[key] {
+			if refs < maxFeedsPerDCPAgent {
+				dm.entries[key][agent]++
+				return agent, nil
+			}
+		}
+	} else {
+		dm.entries[key] = map[*gocbcore.DCPAgent]uint32{}
+	}
+
+	auth, err := gocbAuth(paramsStr, options)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, gocbAuth,"+
+			" bucketName: %s, err: %v", bucketName, err)
+	}
+
+	config := setupDCPAgentConfig(key, bucketName, auth)
+
+	svrs := strings.Split(servers, ";")
+	if len(svrs) == 0 {
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, no servers provided")
+	}
+
+	connStr := svrs[0]
+	if connURL, err := url.Parse(svrs[0]); err == nil {
+		if strings.HasPrefix(connURL.Scheme, "http") {
+			// tack on an option: bootstrap_on=http for gocbcore SDK
+			// connections to force HTTP config polling
+			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
+				connStr = ret.String()
+			}
+		}
+	}
+
+	err = config.FromConnStr(connStr)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent,"+
+			" unable to build config from connStr: %s, err: %v", connStr, err)
+	}
+
+	if options != nil && options["authType"] == "cbauth" {
+		config.TLSRootCAProvider = FetchGocbcoreSecurityConfig
+	} else {
+		// in the case authType isn't cbauth, check if user has set a TLSCertFile
+		var rootCAs *x509.CertPool
+		if len(TLSCertFile) > 0 {
+			certInBytes, err := ioutil.ReadFile(TLSCertFile)
+			if err != nil {
+				return nil, fmt.Errorf("feed_dcp_gocbore: fetchAgent,"+
+					" tls err: %v", err)
+			}
+
+			rootCAs = x509.NewCertPool()
+			ok := rootCAs.AppendCertsFromPEM(certInBytes)
+			if !ok {
+				return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent," +
+					" error in appending certificates for rootCAs")
+			}
+		}
+
+		config.TLSRootCAProvider = func() *x509.CertPool {
+			return rootCAs
+		}
+	}
+
+	params := NewDCPFeedParams()
+	err = json.Unmarshal([]byte(paramsStr), params)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, params err: %v", err)
+	}
+
+	flags := memd.DcpOpenFlagProducer
+	if params.IncludeXAttrs {
+		flags |= memd.DcpOpenFlagIncludeXattrs
+	}
+
+	if params.NoValue {
+		flags |= memd.DcpOpenFlagNoValue
+	}
+
+	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, key, rand.Int31())
+	agent, err := setupGocbcoreDCPAgent(config, dcpConnName, flags)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, setup err: %v", err)
+	}
+
+	dm.entries[key][agent] = 1
+
+	return agent, nil
+}
+
+// Closes and removes the gocbcore DCPAgent instance with the name:uuid, if
+// and only if no other feed is using the agent.
+func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
+	agent *gocbcore.DCPAgent) error {
+	key := bucketName + ":" + bucketUUID
+
+	dm.m.Lock()
+	defer dm.m.Unlock()
+
+	if _, exists := dm.entries[key]; exists {
+		if _, exists = dm.entries[key][agent]; exists {
+			dm.entries[key][agent]--
+			if dm.entries[key][agent] > 0 {
+				return nil
+			}
+			// ref count of agent down to 0
+			delete(dm.entries[key], agent)
+		}
+	}
+
+	go agent.Close()
+	if len(dm.entries[key]) == 0 {
+		// no agents listed for bucket
+		delete(dm.entries, key)
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------
+
 func setupDCPAgentConfig(name, bucketName string,
 	auth gocbcore.AuthProvider) *gocbcore.DCPAgentConfig {
 	return &gocbcore.DCPAgentConfig{
@@ -74,6 +261,7 @@ func setupDCPAgentConfig(name, bucketName string,
 		KVConnectTimeout: GocbcoreKVConnectTimeout,
 		UseCollections:   true,
 		UseOSOBackfill:   false,
+		UseStreamID:      true,
 		BackfillOrder:    gocbcore.DCPBackfillOrderRoundRobin,
 		AgentPriority:    gocbcore.DcpAgentPriorityMed,
 	}
@@ -109,8 +297,6 @@ func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
 
 	return agent, nil
 }
-
-// ----------------------------------------------------------------
 
 func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 	op gocbcore.PendingOp, timeout time.Duration) error {
@@ -151,11 +337,11 @@ func init() {
 func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	sourceType, sourceName, bucketUUID, params string,
 	dests map[string]Dest) error {
-	server, _, bucketName :=
+	servers, _, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
 	feed, err := newGocbcoreDCPFeed(feedName, indexName, indexUUID,
-		server, bucketName, bucketUUID, params, BasicPartitionFunc,
+		servers, bucketName, bucketUUID, params, BasicPartitionFunc,
 		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
@@ -191,12 +377,12 @@ type vbucketState struct {
 // interfaces, and forwards any incoming gocb.StreamObserver
 // callbacks to the relevant, hooked-up Dest instances.
 //
-// url: single URL or multiple URLs delimited by ';'
+// servers: single URL or multiple URLs delimited by ';'
 type GocbcoreDCPFeed struct {
 	name       string
 	indexName  string
 	indexUUID  string
-	urls       string
+	servers    string
 	bucketName string
 	bucketUUID string
 	params     *DCPFeedParams
@@ -206,9 +392,7 @@ type GocbcoreDCPFeed struct {
 	stopAfter  map[string]UUIDSeq
 	mgr        *Manager
 
-	connStr string
-	config  *gocbcore.DCPAgentConfig
-	agent   *gocbcore.DCPAgent
+	agent *gocbcore.DCPAgent
 
 	scope       string
 	collections []string
@@ -277,18 +461,13 @@ func (s *gocbcoreDCPFeedStats) atomicCopyTo(r *gocbcoreDCPFeedStats,
 	}
 }
 
-func newGocbcoreDCPFeed(name, indexName, indexUUID, urls,
+func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbcoreDCPFeed, error) {
 	var options map[string]string
 	if mgr != nil {
 		options = mgr.Options()
-	}
-
-	auth, err := gocbAuth(paramsStr, options)
-	if err != nil {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed gocbAuth, err: %v", err)
 	}
 
 	var stopAfter map[string]UUIDSeq
@@ -330,7 +509,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, urls,
 		name:       name,
 		indexName:  indexName,
 		indexUUID:  indexUUID,
-		urls:       urls,
+		servers:    servers,
 		bucketName: bucketName,
 		bucketUUID: bucketUUID,
 		params:     params,
@@ -373,90 +552,48 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, urls,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	config := setupDCPAgentConfig(name, bucketName, auth)
-
-	urlArr := strings.Split(urls, ";")
-	if len(urlArr) <= 0 {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed: no urls provided")
-	}
-
-	feed.connStr = urlArr[0]
-	if connURL, err := url.Parse(urlArr[0]); err == nil {
-		if strings.HasPrefix(connURL.Scheme, "http") {
-			// tack on an option: bootstrap_on=http for gocbcore SDK
-			// connections to force HTTP config polling
-			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
-				feed.connStr = ret.String()
-			}
-		}
-	}
-
-	err = config.FromConnStr(feed.connStr)
-	if err != nil {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed config, connStr: %s, err: %v",
-			feed.connStr, err)
-	}
-
-	// setup rootCAs provider
-	if options != nil && options["authType"] == "cbauth" {
-		config.TLSRootCAProvider = FetchGocbcoreSecurityConfig
-	} else {
-		// in the case the authType isn't cbauth, check if user has
-		// set TLSCertFile
-		var rootCAs *x509.CertPool
-		if len(TLSCertFile) > 0 {
-			certInBytes, err := ioutil.ReadFile(TLSCertFile)
-			if err != nil {
-				return nil, fmt.Errorf("newGocbcoreDcpFeed tls, err: %v", err)
-			}
-
-			rootCAs = x509.NewCertPool()
-			ok := rootCAs.AppendCertsFromPEM(certInBytes)
-			if !ok {
-				return nil, fmt.Errorf("newGocbcoreDCPFeed: " +
-					" error appending certificates")
-			}
-		}
-
-		config.TLSRootCAProvider = func() *x509.CertPool {
-			return rootCAs
-		}
-	}
-
-	feed.config = config
-
-	if err = feed.setupStreamOptions(); err != nil {
+	if err = feed.setupStreamOptions(paramsStr, options); err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
 			" error in setting up feed's stream options, err: %v", err)
 	}
 
-	flags := memd.DcpOpenFlagProducer
-
-	if params.IncludeXAttrs {
-		flags |= memd.DcpOpenFlagIncludeXattrs
-	}
-
-	if params.NoValue {
-		flags |= memd.DcpOpenFlagNoValue
-	}
-
-	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, name, rand.Int31())
-	feed.agent, err = setupGocbcoreDCPAgent(config, dcpConnName, flags)
+	feed.agent, err = FetchDCPAgent(bucketName, bucketUUID, paramsStr, servers, options)
 	if err != nil {
 		return nil, fmt.Errorf("newGocbcoreFeed DCPAgent, err: %v", err)
 	}
 
 	log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, name: %s, indexName: %s,"+
-		" server: %v, bucketName: %s, bucketUUID: %s, connection name: %s",
-		name, indexName, feed.connStr, feed.bucketName, feed.bucketUUID,
-		dcpConnName)
+		" server: %v, bucketName: %s, bucketUUID: %s",
+		name, indexName, feed.servers, feed.bucketName, feed.bucketUUID)
 
 	return feed, nil
 }
 
-func (f *GocbcoreDCPFeed) setupStreamOptions() error {
-	config := setupAgentConfig(f.name, f.bucketName, f.config.Auth)
-	err := config.FromConnStr(f.connStr)
+func (f *GocbcoreDCPFeed) setupStreamOptions(
+	paramsStr string, options map[string]string) error {
+	auth, err := gocbAuth(paramsStr, options)
+	if err != nil {
+		return err
+	}
+
+	svrs := strings.Split(f.servers, ";")
+	if len(svrs) == 0 {
+		return fmt.Errorf("no servers provided")
+	}
+
+	connStr := svrs[0]
+	if connURL, err := url.Parse(svrs[0]); err == nil {
+		if strings.HasPrefix(connURL.Scheme, "http") {
+			// tack on an option: bootstrap_on=http for gocbcore SDK
+			// connections to force HTTP config polling
+			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
+				connStr = ret.String()
+			}
+		}
+	}
+
+	config := setupAgentConfig(f.name, f.bucketName, auth)
+	err = config.FromConnStr(connStr)
 	if err != nil {
 		return err
 	}
@@ -523,6 +660,9 @@ func (f *GocbcoreDCPFeed) setupStreamOptions() error {
 	}
 
 	f.streamOptions = gocbcore.OpenStreamOptions{}
+	f.streamOptions.StreamOptions = &gocbcore.OpenStreamStreamOptions{
+		StreamID: newStreamID(),
+	}
 
 	if len(f.collections) == 0 {
 		// if no collections were specified, set up stream requests for
@@ -587,9 +727,9 @@ func (f *GocbcoreDCPFeed) Start() error {
 	}
 
 	log.Printf("feed_dcp_gocbcore: Start, name: %s, num streams: %d,"+
-		" manifestUID: %v, streamOptions: {FilterOptions: %+v}",
+		" manifestUID: %v, streamOptions: {FilterOptions: %+v, StreamOptions: %+v}",
 		f.Name(), len(f.vbucketIds), f.manifestUID,
-		f.streamOptions.FilterOptions)
+		f.streamOptions.FilterOptions, f.streamOptions.StreamOptions)
 
 	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid))
@@ -627,7 +767,7 @@ func (f *GocbcoreDCPFeed) close() bool {
 		return false
 	}
 	f.closed = true
-	go f.agent.Close()
+	CloseDCPAgent(f.bucketName, f.bucketUUID, f.agent)
 	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
@@ -710,8 +850,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	signal := make(chan error, 1)
 	log.Debugf("feed_dcp_gocbcore: [%s] Initiating DCP stream request for vb: %v,"+
 		" vbUUID: %v, seqStart: %v, seqEnd: %v, manifestUID: %v,"+
-		" streamOptions: {%+v}", f.Name(), vbId, vbuuid, seqStart, seqEnd,
-		f.manifestUID, f.streamOptions.FilterOptions)
+		" streamOptions: {%+v, %+v}", f.Name(), vbId, vbuuid, seqStart, seqEnd,
+		f.manifestUID, f.streamOptions.FilterOptions, f.streamOptions.StreamOptions)
 	op, err := f.agent.OpenStream(vbId, memd.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamOptions,
 		func(entries []gocbcore.FailoverEntry, er error) {
