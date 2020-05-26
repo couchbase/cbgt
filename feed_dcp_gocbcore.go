@@ -687,9 +687,12 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if errors.Is(er, gocbcore.ErrShutdown) ||
 				errors.Is(er, gocbcore.ErrSocketClosed) {
-				log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v was shutdown,"+
-					"err: %v", vbId, er)
-				f.complete(vbId)
+				if atomic.AddUint32(&f.shutdownVbs, 1) >= uint32(len(f.vbucketIds)) {
+					// initiate a feed closure, if a shutdown message or socket closure
+					// has been received for all vbuckets accounted for
+					f.onError(true, false, er)
+				}
+				er = nil
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
 				log.Printf("feed_dcp_gocbcore: [%s] Received rollback, for vb: %v,"+
 					" seqno requested: %v", f.Name(), vbId, seqStart)
@@ -727,8 +730,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			signal <- er
 		})
 
-	if err != nil && (errors.Is(err, gocbcore.ErrShutdown) ||
-		errors.Is(err, gocbcore.ErrSocketClosed)) {
+	if err != nil {
 		f.onError(true, false, fmt.Errorf("OpenStream error for vb: %v, err: %v",
 			vbId, err))
 		return
