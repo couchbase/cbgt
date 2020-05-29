@@ -212,6 +212,7 @@ type GocbcoreDCPFeed struct {
 	scope       string
 	collections []string
 
+	manifestUID   uint64
 	scopeID       uint32
 	collectionIDs []uint32
 
@@ -500,6 +501,8 @@ func (f *GocbcoreDCPFeed) setupStreamOptions() error {
 		return fmt.Errorf("failed to get manifest, err: %v", err)
 	}
 
+	f.manifestUID = manifest.UID
+
 	var scopeIDFound bool
 	for _, manifestScope := range manifest.Scopes {
 		if manifestScope.Name == f.scope {
@@ -514,9 +517,6 @@ func (f *GocbcoreDCPFeed) setupStreamOptions() error {
 	}
 
 	f.streamOptions = gocbcore.OpenStreamOptions{}
-	f.streamOptions.ManifestOptions = &gocbcore.OpenStreamManifestOptions{
-		ManifestUID: manifest.UID,
-	}
 
 	if len(f.collections) == 0 {
 		// if no collections were specified, set up stream requests for
@@ -534,9 +534,9 @@ func (f *GocbcoreDCPFeed) setupStreamOptions() error {
 					}
 
 					if er == nil {
-						if res.ManifestID != f.streamOptions.ManifestOptions.ManifestUID {
+						if res.ManifestID != f.manifestUID {
 							er = fmt.Errorf("manifestID mismatch, %v != %v",
-								res.ManifestID, f.streamOptions.ManifestOptions.ManifestUID)
+								res.ManifestID, f.manifestUID)
 						} else {
 							f.collectionIDs =
 								append(f.collectionIDs, res.CollectionID)
@@ -1312,7 +1312,7 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 		return false, "", err
 	}
 
-	if manifest.UID == f.streamOptions.ManifestOptions.ManifestUID {
+	if manifest.UID == f.manifestUID {
 		// no manifest update => safe to assume that no scope/collection
 		// have been added/dropped
 		return false, "", nil
