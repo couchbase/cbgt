@@ -210,7 +210,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 
 // DeleteIndex deletes a logical index definition.
 func (mgr *Manager) DeleteIndex(indexName string) error {
-	err := mgr.DeleteIndexEx(indexName, "")
+	_, err := mgr.DeleteIndexEx(indexName, "")
 	log.Errorf("manager_api: DeleteIndex, indexname: %s, err: %v",
 		indexName, err)
 	return err
@@ -218,29 +218,34 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 
 // DeleteIndexEx deletes a logical index definition, with an optional
 // indexUUID ("" means don't care).
-func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
+func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (string, error) {
 	atomic.AddUint64(&mgr.stats.TotDeleteIndex, 1)
 
+	mgr.m.Lock()
 	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if indexDefs == nil {
-		return fmt.Errorf("manager_api: no indexes on deletion"+
+		mgr.m.Unlock()
+		return "", fmt.Errorf("manager_api: no indexes on deletion"+
 			" of indexName: %s", indexName)
 	}
 	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		return fmt.Errorf("manager_api: could not delete index,"+
+		mgr.m.Unlock()
+		return "", fmt.Errorf("manager_api: could not delete index,"+
 			" indexDefs.ImplVersion: %s > mgr.version: %s",
 			indexDefs.ImplVersion, mgr.version)
 	}
 	indexDef, exists := indexDefs.IndexDefs[indexName]
 	if !exists {
-		return fmt.Errorf("manager_api: index to delete missing,"+
+		mgr.m.Unlock()
+		return "", fmt.Errorf("manager_api: index to delete missing,"+
 			" indexName: %s", indexName)
 	}
 	if indexUUID != "" && indexDef.UUID != indexUUID {
-		return fmt.Errorf("manager_api: index to delete wrong UUID,"+
+		mgr.m.Unlock()
+		return "", fmt.Errorf("manager_api: index to delete wrong UUID,"+
 			" indexName: %s", indexName)
 	}
 
@@ -259,18 +264,20 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 
 	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 	if err != nil {
-		return fmt.Errorf("manager_api: could not save indexDefs,"+
+		mgr.m.Unlock()
+		return "", fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
 	}
 
 	log.Printf("manager_api: index definition deleted,"+
 		" indexType: %s, indexName: %s, indexUUID: %s",
 		indexDef.Type, indexDef.Name, indexDef.UUID)
+	mgr.m.Unlock()
 
 	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
-	return nil
+	return indexDef.UUID, nil
 }
 
 // IndexControl is used to change runtime properties of an index
@@ -278,6 +285,9 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) error {
 func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 	planFreezeOp string) error {
 	atomic.AddUint64(&mgr.stats.TotIndexControl, 1)
+
+	mgr.m.Lock()
+	defer mgr.m.Unlock()
 
 	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 	if err != nil {
@@ -398,22 +408,31 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 // sourceType and sourceName.
 func (mgr *Manager) DeleteAllIndexFromSource(
 	sourceType, sourceName, sourceUUID string) error {
-	indexDefs, _, err := CfgGetIndexDefs(mgr.cfg)
+	mgr.m.Lock()
+
+	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 	if err != nil {
+		mgr.m.Unlock()
 		return err
 	}
 	if indexDefs == nil {
+		mgr.m.Unlock()
 		return fmt.Errorf("manager_api: DeleteAllIndexFromSource, no indexDefs")
 	}
 	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+		mgr.m.Unlock()
 		return fmt.Errorf("manager_api: DeleteAllIndexFromSource,"+
 			" indexDefs.ImplVersion: %s > mgr.version: %s",
 			indexDefs.ImplVersion, mgr.version)
 	}
 
-	var outerErr error
-	indexDeleted := false
+	// close associated couchbase.Bucket instances
+	cbBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
 
+	// close associated gocb.Bucket instances
+	agentMap.closeAgent(sourceName, sourceUUID)
+
+	var deletedCount uint64
 	for indexName, indexDef := range indexDefs.IndexDefs {
 		if indexDef.SourceType == sourceType &&
 			indexDef.SourceName == sourceName {
@@ -422,33 +441,45 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 			}
 
 			atomic.AddUint64(&mgr.stats.TotDeleteIndexBySource, 1)
+			delete(indexDefs.IndexDefs, indexName)
 
-			log.Printf("manager_api: DeleteAllIndexFromSource,"+
-				" indexName: %s, sourceType: %s, sourceName: %s, sourceUUID: %s",
-				indexName, sourceType, sourceName, sourceUUID)
-			err = mgr.DeleteIndexEx(indexName, indexDef.UUID)
-			if err != nil {
-				if outerErr == nil {
-					outerErr = err
-				}
+			log.Printf("manager_api: starting index definition deletion,"+
+				" indexType: %s, indexName: %s, indexUUID: %s",
+				indexDef.Type, indexDef.Name, indexDef.UUID)
 
-				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, 1)
-			} else {
-				indexDeleted = true
-				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, 1)
-			}
+			deletedCount++
 		}
 	}
+	// exit early if nothing to delete
+	if deletedCount == 0 {
+		mgr.m.Unlock()
+		return nil
+	}
+	// update the index definitions
+	indexDefs.UUID = NewUUID()
+	indexDefs.ImplVersion = CfgGetVersion(mgr.cfg)
+	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+	mgr.m.Unlock()
+
+	if err != nil {
+		atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, deletedCount)
+		return fmt.Errorf("manager_api: could not save indexDefs,"+
+			" err: %v", err)
+	}
+
+	atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, deletedCount)
+	mgr.GetIndexDefs(true)
+	mgr.PlannerKick("api/DeleteIndexes, for bucket: " + sourceName)
 
 	// With MB-19117, we've seen cfg that strangely had empty
 	// indexDefs, but non-empty planPIndexes.  Force bump the
 	// indexDefs so the planner and other downstream tasks re-run.
-	if indexDeleted {
-		err = mgr.BumpIndexDefs("")
-		if err != nil {
-			return err
-		}
+	err = mgr.BumpIndexDefs("")
+	if err != nil {
+		return err
 	}
+	log.Printf("manager_api: DeleteAllIndexFromSource," +
+		" index deletions completed")
 
-	return outerErr
+	return nil
 }
