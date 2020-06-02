@@ -92,14 +92,21 @@ func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
 	}
 
 	signal := make(chan error, 1)
-	if _, err = agent.WaitUntilReady(time.Now().Add(GocbcoreAgentSetupTimeout),
+	_, err = agent.WaitUntilReady(time.Now().Add(GocbcoreAgentSetupTimeout),
 		options, func(res *gocbcore.WaitUntilReadyResult, er error) {
 			signal <- er
-		}); err != nil {
+		})
+
+	if err == nil {
+		err = <-signal
+	}
+
+	if err != nil {
+		go agent.Close()
 		return nil, err
 	}
 
-	return agent, <-signal
+	return agent, nil
 }
 
 // ----------------------------------------------------------------
