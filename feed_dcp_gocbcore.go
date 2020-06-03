@@ -997,7 +997,7 @@ func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 
 func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, collectionId uint32, ttl uint32, streamId uint16) {
-	// FIXME
+	// FIXME: not supported for CC
 }
 
 // ----------------------------------------------------------------
