@@ -969,31 +969,29 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	ttl uint32, streamId uint16, key []byte) {
-	// FIXME
+	// not supported
 }
 
 func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	streamId uint16) {
-	// initiate a feed closure on collection delete, once all vbuckets
-	// have been accounted for
+	// initiate a feed closure on collection delete
 	f.initiateShutdown(fmt.Errorf("DeleteCollection, collection uid: %d", collectionId))
 }
 
 func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, collectionId uint32) {
-	// FIXME
+	// FIXME: not supported for CC
 }
 
 func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16, key []byte) {
-	// FIXME
+	// not supported
 }
 
 func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16) {
-	// initiate a feed closure on scope delete, once all vbuckets
-	// have been accounted for
+	// initiate a feed closure on scope delete
 	f.initiateShutdown(fmt.Errorf("DeleteScope, scope uid: %d", scopeId))
 }
 
