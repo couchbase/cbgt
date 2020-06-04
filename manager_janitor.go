@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -355,8 +356,9 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 
 	_, currPIndexes := mgr.CurrentMaps()
 
+	mapWantedPlanPIndex := mgr.reusablePIndexesPlanMap(currPIndexes, planPIndexes)
 	addPlanPIndexes, removePIndexes :=
-		CalcPIndexesDelta(mgr.uuid, currPIndexes, planPIndexes)
+		CalcPIndexesDelta(mgr.uuid, currPIndexes, planPIndexes, mapWantedPlanPIndex)
 
 	// check for any pindexes for restart and get classified lists of
 	// pindexes to add, remove and restart
@@ -695,22 +697,75 @@ func elicitAddPlanPIndexes(addPlanPIndexes []*PlanPIndex, errs []pindexRestartEr
 	return pindexesToAdd
 }
 
+func (mgr *Manager) reusablePIndexesPlanMap(currPIndexes map[string]*PIndex,
+	wantedPlanPIndexes *PlanPIndexes) map[string]*PlanPIndex {
+	mapWantedPlanPIndex := make(map[string]*PlanPIndex)
+	for _, wantedPlanPIndex := range wantedPlanPIndexes.PlanPIndexes {
+		// if the current pindex is a part of the newer plan then
+		// check the possibility of a plan evolving phase like a
+		// rebalance under progress so that we can skip any immediate
+		// partition removals until the plan is finalised.
+		if cp, exists := currPIndexes[wantedPlanPIndex.Name]; exists {
+			if mgr.planInProgress(cp, wantedPlanPIndex) &&
+				PIndexMatchesPlan(cp, wantedPlanPIndex) {
+				mapWantedPlanPIndex[wantedPlanPIndex.Name] = wantedPlanPIndex
+				log.Printf("janitor: skipping removal of pindex %s "+
+					" as it looks reloadable", wantedPlanPIndex.Name)
+			}
+		}
+	}
+	return mapWantedPlanPIndex
+}
+
+func (mgr *Manager) planInProgress(curPIndex *PIndex, planPIndex *PlanPIndex) bool {
+	indexDef, _, err := mgr.GetIndexDef(planPIndex.IndexName, true)
+	if err != nil {
+		return false
+	}
+	// get the count of current partition-node assignments.
+	cpna := len(planPIndex.Nodes)
+
+	// get the count of wanted nodes.
+	nodeDefs, err := mgr.GetNodeDefs(NODE_DEFS_WANTED, true)
+	if err != nil {
+		return false
+	}
+	cwn := float64(len(nodeDefs.NodeDefs))
+
+	// if the count of current partition-node assignment is zero or
+	// lesser than the anticipated allocations as per the planParams
+	// then we may conclude that the partition-node assignment
+	// planning is still evolving or a rebalance is in progress.
+	// Anticipated cpna would be the minimum value between the number
+	// of wanted nodes and the replica count.
+	if cpna < int(math.Min(float64(indexDef.PlanParams.NumReplicas+1), cwn)) ||
+		cpna == 0 {
+		// this applies to a failover-recovery usecase.
+		return true
+	}
+	return false
+}
+
 // --------------------------------------------------------
 
 // Functionally determine the delta of which pindexes need creation
 // and which should be shut down on our local node (mgrUUID).
 func CalcPIndexesDelta(mgrUUID string,
 	currPIndexes map[string]*PIndex,
-	wantedPlanPIndexes *PlanPIndexes) (
+	wantedPlanPIndexes *PlanPIndexes,
+	mapWantedPlanPIndex map[string]*PlanPIndex) (
 	addPlanPIndexes []*PlanPIndex,
 	removePIndexes []*PIndex) {
 	// For fast transient lookups.
-	mapWantedPlanPIndex := map[string]*PlanPIndex{}
+	if mapWantedPlanPIndex == nil {
+		mapWantedPlanPIndex = map[string]*PlanPIndex{}
+	}
 	mapRemovePIndex := map[string]*PIndex{}
 
 	// For each wanted plan pindex, if a pindex does not exist or is
 	// different, then include for addition.
 	for _, wantedPlanPIndex := range wantedPlanPIndexes.PlanPIndexes {
+
 	nodeUUIDs:
 		for nodeUUID, planPIndexNode := range wantedPlanPIndex.Nodes {
 			if nodeUUID != mgrUUID || planPIndexNode == nil {
