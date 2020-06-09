@@ -1348,6 +1348,23 @@ func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
 
 }
 
+func registerNode(nodeDef *NodeDef, kind string, m *Manager) error {
+	nodeDefs, cas, err := CfgGetNodeDefs(m.cfg, kind)
+	if err != nil {
+		return err
+	}
+	if nodeDefs == nil {
+		nodeDefs = NewNodeDefs(m.version)
+	}
+
+	nodeDefs.UUID = NewUUID()
+	nodeDefs.NodeDefs[nodeDef.UUID] = nodeDef
+	nodeDefs.ImplVersion = CfgGetVersion(m.cfg)
+
+	_, err = CfgSetNodeDefs(m.cfg, kind, nodeDefs, cas)
+	return err
+}
+
 func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
@@ -1391,6 +1408,15 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 			feeds, pindexes)
 	}
 
+	err = registerNode(&NodeDef{
+		HostPort:    "2",
+		UUID:        "2",
+		ImplVersion: VERSION,
+	}, NODE_DEFS_KNOWN, m)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
+	}
+
 	// update the replicaCount to "1"
 	planParams = PlanParams{
 		MaxPartitionsPerPIndex: 1,
@@ -1427,6 +1453,13 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 	if m.stats.TotJanitorRestartPIndex != 12 {
 		t.Errorf("expected pindex restarted count to be 12 but got: %d",
 			m.stats.TotJanitorRestartPIndex)
+	}
+
+	err = registerNode(&NodeDef{
+		HostPort: "3",
+		UUID:     "3", ImplVersion: VERSION}, NODE_DEFS_KNOWN, m)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
 	}
 
 	// update the replicaCount to "2"
