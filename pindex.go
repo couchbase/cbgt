@@ -19,6 +19,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	log "github.com/couchbase/clog"
 )
 
 const PINDEX_META_FILENAME string = "PINDEX_META"
@@ -71,9 +73,12 @@ func (p *PIndex) Close(remove bool) error {
 	p.closed = true
 	p.m.Unlock()
 
+	log.Printf("pindex: %s Close started with remove: %v", p.Name, remove)
+
 	if p.Dest != nil {
 		err := p.Dest.Close()
 		if err != nil {
+			log.Printf("pindex: %s Close failed, err: %v", p.Name, err)
 			return err
 		}
 	}
@@ -82,6 +87,7 @@ func (p *PIndex) Close(remove bool) error {
 		os.RemoveAll(p.Path)
 	}
 
+	log.Printf("pindex: %s Close completed successfully", p.Name)
 	return nil
 }
 
