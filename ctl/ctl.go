@@ -221,8 +221,9 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 				ctl.optionsCtl.Manager.Server(),
 				ctl.optionsCtl.Manager.GetOptions())
 			if err != nil {
-				log.Printf("ctl: getMovingPartitionsCount, CouchbasePartitions"+
-					" failed, err: %v", err)
+				log.Warnf("ctl: getMovingPartitionsCount, CouchbasePartitions"+
+					" failed for index: `%v` over source: `%v`, err: %v",
+					indexDef.Name, indexDef.SourceName, err)
 				totalPartitions += 0
 				continue
 			}
