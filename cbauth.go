@@ -117,7 +117,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 			go func(key string, notify ConfigRefreshNotifier) {
 				log.Printf("cbauth: notifying configs change for key: %v", key)
 				if err := notify(); err != nil {
-					log.Printf("cbauth: notify failed, for key: %v: err: %v", key, err)
+					log.Errorf("cbauth: notify failed, for key: %v: err: %v", key, err)
 				}
 			}(key, notifier)
 		}
@@ -161,7 +161,7 @@ func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
 
 	certInBytes, err := ioutil.ReadFile(TLSCertFile)
 	if err != nil {
-		log.Printf("cbauth: Certificates read err: %v", err)
+		log.Errorf("cbauth: Certificates read err: %v", err)
 		return err
 	}
 

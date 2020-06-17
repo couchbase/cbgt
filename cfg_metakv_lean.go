@@ -151,7 +151,7 @@ func setLeanPlan(c *CfgMetaKv,
 		val, err = json.Marshal(childPlan)
 		if err != nil {
 			// clean up the incomplete plan directories
-			log.Printf("cfg_metakv_lean: setLeanPlan json marshal, err: %v", err)
+			log.Errorf("cfg_metakv_lean: setLeanPlan json marshal, err: %v", err)
 			metakv.RecursiveDelete(newPath)
 			return 0, err
 		}
@@ -159,7 +159,7 @@ func setLeanPlan(c *CfgMetaKv,
 		err = metakv.Set(childPath, val, nil)
 		if err != nil {
 			// clean up the incomplete plan directories
-			log.Printf("cfg_metakv_lean: setLeanPlan metakv.Set, err: %v", err)
+			log.Errorf("cfg_metakv_lean: setLeanPlan metakv.Set, err: %v", err)
 			metakv.RecursiveDelete(newPath)
 			return 0, err
 		}
@@ -299,7 +299,7 @@ RETRY:
 	// that from the the directory name stamp.
 	hashMD5, err := computeMD5(data)
 	if err != nil {
-		log.Printf("cfg_metakv_lean: getLeanPlan, computeMD5, err: %v", err)
+		log.Errorf("cfg_metakv_lean: getLeanPlan, computeMD5, err: %v", err)
 		return nil, 0, err
 	}
 	hashStart := len(leanPlanKeyPrefix)
@@ -363,7 +363,7 @@ func delLeanPlan(
 func purgeOrphanedLeanPlans(c *CfgMetaKv, curPath string) error {
 	children, err := metakv.ListAllChildren(c.keyToPath("planPIndexesLean") + "/")
 	if err != nil {
-		log.Printf("cfg_metakv_lean: purgeOrphanedLeanPlans, err: %v", err)
+		log.Errorf("cfg_metakv_lean: purgeOrphanedLeanPlans, err: %v", err)
 		return err
 	}
 
@@ -409,7 +409,7 @@ func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 	path := c.keyToPath(curMetaKvPlanKey)
 	v, _, err := metakv.Get(path)
 	if err != nil {
-		log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, err: %v", err)
+		log.Errorf("cfg_metakv_lean: getCurMetaKvPlanMeta, err: %v", err)
 		return nil, err
 	}
 	if len(v) == 0 {
@@ -418,7 +418,7 @@ func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 	meta := &planMeta{}
 	err = json.Unmarshal(v, meta)
 	if err != nil {
-		log.Printf("cfg_metakv_lean: getCurMetaKvPlanMeta, json err: %v", err)
+		log.Errorf("cfg_metakv_lean: getCurMetaKvPlanMeta, json err: %v", err)
 		return nil, err
 	}
 

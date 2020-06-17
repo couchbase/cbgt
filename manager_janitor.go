@@ -330,7 +330,7 @@ func (mgr *Manager) pindexesRestart(
 	close(responseCh)
 	var errs []pindexRestartErr
 	for resp := range responseCh {
-		log.Printf("janitor: restartPIndex err: %v", resp.err)
+		log.Warnf("janitor: restartPIndex err: %v", resp.err)
 		errs = append(errs, *resp)
 	}
 	return errs
@@ -902,7 +902,7 @@ func feedAllotmentOption(sourceParams string) string {
 	if len(sourceParams) > 0 {
 		sp, err := ParseFeedAllotmentOption(sourceParams)
 		if err != nil {
-			log.Printf("manager_janitor: feedAllotment, err: %v", err)
+			log.Errorf("manager_janitor: feedAllotment, err: %v", err)
 		}
 		return sp
 	}
@@ -948,13 +948,13 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 	if err == nil {
 		pindex, err = OpenPIndex(mgr, path)
 		if err != nil {
-			log.Printf("janitor: startPIndex, OpenPIndex error,"+
+			log.Errorf("janitor: startPIndex, OpenPIndex error,"+
 				" cleaning up and trying NewPIndex,"+
 				" path: %s, err: %v", path, err)
 			os.RemoveAll(path)
 		} else {
 			if !PIndexMatchesPlan(pindex, planPIndex) {
-				log.Printf("janitor: startPIndex, pindex does not match plan,"+
+				log.Errorf("janitor: startPIndex, pindex does not match plan,"+
 					" cleaning up and trying NewPIndex, path: %s, err: %v",
 					path, err)
 				pindex.Close(true)

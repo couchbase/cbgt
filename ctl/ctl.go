@@ -275,7 +275,7 @@ func (ctl *Ctl) run() {
 	planPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(ctl.cfg,
 		cbgt.CfgGetVersion(ctl.cfg))
 	if err != nil {
-		log.Printf("ctl: run, PlannerGetPlanPIndexes err: %v", err)
+		log.Errorf("ctl: run, PlannerGetPlanPIndexes err: %v", err)
 		ctl.initCh <- err
 		close(ctl.initCh)
 		return
@@ -1083,7 +1083,7 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 func (ctl *Ctl) checkAndReregisterSelf(selfUUID string) {
 	memberNodes, err := CurrentMemberNodes(ctl.cfg)
 	if err != nil {
-		log.Printf("ctl: CurrentMemberNodes failed, err: %+v", err)
+		log.Errorf("ctl: CurrentMemberNodes failed, err: %+v", err)
 		return
 	}
 	for _, node := range memberNodes {

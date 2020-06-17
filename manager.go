@@ -527,7 +527,7 @@ func (mgr *Manager) LoadDataDir() error {
 							" path: %s, err: %v", req.path, err)
 						os.RemoveAll(req.path)
 					} else {
-						log.Printf("manager: could not open pindex path: %s, err: %v",
+						log.Errorf("manager: could not open pindex path: %s, err: %v",
 							req.path, err)
 					}
 				} else {

@@ -152,7 +152,7 @@ func NewCfgMetaKv(nodeUUID string, options map[string]string) (*CfgMetaKv, error
 				return -1 // Success, so stop the loop.
 			}
 
-			log.Printf("cfg_metakv: RunObserveChildren, err: %v", err)
+			log.Warnf("cfg_metakv: RunObserveChildren, err: %v", err)
 
 			return 0 // No progress, so exponential backoff.
 		},

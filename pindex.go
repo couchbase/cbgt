@@ -78,7 +78,7 @@ func (p *PIndex) Close(remove bool) error {
 	if p.Dest != nil {
 		err := p.Dest.Close()
 		if err != nil {
-			log.Printf("pindex: %s Close failed, err: %v", p.Name, err)
+			log.Errorf("pindex: %s Close failed, err: %v", p.Name, err)
 			return err
 		}
 	}

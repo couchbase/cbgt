@@ -439,7 +439,7 @@ func (a *CfgCB) GetCredentials() (string, string, string) {
 // ----------------------------------------------------------------
 
 func (r *CfgCB) OnError(err error) {
-	log.Printf("cfg_cb: OnError, err: %v", err)
+	log.Warnf("cfg_cb: OnError, err: %v", err)
 
 	go func() {
 		r.FireEvent("", 0, err)
