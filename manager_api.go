@@ -97,17 +97,17 @@ func (mgr *Manager) CreateIndex(sourceType,
 	// Validate maxReplicasAllowed here.
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if planParams.NumReplicas < 0 || planParams.NumReplicas > maxReplicasAllowed {
-		return "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
+		return fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, planParams.NumReplicas)
 	}
 
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.cfg, NODE_DEFS_KNOWN)
 	if err != nil {
-		return "", fmt.Errorf("manager_api: CreateIndex failed, "+
+		return fmt.Errorf("manager_api: CreateIndex failed, "+
 			"CfgGetNodeDefs err: %v", err)
 	}
 	if len(nodeDefs.NodeDefs) < planParams.NumReplicas+1 {
-		return "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
+		return fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
 			"search nodes to support the requested replica count of %d",
 			planParams.NumReplicas+1, planParams.NumReplicas)
 	}
