@@ -1410,6 +1410,15 @@ func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
 		t.Errorf("failed err: %v", err)
 	}
 
+	err = registerNode(&NodeDef{
+		HostPort:    "2",
+		UUID:        "2",
+		ImplVersion: VERSION,
+	}, NODE_DEFS_KNOWN, m)
+	if err != nil {
+		t.Errorf("failed err: %v", err)
+	}
+
 	// update the replicaCount to "1"
 	planParams = PlanParams{
 		MaxPartitionsPerPIndex: 1,
