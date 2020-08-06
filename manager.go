@@ -166,6 +166,7 @@ type ClusterOptions struct {
 	FtsMemoryQuota       string `json:"ftsMemoryQuota"`
 	MaxReplicasAllowed   string `json:"maxReplicasAllowed"`
 	SlowQueryLogTimeout  string `json:"slowQueryLogTimeout"`
+	EnableVerboseLogging string `json:"enableVerboseLogging"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")

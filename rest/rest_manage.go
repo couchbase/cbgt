@@ -50,6 +50,25 @@ func (h *StatsHandler) ServeHTTP(
 	}
 }
 
+// StatsWriter represents an advanced stats writer.
+type StatsWriter interface {
+	VerboseLogging() bool
+	Write([]byte) (n int, err error)
+}
+
+type statsWriter struct {
+	w       io.Writer
+	verbose bool
+}
+
+func (s *statsWriter) VerboseLogging() bool {
+	return s.verbose
+}
+
+func (s *statsWriter) Write(b []byte) (int, error) {
+	return s.w.Write(b)
+}
+
 // WriteManagerStatsJSON writes JSON stats for a manager, and is
 // optionally focus'able on a particular indexName.
 func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
@@ -85,10 +104,19 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 		}
 	}
 
+	// verbose stats for rest endpoints or with explicit enabling.
+	var verbose bool
+	if _, ok := w.(http.ResponseWriter); ok {
+		verbose = true
+	} else if v, ok := mgr.Options()["enableVerboseLogging"]; ok && v == "true" {
+		verbose = true
+	}
+
 	pindexStats := make(map[string][]byte)
 	for _, pindexName := range pindexNames {
 		var buf bytes.Buffer
-		err := pindexes[pindexName].Dest.Stats(&buf)
+		statsWriter := &statsWriter{w: &buf, verbose: verbose}
+		err := pindexes[pindexName].Dest.Stats(statsWriter)
 		if err != nil {
 			return fmt.Errorf("pindex stats err: %v", err)
 		}
