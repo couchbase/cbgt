@@ -29,6 +29,19 @@ import (
 
 // ----------------------------------------------------------------
 
+type retryStrategy struct{}
+
+func (rs *retryStrategy) RetryAfter(req gocbcore.RetryRequest,
+	reason gocbcore.RetryReason) gocbcore.RetryAction {
+	if reason == gocbcore.BucketNotReadyReason {
+		return &gocbcore.WithDurationRetryAction{
+			WithDuration: gocbcore.ControlledBackoff(req.RetryAttempts()),
+		}
+	}
+
+	return &gocbcore.NoRetryRetryAction{}
+}
+
 func setupAgentConfig(name, bucketName string,
 	auth gocbcore.AuthProvider) *gocbcore.AgentConfig {
 	return &gocbcore.AgentConfig{
@@ -49,8 +62,9 @@ func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 	}
 
 	options := gocbcore.WaitUntilReadyOptions{
-		DesiredState: gocbcore.ClusterStateOnline,
-		ServiceTypes: []gocbcore.ServiceType{gocbcore.MemdService},
+		DesiredState:  gocbcore.ClusterStateOnline,
+		ServiceTypes:  []gocbcore.ServiceType{gocbcore.MemdService},
+		RetryStrategy: &retryStrategy{},
 	}
 
 	signal := make(chan error, 1)
