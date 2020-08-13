@@ -242,10 +242,11 @@ type gocbcoreDCPFeedStats struct {
 	TotDCPStreamEnds uint64
 	TotDCPRollbacks  uint64
 
-	TotDCPSnapshotMarkers uint64
-	TotDCPMutations       uint64
-	TotDCPDeletions       uint64
-	TotDCPSeqNoAdvanceds  uint64
+	TotDCPSnapshotMarkers   uint64
+	TotDCPMutations         uint64
+	TotDCPDeletions         uint64
+	TotDCPSeqNoAdvanceds    uint64
+	TotDCPCreateCollections uint64
 }
 
 // atomicCopyTo copies metrics from s to r (or, from source to
@@ -970,7 +971,44 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	ttl uint32, streamId uint16, key []byte) {
-	// not supported
+	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
+		f.onError(true, fmt.Errorf("CreateCollection, %v", err))
+		return
+	}
+
+	err := Timer(func() error {
+		partition, dest, err :=
+			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+		if err != nil || f.checkStopAfter(partition) {
+			return err
+		}
+
+		if destColl, ok := dest.(DestCollection); ok {
+			// A CreateCollection message for a collection is received only
+			// if the feed has subscribed to the collection, so treat this
+			// this message like we do a SeqnoAdvanced.
+			err = destColl.SeqNoAdvanced(partition, seqNo)
+		}
+
+		if err != nil {
+			return fmt.Errorf("CreateCollection => name: %s, partition: %s,"+
+				" seq: %d, err: %v", f.name, partition, seqNo, err)
+		}
+
+		f.updateStopAfter(partition, seqNo)
+
+		return nil
+	}, f.stats.TimerSeqNoAdvanced)
+
+	if err != nil {
+		f.onError(true, fmt.Errorf("CreateCollection, vb: %d, err: %v", vbId, err))
+		return
+	}
+
+	f.lastReceivedSeqno[vbId] = seqNo
+
+	atomic.AddUint64(&f.dcpStats.TotDCPCreateCollections, 1)
+
 }
 
 func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
