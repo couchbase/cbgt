@@ -739,15 +739,14 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		})
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("OpenStream error for vb: %v, err: %v",
-			vbId, err))
+		f.onError(true, fmt.Errorf("OpenStream error for vb: %v, err: %v", vbId, err))
 		return
 	}
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
 	if err != nil {
 		// notify mgr on feed closure due to timeout
-		f.onError(err == gocbcore.ErrTimeout,
+		f.onError(errors.Is(err, gocbcore.ErrTimeout),
 			fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
 	}
 }
