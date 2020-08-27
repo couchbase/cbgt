@@ -706,6 +706,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					" seqno requested: %v", f.Name(), vbId, seqStart)
 				f.complete(vbId)
 				go f.rollback(vbId, entries)
+				// rollback will handle this feed closure and setting up of a new feed
+				er = nil
 			} else if er != nil {
 				log.Warnf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
 					" vb: %v, err: %v", f.Name(), vbId, er)
@@ -745,8 +747,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
 	if err != nil {
-		// notify mgr on feed closure due to timeout
-		f.onError(errors.Is(err, gocbcore.ErrTimeout),
+		f.onError(true,
 			fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
 	}
 }
