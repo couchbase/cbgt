@@ -13,11 +13,14 @@ package cbgt
 
 import (
 	"container/list"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -82,6 +85,8 @@ type Manager struct {
 
 	stats  ManagerStats
 	events *list.List
+
+	fm sync.RWMutex // protects the local disk writes
 }
 
 // ManagerStats represents the stats/metrics tracked by a Manager
@@ -834,6 +839,12 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 		if err != nil {
 			return nil, nil, err
 		}
+		// skip disk writes on repeated Cfg callbacks.
+		if !reflect.DeepEqual(mgr.lastPlanPIndexes, planPIndexes) {
+			// make a local copy of the updated plan,
+			mgr.checkAndStoreRecoveryPlanPIndexes(planPIndexes)
+		}
+
 		mgr.lastPlanPIndexes = planPIndexes
 		atomic.AddUint64(&mgr.stats.TotRefreshLastPlanPIndexes, 1)
 
@@ -857,6 +868,164 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 	}
 
 	return mgr.lastPlanPIndexes, mgr.lastPlanPIndexesByName, nil
+}
+
+// GetRecoveryPlanPIndexes retrieves the recovery plan for
+// a failover-recovery.
+func (mgr *Manager) GetRecoveryPlanPIndexes() *PlanPIndexes {
+	dirPath := filepath.Join(mgr.dataDir, "planPIndexes")
+	mgr.fm.RLock()
+	defer mgr.fm.RUnlock()
+	// read the files from the planPIndexes directory.
+	files, err := ioutil.ReadDir(dirPath)
+	if err != nil {
+		log.Errorf("manager: GetRecoveryPlanPIndexes, readDir err: %v", err)
+		return nil
+	}
+
+	rv := &PlanPIndexes{}
+	// There will only be a single file in the directory, and if the processing
+	// fails then fall back to the usual flow of recovery by returning nil,
+	// As the files are in the ascending order of their names, let's read the
+	// latest first. This helps the situation if there was a kill -9/node crash
+	// on the writer side to end up having multiple files on disk.
+	for i := len(files) - 1; i >= 0; i-- {
+		path := filepath.Join(dirPath, files[i].Name())
+		val, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.Errorf("manager: GetRecoveryPlanPIndexes, readFile, err: %v", err)
+			// in case of a file read error, check for any subsequent plan files.
+			continue
+		}
+
+		contentMD5, err := computeMD5(val)
+		if err != nil {
+			log.Errorf("manager: GetRecoveryPlanPIndexes, computeMD5, err: %v", err)
+			// in case of a hash compute error, check for any subsequent plan files.
+			continue
+		}
+
+		// Get the hashMD5 from the file name
+		fname := files[i].Name()
+		nameMD5 := fname[strings.LastIndex(fname, "-")+1:]
+		if contentMD5 != nameMD5 {
+			log.Errorf("manager: GetRecoveryPlanPIndexes failed, hash mismatch "+
+				"contentMD5: %s, contents: %s, path: %s", contentMD5, val, path)
+			// in case of a hash mis match, check for any subsequent plan files.
+			continue
+		}
+
+		err = json.Unmarshal(val, rv)
+		if err != nil {
+			// if the file is read successfully and hash digest matched then json
+			// parsing should have passed too. So return upon error here.
+			log.Errorf("manager: GetRecoveryPlanPIndexes, json, err: %v", err)
+			return nil
+		}
+		log.Printf("manager: GetRecoveryPlanPIndexes, recovery plan: %s", val)
+		return rv
+	}
+
+	return nil
+}
+
+// isStablePlan checks whether the given plan is a stable or evolving plan
+// by checking the partition-node assignments of partitions belonging to
+// each of the indexes. If all the partitions belonging to an index is having
+// same exact node assignments count, then the partition assignment is considered
+// stable for that index. If all the indexes in a plan is having stable node,
+// assignments then that plan is considered stable and can be stored for recovery.
+func isStablePlan(planPIndexes *PlanPIndexes) bool {
+	// group planPIndexes per index.
+	planPIndexesPerIndex := make(map[string][]*PlanPIndex)
+	for _, pi := range planPIndexes.PlanPIndexes {
+		planPIndexesPerIndex[pi.IndexName] = append(
+			planPIndexesPerIndex[pi.IndexName], pi)
+	}
+
+	// consider partitions per index.
+	for _, planPIndexes := range planPIndexesPerIndex {
+		// check whether all the index partitions are having same number of
+		// node assignments.
+		nodeCount := -1
+		for _, p := range planPIndexes {
+			if nodeCount == -1 {
+				nodeCount = len(p.Nodes)
+				continue
+			}
+			if len(p.Nodes) != nodeCount {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (mgr *Manager) checkAndStoreRecoveryPlanPIndexes(planPIndexes *PlanPIndexes) {
+	if !isStablePlan(planPIndexes) {
+		return
+	}
+	val, err := json.Marshal(planPIndexes)
+	if err != nil {
+		log.Errorf("manager: persistPlanPIndexes, json err: %v", err)
+		return
+	}
+	// Decorate the file name with the hash of the plan contents so that
+	// the content can be verified during the read paths.
+	hashMD5, err := computeMD5(val)
+	if err != nil {
+		return
+	}
+	timeStr := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
+	fname := "recoveryPlan-" + timeStr + "-" + hashMD5
+	dirPath := filepath.Join(mgr.dataDir, "planPIndexes")
+	newPath := filepath.Join(dirPath, fname)
+
+	log.Printf("manager: persistPlanPIndexes, new plan path: %s", newPath)
+
+	mgr.fm.Lock()
+	defer mgr.fm.Unlock()
+
+	err = os.MkdirAll(dirPath, 0700)
+	if err != nil {
+		log.Errorf("manager: persistPlanPIndexes,  MkdirAll failed, err: %v", err)
+		return
+	}
+	err = ioutil.WriteFile(newPath, val, 0600)
+	if err != nil {
+		log.Errorf("manager: persistPlanPIndexes writeFile failed, err: %v", err)
+		return
+	}
+
+	// After successful write to disk for the latest plan,
+	// purge all older plans except the most recent one.
+	// The plan right before a failover ought to be a stable, usable
+	// plan for a failover-recovery operation.
+	// ReadDir returns files in the sorted order of their timestamped names.
+	files, err := ioutil.ReadDir(dirPath)
+	if err != nil {
+		log.Errorf("manager: persistPlanPIndexes, readDir failed, err: %v", err)
+		return
+	}
+	// No purging needs to be done for a single file on disk.
+	if len(files) <= 1 {
+		return
+	}
+	// As the files are in the sorted order of their timestamped names,
+	// purge all older plan files from disk.
+	files = files[:len(files)-1]
+	for _, f := range files {
+		fname := f.Name()
+		// extra check with the timestamp for the most recent one.
+		if strings.Contains(fname, timeStr) {
+			continue
+		}
+		err := os.Remove(filepath.Join(dirPath, fname))
+		if err != nil {
+			log.Errorf("manager: persistPlanPIndexes, remove failed, err %v", err)
+			continue
+		}
+	}
 }
 
 // ---------------------------------------------------------------
