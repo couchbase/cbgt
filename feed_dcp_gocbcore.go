@@ -690,10 +690,10 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	snapStart := seqStart
 	signal := make(chan error, 1)
-	log.Debugf("feed_dcp_gocbcore: Initiating DCP stream request for vb: %v,"+
+	log.Debugf("feed_dcp_gocbcore: [%s] Initiating DCP stream request for vb: %v,"+
 		" vbUUID: %v, seqStart: %v, seqEnd: %v, manifestUID: %v,"+
-		" streamOptions: {%+v}", vbId, vbuuid, seqStart, seqEnd, f.manifestUID,
-		f.streamOptions.FilterOptions)
+		" streamOptions: {%+v}", f.Name(), vbId, vbuuid, seqStart, seqEnd,
+		f.manifestUID, f.streamOptions.FilterOptions)
 	op, err := f.agent.OpenStream(vbId, memd.DcpStreamAddFlagStrictVBUUID,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamOptions,
 		func(entries []gocbcore.FailoverEntry, er error) {
@@ -707,8 +707,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				f.complete(vbId)
 				go f.rollback(vbId, entries)
 			} else if er != nil {
-				log.Warnf("feed_dcp_gocbcore: Received error on DCP stream for vb: %v,"+
-					" err: %v", vbId, er)
+				log.Warnf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
+					" vb: %v, err: %v", f.Name(), vbId, er)
 				f.complete(vbId)
 			} else {
 				// er == nil
@@ -774,7 +774,7 @@ func (f *GocbcoreDCPFeed) initiateShutdown(err error) {
 func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
 	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, err: %v",
-		f.name, f.bucketName, f.bucketUUID, err)
+		f.Name(), f.bucketName, f.bucketUUID, err)
 
 	f.Close()
 
@@ -860,7 +860,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 		if err != nil {
 			return fmt.Errorf("Mutation => name: %s, partition: %s,"+
 				" key: %v, seq: %d, err: %v",
-				f.name, partition, log.Tag(log.UserData, key), seqNo, err)
+				f.Name(), partition, log.Tag(log.UserData, key), seqNo, err)
 		}
 
 		f.updateStopAfter(partition, seqNo)
@@ -913,7 +913,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 		if err != nil {
 			return fmt.Errorf("Deletion => name: %s, partition: %s,"+
 				"key: %v, seq: %d, err: %v",
-				f.name, partition, log.Tag(log.UserData, key), seqNo, err)
+				f.Name(), partition, log.Tag(log.UserData, key), seqNo, err)
 		}
 
 		f.updateStopAfter(partition, seqNo)
@@ -940,28 +940,29 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 	atomic.AddUint64(&f.dcpStats.TotDCPStreamEnds, 1)
 	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
-		log.Printf("feed_dcp_gocbcore: DCP stream ended for vb: %v, last seq: %v",
-			vbId, lastReceivedSeqno)
+		log.Printf("feed_dcp_gocbcore: [%s] DCP stream ended for vb: %v, last seq: %v",
+			f.Name(), vbId, lastReceivedSeqno)
 		f.complete(vbId)
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed) {
 		f.initiateShutdown(err)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
-		log.Warnf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
-			" `%s`, closing feed and notify the mgr", vbId, err.Error())
+		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed due to"+
+			" `%s`, closing feed and notify the mgr", f.Name(), vbId, err.Error())
 		f.onError(true, err)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
-		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed due to"+
-			" `%s`, will reconnect", vbId, err.Error())
+		log.Printf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed due to"+
+			" `%s`, will reconnect", f.Name(), vbId, err.Error())
 		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
-		log.Printf("feed_dcp_gocbcore: DCP stream for vb: %v, closed by consumer", vbId)
+		log.Printf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed by consumer",
+			f.Name(), vbId)
 		f.complete(vbId)
 	} else {
-		log.Debugf("feed_dcp_gocbcore: DCP stream closed for vb: %v, last seq: %v,"+
-			" err: `%s`", vbId, lastReceivedSeqno, err.Error())
+		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream closed for vb: %v,"+
+			" last seq: %v, err: `%s`", f.Name(), vbId, lastReceivedSeqno, err.Error())
 	}
 }
 
@@ -991,7 +992,7 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 
 		if err != nil {
 			return fmt.Errorf("CreateCollection => name: %s, partition: %s,"+
-				" seq: %d, err: %v", f.name, partition, seqNo, err)
+				" seq: %d, err: %v", f.Name(), partition, seqNo, err)
 		}
 
 		f.updateStopAfter(partition, seqNo)
@@ -1065,7 +1066,7 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 
 		if err != nil {
 			return fmt.Errorf("SeqNoAdvanced => name: %s, partition: %s,"+
-				" seq: %d, err: %v", f.name, partition, seqNo, err)
+				" seq: %d, err: %v", f.Name(), partition, seqNo, err)
 		}
 
 		f.updateStopAfter(partition, seqNo)
@@ -1204,8 +1205,9 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry
 
 	if err != nil {
 		// TODO: Better error handling
-		log.Warnf("feed_dcp_gocbcore: Rollback to seqno: %v, vbuuid: %v for vb: %v,"+
-			" failed with err: %v", rollbackSeqno, rollbackVbuuid, vbId, err)
+		log.Warnf("feed_dcp_gocbcore: [%s] Rollback to seqno: %v, vbuuid: %v for"+
+			" vb: %v, failed with err: %v",
+			f.Name(), rollbackSeqno, rollbackVbuuid, vbId, err)
 	} else {
 		atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
 	}
