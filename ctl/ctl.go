@@ -331,6 +331,23 @@ func (ctl *Ctl) run() {
 			}
 		}
 
+		if lastIndexDefs != nil && indexDefs != nil {
+			if !reflect.DeepEqual(lastIndexDefs, indexDefs) {
+				// If there is a change in the cached index definitions,
+				// look for any that have been deleted and invoke the
+				// OnDelete callback.
+				for name, idef := range lastIndexDefs.IndexDefs {
+					if _, exists := indexDefs.IndexDefs[name]; !exists {
+						if pindexImplType, exists := cbgt.PIndexImplTypes[idef.Type]; exists {
+							if pindexImplType.OnDelete != nil {
+								pindexImplType.OnDelete(idef)
+							}
+						}
+					}
+				}
+			}
+		}
+
 		lastIndexDefs = indexDefs
 
 		return err

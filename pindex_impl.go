@@ -28,12 +28,18 @@ type PIndexImpl interface{}
 // PIndexImplType defines the functions that every pindex
 // implementation type must register on startup.
 type PIndexImplType struct {
-	// Prepare provides a way to customize the index definition.
+	// Invoked by the manager to customize the index definition
+	// during creating or updating indexes (Optional).
 	Prepare func(indexDef *IndexDef) (*IndexDef, error)
 
-	// Invoked by the manager when it wants validate indef definition
-	// inputs before doing the actual creation.
+	// Invoked by the manager to validate the index definition
+	// before going ahead with the actual creation (Optional).
 	Validate func(indexType, indexName, indexParams string) error
+
+	// Invoked by the manager on index deletion to clean up
+	// any stats/resources pertaining to the index before removing
+	// the index (Optional).
+	OnDelete func(indexDef *IndexDef)
 
 	// Invoked by the manager when it wants to create an index
 	// partition.  The pindex implementation should persist enough

@@ -306,6 +306,16 @@ func (s *RESTPathStats) FocusValues() (rv []string) {
 	return rv
 }
 
+func (s *RESTPathStats) ResetFocusStats(focusVal string) {
+	s.m.Lock()
+	if s.focusStats != nil {
+		if _, exists := s.focusStats[focusVal]; exists {
+			s.focusStats[focusVal] = &RESTFocusStats{}
+		}
+	}
+	s.m.Unlock()
+}
+
 // -------------------------------------------------------
 
 // RESTFocusStats represents stats for a targeted or "focused" REST
