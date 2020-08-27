@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 
@@ -99,6 +100,8 @@ type Rebalancer struct {
 	begNodeDefs        *cbgt.NodeDefs
 	begPlanPIndexes    *cbgt.PlanPIndexes
 	begPlanPIndexesCAS uint64
+
+	recoveryPlanPIndexes *cbgt.PlanPIndexes
 
 	m sync.Mutex // Protects the mutable fields that follow.
 
@@ -231,6 +234,8 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	// r.Logf("rebalance: begNodeDefs: %#v", begNodeDefs)
 
 	r.Logf("rebalance: monitor urlUUIDs: %#v", urlUUIDs)
+
+	r.initPlansForRecoveryRebalance(nodesToAdd)
 
 	// begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
 	//
@@ -536,6 +541,39 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	return true, firstErr
 }
 
+// initPlansForRecoveryRebalance attempts to figure out whether the
+// current rebalance operation is a recovery one or not and sets the
+// recoveryPlanPIndexes accordingly.
+func (r *Rebalancer) initPlansForRecoveryRebalance(nodesToAdd []string) {
+	if len(nodesToAdd) == 0 || r.optionsReb.Manager == nil {
+		return
+	}
+	// check whether the previous cluster contained the nodesToAdd to
+	// figure out whether it is a recovery operation.
+	begPlanPIndexesCopy := r.optionsReb.Manager.GetStableLocalPlanPIndexes()
+	if begPlanPIndexesCopy != nil {
+		var prevNodes []string
+		for _, pp := range begPlanPIndexesCopy.PlanPIndexes {
+			for uuid := range pp.Nodes {
+				prevNodes = append(prevNodes, uuid)
+			}
+		}
+		// check whether all the nodes to get added were a part of the cluster.
+		cNodes := cbgt.StringsIntersectStrings(prevNodes, nodesToAdd)
+		sort.Strings(cNodes)
+
+		if len(cNodes) != len(nodesToAdd) {
+			return
+		}
+		for i := range nodesToAdd {
+			if cNodes[i] != nodesToAdd[i] {
+				return
+			}
+		}
+		r.recoveryPlanPIndexes = begPlanPIndexesCopy
+	}
+}
+
 // --------------------------------------------------------
 
 // calcBegEndMaps calculates the before and after maps for an index.
@@ -559,11 +597,26 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		return partitionModel, begMap, endMap, err
 	}
 
-	// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
-	warnings := cbgt.BlancePlanPIndexes("", indexDef,
-		endPlanPIndexesForIndex, r.begPlanPIndexes,
-		r.nodesAll, r.nodesToAdd, r.nodesToRemove,
-		r.nodeWeights, r.nodeHierarchy)
+	var warnings []string
+	if r.recoveryPlanPIndexes != nil {
+		// During the failover, cbgt ignores the new nextMap from blance
+		// and just promotes the replica partitions to primary.
+		// Hence during the failover-recovery rebalance operation,
+		// feed the pre failover plan to the blance so that it would
+		// be able to come up with the same exact plan for the
+		// same set of nodes and the original planPIndexes.
+		r.Logf("  calcBegEndMaps: recovery rebalance for index: %s", indexDef.Name)
+		warnings = cbgt.BlancePlanPIndexes("", indexDef,
+			endPlanPIndexesForIndex, r.recoveryPlanPIndexes,
+			r.nodesAll, []string{}, r.nodesToRemove,
+			r.nodeWeights, r.nodeHierarchy)
+	} else {
+		// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
+		warnings = cbgt.BlancePlanPIndexes("", indexDef,
+			endPlanPIndexesForIndex, r.begPlanPIndexes,
+			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
+			r.nodeWeights, r.nodeHierarchy)
+	}
 
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
 
