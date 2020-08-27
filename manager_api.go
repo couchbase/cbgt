@@ -237,7 +237,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 // DeleteIndex deletes a logical index definition.
 func (mgr *Manager) DeleteIndex(indexName string) error {
 	_, err := mgr.DeleteIndexEx(indexName, "")
-	log.Errorf("manager_api: DeleteIndex, indexname: %s, err: %v",
+	log.Printf("manager_api: DeleteIndex, indexname: %s, err: %v",
 		indexName, err)
 	return err
 }
