@@ -602,10 +602,28 @@ func (f *GocbcoreDCPFeed) Start() error {
 }
 
 func (f *GocbcoreDCPFeed) Close() error {
+	if f.close() {
+		log.Printf("feed_dcp_gocbcore: Close, name: %s", f.Name())
+	}
+	return nil
+}
+
+func (f *GocbcoreDCPFeed) notifyMgrOnClose() {
+	if f.close() {
+		log.Printf("feed_dcp_gocbcore: Close, name: %s, notify manager",
+			f.Name())
+
+		if f.mgr != nil {
+			f.mgr.Kick("gocbcore-feed")
+		}
+	}
+}
+
+func (f *GocbcoreDCPFeed) close() bool {
 	f.m.Lock()
 	if f.closed {
 		f.m.Unlock()
-		return nil
+		return false
 	}
 	f.closed = true
 	go f.agent.Close()
@@ -619,8 +637,7 @@ func (f *GocbcoreDCPFeed) Close() error {
 	close(f.closeCh)
 	f.wait()
 
-	log.Printf("feed_dcp_gocbcore: Close, name: %s", f.Name())
-	return nil
+	return true
 }
 
 func (f *GocbcoreDCPFeed) Dests() map[string]Dest {
@@ -777,10 +794,10 @@ func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
 		" bucketName: %s, bucketUUID: %s, err: %v",
 		f.Name(), f.bucketName, f.bucketUUID, err)
 
-	f.Close()
-
-	if notifyMgr && f.mgr != nil {
-		f.mgr.Kick("gocbcore-feed")
+	if notifyMgr {
+		f.notifyMgrOnClose()
+	} else {
+		f.Close()
 	}
 
 	return err
