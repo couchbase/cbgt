@@ -143,7 +143,14 @@ type DestCollection interface {
 	// implementation to customise any DCPFeedParams.
 	PrepareFeedParams(partition string, params *DCPFeedParams) error
 
-	// Invoked when there's a new message indicating that the seqno
+	// Invoked when there's a DCP message for a connection that uses
+	// OSOBackfill indicating the start or the end of an OSO snapshot.
+	// snapshotType:
+	//   - 0x01: start
+	//   - 0x02: end
+	OSOSnapshot(partition string, snapshotType uint32) error
+
+	// Invoked when there's a DCP message indicating that the seqno
 	// for the partition has to be advanced.
 	SeqNoAdvanced(partition string, seq uint64) error
 }

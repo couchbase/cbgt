@@ -847,7 +847,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	collectionId uint32, streamId uint16, key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("Mutation, %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v] Mutation, %v", vbId, err))
 		return
 	}
 
@@ -877,8 +877,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 		}
 
 		if err != nil {
-			return fmt.Errorf("Mutation => name: %s, partition: %s,"+
-				" key: %v, seq: %d, err: %v",
+			return fmt.Errorf("name: %s, partition: %s, key: %v, seq: %d, err: %v",
 				f.Name(), partition, log.Tag(log.UserData, key), seqNo, err)
 		}
 
@@ -888,7 +887,7 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("Mutation, vb: %d, err: %v", vbId, err))
+		f.onError(true, fmt.Errorf("Mutation, err: %v", err))
 		return
 	}
 
@@ -901,7 +900,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 	cas uint64, datatype uint8, vbId uint16, collectionId uint32, streamId uint16,
 	key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("Deletion, %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v] Deletion, %v", vbId, err))
 		return
 	}
 
@@ -930,8 +929,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 		}
 
 		if err != nil {
-			return fmt.Errorf("Deletion => name: %s, partition: %s,"+
-				"key: %v, seq: %d, err: %v",
+			return fmt.Errorf("name: %s, partition: %s, key: %v, seq: %d, err: %v",
 				f.Name(), partition, log.Tag(log.UserData, key), seqNo, err)
 		}
 
@@ -941,7 +939,7 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("Deletion, vb: %d, err: %v", vbId, err))
+		f.onError(true, fmt.Errorf("Deletion, err: %v", err))
 		return
 	}
 
@@ -991,7 +989,7 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	ttl uint32, streamId uint16, key []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("CreateCollection, %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v] CreateCollection, %v", vbId, err))
 		return
 	}
 
@@ -1010,7 +1008,7 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 		}
 
 		if err != nil {
-			return fmt.Errorf("CreateCollection => name: %s, partition: %s,"+
+			return fmt.Errorf("name: %s, partition: %s,"+
 				" seq: %d, err: %v", f.Name(), partition, seqNo, err)
 		}
 
@@ -1020,7 +1018,7 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	}, f.stats.TimerSeqNoAdvanced)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("CreateCollection, vb: %d, err: %v", vbId, err))
+		f.onError(true, fmt.Errorf("CreateCollection, err: %v", err))
 		return
 	}
 
@@ -1034,7 +1032,8 @@ func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	streamId uint16) {
 	// initiate a feed closure on collection delete
-	f.initiateShutdown(fmt.Errorf("DeleteCollection, collection uid: %d", collectionId))
+	f.initiateShutdown(fmt.Errorf("[vb:%v] DeleteCollection, collection uid: %d",
+		vbId, collectionId))
 }
 
 func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
@@ -1050,7 +1049,8 @@ func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
 func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16) {
 	// initiate a feed closure on scope delete
-	f.initiateShutdown(fmt.Errorf("DeleteScope, scope uid: %d", scopeId))
+	f.initiateShutdown(fmt.Errorf("[vb:%v] DeleteScope, scope uid: %d",
+		vbId, scopeId))
 }
 
 func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
@@ -1062,13 +1062,30 @@ func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uin
 
 func (f *GocbcoreDCPFeed) OSOSnapshot(vbId uint16, snapshotType uint32,
 	streamID uint16) {
-	// FIXME
+	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
+		f.onError(true, fmt.Errorf("[vb:%v] OSOSnapshot, %v", vbId, err))
+		return
+	}
+
+	partition, dest, err :=
+		VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+	if err == nil && !f.checkStopAfter(partition) {
+		if destColl, ok := dest.(DestCollection); ok {
+			err = destColl.OSOSnapshot(partition, snapshotType)
+		}
+	}
+
+	if err != nil {
+		f.onError(true, fmt.Errorf("OSOSnapshot, partition: %s, err: %v",
+			partition, err))
+		return
+	}
 }
 
 func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 	streamID uint16) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("SeqNoAdvanced, %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v] SeqNoAdvanced, %v", vbId, err))
 		return
 	}
 
@@ -1084,7 +1101,7 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 		}
 
 		if err != nil {
-			return fmt.Errorf("SeqNoAdvanced => name: %s, partition: %s,"+
+			return fmt.Errorf("name: %s, partition: %s,"+
 				" seq: %d, err: %v", f.Name(), partition, seqNo, err)
 		}
 
@@ -1094,7 +1111,7 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 	}, f.stats.TimerSeqNoAdvanced)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("SeqNoAdvanced, vb: %d, err: %v", vbId, err))
+		f.onError(true, fmt.Errorf("SeqNoAdvanced, err: %v", err))
 		return
 	}
 

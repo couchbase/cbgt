@@ -81,6 +81,36 @@ func (t *DestForwarder) SnapshotStart(partition string,
 	return dest.SnapshotStart(partition, snapStart, snapEnd)
 }
 
+func (t *DestForwarder) PrepareFeedParams(partition string,
+	params *DCPFeedParams) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.PrepareFeedParams(partition, params)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found (PrepareFeedParams) for partition %s",
+		partition)
+}
+
+func (t *DestForwarder) OSOSnapshot(partition string,
+	snapshotType uint32) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.OSOSnapshot(partition, snapshotType)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found (OSOSnapshot) for partition %s",
+		partition)
+}
+
 func (t *DestForwarder) SeqNoAdvanced(partition string,
 	seq uint64) error {
 	dest, err := t.DestProvider.Dest(partition)
@@ -92,7 +122,8 @@ func (t *DestForwarder) SeqNoAdvanced(partition string,
 	}
 
 	return fmt.Errorf("dest_forwarder: no DestCollection "+
-		"implementation found for partition %s", partition)
+		"implementation found (SeqNoAdvanced) for partition %s",
+		partition)
 }
 
 func (t *DestForwarder) OpaqueGet(partition string) (
@@ -135,20 +166,6 @@ func (t *DestForwarder) RollbackEx(partition string,
 	}
 	return fmt.Errorf("dest_forwarder: no DestEx implementation found for"+
 		" partition %s", partition)
-}
-
-func (t *DestForwarder) PrepareFeedParams(partition string,
-	params *DCPFeedParams) error {
-	dest, err := t.DestProvider.Dest(partition)
-	if err != nil {
-		return err
-	}
-	if destColl, ok := dest.(DestCollection); ok {
-		return destColl.PrepareFeedParams(partition, params)
-	}
-
-	return fmt.Errorf("dest_forwarder: no DestCollection "+
-		"implementation found for partition %s", partition)
 }
 
 func (t *DestForwarder) ConsistencyWait(partition, partitionUUID string,
