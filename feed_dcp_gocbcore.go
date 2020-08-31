@@ -717,7 +717,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if errors.Is(er, gocbcore.ErrShutdown) ||
 				errors.Is(er, gocbcore.ErrSocketClosed) {
-				f.initiateShutdown(er)
+				f.initiateShutdown(fmt.Errorf("OpenStream, %v", er))
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
 				log.Printf("feed_dcp_gocbcore: [%s] Received rollback, for vb: %v,"+
@@ -964,7 +964,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		f.complete(vbId)
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed) {
-		f.initiateShutdown(err)
+		f.initiateShutdown(fmt.Errorf("End, %v", err))
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
 		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed due to"+
 			" `%s`, closing feed and notify the mgr", f.Name(), vbId, err.Error())
