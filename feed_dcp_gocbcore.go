@@ -448,7 +448,8 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, urls,
 
 	log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, name: %s, indexName: %s,"+
 		" server: %v, bucketName: %s, bucketUUID: %s, connection name: %s",
-		name, indexName, urls[0], feed.bucketName, feed.bucketUUID, dcpConnName)
+		name, indexName, feed.connStr, feed.bucketName, feed.bucketUUID,
+		dcpConnName)
 
 	return feed, nil
 }
