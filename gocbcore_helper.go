@@ -637,6 +637,8 @@ func (l GocbcoreLogger) Log(level gocbcore.LogLevel, offset int, format string,
 		log.Warnf(prefixedFormat, args...)
 	case gocbcore.LogInfo:
 		log.Printf(prefixedFormat, args...)
+	case gocbcore.LogDebug:
+		log.Debugf(prefixedFormat, args...)
 	default:
 		// not logging LogTrace
 	}
