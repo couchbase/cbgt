@@ -86,7 +86,7 @@ type Manager struct {
 	stats  ManagerStats
 	events *list.List
 
-	fm sync.RWMutex // protects the local disk writes
+	stablePlanPIndexesMutex sync.RWMutex // Protects the local stable plan access.
 }
 
 // ManagerStats represents the stats/metrics tracked by a Manager
@@ -842,7 +842,7 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 		// skip disk writes on repeated Cfg callbacks.
 		if !reflect.DeepEqual(mgr.lastPlanPIndexes, planPIndexes) {
 			// make a local copy of the updated plan,
-			mgr.checkAndStoreRecoveryPlanPIndexes(planPIndexes)
+			mgr.checkAndStoreStablePlanPIndexes(planPIndexes)
 		}
 
 		mgr.lastPlanPIndexes = planPIndexes
@@ -870,16 +870,16 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 	return mgr.lastPlanPIndexes, mgr.lastPlanPIndexesByName, nil
 }
 
-// GetRecoveryPlanPIndexes retrieves the recovery plan for
+// GetStableLocalPlanPIndexes retrieves the recovery plan for
 // a failover-recovery.
-func (mgr *Manager) GetRecoveryPlanPIndexes() *PlanPIndexes {
+func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 	dirPath := filepath.Join(mgr.dataDir, "planPIndexes")
-	mgr.fm.RLock()
-	defer mgr.fm.RUnlock()
+	mgr.stablePlanPIndexesMutex.RLock()
+	defer mgr.stablePlanPIndexesMutex.RUnlock()
 	// read the files from the planPIndexes directory.
 	files, err := ioutil.ReadDir(dirPath)
 	if err != nil {
-		log.Errorf("manager: GetRecoveryPlanPIndexes, readDir err: %v", err)
+		log.Errorf("manager: GetStableLocalPlanPIndexes, readDir err: %v", err)
 		return nil
 	}
 
@@ -893,14 +893,14 @@ func (mgr *Manager) GetRecoveryPlanPIndexes() *PlanPIndexes {
 		path := filepath.Join(dirPath, files[i].Name())
 		val, err := ioutil.ReadFile(path)
 		if err != nil {
-			log.Errorf("manager: GetRecoveryPlanPIndexes, readFile, err: %v", err)
+			log.Errorf("manager: GetStableLocalPlanPIndexes, readFile, err: %v", err)
 			// in case of a file read error, check for any subsequent plan files.
 			continue
 		}
 
 		contentMD5, err := computeMD5(val)
 		if err != nil {
-			log.Errorf("manager: GetRecoveryPlanPIndexes, computeMD5, err: %v", err)
+			log.Errorf("manager: GetStableLocalPlanPIndexes, computeMD5, err: %v", err)
 			// in case of a hash compute error, check for any subsequent plan files.
 			continue
 		}
@@ -909,7 +909,7 @@ func (mgr *Manager) GetRecoveryPlanPIndexes() *PlanPIndexes {
 		fname := files[i].Name()
 		nameMD5 := fname[strings.LastIndex(fname, "-")+1:]
 		if contentMD5 != nameMD5 {
-			log.Errorf("manager: GetRecoveryPlanPIndexes failed, hash mismatch "+
+			log.Errorf("manager: GetStableLocalPlanPIndexes failed, hash mismatch "+
 				"contentMD5: %s, contents: %s, path: %s", contentMD5, val, path)
 			// in case of a hash mis match, check for any subsequent plan files.
 			continue
@@ -918,11 +918,11 @@ func (mgr *Manager) GetRecoveryPlanPIndexes() *PlanPIndexes {
 		err = json.Unmarshal(val, rv)
 		if err != nil {
 			// if the file is read successfully and hash digest matched then json
-			// parsing should have passed too. So return upon error here.
-			log.Errorf("manager: GetRecoveryPlanPIndexes, json, err: %v", err)
+			// parsing should have passed too. So return here.
+			log.Errorf("manager: GetStableLocalPlanPIndexes, json, err: %v", err)
 			return nil
 		}
-		log.Printf("manager: GetRecoveryPlanPIndexes, recovery plan: %s", val)
+		log.Printf("manager: GetStableLocalPlanPIndexes, recovery plan: %s", val)
 		return rv
 	}
 
@@ -961,7 +961,7 @@ func isStablePlan(planPIndexes *PlanPIndexes) bool {
 	return true
 }
 
-func (mgr *Manager) checkAndStoreRecoveryPlanPIndexes(planPIndexes *PlanPIndexes) {
+func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) {
 	if !isStablePlan(planPIndexes) {
 		return
 	}
@@ -983,8 +983,8 @@ func (mgr *Manager) checkAndStoreRecoveryPlanPIndexes(planPIndexes *PlanPIndexes
 
 	log.Printf("manager: persistPlanPIndexes, new plan path: %s", newPath)
 
-	mgr.fm.Lock()
-	defer mgr.fm.Unlock()
+	mgr.stablePlanPIndexesMutex.Lock()
+	defer mgr.stablePlanPIndexesMutex.Unlock()
 
 	err = os.MkdirAll(dirPath, 0700)
 	if err != nil {

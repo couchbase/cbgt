@@ -544,13 +544,13 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 // initPlansForRecoveryRebalance attempts to figure out whether the
 // current rebalance operation is a recovery one or not and sets the
 // recoveryPlanPIndexes accordingly.
-func (r *Rebalancer) initPlansForRecoveryRebalance(nodesToAdd []string) bool {
+func (r *Rebalancer) initPlansForRecoveryRebalance(nodesToAdd []string) {
 	if len(nodesToAdd) == 0 || r.optionsReb.Manager == nil {
-		return false
+		return
 	}
 	// check whether the previous cluster contained the nodesToAdd to
 	// figure out whether it is a recovery operation.
-	begPlanPIndexesCopy := r.optionsReb.Manager.GetRecoveryPlanPIndexes()
+	begPlanPIndexesCopy := r.optionsReb.Manager.GetStableLocalPlanPIndexes()
 	if begPlanPIndexesCopy != nil {
 		var prevNodes []string
 		for _, pp := range begPlanPIndexesCopy.PlanPIndexes {
@@ -563,18 +563,15 @@ func (r *Rebalancer) initPlansForRecoveryRebalance(nodesToAdd []string) bool {
 		sort.Strings(cNodes)
 
 		if len(cNodes) != len(nodesToAdd) {
-			return false
+			return
 		}
 		for i := range nodesToAdd {
 			if cNodes[i] != nodesToAdd[i] {
-				return false
+				return
 			}
 		}
-
 		r.recoveryPlanPIndexes = begPlanPIndexesCopy
-		return true
 	}
-	return false
 }
 
 // --------------------------------------------------------
