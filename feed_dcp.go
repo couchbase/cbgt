@@ -125,5 +125,5 @@ func ParseOpaqueToUUID(b []byte) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%d", vmd.FailOverLog[flogLen-1][0])
+	return fmt.Sprintf("%d", vmd.FailOverLog[0][0])
 }

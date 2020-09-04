@@ -444,3 +444,27 @@ func TestGetMovingPartitionsCountUtil(t *testing.T) {
 		t.Errorf(" moving partitions count should be 0")
 	}
 }
+
+func TestParseOpaqueToUUID(t *testing.T) {
+	tests := []struct {
+		failOverTable VBucketMetaData
+		vBucketUUID   string
+	}{
+		{VBucketMetaData{FailOverLog: [][]uint64{{268906213642843, 6}, {143420528339786, 6}, {136122168442154, 6}, {223018024493529, 0}}}, "268906213642843"},
+		{VBucketMetaData{FailOverLog: [][]uint64{{268906213642800, 6}, {143420528339786, 5}, {136122168442154, 3}, {223018024493529, 0}}}, "268906213642800"},
+		{VBucketMetaData{FailOverLog: [][]uint64{{223018024493529, 0}}}, "223018024493529"},
+	}
+
+	for i, test := range tests {
+		in, err := json.Marshal(&test.failOverTable)
+		if err != nil {
+			t.Errorf("TestParseOpaqueToUUID, jaon err: %v", err)
+		}
+		actualUUID := ParseOpaqueToUUID(in)
+		if actualUUID != test.vBucketUUID {
+			t.Errorf("test: %d, expected: %v, got: %v",
+				i, test.vBucketUUID, actualUUID)
+		}
+	}
+
+}
