@@ -207,6 +207,10 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 	totalPartitions := 0
 	if indexDefs != nil {
 		for _, indexDef := range indexDefs.IndexDefs {
+			// skip any index aliases.
+			if indexDef.SourceType == "nil" {
+				continue
+			}
 			partitions, err := cbgt.CouchbasePartitions(indexDef.SourceType,
 				indexDef.SourceName, indexDef.SourceUUID,
 				indexDef.SourceParams,
