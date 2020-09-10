@@ -73,7 +73,7 @@ func setupDCPAgentConfig(name, bucketName string,
 		ConnectTimeout:   GocbcoreConnectTimeout,
 		KVConnectTimeout: GocbcoreKVConnectTimeout,
 		UseCollections:   true,
-		UseOSOBackfill:   true,
+		UseOSOBackfill:   false,
 		BackfillOrder:    gocbcore.DCPBackfillOrderRoundRobin,
 		AgentPriority:    gocbcore.DcpAgentPriorityMed,
 	}
