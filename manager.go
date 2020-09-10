@@ -912,6 +912,9 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 // stable for that index. If all the indexes in a plan is having stable node,
 // assignments then that plan is considered stable and can be stored for recovery.
 func isStablePlan(planPIndexes *PlanPIndexes) bool {
+	if planPIndexes == nil || planPIndexes.PlanPIndexes == nil {
+		return false
+	}
 	// group planPIndexes per index.
 	planPIndexesPerIndex := make(map[string][]*PlanPIndex)
 	for _, pi := range planPIndexes.PlanPIndexes {
