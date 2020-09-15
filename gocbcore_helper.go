@@ -325,7 +325,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 
 			for i, collID := range collectionUIDs {
 				collSeqStr, ok :=
-					collectionsStats[k].Stats[vbPrefix+":collection:"+collID+":entry:high_seqno"]
+					collectionsStats[k].Stats[vbPrefix+":"+collID+":high_seqno"]
 				if !ok {
 					continue
 				}
@@ -339,7 +339,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 				}
 
 				collSeqStr, ok =
-					collectionsStats[k].Stats[vbPrefix+":collection:"+collID+":entry:start_seqno"]
+					collectionsStats[k].Stats[vbPrefix+":"+collID+":start_seqno"]
 				if !ok {
 					continue
 				}
