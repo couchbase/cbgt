@@ -161,6 +161,22 @@ func StringsToMap(strsArr []string) map[string]bool {
 	return strs
 }
 
+// StringsRemoveDuplicates removes any duplicate strings from the give slice.
+func StringsRemoveDuplicates(strsArr []string) []string {
+	if len(strsArr) <= 1 {
+		return strsArr
+	}
+	rv := make([]string, 0, len(strsArr))
+	lookup := make(map[string]struct{}, len(strsArr))
+	for _, str := range strsArr {
+		if _, ok := lookup[str]; !ok {
+			lookup[str] = struct{}{}
+			rv = append(rv, str)
+		}
+	}
+	return rv
+}
+
 // StringsRemoveStrings returns a copy of stringArr, but with some
 // strings removed, keeping the same order as stringArr.
 func StringsRemoveStrings(stringArr, removeArr []string) []string {

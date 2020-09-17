@@ -166,6 +166,11 @@ func PIndexNameLookup(req *http.Request) string {
 	return RequestVariableLookup(req, "pindexName")
 }
 
+// BucketNameLookup returns the bucketName param from an http.Request.
+func BucketNameLookup(req *http.Request) string {
+	return RequestVariableLookup(req, "bucketName")
+}
+
 // -------------------------------------------------------
 
 var pathFocusNameRE = regexp.MustCompile(`{([a-zA-Z]+)}`)
