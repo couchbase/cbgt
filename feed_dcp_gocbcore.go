@@ -949,7 +949,8 @@ func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
 func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	vbId uint16, streamId uint16, snapshotType gocbcore.SnapshotState) {
 	if f.currVBs[vbId] == nil {
-		f.onError(true, fmt.Errorf("SnapshotMarker, invalid vb: %d", vbId))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SnapshotMarker, invalid vb",
+			vbId, streamId))
 		return
 	}
 
@@ -976,7 +977,8 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
 	}, f.stats.TimerSnapshotStart)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("SnapshotMarker, vb: %d, err: %v", vbId, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SnapshotMarker, err: %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -987,7 +989,8 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
 	collectionId uint32, streamId uint16, key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v] Mutation, %v", vbId, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Mutation, %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1027,7 +1030,8 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 	}, f.stats.TimerDataUpdate)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("Mutation, err: %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Mutation, err: %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1040,7 +1044,8 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 	cas uint64, datatype uint8, vbId uint16, collectionId uint32, streamId uint16,
 	key, value []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v] Deletion, %v", vbId, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Deletion, %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1079,7 +1084,8 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 	}, f.stats.TimerDataDelete)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("Deletion, err: %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Deletion, err: %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1097,29 +1103,31 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 	atomic.AddUint64(&f.dcpStats.TotDCPStreamEnds, 1)
 	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream ended for vb: %v, last seq: %v",
-			f.Name(), vbId, lastReceivedSeqno)
+		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] ended for vb: %v,"+
+			" last seq: %v", f.Name(), streamId, vbId, lastReceivedSeqno)
 		f.complete(vbId)
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed) {
 		f.initiateShutdown(fmt.Errorf("End, %v", err))
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
-		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed due to"+
-			" `%s`, closing feed and notify the mgr", f.Name(), vbId, err.Error())
+		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
+			" `%s`, closing feed and notify the mgr",
+			f.Name(), streamId, vbId, err.Error())
 		f.onError(true, err)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed due to"+
-			" `%s`, will reconnect", f.Name(), vbId, err.Error())
+		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
+			" `%s`, will reconnect", f.Name(), streamId, vbId, err.Error())
 		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream for vb: %v, closed by consumer",
-			f.Name(), vbId)
+		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
+			" closed by consumer", f.Name(), streamId, vbId)
 		f.complete(vbId)
 	} else {
-		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream closed for vb: %v,"+
-			" last seq: %v, err: `%s`", f.Name(), vbId, lastReceivedSeqno, err.Error())
+		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] closed for vb: %v,"+
+			" last seq: %v, err: `%s`",
+			f.Name(), streamId, vbId, lastReceivedSeqno, err.Error())
 	}
 }
 
@@ -1129,7 +1137,8 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	ttl uint32, streamId uint16, key []byte) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v] CreateCollection, %v", vbId, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] CreateCollection, %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1158,7 +1167,8 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	}, f.stats.TimerSeqNoAdvanced)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("CreateCollection, err: %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] CreateCollection, err: %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1172,8 +1182,8 @@ func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	streamId uint16) {
 	// initiate a feed closure on collection delete
-	f.initiateShutdown(fmt.Errorf("[vb:%v] DeleteCollection, collection uid: %d",
-		vbId, collectionId))
+	f.initiateShutdown(fmt.Errorf("[vb:%v stream:%v] DeleteCollection, collection uid: %d",
+		vbId, streamId, collectionId))
 }
 
 func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
@@ -1189,8 +1199,8 @@ func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
 func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16) {
 	// initiate a feed closure on scope delete
-	f.initiateShutdown(fmt.Errorf("[vb:%v] DeleteScope, scope uid: %d",
-		vbId, scopeId))
+	f.initiateShutdown(fmt.Errorf("[vb:%v stream:%v] DeleteScope, scope uid: %d",
+		vbId, streamId, scopeId))
 }
 
 func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
@@ -1201,9 +1211,10 @@ func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uin
 // ----------------------------------------------------------------
 
 func (f *GocbcoreDCPFeed) OSOSnapshot(vbId uint16, snapshotType uint32,
-	streamID uint16) {
+	streamId uint16) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v] OSOSnapshot, %v", vbId, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] OSOSnapshot, %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1216,16 +1227,17 @@ func (f *GocbcoreDCPFeed) OSOSnapshot(vbId uint16, snapshotType uint32,
 	}
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("OSOSnapshot, partition: %s, err: %v",
-			partition, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] OSOSnapshot, err: %v",
+			vbId, streamId, err))
 		return
 	}
 }
 
 func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
-	streamID uint16) {
+	streamId uint16) {
 	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v] SeqNoAdvanced, %v", vbId, err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SeqNoAdvanced, %v",
+			vbId, streamId, err))
 		return
 	}
 
@@ -1251,7 +1263,8 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 	}, f.stats.TimerSeqNoAdvanced)
 
 	if err != nil {
-		f.onError(true, fmt.Errorf("SeqNoAdvanced, err: %v", err))
+		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SeqNoAdvanced, err: %v",
+			vbId, streamId, err))
 		return
 	}
 
