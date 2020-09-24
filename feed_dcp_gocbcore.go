@@ -264,6 +264,7 @@ func setupDCPAgentConfig(name, bucketName string,
 		UseStreamID:      true,
 		BackfillOrder:    gocbcore.DCPBackfillOrderRoundRobin,
 		AgentPriority:    gocbcore.DcpAgentPriorityMed,
+		DCPBufferSize:    int(DCPFeedBufferSizeBytes),
 	}
 }
 
