@@ -165,14 +165,15 @@ type ManagerStats struct {
 // name as is in the original manager options cache map with
 // the exception of being exported field names.
 type ClusterOptions struct {
-	BleveMaxResultWindow string `json:"bleveMaxResultWindow"`
-	BleveMaxClauseCount  string `json:"bleveMaxClauseCount"`
-	FeedAllotment        string `json:"feedAllotment"`
-	FtsMemoryQuota       string `json:"ftsMemoryQuota"`
-	MaxReplicasAllowed   string `json:"maxReplicasAllowed"`
-	SlowQueryLogTimeout  string `json:"slowQueryLogTimeout"`
-	EnableVerboseLogging string `json:"enableVerboseLogging"`
-	MaxFeedsPerDCPAgent  string `json:"maxFeedsPerDCPAgent"`
+	BleveMaxResultWindow               string `json:"bleveMaxResultWindow"`
+	BleveMaxClauseCount                string `json:"bleveMaxClauseCount"`
+	FeedAllotment                      string `json:"feedAllotment"`
+	FtsMemoryQuota                     string `json:"ftsMemoryQuota"`
+	MaxReplicasAllowed                 string `json:"maxReplicasAllowed"`
+	SlowQueryLogTimeout                string `json:"slowQueryLogTimeout"`
+	EnableVerboseLogging               string `json:"enableVerboseLogging"`
+	MaxFeedsPerDCPAgent                string `json:"maxFeedsPerDCPAgent"`
+	MaxConcurrentPartitionMovesPerNode string `json:"maxConcurrentPartitionMovesPerNode"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")

@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	log "github.com/couchbase/clog"
 	"github.com/rcrowley/go-metrics"
 )
 
@@ -434,4 +435,16 @@ func callersToFrames(callers []uintptr) []runtime.Frame {
 			return frames
 		}
 	}
+}
+
+func ParseOptionsInt(options map[string]string, configKey string) (int, bool) {
+	if val, exists := options[configKey]; exists && val != "" {
+		n, err := strconv.Atoi(val)
+		if err == nil {
+			log.Printf("parseOptionsInt: %s set to %d", configKey, n)
+			return n, exists
+		}
+		log.Warnf("parseOptionsInt: %s parse, err: %v", configKey, err)
+	}
+	return 0, false
 }
