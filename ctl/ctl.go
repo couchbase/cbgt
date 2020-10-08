@@ -187,7 +187,11 @@ func StartCtl(cfg cbgt.Cfg, server string,
 }
 
 // ----------------------------------------------------
+func (ctl *Ctl) getManagerOptions() map[string]string {
+	return ctl.optionsCtl.Manager.GetOptions()
+}
 
+// ----------------------------------------------------
 func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) (
 	int, error) {
 	numNewNodes := len(cbgt.StringsRemoveStrings(keepNodeUUIDs, existingNodes))
@@ -797,13 +801,18 @@ func (ctl *Ctl) startCtlLOCKED(
 					break REBALANCE_LOOP
 				}
 
+				concurrentPartitionsMovesPerNode, found := cbgt.ParseOptionsInt(ctl.getManagerOptions(),
+					"maxConcurrentPartitionMovesPerNode")
+				if !found {
+					concurrentPartitionsMovesPerNode = ctl.optionsCtl.MaxConcurrentPartitionMovesPerNode
+				}
 				// Start rebalance and monitor progress.
 				ctl.r, err = rebalance.StartRebalance(version,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
 					nodesToRemove,
 					rebalance.RebalanceOptions{
 						FavorMinNodes:                      ctl.optionsCtl.FavorMinNodes,
-						MaxConcurrentPartitionMovesPerNode: ctl.optionsCtl.MaxConcurrentPartitionMovesPerNode,
+						MaxConcurrentPartitionMovesPerNode: concurrentPartitionsMovesPerNode,
 						DryRun:                             ctl.optionsCtl.DryRun,
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,
