@@ -461,13 +461,12 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 		return false, err
 	}
 
-	assignPartitionFunc := func(stopCh2 chan struct{},
-		partition, node, state, op string,
-	) error {
-		err2 := r.assignPIndex(stopCh, stopCh2,
-			indexDef.Name, partition, node, state, op)
+	assignPartitionsFunc := func(stopCh2 chan struct{}, node string,
+		partitions, states, ops []string) error {
+		err2 := r.assignPIndexes(stopCh, stopCh2,
+			indexDef.Name, node, partitions, states, ops)
 		if err2 != nil {
-			r.Logf("rebalance: assignPartitionFunc, err: %v", err2)
+			r.Logf("rebalance: assignPartitionsFunc, err: %v", err2)
 			// Stop rebalance for all other errors.
 			if err2 != ErrorNoIndexDefinitionFound {
 				r.progressCh <- RebalanceProgress{Error: err2}
@@ -487,7 +486,7 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 		r.nodesAll,
 		begMap,
 		endMap,
-		assignPartitionFunc,
+		assignPartitionsFunc,
 		blance.LowestWeightPartitionMoveForNode) // TODO: concurrency.
 	if err != nil {
 		return false, err
@@ -639,50 +638,32 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 }
 
 // --------------------------------------------------------
+// pindexMoves is a wrapper for a pindex movement containing
+// the detailed/multi-step stateOps transitions.
+type pindexMoves struct {
+	name     string
+	stateOps []StateOp
+}
+
+// --------------------------------------------------------
 
 // assignPIndex is invoked when blance.OrchestrateMoves() wants to
-// synchronously change the pindex/node/state/op for an index.
-func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
-	index, pindex, node, state, op string) error {
-	forceWaitForCatchup := false
-
-	stateOps := []StateOp{{State: state, Op: op}}
-
-	if !r.optionsReb.AddPrimaryDirectly &&
-		state == "primary" && op == "add" {
-		// If we want to add a pindex to a node as a primary, then
-		// perform a 2-step maneuver by first adding the pindex as a
-		// replica, then promote that replica to master.
-		stateOps = []StateOp{
-			{State: "replica", Op: "add"},
-			{State: "primary", Op: "promote"},
-		}
-
-		forceWaitForCatchup = true
-	} else if state == "primary" && op == "promote" {
-		// If we want to promote a pindex from replica to primary, then
-		// introduce a 2-step maneuver, the first step is a no-op, to
-		// allow the loop below to wait-for-catchup before promoting the
-		// replica to master.
-		stateOps = []StateOp{
-			{State: "replica", Op: "promote"},
-			{State: "primary", Op: "promote"},
-		}
-
-		forceWaitForCatchup = true
-	}
+// synchronously change one or more pindex/node/state/op for an index.
+func (r *Rebalancer) assignPIndexes(stopCh, stopCh2 chan struct{},
+	index string, node string, pindexes, states, ops []string) error {
+	pindexesMoves := r.createPindexesMoves(pindexes, states, ops)
 
 	r.Logf("  assignPIndex: index: %s,"+
-		" pindex: %s, node: %s, target state: %q, target op: %s, stateOps: %#v",
-		index, pindex, node, state, op, stateOps)
+		" pindexes: %v, node: %s, target states: %v, target ops: %v",
+		index, pindexes, node, states, ops)
 
-	for i, stateOp := range stateOps {
-		r.Logf("  assignPIndex: index: %s, pindex: %s, node: %s,"+
-			" i: %d, stateOp: %#v", index, pindex, node, i, stateOp)
-
+	// Move multiple partitions one step at a time. There could be a
+	// few potential multi-step partition movements.
+	var next int
+	for len(pindexesMoves) > 0 {
 		r.m.Lock() // Reduce but not eliminate CAS conflicts.
-		indexDef, planPIndexes, formerPrimaryNode, err := r.assignPIndexLOCKED(
-			index, pindex, node, stateOp.State, stateOp.Op)
+		indexDef, planPIndexes, formerPrimaryNodes, err := r.assignPIndexesLOCKED(
+			index, node, pindexesMoves, next)
 		r.m.Unlock()
 
 		if err != nil {
@@ -692,63 +673,154 @@ func (r *Rebalancer) assignPIndex(stopCh, stopCh2 chan struct{},
 			}
 			r.Logf("assignPIndex: update plan,"+
 				" perhaps a concurrent planner won, no indexDef,"+
-				" index: %s, pindex: %s, node: %s, state: %q, op: %s",
-				index, pindex, node, state, op)
+				" index: %s, pindexes: %v, node: %s, states: %v, ops: %v",
+				index, pindexes, node, states, ops)
 			return err
 		}
 
-		err = r.waitAssignPIndexDone(stopCh, stopCh2,
-			indexDef, planPIndexes, pindex, node,
-			stateOp.State, stateOp.Op, formerPrimaryNode,
-			forceWaitForCatchup)
-		if err != nil {
-			return err
+		// start workers per pindex for tracking the partition assignment
+		// completion.
+		var wg sync.WaitGroup
+		doneCh := make(chan error, len(pindexesMoves))
+
+		for i := 0; i < len(pindexesMoves); i++ {
+			wg.Add(1)
+			go func(pm *pindexMoves, formerPrimaryNode string) {
+				err := r.waitAssignPIndexDone(stopCh, stopCh2,
+					indexDef, planPIndexes, pm.name, node,
+					pm.stateOps[next].State,
+					pm.stateOps[next].Op,
+					formerPrimaryNode,
+					len(pm.stateOps) > 1)
+				doneCh <- err
+				wg.Done()
+			}(pindexesMoves[i], formerPrimaryNodes[i])
 		}
+
+		wg.Wait()
+		close(doneCh)
+
+		var errs []string
+		for err := range doneCh {
+			if err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+		if len(errs) > 0 {
+			return fmt.Errorf("rebalance: waitAssignPIndexDone errors: %d, %#v",
+				len(errs), errs)
+		}
+
+		// pindexesMoves might contain partition movements with single/two-step
+		// maneuvers for completion. So filter out any of the already completed
+		// single step pindex movements.
+		next++
+		pindexesMoves = removeShortMoves(pindexesMoves, next)
 	}
 
 	return nil
 }
 
-// assignPIndexLOCKED updates the cfg with the pindex assignment, and
+// --------------------------------------------------------
+
+func (r *Rebalancer) createPindexesMoves(pindexes, states,
+	ops []string) []*pindexMoves {
+	pindexesMoves := make([]*pindexMoves, len(pindexes))
+
+	for i := 0; i < len(pindexes); i++ {
+		pm := &pindexMoves{name: pindexes[i]}
+
+		if !r.optionsReb.AddPrimaryDirectly &&
+			states[i] == "primary" && ops[i] == "add" {
+			// If we want to add a pindex to a node as a primary, then
+			// perform a 2-step maneuver by first adding the pindex as a
+			// replica, then promote that replica to master.
+			pm.stateOps = []StateOp{
+				{State: "replica", Op: "add"},
+				{State: "primary", Op: "promote"},
+			}
+		} else if states[i] == "primary" && ops[i] == "promote" {
+			// If we want to promote a pindex from replica to primary, then
+			// introduce a 2-step maneuver, the first step is a no-op, to
+			// allow the loop below to wait-for-catchup before promoting the
+			// replica to master.
+			pm.stateOps = []StateOp{
+				{State: "replica", Op: "promote"},
+				{State: "primary", Op: "promote"},
+			}
+		} else {
+			pm.stateOps = []StateOp{{State: states[i], Op: ops[i]}}
+		}
+
+		pindexesMoves[i] = pm
+	}
+
+	return pindexesMoves
+}
+
+// --------------------------------------------------------
+
+func removeShortMoves(pms []*pindexMoves, length int) []*pindexMoves {
+	var rv []*pindexMoves
+	for _, pm := range pms {
+		if len(pm.stateOps) > length {
+			rv = append(rv, pm)
+		}
+	}
+	return rv
+}
+
+// --------------------------------------------------------
+
+// assignPIndexesLOCKED updates the cfg with the pindex assignment, and
 // should be invoked while holding the r.m lock.
-func (r *Rebalancer) assignPIndexLOCKED(index, pindex, node, state, op string) (
-	*cbgt.IndexDef, *cbgt.PlanPIndexes, string, error) {
-	err := r.assignPIndexCurrStatesLOCKED(index, pindex, node, state, op)
-	if err != nil {
-		return nil, nil, "", err
+func (r *Rebalancer) assignPIndexesLOCKED(index string, node string,
+	pms []*pindexMoves, next int) (*cbgt.IndexDef, *cbgt.PlanPIndexes,
+	[]string, error) {
+	for _, pm := range pms {
+		err := r.assignPIndexCurrStatesLOCKED(index, pm.name, node,
+			pm.stateOps[next].State, pm.stateOps[next].Op)
+
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	indexDefs, err := cbgt.PlannerGetIndexDefs(r.cfg, r.version)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, err
 	}
 
 	indexDef := indexDefs.IndexDefs[index]
 	if indexDef == nil {
-		return nil, nil, "", ErrorNoIndexDefinitionFound
+		return nil, nil, nil, ErrorNoIndexDefinitionFound
 	}
 
 	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, err
 	}
 
-	formerPrimaryNode, err := r.updatePlanPIndexesLOCKED(planPIndexes,
-		indexDef, pindex, node, state, op)
-	if err != nil {
-		return nil, nil, "", err
+	formerPrimaryNodes := make([]string, len(pms))
+	for i, pm := range pms {
+		formerPrimaryNodes[i], err = r.updatePlanPIndexesLOCKED(planPIndexes,
+			indexDef, pm.name, node, pm.stateOps[next].State,
+			pm.stateOps[next].Op)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	if r.optionsReb.DryRun {
-		return nil, nil, formerPrimaryNode, nil
+		return nil, nil, formerPrimaryNodes, nil
 	}
 
 	_, err = cbgt.CfgSetPlanPIndexes(r.cfg, planPIndexes, cas)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, err
 	}
 
-	return indexDef, planPIndexes, formerPrimaryNode, err
+	return indexDef, planPIndexes, formerPrimaryNodes, err
 }
 
 // --------------------------------------------------------
