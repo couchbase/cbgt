@@ -563,7 +563,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 		return nil, fmt.Errorf("newGocbcoreFeed DCPAgent, err: %v", err)
 	}
 
-	log.Printf("feed_dcp_gocbcore: NewGocbcoreDCPFeed, name: %s, indexName: %s,"+
+	log.Printf("feed_dcp_gocbcore: newGocbcoreDCPFeed, name: %s, indexName: %s,"+
 		" server: %v, bucketName: %s, bucketUUID: %s",
 		name, indexName, feed.servers, feed.bucketName, feed.bucketUUID)
 
@@ -1126,7 +1126,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 			" closed by consumer", f.Name(), streamId, vbId)
 		f.complete(vbId)
 	} else {
-		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] closed for vb: %v,"+
+		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] closed for vb: %v,"+
 			" last seq: %v, err: `%s`",
 			f.Name(), streamId, vbId, lastReceivedSeqno, err.Error())
 	}
