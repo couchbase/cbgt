@@ -6,7 +6,7 @@ require (
 	github.com/couchbase/blance v0.0.0-20201030011610-c73b54864c1a
 	github.com/couchbase/cbauth v0.0.0-20200508215310-0d352b097b19
 	github.com/couchbase/clog v0.0.0-20190523192451-b8e6d5d421bc
-	github.com/couchbase/go-couchbase v0.0.0-20200618135536-fe11fe60aa9d
+	github.com/couchbase/go-couchbase v0.0.0-20201026062457-7b3be89bbd89
 	github.com/couchbase/gocbcore/v9 v9.0.7
 	github.com/couchbase/gomemcached v0.0.0-20200618124739-5bac349aff71
 	github.com/couchbase/goutils v0.0.0-20191018232750-b49639060d85 // indirect
