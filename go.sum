@@ -1,5 +1,5 @@
-github.com/couchbase/blance v0.0.0-20170402154611-5cd1345cca3e h1:HcZ94SunDRSgDIRgujlC/O8JCu+SC7IK6D+WLdYOXaI=
-github.com/couchbase/blance v0.0.0-20170402154611-5cd1345cca3e/go.mod h1:ELsp57vDmExnh14H7S9dvm5+NJpSfNhNeac9hhOLGZk=
+github.com/couchbase/blance v0.0.0-20201030011610-c73b54864c1a h1:R7i/lnjZVY0g5U5eMkQdFRb+WkTKQFxZvwXWIpCsUR0=
+github.com/couchbase/blance v0.0.0-20201030011610-c73b54864c1a/go.mod h1:ELsp57vDmExnh14H7S9dvm5+NJpSfNhNeac9hhOLGZk=
 github.com/couchbase/cbauth v0.0.0-20200508215310-0d352b097b19 h1:VK5KSzc93gSlzvp82ysoQ4khKp8bQOVvudth4FdvIQs=
 github.com/couchbase/cbauth v0.0.0-20200508215310-0d352b097b19/go.mod h1:j0qCQux2//KfCPemLUAcIKiMsQqWV9rdHQf055nb7Zc=
 github.com/couchbase/clog v0.0.0-20190523192451-b8e6d5d421bc h1:raV5sJWF+axK2Nv6Zrn/pOlYfbHHlLQ2LsRowsmGABE=
