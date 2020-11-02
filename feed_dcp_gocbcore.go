@@ -145,7 +145,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
-	config := setupDCPAgentConfig(key, bucketName, auth)
+	config := setupDCPAgentConfig(key, bucketName, auth, options)
 
 	svrs := strings.Split(servers, ";")
 	if len(svrs) == 0 {
@@ -251,8 +251,17 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 
 // ----------------------------------------------------------------
 
+const defaultOSOBackfillMode = false
+
 func setupDCPAgentConfig(name, bucketName string,
-	auth gocbcore.AuthProvider) *gocbcore.DCPAgentConfig {
+	auth gocbcore.AuthProvider,
+	options map[string]string) *gocbcore.DCPAgentConfig {
+	useOSOBackfill := defaultOSOBackfillMode
+	if options["useOSOBackfill"] == "true" {
+		useOSOBackfill = true
+	} else if options["useOSOBackfill"] == "false" {
+		useOSOBackfill = false
+	}
 	return &gocbcore.DCPAgentConfig{
 		UserAgent:        name,
 		BucketName:       bucketName,
@@ -260,7 +269,7 @@ func setupDCPAgentConfig(name, bucketName string,
 		ConnectTimeout:   GocbcoreConnectTimeout,
 		KVConnectTimeout: GocbcoreKVConnectTimeout,
 		UseCollections:   true,
-		UseOSOBackfill:   false,
+		UseOSOBackfill:   useOSOBackfill,
 		UseStreamID:      true,
 		BackfillOrder:    gocbcore.DCPBackfillOrderRoundRobin,
 		AgentPriority:    gocbcore.DcpAgentPriorityMed,

@@ -174,6 +174,7 @@ type ClusterOptions struct {
 	EnableVerboseLogging               string `json:"enableVerboseLogging"`
 	MaxFeedsPerDCPAgent                string `json:"maxFeedsPerDCPAgent"`
 	MaxConcurrentPartitionMovesPerNode string `json:"maxConcurrentPartitionMovesPerNode"`
+	UseOSOBackfill                     string `json:"useOSOBackfill"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
