@@ -560,7 +560,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 
 	feed.agent, err = FetchDCPAgent(bucketName, bucketUUID, paramsStr, servers, options)
 	if err != nil {
-		return nil, fmt.Errorf("newGocbcoreFeed DCPAgent, err: %v", err)
+		return nil, fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %v", err)
 	}
 
 	log.Printf("feed_dcp_gocbcore: newGocbcoreDCPFeed, name: %s, indexName: %s,"+
