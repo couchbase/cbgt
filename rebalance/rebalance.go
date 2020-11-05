@@ -1063,6 +1063,11 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	}
 
 	sourcePartitions := strings.Split(planPIndex.SourcePartitions, ",")
+
+	errThreshold := StatsSampleErrorThreshold
+	if r.optionsReb.StatsSampleErrorThreshold != nil {
+		errThreshold = uint8(*r.optionsReb.StatsSampleErrorThreshold)
+	}
 	// Loop to retrieve all the seqs that we need to reach for all
 	// source partitions.
 	if !r.optionsReb.SkipSeqChecks {
@@ -1084,6 +1089,13 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 						" awaiting a stats sample grab for pindex %s", pindex)
 					err := r.grabCurrentSample(stopCh, stopCh2, pindex, formerPrimaryNode)
 					if err != nil {
+						// adding more resiliency with pindex not found errors to safe guard against
+						// any plan propagation or implementation lag at the remote nodes.
+						if err == ErrorNoIndexDefinitionFound && errThreshold > 0 {
+							errThreshold--
+							continue INIT_WANT_SEQ
+						}
+
 						r.Logf("rebalance: waitAssignPIndexDone,"+
 							" failed for pindex: %s, err: %+v", pindex, err)
 						return err
