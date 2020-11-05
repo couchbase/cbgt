@@ -562,14 +562,12 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	options := mgr.Options()
-
-	if err = feed.setupStreamOptions(paramsStr, options["authType"]); err != nil {
+	if err = feed.setupStreamOptions(paramsStr, mgr.Options()["authType"]); err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
 			" error in setting up feed's stream options, err: %v", err)
 	}
 
-	feed.agent, err = FetchDCPAgent(bucketName, bucketUUID, paramsStr, servers, options)
+	feed.agent, err = FetchDCPAgent(bucketName, bucketUUID, paramsStr, servers, mgr.Options())
 	if err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %v", err)
 	}
