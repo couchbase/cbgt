@@ -118,7 +118,7 @@ func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
 	server, _, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
-	auth, err := gocbAuth(sourceParams, options)
+	auth, err := gocbAuth(sourceParams, options["authType"])
 	if err != nil {
 		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
@@ -447,7 +447,7 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 	server, _, bucketName :=
 		CouchbaseParseSourceName(serverIn, "default", sourceName)
 
-	auth, err := gocbAuth(sourceParams, options)
+	auth, err := gocbAuth(sourceParams, options["authType"])
 	if err != nil {
 		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
@@ -585,7 +585,7 @@ func (a *CBAuthenticator) SupportsNonTLS() bool {
 	return true
 }
 
-func gocbAuth(sourceParams string, options map[string]string) (
+func gocbAuth(sourceParams string, authType string) (
 	auth gocbcore.AuthProvider, err error) {
 	params := &AuthParams{}
 
@@ -601,11 +601,6 @@ func gocbAuth(sourceParams string, options map[string]string) (
 
 	if params.AuthSaslUser != "" {
 		auth = &AuthParamsSasl{*params}
-	}
-
-	authType := ""
-	if options != nil {
-		authType = options["authType"]
 	}
 
 	if authType == "cbauth" {

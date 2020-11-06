@@ -139,7 +139,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		dm.entries[key] = map[*gocbcore.DCPAgent]uint32{}
 	}
 
-	auth, err := gocbAuth(paramsStr, options)
+	auth, err := gocbAuth(paramsStr, options["authType"])
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
@@ -338,6 +338,11 @@ func init() {
 func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	sourceType, sourceName, bucketUUID, params string,
 	dests map[string]Dest) error {
+	if mgr == nil {
+		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed," +
+			" mgr is nil")
+	}
+
 	servers, _, bucketName :=
 		CouchbaseParseSourceName(mgr.server, "default", sourceName)
 
@@ -466,11 +471,6 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 	bucketName, bucketUUID, paramsStr string,
 	pf DestPartitionFunc, dests map[string]Dest,
 	disable bool, mgr *Manager) (*GocbcoreDCPFeed, error) {
-	var options map[string]string
-	if mgr != nil {
-		options = mgr.Options()
-	}
-
 	var stopAfter map[string]UUIDSeq
 
 	params := NewDCPFeedParams()
@@ -553,7 +553,9 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	if err = feed.setupStreamOptions(paramsStr, options); err != nil {
+	options := mgr.Options()
+
+	if err = feed.setupStreamOptions(paramsStr, options["authType"]); err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
 			" error in setting up feed's stream options, err: %v", err)
 	}
@@ -570,9 +572,8 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 	return feed, nil
 }
 
-func (f *GocbcoreDCPFeed) setupStreamOptions(
-	paramsStr string, options map[string]string) error {
-	auth, err := gocbAuth(paramsStr, options)
+func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr, authType string) error {
+	auth, err := gocbAuth(paramsStr, authType)
 	if err != nil {
 		return err
 	}
@@ -755,9 +756,7 @@ func (f *GocbcoreDCPFeed) notifyMgrOnClose() {
 		log.Printf("feed_dcp_gocbcore: Close, name: %s, notify manager",
 			f.Name())
 
-		if f.mgr != nil {
-			f.mgr.Kick("gocbcore-feed")
-		}
+		f.mgr.Kick("gocbcore-feed")
 	}
 }
 
@@ -772,9 +771,7 @@ func (f *GocbcoreDCPFeed) close() bool {
 	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
-	if f.mgr != nil {
-		f.mgr.unregisterFeed(f.Name())
-	}
+	f.mgr.unregisterFeed(f.Name())
 
 	close(f.closeCh)
 	f.wait()
@@ -924,7 +921,7 @@ func (f *GocbcoreDCPFeed) initiateShutdown(err error) {
 	f.shutdownInitiated = true
 	f.m.Unlock()
 
-	if f.mgr != nil && f.mgr.meh != nil {
+	if f.mgr.meh != nil {
 		f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
 	}
 }
