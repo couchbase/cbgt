@@ -163,8 +163,7 @@ func (h *CountHandler) ServeHTTP(
 
 	indexUUID := req.FormValue("indexUUID")
 
-	pindexImplType, err :=
-		cbgt.PIndexImplTypeForIndex(h.mgr.Cfg(), indexName)
+	_, pindexImplType, err := h.mgr.GetIndexDef(indexName, false)
 	if err != nil || pindexImplType.Count == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: Count,"+
 			" no pindexImplType, indexName: %s, err: %v",
@@ -452,7 +451,7 @@ func (h *TaskRequestHandler) ServeHTTP(
 		return
 	}
 
-	pindexImplType, err := cbgt.PIndexImplTypeForIndex(h.mgr.Cfg(), indexName)
+	_, pindexImplType, err := h.mgr.GetIndexDef(indexName, false)
 	if err != nil || pindexImplType.SubmitTaskRequest == nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: SubmitTaskRequest,"+
 			" no pindexImplType, indexName: %s, err: %v",
