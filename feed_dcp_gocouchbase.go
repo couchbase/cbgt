@@ -592,3 +592,19 @@ func (r *DCPFeed) VerifySourceNotExists() (bool, string, error) {
 func (r *DCPFeed) GetBucketDetails() (name, uuid string) {
 	return r.bucketName, r.bucketUUID
 }
+
+func (r *DCPFeed) isClosed() bool {
+	r.m.Lock()
+	rv := r.closed
+	r.m.Unlock()
+	return rv
+}
+
+func (r *DCPFeed) NotifyMgrOnClose() {
+	if !r.isClosed() {
+		r.Close()
+		log.Printf("feed_dcp_gocouchbase: Close, name: %s, notify manager",
+			r.Name())
+		r.mgr.Kick("gocouchbase-feed")
+	}
+}

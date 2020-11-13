@@ -758,7 +758,7 @@ func (f *GocbcoreDCPFeed) Close() error {
 	return nil
 }
 
-func (f *GocbcoreDCPFeed) notifyMgrOnClose() {
+func (f *GocbcoreDCPFeed) NotifyMgrOnClose() {
 	if f.close() {
 		log.Printf("feed_dcp_gocbcore: Close, name: %s, notify manager",
 			f.Name())
@@ -941,7 +941,7 @@ func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
 		f.Name(), f.bucketName, f.bucketUUID, err)
 
 	if notifyMgr {
-		f.notifyMgrOnClose()
+		f.NotifyMgrOnClose()
 	} else {
 		f.Close()
 	}

@@ -100,11 +100,12 @@ func NewDCPFeedParams() *DCPFeedParams {
 // -------------------------------------------------------
 
 // The FeedEx interface will be used to represent extended functionality
-// for a DCP Feed. These functions will be invoked by the manager's error
+// for a DCP Feed. These functions will be invoked by the application's error
 // handlers to decide on the course of the feed.
 type FeedEx interface {
 	VerifySourceNotExists() (bool, string, error)
 	GetBucketDetails() (string, string)
+	NotifyMgrOnClose()
 }
 
 // -------------------------------------------------------
