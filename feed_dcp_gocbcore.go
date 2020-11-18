@@ -1535,7 +1535,7 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 		return true, "", err
 	}
 
-	url = fmt.Sprintf("%s/pools/default/buckets/%s/collections",
+	url = fmt.Sprintf("%s/pools/default/buckets/%s/scopes",
 		f.mgr.Server(), f.bucketName)
 	resp, err = doHTTPGetFromURL(url)
 	if err != nil {
