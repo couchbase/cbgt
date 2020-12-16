@@ -135,6 +135,22 @@ func CBAuthHttpGet(urlStrIn string) (resp *http.Response, err error) {
 	return http.Get(urlStr)
 }
 
+// CBAuthHttpGetWithClient is a couchbase-specific http.Get() with *http.Client
+// parameterisation, for use in a cbauth'ed environment.
+func CBAuthHttpGetWithClient(urlStrIn string, client *http.Client) (resp *http.Response,
+	err error) {
+	urlStr, err := CBAuthURL(urlStrIn)
+	if err != nil {
+		return nil, err
+	}
+
+	if client != nil {
+		return client.Get(urlStr)
+	}
+
+	return http.Get(urlStr)
+}
+
 // CBAuthURL rewrites a URL with credentials, for use in a cbauth'ed
 // environment.
 func CBAuthURL(urlStr string) (string, error) {
