@@ -237,10 +237,12 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 			}
 			// ref count of agent down to 0
 			delete(dm.entries[key], agent)
+
+			// close the agent only once
+			go agent.Close()
 		}
 	}
 
-	go agent.Close()
 	if len(dm.entries[key]) == 0 {
 		// no agents listed for bucket
 		delete(dm.entries, key)
