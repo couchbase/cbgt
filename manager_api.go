@@ -463,7 +463,8 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 	for indexName, indexDef := range indexDefs.IndexDefs {
 		if indexDef.SourceType == sourceType &&
 			indexDef.SourceName == sourceName {
-			if sourceUUID != "" && sourceUUID != indexDef.SourceUUID {
+			if sourceUUID != "" && indexDef.SourceUUID != "" &&
+				sourceUUID != indexDef.SourceUUID {
 				continue
 			}
 
