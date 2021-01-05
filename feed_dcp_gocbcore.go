@@ -1400,10 +1400,10 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry
 	}, f.stats.TimerRollback)
 
 	if err != nil {
-		// TODO: Better error handling
 		log.Warnf("feed_dcp_gocbcore: [%s] Rollback to seqno: %v, vbuuid: %v for"+
 			" vb: %v, failed with err: %v",
 			f.Name(), rollbackSeqno, rollbackVbuuid, vbId, err)
+		f.onError(true, fmt.Errorf("Rollback error for vb: %v, err: %v", vbId, err))
 	} else {
 		atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
 	}
