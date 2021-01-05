@@ -56,7 +56,7 @@ type GocbcoreDCPExtras struct {
 	Value        []byte // carries xattr information (if available) for DataDeleteEx
 }
 
-var max_end_seqno = gocbcore.SeqNo(0xffffffffffffffff)
+var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
 
 var GocbcoreStatsTimeout = time.Duration(30 * time.Second)
 var GocbcoreConnectTimeout = time.Duration(60 * time.Second)
@@ -833,7 +833,7 @@ func (f *GocbcoreDCPFeed) initiateStream(vbId uint16) error {
 	}
 
 	go f.initiateStreamEx(vbId, true, gocbcore.VbUUID(vbuuid),
-		gocbcore.SeqNo(lastSeq), max_end_seqno)
+		gocbcore.SeqNo(lastSeq), maxEndSeqno)
 
 	return nil
 }
@@ -1126,7 +1126,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
 			" `%s`, will reconnect", f.Name(), streamId, vbId, err.Error())
 		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
-			gocbcore.SeqNo(lastReceivedSeqno), max_end_seqno)
+			gocbcore.SeqNo(lastReceivedSeqno), maxEndSeqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
 			" closed by consumer", f.Name(), streamId, vbId)
