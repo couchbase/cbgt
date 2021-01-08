@@ -185,12 +185,12 @@ func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 
 	snapshot, err := agent.ConfigSnapshot()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("CBPartitions, ConfigSnapshot err: %v", err)
 	}
 
 	numVBuckets, err := snapshot.NumVbuckets()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("CBPartitions, NumVbuckets err: %v", err)
 	}
 
 	rv := make([]string, numVBuckets)
@@ -236,10 +236,12 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		})
 
 	if err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("CBPartitionSeqs, GetCollectionManifest err: %v", err)
 	}
 	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("CBPartitionSeqs, GetCollectionManifest failed, err: %v", err)
 	}
 
 	var collectionUIDs []string
@@ -253,7 +255,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	}
 
 	var vbucketNodeStats map[string]gocbcore.SingleServerStats
-	op, err = agent.Stats(gocbcore.StatsOptions{Key: "vbucket-details"},
+	op, err = agent.Stats(gocbcore.StatsOptions{Key: "vbucket"},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
 				signal <- er
@@ -264,10 +266,12 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 			signal <- nil
 		})
 	if err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("CBPartitionSeqs, Stats (vbucket) err: %v", err)
 	}
 	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("CBPartitionSeqs, Stats (vbucket) failed, err: %v", err)
 	}
 
 	var collectionsStats map[string]gocbcore.SingleServerStats
@@ -282,13 +286,15 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 			signal <- nil
 		})
 	if err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("CBPartitionSeqs, Stats (collections-details) err: %v", err)
 	}
 	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("CBPartitionSeqs, Stats (collections-details) failed, err: %v", err)
 	}
 
-	for k, nodeStats := range vbucketNodeStats {
+	for node, nodeStats := range vbucketNodeStats {
 		if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
 			continue
 		}
@@ -300,27 +306,9 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 				continue
 			}
 
-			uuid, ok := nodeStats.Stats[vbPrefix+":uuid"]
-			if !ok {
-				continue
-			}
-
-			seqStr, ok := nodeStats.Stats[vbPrefix+":high_seqno"]
-			if !ok {
-				continue
-			}
-
-			seq, err := strconv.ParseUint(seqStr, 10, 64)
-			if err == nil {
-				rv[vbid] = UUIDSeq{
-					UUID: uuid,
-					Seq:  seq,
-				}
-			}
-
 			for i, collID := range collectionUIDs {
 				collSeqStr, ok :=
-					collectionsStats[k].Stats[vbPrefix+":"+collID+":high_seqno"]
+					collectionsStats[node].Stats[vbPrefix+":"+collID+":high_seqno"]
 				if !ok {
 					continue
 				}
@@ -334,7 +322,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 				}
 
 				collSeqStr, ok =
-					collectionsStats[k].Stats[vbPrefix+":"+collID+":start_seqno"]
+					collectionsStats[node].Stats[vbPrefix+":"+collID+":start_seqno"]
 				if !ok {
 					continue
 				}
