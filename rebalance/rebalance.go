@@ -1169,7 +1169,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 						continue
 					}
 
-					if sample.Kind == "/api/stats" {
+					if sample.Kind == "/api/stats/partitions" {
 						reached, err := r.uuidSeqReached(indexDef.Name,
 							pindex, sourcePartition, node, uuidSeqWant)
 						if err != nil {
@@ -1386,7 +1386,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 				continue
 			}
 
-			if s.Kind == "/api/stats" {
+			if s.Kind == "/api/stats/partitions" {
 				if s.Data == nil {
 					errMap[s.UUID]++
 					if errMap[s.UUID] < errThreshold {

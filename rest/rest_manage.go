@@ -50,18 +50,30 @@ func (h *StatsHandler) ServeHTTP(
 	}
 }
 
-// StatsWriter represents an advanced stats writer.
-type StatsWriter interface {
-	VerboseLogging() bool
+// PartitionStatsWriter represents an advanced stats writer.
+type PartitionStatsWriter interface {
+	// VbStats would enable ways for providing a lean/trimmed
+	// version of index stats in a resource friendly way
+	// during operations like rebalance stats monitoring.
+	VbStats() bool
+	// Verbose hints that whether the caller is interested
+	// in detailed index stats like that of the feeds and other
+	// implementation specific stats.
+	Verbose() bool
 	Write([]byte) (n int, err error)
 }
 
 type statsWriter struct {
 	w       io.Writer
+	vbstats bool
 	verbose bool
 }
 
-func (s *statsWriter) VerboseLogging() bool {
+func (s *statsWriter) VbStats() bool {
+	return s.vbstats
+}
+
+func (s *statsWriter) Verbose() bool {
 	return s.verbose
 }
 
@@ -104,18 +116,18 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 		}
 	}
 
-	// verbose stats for rest endpoints or with explicit enabling.
-	var verbose bool
+	// vbstats stats for rest endpoints or with explicit enabling.
+	var vbstats bool
 	if _, ok := w.(http.ResponseWriter); ok {
-		verbose = true
+		vbstats = true
 	} else if v, ok := mgr.Options()["enableVerboseLogging"]; ok && v == "true" {
-		verbose = true
+		vbstats = true
 	}
 
 	pindexStats := make(map[string][]byte)
 	for _, pindexName := range pindexNames {
 		var buf bytes.Buffer
-		statsWriter := &statsWriter{w: &buf, verbose: verbose}
+		statsWriter := &statsWriter{w: &buf, verbose: true, vbstats: vbstats}
 		err := pindexes[pindexName].Dest.Stats(statsWriter)
 		if err != nil {
 			return fmt.Errorf("pindex stats err: %v", err)
@@ -180,6 +192,66 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 	w.Write(cbgt.JsonCloseBrace)
 
 	return nil
+}
+
+// PartitionStatsHandler is a REST handler that provides stats/metrics for a
+// node.
+type PartitionStatsHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewPartitionStatsHandler(mgr *cbgt.Manager) *PartitionStatsHandler {
+	return &PartitionStatsHandler{mgr: mgr}
+}
+
+func (h *PartitionStatsHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	_, pindexes := h.mgr.CurrentMaps()
+	pindexNames := make([]string, 0, len(pindexes))
+	for pindexName := range pindexes {
+		pindexNames = append(pindexNames, pindexName)
+	}
+	sort.Strings(pindexNames)
+
+	pindexStats := make(map[string][]byte)
+	for _, pindexName := range pindexNames {
+		var buf bytes.Buffer
+		statsWriter := &statsWriter{w: &buf, vbstats: true}
+		err := pindexes[pindexName].Dest.Stats(statsWriter)
+		if err != nil {
+			err = fmt.Errorf("pindex stats err: %v", err)
+			ShowError(w, req, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(buf.Bytes()) == 0 {
+			pindexStats[pindexName] = []byte("{}")
+		} else {
+			if !json.Valid(buf.Bytes()) {
+				err = fmt.Errorf("pindex stats err, invalid pindexStats json: %s",
+					buf.Bytes())
+				ShowError(w, req, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			pindexStats[pindexName] = buf.Bytes()
+		}
+	}
+
+	w.Write(cbgt.JsonOpenBrace)
+
+	first := true
+	w.Write(statsPIndexesPrefix)
+	for _, pindexName := range pindexNames {
+		if !first {
+			w.Write(cbgt.JsonComma)
+		}
+		first = false
+		w.Write(statsNamePrefix)
+		w.Write([]byte(pindexName))
+		w.Write(statsNameSuffix)
+		w.Write(pindexStats[pindexName])
+	}
+	w.Write(cbgt.JsonCloseBrace)
+	w.Write(cbgt.JsonCloseBrace)
 }
 
 // ---------------------------------------------------

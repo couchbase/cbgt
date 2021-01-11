@@ -770,6 +770,15 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "4.2.0",
 		})
 
+	handle("/api/stats/partitions", "GET",
+		NewPartitionStatsHandler(mgr),
+		map[string]string{
+			"_category": "Indexing|Index monitoring",
+			"_about": `Returns partition related vbucket,
+                        stats from the node as JSON.`,
+			"version introduced": "7.0.0",
+		})
+
 	PIndexTypesInitRouter(r, "manager.after", mgr)
 
 	return r, meta, nil
