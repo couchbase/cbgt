@@ -793,6 +793,8 @@ func (r *Rebalancer) assignPIndexesLOCKED(index string, node string,
 
 	indexDef := indexDefs.IndexDefs[index]
 	if indexDef == nil {
+		r.Logf("rebalance: assignPIndexesLOCKED,"+
+			" empty definitions found for index: %s", index)
 		return nil, nil, nil, ErrorNoIndexDefinitionFound
 	}
 
@@ -1004,6 +1006,11 @@ func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{},
 	case r.monitorSampleWantCh <- sampleWantCh:
 		for s := range sampleWantCh {
 			if node == s.UUID {
+				if s.Data == nil {
+					return fmt.Errorf("rebalance: grabCurrentSample, "+
+						"empty response for node: %s", s.UUID)
+				}
+
 				// err upon not finding the pindex data in
 				// the stats response since that could indicate an index deletion
 				m := struct {
@@ -1388,6 +1395,9 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 						continue
 					}
 				}
+
+				// reset the error resiliency count to zero upon a successful response.
+				errMap[s.UUID] = 0
 
 				m := struct {
 					PIndexes map[string]struct {
