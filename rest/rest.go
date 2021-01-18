@@ -60,7 +60,7 @@ func ShowError(w http.ResponseWriter, req *http.Request, msg string, code int) {
 }
 
 func ShowErrorBody(w http.ResponseWriter, requestBody []byte, msg string, code int) {
-	log.Printf("rest: error code: %d, msg: %s", code, msg)
+	log.Errorf("rest: error code: %d, msg: %s", code, msg)
 	PropagateError(w, requestBody, msg, code)
 }
 
