@@ -93,6 +93,8 @@ type gocbcoreDCPAgentMap struct {
 	m sync.Mutex
 	// map of gocbcore.DCPAgents with ref counts for bucket <name>:<uuid>
 	entries map[string]map[*gocbcore.DCPAgent]uint32
+	// stat to track number of live DCP agents (connections)
+	numDCPAgents uint64
 }
 
 // Max references for a gocbcore.DCPAgent
@@ -107,6 +109,14 @@ func init() {
 
 	FetchDCPAgent = dcpAgentMap.fetchAgent
 	CloseDCPAgent = dcpAgentMap.closeAgent
+}
+
+func NumDCPAgents() uint64 {
+	if dcpAgentMap != nil {
+		return atomic.LoadUint64(&dcpAgentMap.numDCPAgents)
+	}
+
+	return 0
 }
 
 // Fetches a gocbcore DCPAgent instance for the bucket (name:uuid),
@@ -216,6 +226,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	}
 
 	dm.entries[key][agent] = 1
+	atomic.AddUint64(&dm.numDCPAgents, 1)
 
 	return agent, nil
 }
@@ -237,6 +248,7 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 			}
 			// ref count of agent down to 0
 			delete(dm.entries[key], agent)
+			atomic.AddUint64(&dm.numDCPAgents, ^uint64(0))
 
 			// close the agent only once
 			go agent.Close()
