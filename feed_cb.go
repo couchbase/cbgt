@@ -82,6 +82,12 @@ func init() {
 
 // ----------------------------------------------------------------
 
+func uriAdj(s string) string {
+	// Bucket DDL
+	// See: https://en.wikipedia.org/wiki/Percent-encoding
+	return strings.ReplaceAll(s, "%", "%25")
+}
+
 // CouchbaseParseSourceName parses a sourceName, if it's a couchbase
 // REST/HTTP URL, into a server URL, poolName and bucketName.
 // Otherwise, returns the serverURLDefault, poolNameDefault, and treat
@@ -94,7 +100,7 @@ func CouchbaseParseSourceName(
 		return serverURLDefault, poolNameDefault, sourceName
 	}
 
-	u, err := url.Parse(sourceName)
+	u, err := url.Parse(uriAdj(sourceName))
 	if err != nil {
 		return serverURLDefault, poolNameDefault, sourceName
 	}
