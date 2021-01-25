@@ -1126,7 +1126,8 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 			" last seq: %v", f.Name(), streamId, vbId, lastReceivedSeqno)
 		f.complete(vbId)
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
-		errors.Is(err, gocbcore.ErrSocketClosed) {
+		errors.Is(err, gocbcore.ErrSocketClosed) ||
+		errors.Is(err, gocbcore.ErrDCPStreamFilterEmpty) {
 		f.initiateShutdown(fmt.Errorf("End, %v", err))
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
 		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
