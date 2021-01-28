@@ -154,6 +154,18 @@ func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
 		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, setup err: %v", err)
 	}
 
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		go agent.Close()
+		return nil, err
+	}
+
+	// if sourceUUID is provided, ensure that it matches with the bucket's UUID
+	if len(sourceUUID) > 0 && sourceUUID != snapshot.BucketUUID() {
+		go agent.Close()
+		return nil, fmt.Errorf("mismatched sourceUUID for bucket `%v`", sourceName)
+	}
+
 	am.entries[key] = agent
 
 	return am.entries[key], nil

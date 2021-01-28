@@ -581,7 +581,8 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 			" error in setting up feed's stream options, err: %v", err)
 	}
 
-	feed.agent, err = FetchDCPAgent(bucketName, bucketUUID, paramsStr, servers, mgr.Options())
+	feed.agent, err = FetchDCPAgent(feed.bucketName, feed.bucketUUID,
+		paramsStr, servers, mgr.Options())
 	if err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %v", err)
 	}
@@ -630,16 +631,19 @@ func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr, authType string) error {
 		go agent.Close()
 	}()
 
-	if len(f.bucketUUID) == 0 {
-		// the sourceUUID setting in the index definition is optional,
-		// so make sure the feed's bucketUUID is set to the correct
-		// value if in case it wasn't provided
-		snapshot, err := agent.ConfigSnapshot()
-		if err != nil {
-			return err
-		}
+	// the sourceUUID setting in the index definition is optional,
+	// so make sure the feed's bucketUUID is set in case it wasn't
+	// provided, and validated otherwise
+	snapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return err
+	}
 
-		f.bucketUUID = snapshot.BucketUUID()
+	bucketUUID := snapshot.BucketUUID()
+	if len(f.bucketUUID) == 0 {
+		f.bucketUUID = bucketUUID
+	} else if f.bucketUUID != bucketUUID {
+		return fmt.Errorf("mismatched bucketUUID")
 	}
 
 	signal := make(chan error, 1)
