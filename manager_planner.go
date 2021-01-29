@@ -537,11 +537,12 @@ func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			}
 
 			child := nodeDef.UUID
-			for _, ancestor := range strings.Split(nodeDef.Container, "/") {
-				if child != "" && ancestor != "" {
-					nodeHierarchy[child] = ancestor
+			ancestors := strings.Split(nodeDef.Container, "/")
+			for i := len(ancestors) - 1; i >= 0; i-- {
+				if child != "" && ancestors[i] != "" {
+					nodeHierarchy[child] = ancestors[i]
 				}
-				child = ancestor
+				child = ancestors[i]
 			}
 		}
 	}
@@ -687,6 +688,23 @@ func BlancePlanPIndexes(mode string,
 			append(nodeUUIDsAllForIndex, nodeUUIDsAll[next])
 
 		next++
+	}
+
+	// If there are server groups/racks defined and there are no explicit
+	// hierarchyRules available then assume a rule which assigns
+	// the replica partitions to different server groups/racks.
+	// Node hierarchy would look like datacenter/serverGroup/nodeUUID
+	// where nodeUUIDs are at level zero, serverGroups are at level one
+	// and datacenter is at level two.
+	// HierarchyRules specify which levels to include and which levels to
+	// exclude while considering the replica assignments.
+	// eg: ExcludeLevel: 1 means skip the same rack allocations.
+	if indexDef.PlanParams.HierarchyRules == nil &&
+		len(nodeHierarchy) > 0 {
+		indexDef.PlanParams.HierarchyRules = blance.HierarchyRules{
+			"replica": []*blance.HierarchyRule{{
+				IncludeLevel: 2,
+				ExcludeLevel: 1}}}
 	}
 
 	blanceNextMap, warnings := blance.PlanNextMap(blancePrevMap,

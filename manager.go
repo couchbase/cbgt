@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -361,6 +362,14 @@ func (mgr *Manager) Register(register string) error {
 			}
 		}
 	}
+
+	container, err := mgr.fetchServerGroupDetails()
+	if err != nil {
+		log.Errorf("manager: fetchServerGroupDetails failed, err: %v", err)
+	} else if container != "" {
+		mgr.container = container
+	}
+
 	if register == "known" || register == "knownForce" ||
 		register == "wanted" || register == "wantedForce" {
 		// Save our nodeDef (with our UUID) into the Cfg as a known node.
@@ -467,6 +476,63 @@ func (mgr *Manager) RemoveNodeDef(kind string) error {
 	}
 
 	return nil
+}
+
+type serverGroups struct {
+	ServerGroups []serverGroup `json:"groups"`
+}
+
+type serverGroup struct {
+	Name        string       `json:"name"`
+	NodeDetails []nodeDetail `json:"nodes"`
+}
+
+type nodeDetail struct {
+	NodeUUID string `json:"nodeUUID"`
+}
+
+func (mgr *Manager) fetchServerGroupDetails() (string, error) {
+	url := mgr.server + "/pools/default/serverGroups"
+	u, err := CBAuthURL(url)
+	if err != nil {
+		return "", fmt.Errorf("manager: auth for ns_server,"+
+			" url: %s, authType: %s, err: %v",
+			url, "cbauth", err)
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBuf, err := ioutil.ReadAll(resp.Body)
+	if err != nil || len(respBuf) == 0 {
+		return "", fmt.Errorf("manager: error reading resp.Body,"+
+			" url: %s, resp: %#v, err: %v", url, resp, err)
+	}
+
+	var sg serverGroups
+	err = json.Unmarshal(respBuf, &sg)
+	if err != nil {
+		return "", fmt.Errorf("manager: error parsing respBuf: %s,"+
+			" url: %s, err: %v", respBuf, url, err)
+	}
+
+	for _, g := range sg.ServerGroups {
+		for _, nd := range g.NodeDetails {
+			if nd.NodeUUID == mgr.uuid {
+				return "datacenter/" + g.Name, nil
+			}
+		}
+	}
+
+	return "", nil
 }
 
 // bootingPIndexes maintains the loading status of pindexes
