@@ -44,7 +44,7 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 	httpGet := func(url string) (resp *http.Response, err error) {
 		httpGets++
 
-		if url != "url0/api/stats/partitions" &&
+		if url != "url0/api/stats?partitions=true" &&
 			url != "url0/api/diag" {
 			t.Errorf("expected stats or diag, url: %s", url)
 		}
@@ -70,7 +70,7 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 
 	s, ok := <-sampleCh
 	if !ok ||
-		(s.Kind != "/api/stats/partitions" && s.Kind != "/api/diag") ||
+		(s.Kind != "/api/stats?partitions=true" && s.Kind != "/api/diag") ||
 		s.Url != "url0" ||
 		s.UUID != "uuid0" ||
 		s.Error != nil ||
@@ -80,7 +80,7 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 
 	s, ok = <-sampleCh
 	if !ok ||
-		(s.Kind != "/api/stats/partitions" && s.Kind != "/api/diag") ||
+		(s.Kind != "/api/stats?partitions=true" && s.Kind != "/api/diag") ||
 		s.Url != "url0" ||
 		s.UUID != "uuid0" ||
 		s.Error != nil ||
@@ -106,7 +106,7 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 	httpGet := func(url string) (resp *http.Response, err error) {
 		httpGets++
 
-		if url == "url0/api/stats/partitions" {
+		if url == "url0/api/stats?partitions=true" {
 			return &http.Response{
 				StatusCode: 500,
 				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
@@ -133,7 +133,7 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 
 	s, ok := <-sampleCh
 	if !ok ||
-		(s.Kind != "/api/stats/partitions" && s.Kind != "/api/diag") ||
+		(s.Kind != "/api/stats?partitions=true" && s.Kind != "/api/diag") ||
 		s.Url != "url0" ||
 		s.UUID != "uuid0" ||
 		s.Error == nil ||
@@ -143,7 +143,7 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 
 	s, ok = <-sampleCh
 	if !ok ||
-		(s.Kind != "/api/stats/partitions" && s.Kind != "/api/diag") ||
+		(s.Kind != "/api/stats?partitions=true" && s.Kind != "/api/diag") ||
 		s.Url != "url0" ||
 		s.UUID != "uuid0" ||
 		s.Error == nil ||
@@ -173,7 +173,7 @@ func Test1NodeStartMonitorNodesFast(t *testing.T) {
 		httpGets++
 		mut.Unlock()
 
-		if url != "url0/api/stats/partitions" &&
+		if url != "url0/api/stats?partitions=true" &&
 			url != "url0/api/diag" {
 			t.Errorf("expected stats or diag, url: %s", url)
 		}
@@ -201,7 +201,7 @@ func Test1NodeStartMonitorNodesFast(t *testing.T) {
 
 	go func() {
 		for s := range sampleCh {
-			if (s.Kind != "/api/stats/partitions" && s.Kind != "/api/diag") ||
+			if (s.Kind != "/api/stats?partitions=true" && s.Kind != "/api/diag") ||
 				s.Url != "url0" ||
 				s.UUID != "uuid0" ||
 				s.Error != nil ||

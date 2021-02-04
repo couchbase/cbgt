@@ -151,7 +151,7 @@ func testStartMonitorCluster(t *testing.T,
 			}, nil
 		}
 
-		if url == "http://url0/api/stats/partitions" ||
+		if url == "http://url0/api/stats?partitions=true" ||
 			url == "http://url0/api/diag" {
 			return &http.Response{
 				StatusCode: 200,
@@ -201,7 +201,7 @@ func testStartMonitorCluster(t *testing.T,
 			continue
 		}
 
-		if (s.Kind != "/api/stats/partitions" && s.Kind != "/api/diag") ||
+		if (s.Kind != "/api/stats?partitions=true" && s.Kind != "/api/diag") ||
 			s.Url != "http://url0" ||
 			s.UUID != "uuid0" ||
 			s.Error != nil ||

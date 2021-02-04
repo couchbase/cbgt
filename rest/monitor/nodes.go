@@ -89,7 +89,7 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 	defer diagTicker.Stop()
 
 	if !m.options.StatsSampleDisable {
-		m.sample(urlUUID, "/api/stats/partitions", time.Now())
+		m.sample(urlUUID, "/api/stats?partitions=true", time.Now())
 	}
 
 	if !m.options.DiagSampleDisable {
@@ -107,7 +107,7 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 			}
 
 			if !m.options.StatsSampleDisable {
-				m.sample(urlUUID, "/api/stats/partitions", t)
+				m.sample(urlUUID, "/api/stats?partitions=true", t)
 			}
 
 		case t, ok := <-diagTicker.C:

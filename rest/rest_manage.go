@@ -44,6 +44,13 @@ var statsNameSuffix = []byte("\":")
 
 func (h *StatsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
+	queryParams := req.URL.Query()
+	params := queryParams.Get("partitions")
+	if params == "true" {
+		writePartitionStatsJSON(h.mgr, w, req)
+		return
+	}
+
 	err := WriteManagerStatsJSON(h.mgr, w, IndexNameLookup(req))
 	if err != nil {
 		ShowError(w, req, err.Error(), http.StatusInternalServerError)
@@ -194,19 +201,9 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 	return nil
 }
 
-// PartitionStatsHandler is a REST handler that provides stats/metrics for a
-// node.
-type PartitionStatsHandler struct {
-	mgr *cbgt.Manager
-}
-
-func NewPartitionStatsHandler(mgr *cbgt.Manager) *PartitionStatsHandler {
-	return &PartitionStatsHandler{mgr: mgr}
-}
-
-func (h *PartitionStatsHandler) ServeHTTP(
-	w http.ResponseWriter, req *http.Request) {
-	_, pindexes := h.mgr.CurrentMaps()
+func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
+	req *http.Request) {
+	_, pindexes := mgr.CurrentMaps()
 	pindexNames := make([]string, 0, len(pindexes))
 	for pindexName := range pindexes {
 		pindexNames = append(pindexNames, pindexName)
