@@ -102,6 +102,8 @@ type ManagerStats struct {
 	TotRegisterPIndex   uint64
 	TotUnregisterPIndex uint64
 
+	TotLoadDataDir uint64
+
 	TotSaveNodeDef       uint64
 	TotSaveNodeDefNil    uint64
 	TotSaveNodeDefGetErr uint64
@@ -149,7 +151,6 @@ type ManagerStats struct {
 	TotJanitorClosePIndex       uint64
 	TotJanitorRemovePIndex      uint64
 	TotJanitorRestartPIndex     uint64
-	TotJanitorLoadDataDir       uint64
 	TotJanitorUnknownErr        uint64
 	TotJanitorSubscriptionEvent uint64
 	TotJanitorStop              uint64
@@ -640,6 +641,7 @@ func (mgr *Manager) LoadDataDir() error {
 	// log this message only after all workers have completed
 	go func() {
 		wg.Wait()
+		atomic.AddUint64(&mgr.stats.TotLoadDataDir, 1)
 		log.Printf("manager: loading dataDir... done")
 	}()
 
