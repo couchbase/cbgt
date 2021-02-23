@@ -582,8 +582,10 @@ func (mgr *Manager) LoadDataDir() error {
 	size := len(dirEntries)
 	openReqs := make(chan *pindexLoadReq, size)
 	nWorkers := getWorkerCount(size)
+	var wg sync.WaitGroup
 	// spawn the openPIndex workers
 	for i := 0; i < nWorkers; i++ {
+		wg.Add(1)
 		go func() {
 			for req := range openReqs {
 				// check whether pindex already loaded by the Janitor
@@ -618,6 +620,7 @@ func (mgr *Manager) LoadDataDir() error {
 				// mark the pindex booting complete status
 				mgr.updateBootingStatus(req.pindexName, false)
 			}
+			wg.Done()
 		}()
 	}
 	// feed the openPIndex workers with pindex paths
@@ -634,8 +637,13 @@ func (mgr *Manager) LoadDataDir() error {
 	}
 	close(openReqs)
 
+	// log this message only after all workers have completed
+	go func() {
+		wg.Wait()
+		log.Printf("manager: loading dataDir... done")
+	}()
+
 	// leave the pindex loading task to the async workers and return here
-	log.Printf("manager: loading dataDir... done")
 	return nil
 }
 
