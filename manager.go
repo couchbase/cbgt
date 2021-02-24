@@ -253,12 +253,9 @@ func (mgr *Manager) Start(register string) error {
 	}
 
 	if mgr.tagsMap == nil || mgr.tagsMap["pindex"] {
-		mldd := mgr.options["managerLoadDataDir"]
-		if mldd == "sync" || mldd == "async" || mldd == "" {
-			err := mgr.LoadDataDir()
-			if err != nil {
-				return err
-			}
+		err := mgr.LoadDataDir()
+		if err != nil {
+			return err
 		}
 	}
 
