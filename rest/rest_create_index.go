@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/cbgt"
+	log "github.com/couchbase/clog"
 )
 
 // CreateIndexHandler is a REST handler that processes an index
@@ -219,6 +220,8 @@ func (h *CreateIndexHandler) ServeHTTP(
 			prevIndexUUID = indexDef.UUID
 		}
 	}
+
+	log.Printf("rest_create_index: create index request received for %v", indexName)
 
 	indexUUID, err := h.mgr.CreateIndexEx(sourceType, sourceName,
 		sourceUUID, sourceParams,

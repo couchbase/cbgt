@@ -16,6 +16,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/cbgt"
+	log "github.com/couchbase/clog"
 )
 
 // DeleteIndexHandler is a REST handler that processes an index
@@ -41,6 +42,8 @@ func (h *DeleteIndexHandler) ServeHTTP(
 			http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("rest_delete_index: delete index request received for %v", indexName)
 
 	indexUUID, err := h.mgr.DeleteIndexEx(indexName, "")
 	if err != nil {
