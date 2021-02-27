@@ -58,7 +58,7 @@ type GocbcoreDCPExtras struct {
 
 var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
 
-var GocbcoreStatsTimeout = time.Duration(30 * time.Second)
+var GocbcoreStatsTimeout = time.Duration(60 * time.Second)
 var GocbcoreConnectTimeout = time.Duration(60 * time.Second)
 var GocbcoreKVConnectTimeout = time.Duration(7 * time.Second)
 var GocbcoreAgentSetupTimeout = time.Duration(10 * time.Second)
