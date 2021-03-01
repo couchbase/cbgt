@@ -792,6 +792,7 @@ func (f *GocbcoreDCPFeed) close() bool {
 		return false
 	}
 	f.closed = true
+	f.closeAllStreamsLOCKED()
 	CloseDCPAgent(f.bucketName, f.bucketUUID, f.agent)
 	f.forceCompleteLOCKED()
 	f.m.Unlock()
@@ -802,6 +803,26 @@ func (f *GocbcoreDCPFeed) close() bool {
 	f.wait()
 
 	return true
+}
+
+// This will call close on all streams on feed closure. Note that
+// streams would then see an END message with the reason: "closed by
+// consumer".
+func (f *GocbcoreDCPFeed) closeAllStreamsLOCKED() {
+	closeStreamOptions := gocbcore.CloseStreamOptions{
+		StreamOptions: &gocbcore.CloseStreamStreamOptions{
+			StreamID: f.streamOptions.StreamOptions.StreamID,
+		},
+	}
+
+	log.Debugf("feed_dcp_gocbcore: name: %s, stream ID: %v,"+
+		" close streams for vbuckets: %v",
+		f.Name(), closeStreamOptions.StreamOptions.StreamID, f.vbucketIds)
+
+	for _, vbid := range f.vbucketIds {
+		// asynchronous operations
+		f.agent.CloseStream(vbid, closeStreamOptions, func(err error) {})
+	}
 }
 
 func (f *GocbcoreDCPFeed) Dests() map[string]Dest {
