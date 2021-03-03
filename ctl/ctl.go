@@ -86,6 +86,8 @@ type Ctl struct {
 	r *rebalance.Rebalancer
 
 	movingPartitionsCount int
+
+	rebOrchestrator bool
 }
 
 type CtlOptions struct {
@@ -751,6 +753,9 @@ func (ctl *Ctl) startCtlLOCKED(
 			}
 
 			ctl.movingPartitionsCount = 0
+
+			ctl.rebOrchestrator = false
+
 			ctl.m.Unlock()
 
 			close(ctlDoneCh)
@@ -1044,4 +1049,10 @@ func (ctl *Ctl) checkAndReregisterSelf(selfUUID string) {
 				" err: %+v", err)
 		}
 	}
+}
+
+// ----------------------------------------------------
+
+func (ctl *Ctl) rebalanceOrchestrator() bool {
+	return ctl.rebOrchestrator
 }

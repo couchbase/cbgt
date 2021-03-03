@@ -12,6 +12,7 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -174,6 +175,18 @@ func (h *CreateIndexHandler) ServeHTTP(
 		ShowErrorBody(w, requestBody, "rest_create_index: sourceType is required",
 			http.StatusBadRequest)
 		return
+	}
+
+	ca := req.Header.Get(CLUSTER_ACTION)
+	if ca != "orchestrator-forwarded" &&
+		(indexType == "fulltext-index" || indexType == "fulltext-alias") {
+		// populate the body since we already read it.
+		req.Body = ioutil.NopCloser(bytes.NewReader(requestBody))
+		// if there was successful proxying of the request to the rebalance
+		// orchestrator node, then return early.
+		if proxyOrchestratorNodeOnRebalanceDone(w, req, h.mgr) {
+			return
+		}
 	}
 
 	sourceUUID := req.FormValue("sourceUUID") // Defaults to "".
