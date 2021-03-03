@@ -332,20 +332,6 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 						Seq:  collSeq,
 					}
 				}
-
-				collSeqStr, ok =
-					collectionsStats[node].Stats[vbPrefix+":"+collID+":start_seqno"]
-				if !ok {
-					continue
-				}
-
-				collSeq, err = strconv.ParseUint(collSeqStr, 10, 64)
-				if err == nil {
-					rv[vbid+":"+scopeCollectionNames[i]+":start_seqno"] = UUIDSeq{
-						UUID: collID,
-						Seq:  collSeq,
-					}
-				}
 			}
 		}
 	}
