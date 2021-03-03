@@ -18,6 +18,7 @@ package ctl
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"sort"
@@ -25,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/couchbase/cbgt/rest"
 
 	log "github.com/couchbase/clog"
 
@@ -480,6 +483,8 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 			progressEntries)
 	}
 
+	m.ctl.rebOrchestrator = true
+
 	ctlTopology, err := m.ctl.ChangeTopology(ctlChangeTopology, onProgress)
 	if err != nil {
 		return nil, err
@@ -726,4 +731,26 @@ func EncodeRev(revNum uint64) service.Revision {
 
 func DecodeRev(b service.Revision) (uint64, error) {
 	return strconv.ParseUint(string(b), 10, 64)
+}
+
+// ------------------------------------------------
+
+type CtlManagerStatusHandler struct {
+	m *CtlMgr
+}
+
+func NewCtlManagerStatusHandler(mgr *CtlMgr) *CtlManagerStatusHandler {
+	return &CtlManagerStatusHandler{m: mgr}
+}
+
+func (h *CtlManagerStatusHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	rv := struct {
+		Orchestrator bool   `json:"orchestrator"`
+		Status       string `json:"status"`
+	}{
+		Status:       "ok",
+		Orchestrator: h.m.ctl.rebalanceOrchestrator(),
+	}
+	rest.MustEncode(w, rv)
 }
