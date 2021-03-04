@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/cbauth"
 	log "github.com/couchbase/clog"
 	"github.com/couchbase/gocbcore/v9"
+	"github.com/couchbase/gocbcore/v9/memd"
 )
 
 // ----------------------------------------------------------------
@@ -225,10 +226,8 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("CBPartitionSeqs, fetchAgent err: %v", err)
 	}
-
-	rv := map[string]UUIDSeq{}
 
 	signal := make(chan error, 1)
 
@@ -256,83 +255,54 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 			fmt.Errorf("CBPartitionSeqs, GetCollectionManifest failed, err: %v", err)
 	}
 
-	var collectionUIDs []string
-	var scopeCollectionNames []string
+	collectionsIDtoName := map[uint32]string{}
 	for _, manifestScope := range manifest.Scopes {
 		for _, coll := range manifestScope.Collections {
-			collectionUIDs = append(collectionUIDs, fmt.Sprintf("0x%x", coll.UID))
-			scopeCollectionNames = append(scopeCollectionNames,
-				manifestScope.Name+":"+coll.Name)
+			collectionsIDtoName[coll.UID] = manifestScope.Name + ":" + coll.Name
 		}
 	}
 
-	var vbucketNodeStats map[string]gocbcore.SingleServerStats
-	op, err = agent.Stats(gocbcore.StatsOptions{Key: "vbucket"},
-		func(resp *gocbcore.StatsResult, er error) {
-			if resp == nil || er != nil {
-				signal <- er
-				return
-			}
-
-			vbucketNodeStats = resp.Servers
-			signal <- nil
-		})
+	dcpAgent, err := FetchDCPAgent(sourceName, sourceUUID, sourceParams, serverIn, options)
 	if err != nil {
-		return nil,
-			fmt.Errorf("CBPartitionSeqs, Stats (vbucket) err: %v", err)
-	}
-	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-		return nil,
-			fmt.Errorf("CBPartitionSeqs, Stats (vbucket) failed, err: %v", err)
+		return nil, fmt.Errorf("CBPartitionSeqs, FetchDCPAgent err: %v", err)
 	}
 
-	var collectionsStats map[string]gocbcore.SingleServerStats
-	op, err = agent.Stats(gocbcore.StatsOptions{Key: "collections-details"},
-		func(resp *gocbcore.StatsResult, er error) {
-			if resp == nil || er != nil {
-				signal <- er
-				return
-			}
+	defer CloseDCPAgent(sourceName, sourceUUID, dcpAgent)
 
-			collectionsStats = resp.Servers
-			signal <- nil
-		})
-	if err != nil {
-		return nil,
-			fmt.Errorf("CBPartitionSeqs, Stats (collections-details) err: %v", err)
-	}
-	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-		return nil,
-			fmt.Errorf("CBPartitionSeqs, Stats (collections-details) failed, err: %v", err)
-	}
-
-	for node, nodeStats := range vbucketNodeStats {
-		if nodeStats.Error != nil || len(nodeStats.Stats) <= 0 {
-			continue
+	rv := map[string]UUIDSeq{}
+	addSeqnoToRV := func(vbID uint16, collID uint32, seqNo uint64) {
+		rv[vbucketIdStrings[vbID]+":"+collectionsIDtoName[collID]+":high_seqno"] = UUIDSeq{
+			UUID: fmt.Sprintf("%v", collID),
+			Seq:  seqNo,
 		}
+	}
 
-		for _, vbid := range vbucketIdStrings {
-			vbPrefix := "vb_" + vbid
-			stateVal, ok := nodeStats.Stats[vbPrefix]
-			if !ok || stateVal != "active" {
-				continue
-			}
+	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{
+		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{},
+	}
 
-			for i, collID := range collectionUIDs {
-				collSeqStr, ok :=
-					collectionsStats[node].Stats[vbPrefix+":"+collID+":high_seqno"]
-				if !ok {
-					continue
-				}
-
-				collSeq, err := strconv.ParseUint(collSeqStr, 10, 64)
-				if err == nil {
-					rv[vbid+":"+scopeCollectionNames[i]+":high_seqno"] = UUIDSeq{
-						UUID: collID,
-						Seq:  collSeq,
+	for collID := range collectionsIDtoName {
+		vbucketSeqnoOptions.FilterOptions.CollectionID = collID
+		op, err := dcpAgent.GetVbucketSeqnos(
+			0,                       // serverIdx (leave at 0 for now)
+			memd.VbucketStateActive, // active vbuckets only
+			vbucketSeqnoOptions,     // contains collectionID
+			func(entries []gocbcore.VbSeqNoEntry, er error) {
+				if er == nil {
+					for _, entry := range entries {
+						addSeqnoToRV(entry.VbID, collID, uint64(entry.SeqNo))
 					}
 				}
-			}
+
+				signal <- er
+			})
+
+		if err != nil {
+			return nil, fmt.Errorf("CBPartitionSeqs, GetVbucketSeqnos err: %v", err)
+		}
+
+		if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
+			return nil, fmt.Errorf("CBPartitionSeqs, GetVbucketSeqnos callback err: %v", err)
 		}
 	}
 
