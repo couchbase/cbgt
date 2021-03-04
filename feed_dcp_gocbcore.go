@@ -1166,7 +1166,7 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), maxEndSeqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
+		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
 			" closed by consumer", f.Name(), streamId, vbId)
 		f.complete(vbId)
 	} else {
