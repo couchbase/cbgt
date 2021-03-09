@@ -247,6 +247,11 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 		}
 	}
 
+	log.Printf("ctl: getMovingPartitionsCount, keepNodeUUIDs: %+v, "+
+		"nodesToRemove: %+v, numNewNodes: %d, existingNodes: %+v, "+
+		"totalPartitions: %d", keepNodeUUIDs, nodesToRemove, numNewNodes,
+		existingNodes, totalPartitions)
+
 	mpCount := cbgt.CalcMovingPartitionsCount(len(keepNodeUUIDs),
 		len(nodesToRemove), numNewNodes, len(existingNodes), totalPartitions)
 
@@ -295,6 +300,8 @@ func (ctl *Ctl) run() {
 	for _, node := range memberNodes {
 		ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
 	}
+
+	log.Printf("ctl: cluster member nodes at startup: %+v", ctl.prevMemberNodeUUIDs)
 
 	if planPIndexes != nil {
 		ctl.prevWarnings = planPIndexes.Warnings
