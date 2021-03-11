@@ -142,6 +142,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		for agent, refs := range dm.entries[key] {
 			if refs < maxFeedsPerDCPAgent {
 				dm.entries[key][agent]++
+				log.Printf("feed_dcp_gocbcore: fetchAgent, re-using existing DCP agent"+
+					" (key: %v, ref count: %v)", key, dm.entries[key][agent])
 				return agent, nil
 			}
 		}
@@ -218,6 +220,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	if params.NoValue {
 		flags |= memd.DcpOpenFlagNoValue
 	}
+
+	log.Printf("feed_dcp_gocbcore: fetchAgent, setting up new DCP agent (key: %v)", key)
 
 	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, key, rand.Int31())
 	agent, err := setupGocbcoreDCPAgent(config, dcpConnName, flags)
