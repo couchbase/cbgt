@@ -88,26 +88,31 @@ func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 
 // ----------------------------------------------------------------
 
-type gocbcoreAgentMap struct {
-	// mutex to serialize access to entries
-	m sync.Mutex
-	// map of gocbcore.Agent instances by bucket <name>:<uuid>
-	entries map[string]*gocbcore.Agent
+type gocbcoreClient struct {
+	agent    *gocbcore.Agent
+	dcpAgent *gocbcore.DCPAgent
 }
 
-var agentMap *gocbcoreAgentMap
+type gocbcoreAgentsMap struct {
+	// mutex to serialize access to entries
+	m sync.Mutex
+	// map of gocbcore.Agent, gocbcore.DCPAgent instances by bucket <name>:<uuid>
+	entries map[string]*gocbcoreClient
+}
+
+var agentsMap *gocbcoreAgentsMap
 
 func init() {
-	agentMap = &gocbcoreAgentMap{
-		entries: make(map[string]*gocbcore.Agent),
+	agentsMap = &gocbcoreAgentsMap{
+		entries: make(map[string]*gocbcoreClient),
 	}
 }
 
-// Fetches a gocbcore agent instance for the bucket (name:uuid),
+// Fetches gocbcore agent+dcpAgent instance for the bucket (name:uuid),
 // if not found creates a new instance and stashes it in the map,
 // before returning it.
-func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
-	serverIn string, options map[string]string) (*gocbcore.Agent, error) {
+func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
+	serverIn string, options map[string]string) (*gocbcoreClient, error) {
 	am.m.Lock()
 	defer am.m.Unlock()
 
@@ -121,15 +126,16 @@ func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
 
 	auth, err := gocbAuth(sourceParams, options["authType"])
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, gocbAuth,"+
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
 	config := setupAgentConfig("stats", bucketName, auth)
+	dcpConfig := setupDCPAgentConfig("stats", bucketName, auth, nil)
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) == 0 {
-		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, no servers provided")
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient, no servers provided")
 	}
 
 	connStr := svrs[0]
@@ -145,14 +151,18 @@ func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
 
 	err = config.FromConnStr(connStr)
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_helper: fetchAgent,"+
-			" unable to build config from connStr: %s, err: %v", connStr, err)
-
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient, unable to build"+
+			" agent config from connStr: %s, err: %v", connStr, err)
+	}
+	err = dcpConfig.FromConnStr(connStr)
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient, unable to build"+
+			" dcpAgent config from connStr: %s, err: %v", connStr, err)
 	}
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_helper: fetchAgent, setup err: %v", err)
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient, setup err1: %v", err)
 	}
 
 	snapshot, err := agent.ConfigSnapshot()
@@ -164,20 +174,31 @@ func (am *gocbcoreAgentMap) fetchAgent(sourceName, sourceUUID, sourceParams,
 	// if sourceUUID is provided, ensure that it matches with the bucket's UUID
 	if len(sourceUUID) > 0 && sourceUUID != snapshot.BucketUUID() {
 		go agent.Close()
-		return nil, fmt.Errorf("mismatched sourceUUID for bucket `%v`", sourceName)
+		return nil, fmt.Errorf("gocbcore_utils: mismatched sourceUUID for"+
+			" bucket `%v`", sourceName)
 	}
 
-	am.entries[key] = agent
+	dcpAgent, err := setupGocbcoreDCPAgent(dcpConfig, key, memd.DcpOpenFlagProducer)
+	if err != nil {
+		go agent.Close()
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient, setup err2: %v", err)
+	}
+
+	am.entries[key] = &gocbcoreClient{
+		agent:    agent,
+		dcpAgent: dcpAgent,
+	}
 
 	return am.entries[key], nil
 }
 
 // Closes and removes the gocbcore Agent instance with the name:uuid.
-func (am *gocbcoreAgentMap) closeAgent(sourceName, sourceUUID string) {
+func (am *gocbcoreAgentsMap) closeClient(sourceName, sourceUUID string) {
 	key := sourceName + ":" + sourceUUID
 	am.m.Lock()
 	if _, exists := am.entries[key]; exists {
-		go am.entries[key].Close()
+		go am.entries[key].agent.Close()
+		go am.entries[key].dcpAgent.Close()
 		delete(am.entries, key)
 	}
 	am.m.Unlock()
@@ -190,13 +211,13 @@ func (am *gocbcoreAgentMap) closeAgent(sourceName, sourceUUID string) {
 func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (
 	partitions []string, err error) {
-	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
+	client, err := agentsMap.fetchClient(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
 	}
 
-	snapshot, err := agent.ConfigSnapshot()
+	snapshot, err := client.agent.ConfigSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("CBPartitions, ConfigSnapshot err: %v", err)
 	}
@@ -223,16 +244,16 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
-	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
+	client, err := agentsMap.fetchClient(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
-		return nil, fmt.Errorf("CBPartitionSeqs, fetchAgent err: %v", err)
+		return nil, fmt.Errorf("CBPartitionSeqs, fetchClient err: %v", err)
 	}
 
 	signal := make(chan error, 1)
 
 	var manifest gocbcore.Manifest
-	op, err := agent.GetCollectionManifest(
+	op, err := client.agent.GetCollectionManifest(
 		gocbcore.GetCollectionManifestOptions{},
 		func(res *gocbcore.GetCollectionManifestResult, er error) {
 			if er == nil && res == nil {
@@ -262,13 +283,6 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		}
 	}
 
-	dcpAgent, err := FetchDCPAgent(sourceName, sourceUUID, sourceParams, serverIn, options)
-	if err != nil {
-		return nil, fmt.Errorf("CBPartitionSeqs, FetchDCPAgent err: %v", err)
-	}
-
-	defer CloseDCPAgent(sourceName, sourceUUID, dcpAgent)
-
 	rv := map[string]UUIDSeq{}
 	addSeqnoToRV := func(vbID uint16, collID uint32, seqNo uint64) {
 		rv[vbucketIdStrings[vbID]+":"+collectionsIDtoName[collID]+":high_seqno"] = UUIDSeq{
@@ -283,7 +297,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 
 	for collID := range collectionsIDtoName {
 		vbucketSeqnoOptions.FilterOptions.CollectionID = collID
-		op, err := dcpAgent.GetVbucketSeqnos(
+		op, err := client.dcpAgent.GetVbucketSeqnos(
 			0,                       // serverIdx (leave at 0 for now)
 			memd.VbucketStateActive, // active vbuckets only
 			vbucketSeqnoOptions,     // contains collectionID
@@ -318,7 +332,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string, statsKind string) (
 	map[string]interface{}, error) {
-	agent, err := agentMap.fetchAgent(sourceName, sourceUUID,
+	client, err := agentsMap.fetchClient(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
@@ -326,7 +340,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 
 	signal := make(chan error, 1)
 	var rv map[string]interface{}
-	op, err := agent.Stats(gocbcore.StatsOptions{Key: statsKind},
+	op, err := client.agent.Stats(gocbcore.StatsOptions{Key: statsKind},
 		func(resp *gocbcore.StatsResult, er error) {
 			if resp == nil || er != nil {
 				signal <- er
@@ -405,7 +419,7 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 
 	auth, err := gocbAuth(sourceParams, options["authType"])
 	if err != nil {
-		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp, gocbAuth,"+
+		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp, gocbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
@@ -413,7 +427,7 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) <= 0 {
-		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp," +
+		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp," +
 			" no servers provided")
 	}
 
@@ -430,13 +444,13 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 
 	err = config.FromConnStr(connStr)
 	if err != nil {
-		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
+		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp,"+
 			" unable to build config from connStr: %s, err: %v", connStr, err)
 	}
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
-		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
+		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp,"+
 			" unable to create agent, err: %v", err)
 	}
 
@@ -446,7 +460,7 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 
 	snapshot, err := agent.ConfigSnapshot()
 	if err != nil {
-		return "", fmt.Errorf("gocbcore_helper: CBSourceUUIDLookUp,"+
+		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp,"+
 			" unable to fetch agent's config snapshot, err: %v", err)
 	}
 
@@ -548,7 +562,7 @@ func gocbAuth(sourceParams string, authType string) (
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), params)
 		if err != nil {
-			return nil, fmt.Errorf("gocbcore_helper: gocbAuth" +
+			return nil, fmt.Errorf("gocbcore_utils: gocbAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")
 		}
 	}
