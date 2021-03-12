@@ -91,7 +91,7 @@ func (cb *cbBucketMap) fetchCouchbaseBucket(name, uuid, params, server string,
 		if vbm == nil || len(vbm.VBucketMap) == 0 {
 			bucket.Close()
 
-			return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket"+
+			return nil, fmt.Errorf("gocouchbase_utils: CouchbaseBucket"+
 				" vbucket map not available yet,"+
 				" server: %s, bucketName: %s",
 				server, name)
@@ -134,7 +134,7 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	auth, err := cbAuth(sourceName, sourceParams, options)
 	if err != nil {
-		return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket, cbAuth,"+
+		return nil, fmt.Errorf("gocouchbase_utils: CouchbaseBucket, cbAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
@@ -161,7 +161,7 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket"+
+		return nil, fmt.Errorf("gocouchbase_utils: CouchbaseBucket"+
 			" connection failed, server: %s, poolName: %s,"+
 			" bucketName: %s, sourceParams: %q, err: %v,"+
 			" please check that your authUser and authPassword are correct"+
@@ -171,7 +171,7 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	pool, err := client.GetPool(poolName)
 	if err != nil {
-		return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket"+
+		return nil, fmt.Errorf("gocouchbase_utils: CouchbaseBucket"+
 			" failed GetPool, server: %s, poolName: %s,"+
 			" bucketName: %s, sourceParams: %q, err: %v",
 			server, poolName, bucketName, sourceParams, err)
@@ -216,7 +216,7 @@ func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 
 	vbm := bucket.VBServerMap()
 	if vbm == nil || len(vbm.VBucketMap) == 0 {
-		return nil, fmt.Errorf("gocouchbase_helper: CouchbasePartitions"+
+		return nil, fmt.Errorf("gocouchbase_utils: CouchbasePartitions"+
 			" no VBServerMap, server: %s, sourceName: %s, err: %v",
 			serverIn, sourceName, err)
 	}
@@ -360,7 +360,7 @@ func CouchbaseSourceVBucketLookUp(docID, serverIn string,
 	defer bucket.Close()
 	vbm := bucket.VBServerMap()
 	if vbm == nil || len(vbm.VBucketMap) == 0 {
-		return "", fmt.Errorf("gocouchbase_helper: CouchbaseSourceVBucketLookUp"+
+		return "", fmt.Errorf("gocouchbase_utils: CouchbaseSourceVBucketLookUp"+
 			" no VBServerMap, server: %s, sourceName: %s, err: %v",
 			server, sourceDetails.SourceName, err)
 	}
@@ -374,7 +374,7 @@ func CouchbaseSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 	options map[string]string) (string, error) {
 	bucket, err := CouchbaseBucket(sourceName, "", sourceParams, serverIn, options)
 	if err != nil {
-		return "", fmt.Errorf("gocouchbase_helper: CouchbaseSourceUUIDLookUp,"+
+		return "", fmt.Errorf("gocouchbase_utils: CouchbaseSourceUUIDLookUp,"+
 			" bucketName: %v, err: %v", sourceName, err)
 	}
 
@@ -420,7 +420,7 @@ func cbAuth(sourceName, sourceParams string, options map[string]string) (
 	if sourceParams != "" {
 		err := json.Unmarshal([]byte(sourceParams), params)
 		if err != nil {
-			return nil, fmt.Errorf("gocouchbase_helper: cbAuth" +
+			return nil, fmt.Errorf("gocouchbase_utils: cbAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")
 		}
 	}
