@@ -397,9 +397,19 @@ func (ctl *Ctl) run() {
 						" err: %v", ev.Key, err)
 					continue
 				}
+				// initialize the prevMemberNodeUUIDs only if it is
+				// unset during the initial boot up of a cluster.
+				var initPrevMemberUUIDs bool
+				if len(ctl.prevMemberNodeUUIDs) == 0 {
+					initPrevMemberUUIDs = true
+				}
+
 				memberUUIDs := "{"
 				for _, node := range memberNodes {
 					memberUUIDs += node.UUID + ";"
+					if initPrevMemberUUIDs {
+						ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
+					}
 				}
 				memberUUIDs += "}"
 				log.Printf("ctl: run, kind: %s, updated memberNodes: %s",
