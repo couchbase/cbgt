@@ -463,8 +463,17 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 
 	assignPartitionsFunc := func(stopCh2 chan struct{}, node string,
 		partitions, states, ops []string) error {
+		r.Logf("rebalance: assignPIndexes, index: %s, node: %s, partitions: %v,"+
+			" states: %v, ops: %v, starts", indexDef.Name, node, partitions,
+			states, ops)
+
 		err2 := r.assignPIndexes(stopCh, stopCh2,
 			indexDef.Name, node, partitions, states, ops)
+
+		r.Logf("rebalance: assignPIndexes, index: %s, node: %s, partitions: %v,"+
+			" states: %v, ops: %v, finished", indexDef.Name, node, partitions,
+			states, ops)
+
 		if err2 != nil {
 			r.Logf("rebalance: assignPartitionsFunc, err: %v", err2)
 			// Stop rebalance for all other errors.
@@ -703,11 +712,11 @@ func (r *Rebalancer) assignPIndexes(stopCh, stopCh2 chan struct{},
 		var errs []string
 		indexMissingErrsOnly := true
 		for err := range doneCh {
-			if indexMissingErrsOnly && !errors.Is(err, ErrorNoIndexDefinitionFound) {
-				indexMissingErrsOnly = false
-			}
 			if err != nil {
 				errs = append(errs, err.Error())
+				if indexMissingErrsOnly && !errors.Is(err, ErrorNoIndexDefinitionFound) {
+					indexMissingErrsOnly = false
+				}
 			}
 		}
 		if len(errs) > 0 {
