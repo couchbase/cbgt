@@ -807,7 +807,6 @@ func (f *GocbcoreDCPFeed) close() bool {
 	f.closed = true
 	f.closeAllStreamsLOCKED()
 	CloseDCPAgent(f.bucketName, f.bucketUUID, f.agent)
-	f.forceCompleteLOCKED()
 	f.m.Unlock()
 
 	f.mgr.unregisterFeed(f.Name())
@@ -828,13 +827,16 @@ func (f *GocbcoreDCPFeed) closeAllStreamsLOCKED() {
 		},
 	}
 
-	log.Debugf("feed_dcp_gocbcore: name: %s, stream ID: %v,"+
-		" close streams for vbuckets: %v",
+	log.Printf("feed_dcp_gocbcore: name: %s, stream ID: %v,"+
+		" close any open streams over vbuckets: %v",
 		f.Name(), closeStreamOptions.StreamOptions.StreamID, f.vbucketIds)
 
-	for _, vbid := range f.vbucketIds {
-		// asynchronous operations
-		f.agent.CloseStream(vbid, closeStreamOptions, func(err error) {})
+	for _, vbId := range f.vbucketIds {
+		if f.active[vbId] {
+			f.agent.CloseStream(vbId, closeStreamOptions, func(err error) {})
+			f.active[vbId] = false
+			f.remaining.Done()
+		}
 	}
 }
 
@@ -1160,17 +1162,19 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 	atomic.AddUint64(&f.dcpStats.TotDCPStreamEnds, 1)
 	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
 	if err == nil {
+		f.complete(vbId)
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] ended for vb: %v,"+
 			" last seq: %v", f.Name(), streamId, vbId, lastReceivedSeqno)
-		f.complete(vbId)
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed) ||
 		errors.Is(err, gocbcore.ErrDCPStreamFilterEmpty) {
+		f.complete(vbId)
 		f.initiateShutdown(fmt.Errorf("End, %v", err))
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
 		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
 			" `%s`, closing feed and notify the mgr",
 			f.Name(), streamId, vbId, err.Error())
+		f.complete(vbId)
 		f.onError(true, err)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
@@ -1179,10 +1183,11 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), maxEndSeqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
+		f.complete(vbId)
 		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
 			" closed by consumer", f.Name(), streamId, vbId)
-		f.complete(vbId)
 	} else {
+		f.complete(vbId)
 		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] closed for vb: %v,"+
 			" last seq: %v, err: `%s`",
 			f.Name(), streamId, vbId, lastReceivedSeqno, err.Error())
@@ -1475,15 +1480,6 @@ func (f *GocbcoreDCPFeed) complete(vbId uint16) {
 		f.remaining.Done()
 	}
 	f.m.Unlock()
-}
-
-func (f *GocbcoreDCPFeed) forceCompleteLOCKED() {
-	for i := range f.active {
-		if f.active[i] {
-			f.active[i] = false
-			f.remaining.Done()
-		}
-	}
 }
 
 // ----------------------------------------------------------------
