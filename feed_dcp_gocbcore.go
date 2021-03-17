@@ -143,7 +143,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 			if refs < maxFeedsPerDCPAgent {
 				dm.entries[key][agent]++
 				log.Printf("feed_dcp_gocbcore: fetchAgent, re-using existing DCP agent"+
-					" (key: %v, ref count: %v)", key, dm.entries[key][agent])
+					" (key: %v, agent: %p, ref count: %v)",
+					key, agent, dm.entries[key][agent])
 				return agent, nil
 			}
 		}
@@ -221,9 +222,11 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		flags |= memd.DcpOpenFlagNoValue
 	}
 
-	log.Printf("feed_dcp_gocbcore: fetchAgent, setting up new DCP agent (key: %v)", key)
-
 	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, key, rand.Int31())
+
+	log.Printf("feed_dcp_gocbcore: fetchAgent, setting up new DCP agent (name: %v)",
+		dcpConnName)
+
 	agent, err := setupGocbcoreDCPAgent(config, dcpConnName, flags)
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, setup err: %v", err)
@@ -250,19 +253,22 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 	}
 
 	if _, exists := dm.entries[key][agent]; !exists {
-		log.Warnf("feed_dcp_gocbcore: closeAgent, agent doesn't exist (key: %v)", key)
+		log.Warnf("feed_dcp_gocbcore: closeAgent, agent doesn't exist"+
+			" (key: %v, agent: %p)", key, agent)
 	} else {
 		dm.entries[key][agent]--
 		if dm.entries[key][agent] > 0 {
 			log.Printf("feed_dcp_gocbcore: closeAgent, ref count decremented for"+
-				" DCP agent (key: %v, ref count: %v)", key, dm.entries[key][agent])
+				" DCP agent (key: %v, agent: %p, ref count: %v)",
+				key, agent, dm.entries[key][agent])
 			return nil
 		}
 		// ref count of agent down to 0
 		delete(dm.entries[key], agent)
 		atomic.AddUint64(&dm.numDCPAgents, ^uint64(0))
 
-		log.Printf("feed_dcp_gocbcore: closeAgent, closing DCP agent (key: %v)", key)
+		log.Printf("feed_dcp_gocbcore: closeAgent, closing DCP agent"+
+			" (key: %v, agent: %p)", key, agent)
 
 		// close the agent only once
 		go agent.Close()
