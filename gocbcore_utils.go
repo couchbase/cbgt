@@ -15,6 +15,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -131,7 +132,9 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 	}
 
 	config := setupAgentConfig("stats", bucketName, auth)
-	dcpConfig := setupDCPAgentConfig("stats", bucketName, auth, nil)
+	dcpConnName := fmt.Sprintf("stats-%s-%x", key, rand.Int31())
+	dcpConfig := setupDCPAgentConfig(dcpConnName, bucketName, auth,
+		gocbcore.DcpAgentPriorityLow, false /* no need for streamID */, nil)
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) == 0 {
@@ -178,7 +181,7 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 			" bucket `%v`", sourceName)
 	}
 
-	dcpAgent, err := setupGocbcoreDCPAgent(dcpConfig, key, memd.DcpOpenFlagProducer)
+	dcpAgent, err := setupGocbcoreDCPAgent(dcpConfig, dcpConnName, memd.DcpOpenFlagProducer)
 	if err != nil {
 		go agent.Close()
 		return nil, fmt.Errorf("gocbcore_utils: fetchClient, setup err2: %v", err)
