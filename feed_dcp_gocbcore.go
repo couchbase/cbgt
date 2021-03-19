@@ -143,8 +143,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 			if refs < maxFeedsPerDCPAgent {
 				dm.entries[key][agent]++
 				log.Printf("feed_dcp_gocbcore: fetchAgent, re-using existing DCP agent"+
-					" (key: %v, agent: %p, ref count: %v)",
-					key, agent, dm.entries[key][agent])
+					" (key: %v, agent: %p, ref count: %v, number of agents for key: %v)",
+					key, agent, dm.entries[key][agent], len(dm.entries[key]))
 				return agent, nil
 			}
 		}
@@ -223,16 +223,16 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	}
 
 	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, key, rand.Int31())
-
-	log.Printf("feed_dcp_gocbcore: fetchAgent, setting up new DCP agent (name: %v)",
-		dcpConnName)
-
 	agent, err := setupGocbcoreDCPAgent(config, dcpConnName, flags)
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, setup err: %v", err)
 	}
 
 	dm.entries[key][agent] = 1
+	log.Printf("feed_dcp_gocbcore: fetchAgent, set up new DCP agent: `%v`"+
+		" (key: %v, agent: %p, number of agents for key: %v)", dcpConnName,
+		key, agent, len(dm.entries[key]))
+
 	atomic.AddUint64(&dm.numDCPAgents, 1)
 
 	return agent, nil
@@ -259,8 +259,9 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 		dm.entries[key][agent]--
 		if dm.entries[key][agent] > 0 {
 			log.Printf("feed_dcp_gocbcore: closeAgent, ref count decremented for"+
-				" DCP agent (key: %v, agent: %p, ref count: %v)",
-				key, agent, dm.entries[key][agent])
+				" DCP agent (key: %v, agent: %p, ref count: %v, number of agents"+
+				" for key: %v)",
+				key, agent, dm.entries[key][agent], len(dm.entries[key]))
 			return nil
 		}
 		// ref count of agent down to 0
@@ -268,7 +269,8 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 		atomic.AddUint64(&dm.numDCPAgents, ^uint64(0))
 
 		log.Printf("feed_dcp_gocbcore: closeAgent, closing DCP agent"+
-			" (key: %v, agent: %p)", key, agent)
+			" (key: %v, agent: %p, number of agents for key: %v)",
+			key, agent, len(dm.entries[key]))
 
 		// close the agent only once
 		go agent.Close()
