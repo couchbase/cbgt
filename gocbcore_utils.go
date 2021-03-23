@@ -84,6 +84,10 @@ func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 		return nil, err
 	}
 
+	log.Printf("gocbcore_utils: CreateAgent succeeded"+
+		" (agent: %p, bucket: %s, name: %s)",
+		agent, config.BucketName, config.UserAgent)
+
 	return agent, nil
 }
 
@@ -170,6 +174,8 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 
 	snapshot, err := agent.ConfigSnapshot()
 	if err != nil {
+		log.Warnf("gocbcore_utils: fetchClient, ConfigSnapshot err: %v (close Agent: %p)",
+			err, agent)
 		go agent.Close()
 		return nil, err
 	}
@@ -183,6 +189,8 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 
 	dcpAgent, err := setupGocbcoreDCPAgent(dcpConfig, dcpConnName, memd.DcpOpenFlagProducer)
 	if err != nil {
+		log.Warnf("gocbcore_utils: fetchClient, setupGocbcoreDCPAgent err: %v"+
+			" (close Agent: %p)", err, agent)
 		go agent.Close()
 		return nil, fmt.Errorf("gocbcore_utils: fetchClient, setup err2: %v", err)
 	}
@@ -192,6 +200,9 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 		dcpAgent: dcpAgent,
 	}
 
+	log.Printf("gocbcore_utils: fetchClient, new agents setup (Agent: %p, DCPAgent: %p)",
+		agent, dcpAgent)
+
 	return am.entries[key], nil
 }
 
@@ -200,6 +211,8 @@ func (am *gocbcoreAgentsMap) closeClient(sourceName, sourceUUID string) {
 	key := sourceName + ":" + sourceUUID
 	am.m.Lock()
 	if _, exists := am.entries[key]; exists {
+		log.Printf("gocbcore_utils: closeClient, closing agents (Agent: %p, DCPAgent: %p)",
+			am.entries[key].agent, am.entries[key].dcpAgent)
 		go am.entries[key].agent.Close()
 		go am.entries[key].dcpAgent.Close()
 		delete(am.entries, key)
@@ -396,6 +409,7 @@ func CBVBucketLookUp(docID, serverIn string,
 	}
 
 	defer func() {
+		log.Printf("gocbcore_utils: Closing Agent (%p)", agent)
 		go agent.Close()
 	}()
 
@@ -458,6 +472,7 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 	}
 
 	defer func() {
+		log.Printf("gocbcore_utils: Closing Agent (%p)", agent)
 		go agent.Close()
 	}()
 

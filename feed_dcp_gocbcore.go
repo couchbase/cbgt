@@ -108,7 +108,7 @@ func init() {
 	}
 
 	FetchDCPAgent = dcpAgentMap.fetchAgent
-	CloseDCPAgent = dcpAgentMap.closeAgent
+	CloseDCPAgent = dcpAgentMap.releaseAgent
 }
 
 func NumDCPAgents() uint64 {
@@ -119,9 +119,11 @@ func NumDCPAgents() uint64 {
 	return 0
 }
 
-// Fetches a gocbcore DCPAgent instance for the bucket (name:uuid),
-// if not found creates a new instance and stashes it in the map,
-// before returning it.
+// Fetches a gocbcore.DCPAgent instance for the bucket (name:uuid),
+// after increasing it's reference count.
+// If no instance is available or reference count for existing instances
+// is at limit, creates a new instance and stashes it with reference
+// count of 1, before returning it.
 func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	servers string, options map[string]string) (*gocbcore.DCPAgent, error) {
 	var maxFeedsPerDCPAgent int
@@ -239,9 +241,10 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	return agent, nil
 }
 
-// Closes and removes the gocbcore DCPAgent instance with the name:uuid, if
-// and only if no other feed is using the agent.
-func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
+// Releases reference for the gocbcore.DCPAgent instance key'ed by name:uuid.
+// Also, closes and removes the gocbcore DCPAgent if reference count is down
+// to zero.
+func (dm *gocbcoreDCPAgentMap) releaseAgent(bucketName, bucketUUID string,
 	agent *gocbcore.DCPAgent) error {
 	key := bucketName + ":" + bucketUUID
 
@@ -249,18 +252,18 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 	defer dm.m.Unlock()
 
 	if _, exists := dm.entries[key]; !exists {
-		log.Warnf("feed_dcp_gocbcore: closeAgent, no entry for key %v", key)
+		log.Warnf("feed_dcp_gocbcore: releaseAgent, no entry for key %v", key)
 		return nil
 	}
 
 	if _, exists := dm.entries[key][agent]; !exists {
-		log.Warnf("feed_dcp_gocbcore: closeAgent, agent doesn't exist"+
+		log.Warnf("feed_dcp_gocbcore: releaseAgent, DCPAgent doesn't exist"+
 			" (key: %v, agent: %p)", key, agent)
 	} else {
 		dm.entries[key][agent]--
 		if dm.entries[key][agent] > 0 {
-			log.Printf("feed_dcp_gocbcore: closeAgent, ref count decremented for"+
-				" DCP agent (key: %v, agent: %p, ref count: %v, number of agents"+
+			log.Printf("feed_dcp_gocbcore: releaseAgent, ref count decremented for"+
+				" DCPagent (key: %v, agent: %p, ref count: %v, number of agents"+
 				" for key: %v)",
 				key, agent, dm.entries[key][agent], len(dm.entries[key]))
 			return nil
@@ -269,7 +272,7 @@ func (dm *gocbcoreDCPAgentMap) closeAgent(bucketName, bucketUUID string,
 		delete(dm.entries[key], agent)
 		atomic.AddUint64(&dm.numDCPAgents, ^uint64(0))
 
-		log.Printf("feed_dcp_gocbcore: closeAgent, closing DCP agent"+
+		log.Printf("feed_dcp_gocbcore: releaseAgent, closing DCPAgent"+
 			" (key: %v, agent: %p, number of agents for key: %v)",
 			key, agent, len(dm.entries[key]))
 
@@ -340,9 +343,15 @@ func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
 	}
 
 	if err != nil {
+		log.Warnf("feed_dcp_gocbcore: CreateDcpAgent, err: %v (close DCPAgent: %p)",
+			err, agent)
 		go agent.Close()
 		return nil, err
 	}
+
+	log.Printf("feed_dcp_gocbcore: CreateDcpAgent succeeded"+
+		" (agent: %p, bucketName: %s, name: %s)",
+		agent, config.BucketName, config.UserAgent)
 
 	return agent, nil
 }
@@ -653,6 +662,7 @@ func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr, authType string) error {
 	}
 
 	defer func() {
+		log.Printf("feed_dcp_gocbcore: Closing Agent (%p)", agent)
 		go agent.Close()
 	}()
 
