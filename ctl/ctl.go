@@ -517,11 +517,23 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 		var nodesToRemove []string
 		version := cbgt.CfgGetVersion(ctl.cfg)
 
+		planPIndexes, _, err :=
+			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
+
+		// work on the plan only if there is no ongoing rebalance Or
+		// the current node is the rebalance orchestrator so that there
+		// will only be a single planner in an evolving cluster.
+		if err == nil && !cbgt.IsStablePlan(planPIndexes) {
+			if !ctl.rebalanceOrchestrator() {
+				return
+			}
+		}
+
 		cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
 			plannerFilterNewIndexesOnly)
 
-		planPIndexes, _, err :=
+		planPIndexes, _, err =
 			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
 		if err == nil && planPIndexes != nil {
 			ctl.m.Lock()

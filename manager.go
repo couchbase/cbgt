@@ -1005,13 +1005,13 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 	return nil
 }
 
-// isStablePlan checks whether the given plan is a stable or evolving plan
+// IsStablePlan checks whether the given plan is a stable or evolving plan
 // by checking the partition-node assignments of partitions belonging to
 // each of the indexes. If all the partitions belonging to an index is having
 // same exact node assignments count, then the partition assignment is considered
 // stable for that index. If all the indexes in a plan is having stable node,
 // assignments then that plan is considered stable and can be stored for recovery.
-func isStablePlan(planPIndexes *PlanPIndexes) bool {
+func IsStablePlan(planPIndexes *PlanPIndexes) bool {
 	if planPIndexes == nil || planPIndexes.PlanPIndexes == nil {
 		return false
 	}
@@ -1041,7 +1041,7 @@ func isStablePlan(planPIndexes *PlanPIndexes) bool {
 }
 
 func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) {
-	if !isStablePlan(planPIndexes) {
+	if !IsStablePlan(planPIndexes) {
 		return
 	}
 	val, err := json.Marshal(planPIndexes)
