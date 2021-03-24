@@ -204,49 +204,36 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 	req *http.Request) {
 	_, pindexes := mgr.CurrentMaps()
-	pindexNames := make([]string, 0, len(pindexes))
-	for pindexName := range pindexes {
-		pindexNames = append(pindexNames, pindexName)
-	}
-	sort.Strings(pindexNames)
-
-	pindexStats := make(map[string][]byte)
-	for _, pindexName := range pindexNames {
-		var buf bytes.Buffer
-		statsWriter := &statsWriter{w: &buf, vbstats: true}
-		err := pindexes[pindexName].Dest.Stats(statsWriter)
-		if err != nil {
-			err = fmt.Errorf("pindex stats err: %v", err)
-			ShowError(w, req, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if len(buf.Bytes()) == 0 {
-			pindexStats[pindexName] = []byte("{}")
-		} else {
-			if !json.Valid(buf.Bytes()) {
-				err = fmt.Errorf("pindex stats err, invalid pindexStats json: %s",
-					buf.Bytes())
-				ShowError(w, req, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			pindexStats[pindexName] = buf.Bytes()
-		}
-	}
 
 	w.Write(cbgt.JsonOpenBrace)
-
-	first := true
 	w.Write(statsPIndexesPrefix)
-	for _, pindexName := range pindexNames {
-		if !first {
+
+	var buf bytes.Buffer
+	firstEntry := true
+	for pindexName, pindex := range pindexes {
+		if firstEntry {
+			firstEntry = false
+		} else {
 			w.Write(cbgt.JsonComma)
 		}
-		first = false
+
 		w.Write(statsNamePrefix)
 		w.Write([]byte(pindexName))
 		w.Write(statsNameSuffix)
-		w.Write(pindexStats[pindexName])
+
+		statsWriter := &statsWriter{w: &buf, vbstats: true}
+		err := pindex.Dest.Stats(statsWriter)
+		if err != nil || len(buf.Bytes()) == 0 || !json.Valid(buf.Bytes()) {
+			log.Warnf("writePartitionStatsJSON: pindex stats invalid for `%s`, err: %v",
+				pindexName, err)
+			w.Write([]byte("{}"))
+		} else {
+			w.Write(buf.Bytes())
+		}
+
+		buf.Reset()
 	}
+
 	w.Write(cbgt.JsonCloseBrace)
 	w.Write(cbgt.JsonCloseBrace)
 }
