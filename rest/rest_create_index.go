@@ -161,8 +161,9 @@ func (h *CreateIndexHandler) ServeHTTP(
 		indexType = indexDef.Type
 	}
 	if indexType == "" {
-		ShowErrorBody(w, requestBody, "rest_create_index: index type is required",
-			http.StatusBadRequest)
+		ShowErrorBody(w, requestBody,
+			fmt.Sprintf("rest_create_index: index type is required, indexName: %s",
+				indexName), http.StatusBadRequest)
 		return
 	}
 
@@ -173,8 +174,9 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	sourceType, sourceName := ExtractSourceTypeName(req, &indexDef, indexName)
 	if sourceType == "" {
-		ShowErrorBody(w, requestBody, "rest_create_index: sourceType is required",
-			http.StatusBadRequest)
+		ShowErrorBody(w, requestBody,
+			fmt.Sprintf("rest_create_index: sourceType is required, indexName: %s",
+				indexName), http.StatusBadRequest)
 		return
 	}
 
@@ -207,8 +209,8 @@ func (h *CreateIndexHandler) ServeHTTP(
 		err2 := json.Unmarshal([]byte(planParamsStr), &planParams)
 		if err2 != nil {
 			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
-				" error parsing planParams: %s, err: %v",
-				planParamsStr, err2), http.StatusBadRequest)
+				" error parsing planParams: %s, indexName: %s, err: %v",
+				planParamsStr, indexName, err2), http.StatusBadRequest)
 			return
 		}
 	} else {
