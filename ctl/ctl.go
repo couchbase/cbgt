@@ -217,22 +217,32 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 
 	totalPartitions := 0
 	if indexDefs != nil {
+		// partitions cache to save redundant calls
+		// per sourceName/sourceUUID.
+		pCache := make(map[string][]string)
+		var partitions []string
+
 		for _, indexDef := range indexDefs.IndexDefs {
 			feedType, exists := cbgt.FeedTypes[indexDef.SourceType]
 			if !exists || feedType == nil {
 				continue
 			}
-			partitions, err := feedType.Partitions(indexDef.SourceType,
-				indexDef.SourceName, indexDef.SourceUUID,
-				indexDef.SourceParams,
-				ctl.optionsCtl.Manager.Server(),
-				ctl.optionsCtl.Manager.GetOptions())
-			if err != nil {
-				log.Warnf("ctl: getMovingPartitionsCount, CouchbasePartitions"+
-					" failed for index: `%v` over source: `%v`, err: %v",
-					indexDef.Name, indexDef.SourceName, err)
-				totalPartitions += 0
-				continue
+
+			key := indexDef.SourceName + ":" + indexDef.SourceUUID
+			if partitions, exists = pCache[key]; !exists {
+				partitions, err := feedType.Partitions(indexDef.SourceType,
+					indexDef.SourceName, indexDef.SourceUUID,
+					indexDef.SourceParams,
+					ctl.optionsCtl.Manager.Server(),
+					ctl.optionsCtl.Manager.GetOptions())
+				if err != nil {
+					log.Warnf("ctl: getMovingPartitionsCount, CouchbasePartitions"+
+						" failed for index: `%v` over source: `%v`, err: %v",
+						indexDef.Name, indexDef.SourceName, err)
+					totalPartitions += 0
+					continue
+				}
+				pCache[key] = partitions
 			}
 
 			numVbuckets := float64(len(partitions))
