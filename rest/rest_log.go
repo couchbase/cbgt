@@ -49,17 +49,13 @@ func (h *LogGetHandler) ServeHTTP(
 	w.Write([]byte(`],"events":[`))
 	if h.mgr != nil {
 		first := true
-		h.mgr.Lock()
-		p := h.mgr.Events().Front()
-		for p != nil {
+		h.mgr.VisitEvents(func(event []byte) {
 			if !first {
 				w.Write(cbgt.JsonComma)
 			}
 			first = false
-			w.Write(p.Value.([]byte))
-			p = p.Next()
-		}
-		h.mgr.Unlock()
+			w.Write(event)
+		})
 	}
 	w.Write([]byte(`]}`))
 }

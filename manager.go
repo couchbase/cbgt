@@ -1283,12 +1283,15 @@ func (mgr *Manager) StatsCopyTo(dst *ManagerStats) {
 
 // --------------------------------------------------------
 
-func (mgr *Manager) Lock() {
+func (mgr *Manager) VisitEvents(callback func(event []byte)) {
 	mgr.m.Lock()
-}
+	defer mgr.m.Unlock()
 
-func (mgr *Manager) Unlock() {
-	mgr.m.Unlock()
+	p := mgr.Events().Front()
+	for p != nil {
+		callback(p.Value.([]byte))
+		p = p.Next()
+	}
 }
 
 // --------------------------------------------------------
