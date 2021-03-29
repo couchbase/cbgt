@@ -1192,16 +1192,11 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		errors.Is(err, gocbcore.ErrDCPStreamFilterEmpty) {
 		f.complete(vbId)
 		f.initiateShutdown(fmt.Errorf("End, %v", err))
-	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) {
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
-			" `%s`, reinitiating stream request to the new active",
-			f.Name(), streamId, vbId, err.Error())
-		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
-			gocbcore.SeqNo(lastReceivedSeqno), maxEndSeqno)
-	} else if errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
+	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) ||
+		errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
-			" `%s`, will reconnect", f.Name(), streamId, vbId, err.Error())
+			" `%s`, reconnecting ...", f.Name(), streamId, vbId, err.Error())
 		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
 			gocbcore.SeqNo(lastReceivedSeqno), maxEndSeqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
