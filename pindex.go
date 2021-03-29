@@ -379,11 +379,11 @@ func (mgr *Manager) CoveringPIndexesEx(spec CoveringPIndexesSpec,
 		if !noCache {
 			var cp *CoveringPIndexes
 
-			mgr.m.Lock()
+			mgr.m.RLock()
 			if mgr.coveringCache != nil {
 				cp = mgr.coveringCache[spec]
 			}
-			mgr.m.Unlock()
+			mgr.m.RUnlock()
 
 			if cp != nil {
 				return cp.LocalPIndexes, cp.RemotePlanPIndexes, cp.MissingPIndexNames, nil

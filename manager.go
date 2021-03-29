@@ -65,27 +65,30 @@ type Manager struct {
 	dataDir   string
 	server    string // The default datasource that will be indexed.
 	stopCh    chan struct{}
+	plannerCh chan *workReq // Kicks planner that there's more work.
+	janitorCh chan *workReq // Kicks janitor that there's more work.
+	meh       ManagerEventHandlers
 
-	m               sync.Mutex // Protects the fields that follow.
-	options         map[string]string
-	feeds           map[string]Feed    // Key is Feed.Name().
-	pindexes        map[string]*PIndex // Key is PIndex.Name().
-	bootingPIndexes map[string]bool    // booting flag
-	plannerCh       chan *workReq      // Kicks planner that there's more work.
-	janitorCh       chan *workReq      // Kicks janitor that there's more work.
-	meh             ManagerEventHandlers
+	stats ManagerStats
 
-	lastNodeDefs map[string]*NodeDefs
-
+	m                      sync.RWMutex       // Protects the fields that follow.
+	pindexes               map[string]*PIndex // Key is PIndex.Name().
+	bootingPIndexes        map[string]bool    // booting flag
+	lastNodeDefs           map[string]*NodeDefs
 	lastIndexDefs          *IndexDefs
 	lastIndexDefsByName    map[string]*IndexDef
 	lastPlanPIndexes       *PlanPIndexes
 	lastPlanPIndexesByName map[string][]*PlanPIndex
+	coveringCache          map[CoveringPIndexesSpec]*CoveringPIndexes
 
-	coveringCache map[CoveringPIndexesSpec]*CoveringPIndexes
+	feedsMutex sync.RWMutex
+	feeds      map[string]Feed // Key is Feed.Name().
 
-	stats  ManagerStats
-	events *list.List
+	optionsMutex sync.RWMutex
+	options      map[string]string
+
+	eventsMutex sync.RWMutex
+	events      *list.List
 
 	stablePlanPIndexesMutex sync.RWMutex // Protects the local stable plan access.
 }
@@ -538,9 +541,9 @@ func (mgr *Manager) fetchServerGroupDetails() (string, error) {
 // indicates that the pindex is booting.
 // bootingPIndex returns true if the pindex loading is in progress
 func (mgr *Manager) bootingPIndex(pindex string) bool {
-	mgr.m.Lock()
+	mgr.m.RLock()
 	rv := mgr.bootingPIndexes[pindex]
-	mgr.m.Unlock()
+	mgr.m.RUnlock()
 	return rv
 }
 
@@ -672,9 +675,9 @@ func (mgr *Manager) RemovePIndex(pindex *PIndex) error {
 
 // GetPIndex retrieves a named pindex instance.
 func (mgr *Manager) GetPIndex(pindexName string) *PIndex {
-	mgr.m.Lock()
+	mgr.m.RLock()
 	rv := mgr.pindexes[pindexName]
-	mgr.m.Unlock()
+	mgr.m.RUnlock()
 	return rv
 }
 
@@ -746,8 +749,8 @@ func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex
 // ---------------------------------------------------------------
 
 func (mgr *Manager) registerFeed(feed Feed) error {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
+	mgr.feedsMutex.Lock()
+	defer mgr.feedsMutex.Unlock()
 
 	if _, exists := mgr.feeds[feed.Name()]; exists {
 		return fmt.Errorf("manager: registered feed already exists, name: %s",
@@ -763,8 +766,8 @@ func (mgr *Manager) registerFeed(feed Feed) error {
 }
 
 func (mgr *Manager) unregisterFeed(name string) Feed {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
+	mgr.feedsMutex.Lock()
+	defer mgr.feedsMutex.Unlock()
 
 	rv, ok := mgr.feeds[name]
 	if ok {
@@ -781,9 +784,12 @@ func (mgr *Manager) unregisterFeed(name string) Feed {
 
 // Returns a snapshot copy of the current feeds and pindexes.
 func (mgr *Manager) CurrentMaps() (map[string]Feed, map[string]*PIndex) {
-	mgr.m.Lock()
-	feeds, pindexes := mgr.feeds, mgr.pindexes
-	mgr.m.Unlock()
+	mgr.feedsMutex.RLock()
+	feeds := mgr.feeds
+	mgr.feedsMutex.RUnlock()
+	mgr.m.RLock()
+	pindexes := mgr.pindexes
+	mgr.m.RUnlock()
 	return feeds, pindexes
 }
 
@@ -811,11 +817,13 @@ func (mgr *Manager) copyPIndexesLOCKED() map[string]*PIndex {
 // NODE_DEFS_WANTED).  Use refresh of true to force a read from Cfg.
 func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 	nodeDefs *NodeDefs, err error) {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
-
+	mgr.m.RLock()
 	nodeDefs = mgr.lastNodeDefs[kind]
+	mgr.m.RUnlock()
+
 	if nodeDefs == nil || refresh {
+		mgr.m.Lock()
+		defer mgr.m.Unlock()
 		start := time.Now()
 		nodeDefs, _, err = CfgGetNodeDefs(mgr.Cfg(), kind)
 		if err != nil {
@@ -840,25 +848,31 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 // organized by name.  Use refresh of true to force a read from Cfg.
 func (mgr *Manager) GetIndexDefs(refresh bool) (
 	*IndexDefs, map[string]*IndexDef, error) {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
 
-	if mgr.lastIndexDefs == nil || refresh {
+	mgr.m.RLock()
+	lastIndexDefs := mgr.lastIndexDefs
+	lastIndexDefsByName := mgr.lastIndexDefsByName
+	mgr.m.RUnlock()
+
+	if lastIndexDefs == nil || refresh {
+		mgr.m.Lock()
+		defer mgr.m.Unlock()
 		start := time.Now()
-		indexDefs, _, err := CfgGetIndexDefs(mgr.cfg)
+		lastIndexDefs, _, err := CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
 			return nil, nil, err
 		}
 		log.Printf("manager: GetIndexDefs, CfgGetIndexDefs took: %s", time.Since(start))
-		mgr.lastIndexDefs = indexDefs
+		mgr.lastIndexDefs = lastIndexDefs
 		atomic.AddUint64(&mgr.stats.TotRefreshLastIndexDefs, 1)
 
-		mgr.lastIndexDefsByName = make(map[string]*IndexDef)
-		if indexDefs != nil {
-			for _, indexDef := range indexDefs.IndexDefs {
-				mgr.lastIndexDefsByName[indexDef.Name] = indexDef
+		lastIndexDefsByName = make(map[string]*IndexDef)
+		if lastIndexDefs != nil {
+			for _, indexDef := range lastIndexDefs.IndexDefs {
+				lastIndexDefsByName[indexDef.Name] = indexDef
 			}
 		}
+		mgr.lastIndexDefsByName = lastIndexDefsByName
 
 		mgr.coveringCache = nil
 
@@ -869,7 +883,7 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 		}
 	}
 
-	return mgr.lastIndexDefs, mgr.lastIndexDefsByName, nil
+	return lastIndexDefs, lastIndexDefsByName, nil
 }
 
 func (mgr *Manager) CheckAndGetIndexDef(indexName string,
@@ -923,38 +937,45 @@ func (mgr *Manager) GetIndexDef(indexName string, refresh bool) (
 // organized by IndexName.  Use refresh of true to force a read from Cfg.
 func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 	*PlanPIndexes, map[string][]*PlanPIndex, error) {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
 
-	if mgr.lastPlanPIndexes == nil || refresh {
+	mgr.m.RLock()
+	lastPlanPIndexes := mgr.lastPlanPIndexes
+	lastPlanPIndexesByName := mgr.lastPlanPIndexesByName
+	mgr.m.RUnlock()
+
+	if lastPlanPIndexes == nil || refresh {
+		mgr.m.Lock()
+		defer mgr.m.Unlock()
+
 		start := time.Now()
-		planPIndexes, _, err := CfgGetPlanPIndexes(mgr.cfg)
+		lastPlanPIndexes, _, err := CfgGetPlanPIndexes(mgr.cfg)
 		if err != nil {
 			return nil, nil, err
 		}
 		log.Printf("manager: GetPlanPIndexes, CfgGetPlanPIndexes took: %s", time.Since(start))
 		// skip disk writes on repeated Cfg callbacks.
-		if !reflect.DeepEqual(mgr.lastPlanPIndexes, planPIndexes) {
+		if !reflect.DeepEqual(mgr.lastPlanPIndexes, lastPlanPIndexes) {
 			// make a local copy of the updated plan,
 			start := time.Now()
-			mgr.checkAndStoreStablePlanPIndexes(planPIndexes)
+			mgr.checkAndStoreStablePlanPIndexes(lastPlanPIndexes)
 			log.Printf("manager: GetPlanPIndexes, checkAndStoreStablePlanPIndexes took: %s", time.Since(start))
 		}
 
-		mgr.lastPlanPIndexes = planPIndexes
+		mgr.lastPlanPIndexes = lastPlanPIndexes
 		atomic.AddUint64(&mgr.stats.TotRefreshLastPlanPIndexes, 1)
 
-		mgr.lastPlanPIndexesByName = make(map[string][]*PlanPIndex)
-		if planPIndexes != nil {
-			for _, planPIndex := range planPIndexes.PlanPIndexes {
-				a := mgr.lastPlanPIndexesByName[planPIndex.IndexName]
+		lastPlanPIndexesByName = make(map[string][]*PlanPIndex)
+		if lastPlanPIndexes != nil {
+			for _, planPIndex := range lastPlanPIndexes.PlanPIndexes {
+				a := lastPlanPIndexesByName[planPIndex.IndexName]
 				if a == nil {
 					a = make([]*PlanPIndex, 0)
 				}
-				mgr.lastPlanPIndexesByName[planPIndex.IndexName] =
+				lastPlanPIndexesByName[planPIndex.IndexName] =
 					append(a, planPIndex)
 			}
 		}
+		mgr.lastPlanPIndexesByName = lastPlanPIndexesByName
 
 		mgr.coveringCache = nil
 
@@ -965,7 +986,7 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 		}
 	}
 
-	return mgr.lastPlanPIndexes, mgr.lastPlanPIndexesByName, nil
+	return lastPlanPIndexes, lastPlanPIndexesByName, nil
 }
 
 // GetStableLocalPlanPIndexes retrieves the recovery plan for
@@ -1215,9 +1236,9 @@ func (mgr *Manager) Options() map[string]string {
 // GetOptions returns the (read-only) options of a Manager.  Callers
 // must not modify the returned map.
 func (mgr *Manager) GetOptions() map[string]string {
-	mgr.m.Lock()
+	mgr.optionsMutex.RLock()
 	options := mgr.options
-	mgr.m.Unlock()
+	mgr.optionsMutex.RUnlock()
 	return options
 }
 
@@ -1229,7 +1250,7 @@ func (mgr *Manager) RefreshOptions() error {
 	}
 	// apply the newer values from the cluster level options
 	// into the managerOptions cache
-	mgr.m.Lock()
+	mgr.optionsMutex.Lock()
 	opts := mgr.options
 	newOptions := map[string]string{}
 	for k, v := range opts {
@@ -1244,7 +1265,7 @@ func (mgr *Manager) RefreshOptions() error {
 		}
 	}
 	mgr.options = newOptions
-	mgr.m.Unlock()
+	mgr.optionsMutex.Unlock()
 	return err
 }
 
@@ -1262,17 +1283,17 @@ func (mgr *Manager) SetOptions(options map[string]string) error {
 			f.SetString(v)
 		}
 	}
-	mgr.m.Lock()
+	mgr.optionsMutex.Lock()
 	start := time.Now()
 	_, err := CfgSetClusterOptions(mgr.cfg, &mo, 0)
 	if err != nil {
-		mgr.m.Unlock()
+		mgr.optionsMutex.Unlock()
 		return err
 	}
 	log.Printf("manager: SetOptions, CfgSetClusterOptions took: %s", time.Since(start))
 	mgr.options = options
 	atomic.AddUint64(&mgr.stats.TotSetOptions, 1)
-	mgr.m.Unlock()
+	mgr.optionsMutex.Unlock()
 	return nil
 }
 
@@ -1284,10 +1305,10 @@ func (mgr *Manager) StatsCopyTo(dst *ManagerStats) {
 // --------------------------------------------------------
 
 func (mgr *Manager) VisitEvents(callback func(event []byte)) {
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
+	mgr.eventsMutex.RLock()
+	defer mgr.eventsMutex.RUnlock()
 
-	p := mgr.Events().Front()
+	p := mgr.events.Front()
 	for p != nil {
 		callback(p.Value.([]byte))
 		p = p.Next()
@@ -1296,20 +1317,13 @@ func (mgr *Manager) VisitEvents(callback func(event []byte)) {
 
 // --------------------------------------------------------
 
-// Events must be invoked holding the manager lock.
-func (mgr *Manager) Events() *list.List {
-	return mgr.events
-}
-
-// --------------------------------------------------------
-
 func (mgr *Manager) AddEvent(jsonBytes []byte) {
-	mgr.m.Lock()
+	mgr.eventsMutex.Lock()
 	for mgr.events.Len() >= MANAGER_MAX_EVENTS {
 		mgr.events.Remove(mgr.events.Front())
 	}
 	mgr.events.PushBack(jsonBytes)
-	mgr.m.Unlock()
+	mgr.eventsMutex.Unlock()
 }
 
 // --------------------------------------------------------
