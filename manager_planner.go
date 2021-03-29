@@ -93,6 +93,15 @@ func (mgr *Manager) PlannerKick(msg string) {
 	if mgr.tagsMap == nil || mgr.tagsMap["planner"] {
 		syncWorkReq(mgr.plannerCh, WORK_KICK, msg, nil)
 	}
+
+	if mgr.peh != nil {
+		ev := &CfgEvent{}
+		if strings.Contains(msg, "CreateIndex") ||
+			strings.Contains(msg, "DeleteIndex") {
+			ev.Key = INDEX_DEFS_KEY
+		}
+		mgr.peh(ev)
+	}
 }
 
 // PlannerLoop is the main loop for the planner.

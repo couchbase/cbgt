@@ -60,7 +60,7 @@ type Ctl struct {
 
 	// -----------------------------------
 	// The m protects the fields below.
-	m sync.Mutex
+	m sync.RWMutex
 
 	revNum       uint64
 	revNumWaitCh chan struct{} // Closed when revNum changes.
@@ -87,6 +87,8 @@ type Ctl struct {
 	movingPartitionsCount int
 
 	rebOrchestrator bool
+
+	lastIndexDefs *cbgt.IndexDefs
 }
 
 type CtlOptions struct {
@@ -282,6 +284,74 @@ func (ctl *Ctl) Stop() error {
 	return nil
 }
 
+// ---------------------------------------------------
+
+var defaultCfgDebounceOffsetInMs = int(500)
+
+var defaultNodeOffsetMultiplier = int(4)
+
+// cfgDebounceIntervalInMS computes a debounce interval
+// to be applied for the config events in a cluster.
+// It primarily uses the number of indexes in the system for
+// computations as that roughly reflects the amount of meta
+// load in a metakv system.
+// It also uses the position of the current node's UUID in the
+// member node list to avoid the exact debounce interval
+// on every node. This ought to help each planner to trigger
+// their work at non-overlapping instant of time.
+func (ctl *Ctl) cfgDebounceIntervalInMS() int {
+	var pos int
+	offset, found := cbgt.ParseOptionsInt(
+		ctl.getManagerOptions(), "ctlCfgDebounceOffsetInMs")
+	if !found {
+		offset = defaultCfgDebounceOffsetInMs
+	}
+
+	nm, found := cbgt.ParseOptionsInt(
+		ctl.getManagerOptions(), "ctlNodeOffsetMultiplier")
+	if !found {
+		nm = defaultNodeOffsetMultiplier
+	}
+
+	ctl.m.RLock()
+	dinterval := len(ctl.lastIndexDefs.IndexDefs) * offset
+	for i, node := range ctl.memberNodes {
+		if node.UUID == ctl.optionsCtl.Manager.UUID() {
+			pos = i + 1
+			break
+		}
+	}
+	ctl.m.RUnlock()
+
+	dinterval = dinterval + (pos * nm * offset)
+
+	return dinterval
+}
+
+// ---------------------------------------------------
+
+// debounceCfgEvents tries to remove any immediate, spammy
+// successive Cfg events to save the planner from performing
+// redundant work. If there are no further events within the
+// debounce time, then it returns the original input event.
+func (ctl *Ctl) debounceCfgEvents(ev cbgt.CfgEvent) cbgt.CfgEvent {
+	debounceIntervalInMs := ctl.cfgDebounceIntervalInMS()
+	debounceTimeCh := time.After(time.Millisecond * time.Duration(debounceIntervalInMs))
+
+DEBOUNCE_LOOP:
+	for {
+		select {
+		case ev = <-ctl.cfgEventCh:
+			// NOOP upon more cfg events.
+
+		case <-debounceTimeCh:
+			break DEBOUNCE_LOOP
+		}
+	}
+	log.Printf("ctl: debounceCfgEvents duration: %d MS", debounceIntervalInMs)
+	return ev
+}
+
 // ----------------------------------------------------
 
 func (ctl *Ctl) run() {
@@ -330,8 +400,6 @@ func (ctl *Ctl) run() {
 		return
 	}
 
-	var lastIndexDefs *cbgt.IndexDefs
-
 	kickIndexDefs := func(kind string) error {
 		log.Printf("ctl: kickIndexDefs, kind: %s", kind)
 
@@ -343,7 +411,7 @@ func (ctl *Ctl) run() {
 		}
 
 		if kind == "init" || kind == "force" || kind == "force-indexDefs" ||
-			!reflect.DeepEqual(lastIndexDefs, indexDefs) {
+			!reflect.DeepEqual(ctl.lastIndexDefs, indexDefs) {
 			err = ctl.IndexDefsChanged()
 			if err != nil {
 				log.Warnf("ctl: kickIndexDefs, kind: %s, IndexDefsChanged,"+
@@ -351,12 +419,12 @@ func (ctl *Ctl) run() {
 			}
 		}
 
-		if lastIndexDefs != nil && indexDefs != nil {
-			if !reflect.DeepEqual(lastIndexDefs, indexDefs) {
+		if ctl.lastIndexDefs != nil && indexDefs != nil {
+			if !reflect.DeepEqual(ctl.lastIndexDefs, indexDefs) {
 				// If there is a change in the cached index definitions,
 				// look for any that have been deleted and invoke the
 				// OnDelete callback.
-				for name, idef := range lastIndexDefs.IndexDefs {
+				for name, idef := range ctl.lastIndexDefs.IndexDefs {
 					if _, exists := indexDefs.IndexDefs[name]; !exists {
 						if pindexImplType, exists := cbgt.PIndexImplTypes[idef.Type]; exists {
 							if pindexImplType.OnDelete != nil {
@@ -368,7 +436,7 @@ func (ctl *Ctl) run() {
 			}
 		}
 
-		lastIndexDefs = indexDefs
+		ctl.lastIndexDefs = indexDefs
 
 		return err
 	}
@@ -388,6 +456,17 @@ func (ctl *Ctl) run() {
 		return
 	}
 
+	eh := func(ev *cbgt.CfgEvent) {
+		if ev.Key == cbgt.INDEX_DEFS_KEY {
+			// invoking kickIndexDefs() synchronously as
+			// the internal plan computation happens on
+			// an explicit routine.
+			kickIndexDefs("ctl: mgr event")
+		}
+	}
+
+	ctl.optionsCtl.Manager.RegisterPlannerEventHandlerCallback(eh)
+
 	// -----------------------------------------------------------
 
 	close(ctl.initCh)
@@ -399,6 +478,13 @@ func (ctl *Ctl) run() {
 			return
 
 		case ev := <-ctl.cfgEventCh:
+			log.Printf("ctl: cfgEvent, kind: %s", ev.Key)
+
+			if ev.Key == cbgt.INDEX_DEFS_KEY {
+				// debounce the indexDef related cfg events.
+				ev = ctl.debounceCfgEvents(ev)
+			}
+
 			kickIndexDefs("cfgEvent")
 			if ev.Key == nodeDefns {
 				memberNodes, err = CurrentMemberNodes(ctl.cfg)
@@ -527,23 +613,11 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 		var nodesToRemove []string
 		version := cbgt.CfgGetVersion(ctl.cfg)
 
-		planPIndexes, _, err :=
-			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
-
-		// work on the plan only if there is no ongoing rebalance Or
-		// the current node is the rebalance orchestrator so that there
-		// will only be a single planner in an evolving cluster.
-		if err == nil && !cbgt.IsStablePlan(planPIndexes) {
-			if !ctl.rebalanceOrchestrator() {
-				return
-			}
-		}
-
 		cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
 			plannerFilterNewIndexesOnly)
 
-		planPIndexes, _, err =
+		planPIndexes, _, err :=
 			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
 		if err == nil && planPIndexes != nil {
 			ctl.m.Lock()

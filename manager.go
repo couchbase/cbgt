@@ -90,7 +90,26 @@ type Manager struct {
 	eventsMutex sync.RWMutex
 	events      *list.List
 
+	peh PlannerEventHandlerCallback
+
 	stablePlanPIndexesMutex sync.RWMutex // Protects the local stable plan access.
+}
+
+// PlannerEventHandlerCallback is an optional event
+// callback for an external planner that wish to receive
+// direct notifications of custom cfg events (bypassing
+// the metakv/cfg event subscription model) directly
+// from the local manager instance.
+// Currently  the manager only provides index definition
+// related events alone in this callbacks.
+type PlannerEventHandlerCallback func(*CfgEvent)
+
+// RegisterPlannerEventHandlerCallback lets an external
+// planner register for any custom index definition change
+// notifications from the manager instance.
+func (mgr *Manager) RegisterPlannerEventHandlerCallback(
+	ev PlannerEventHandlerCallback) {
+	mgr.peh = ev
 }
 
 // ManagerStats represents the stats/metrics tracked by a Manager
