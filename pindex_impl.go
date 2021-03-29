@@ -15,6 +15,7 @@ import (
 	"container/list"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/gorilla/mux"
 
@@ -250,20 +251,41 @@ const QUERY_CTL_DEFAULT_TIMEOUT_MS = int64(10000)
 
 // PINDEX_STORE_MAX_ERRORS is the max number of errors that a
 // PIndexStoreStats will track.
+// Updates to this setting is not thread-safe.
 var PINDEX_STORE_MAX_ERRORS = 40
 
 // PIndexStoreStats provides some common stats/metrics and error
 // tracking that some pindex type backends can reuse.
 type PIndexStoreStats struct {
-	TimerBatchStore metrics.Timer
-	Errors          *list.List // Capped list of string (json).
+	TimerBatchStore metrics.Timer // Access protected by an internal lock
+
+	m               sync.RWMutex // Mutex to protect following fields
+	Errors          *list.List   // Capped list of string (json)
 	TotalErrorCount uint64
+}
+
+func NewPIndexStoreStats() *PIndexStoreStats {
+	return &PIndexStoreStats{
+		TimerBatchStore: metrics.NewTimer(),
+		Errors:          list.New(),
+	}
+}
+
+func (d *PIndexStoreStats) AddError(err string) {
+	d.m.Lock()
+	if d.Errors.Len() >= PINDEX_STORE_MAX_ERRORS {
+		d.Errors.Remove(d.Errors.Front())
+	}
+	d.Errors.PushBack(err)
+	d.TotalErrorCount++
+	d.m.Unlock()
 }
 
 func (d *PIndexStoreStats) WriteJSON(w io.Writer) {
 	w.Write([]byte(`{"TimerBatchStore":`))
 	WriteTimerJSON(w, d.TimerBatchStore)
 
+	d.m.RLock()
 	if d.Errors != nil {
 		w.Write([]byte(`,"Errors":[`))
 		e := d.Errors.Front()
@@ -281,8 +303,16 @@ func (d *PIndexStoreStats) WriteJSON(w io.Writer) {
 		}
 		w.Write([]byte(`]`))
 	}
+	d.m.RUnlock()
 
 	w.Write(JsonCloseBrace)
+}
+
+func (d *PIndexStoreStats) FetchTotalErrorCount() uint64 {
+	d.m.RLock()
+	defer d.m.RUnlock()
+
+	return d.TotalErrorCount
 }
 
 var prefixPIndexStoreStats = []byte(`{"pindexStoreStats":`)
