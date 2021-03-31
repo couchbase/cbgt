@@ -191,7 +191,7 @@ func checkRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 				" resp: %#v, err: %v", resp, err)
 		}
 		res := struct {
-			Status string `json:"status`
+			Status string `json:"status"`
 		}{}
 		err = json.Unmarshal(respBuf, &res)
 		if err != nil {
