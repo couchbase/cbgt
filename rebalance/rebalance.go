@@ -30,6 +30,7 @@ import (
 var ErrorNotPausable = errors.New("not pausable")
 var ErrorNotResumable = errors.New("not resumable")
 var ErrorNoIndexDefinitionFound = errors.New("no index definition found")
+var ErrorConcurrentPlannerInProgress = errors.New("concurrent planner in progress")
 
 // StatsSampleErrorThreshold defines the default upper limit for
 // the ephemeral stats monitoring errors tolerated / ignored
@@ -669,7 +670,7 @@ func (r *Rebalancer) assignPIndexes(stopCh, stopCh2 chan struct{},
 		if err != nil {
 			if err != ErrorNoIndexDefinitionFound {
 				return fmt.Errorf("assignPIndex: update plan,"+
-					" perhaps a concurrent planner won, err: %v", err)
+					" perhaps a concurrent planner won, err: %w", err)
 			}
 			r.Logf("assignPIndex: update plan,"+
 				" perhaps a concurrent planner won, no indexDef,"+
@@ -782,7 +783,9 @@ func (r *Rebalancer) assignPIndexesLOCKED(index string, node string,
 			pm.stateOps[next].State, pm.stateOps[next].Op)
 
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil,
+				fmt.Errorf("assignPIndexCurrStatesLOCKED err: %v, %w",
+					err, ErrorConcurrentPlannerInProgress)
 		}
 	}
 
@@ -807,7 +810,9 @@ func (r *Rebalancer) assignPIndexesLOCKED(index string, node string,
 			indexDef, pm.name, node, pm.stateOps[next].State,
 			pm.stateOps[next].Op)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil,
+				fmt.Errorf("updatePlanPIndexesLOCKED err: %v, %w",
+					err, ErrorConcurrentPlannerInProgress)
 		}
 	}
 

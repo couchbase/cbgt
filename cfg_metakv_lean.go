@@ -311,7 +311,7 @@ RETRY:
 		err = fmt.Errorf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
 			" plan hash: %s contents: %s, and directory stamp: %s", hashMD5, data, hashFromName)
 		log.Printf("%+v", err)
-		return nil, 0, err
+		return data, 0, nil
 	}
 
 	casResult := c.lastSplitCAS + 1
