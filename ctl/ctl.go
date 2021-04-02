@@ -300,7 +300,6 @@ var defaultNodeOffsetMultiplier = int(4)
 // on every node. This ought to help each planner to trigger
 // their work at non-overlapping instant of time.
 func (ctl *Ctl) cfgDebounceIntervalInMS() int {
-	var pos int
 	offset, found := cbgt.ParseOptionsInt(
 		ctl.getManagerOptions(), "ctlCfgDebounceOffsetInMs")
 	if !found {
@@ -313,8 +312,14 @@ func (ctl *Ctl) cfgDebounceIntervalInMS() int {
 		nm = defaultNodeOffsetMultiplier
 	}
 
+	var dinterval int
+	var pos int
+
 	ctl.m.RLock()
-	dinterval := len(ctl.lastIndexDefs.IndexDefs) * offset
+	if ctl.lastIndexDefs != nil {
+		dinterval = len(ctl.lastIndexDefs.IndexDefs) * offset
+	}
+
 	for i, node := range ctl.memberNodes {
 		if node.UUID == ctl.optionsCtl.Manager.UUID() {
 			pos = i + 1
