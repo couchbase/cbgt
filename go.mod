@@ -3,7 +3,7 @@ module github.com/couchbase/cbgt
 go 1.13
 
 require (
-	github.com/couchbase/blance v0.0.0-20201030011610-c73b54864c1a
+	github.com/couchbase/blance v0.0.0-20210405154546-d58d94e85f88
 	github.com/couchbase/cbauth v0.0.0-20200508215310-0d352b097b19
 	github.com/couchbase/clog v0.0.0-20190523192451-b8e6d5d421bc
 	github.com/couchbase/go-couchbase v0.0.0-20201026062457-7b3be89bbd89
