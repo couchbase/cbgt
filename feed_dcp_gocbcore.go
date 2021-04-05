@@ -937,7 +937,9 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamOptions,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if errors.Is(er, gocbcore.ErrShutdown) ||
-				errors.Is(er, gocbcore.ErrSocketClosed) {
+				errors.Is(er, gocbcore.ErrSocketClosed) ||
+				errors.Is(er, gocbcore.ErrScopeNotFound) ||
+				errors.Is(er, gocbcore.ErrCollectionNotFound) {
 				f.initiateShutdown(fmt.Errorf("OpenStream, %v", er))
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
