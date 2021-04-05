@@ -949,7 +949,14 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				go f.rollback(vbId, entries)
 				// rollback will handle this feed closure and setting up of a new feed
 				er = nil
+			} else if errors.Is(er, gocbcore.ErrRequestCanceled) {
+				// request was canceled (likely) by FTS, ignore error as stream request
+				// will be re-attempted
+				log.Printf("feed_dcp_gocbcore: [%s] Stream request for vb: %v was canceled,"+
+					" will re-initiate th stream request", f.Name(), vbId)
+				er = nil
 			} else if er != nil {
+				// unidentified error
 				log.Warnf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
 					" vb: %v, err: %v", f.Name(), vbId, er)
 				f.complete(vbId)
@@ -988,8 +995,14 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
 	if err != nil {
-		f.onError(true,
-			fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
+		if errors.Is(err, gocbcore.ErrTimeout) {
+			log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v has timed out",
+				f.Name(), vbId)
+			go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
+		} else {
+			f.onError(true,
+				fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
+		}
 	}
 }
 
@@ -1014,7 +1027,7 @@ func (f *GocbcoreDCPFeed) initiateShutdown(err error) {
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
 func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
-	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
+	log.Warnf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, err: %v",
 		f.Name(), f.bucketName, f.bucketUUID, err)
 
