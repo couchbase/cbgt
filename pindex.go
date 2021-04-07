@@ -120,12 +120,16 @@ func (p *PIndex) Clone() *PIndex {
 }
 
 func restartPIndex(mgr *Manager, pindex *PIndex) {
+	log.Printf("pindex: restartPIndex starts for pindex: %s", pindex.Name)
 	pindex.m.Lock()
 	closed := pindex.closed
 	pindex.m.Unlock()
 
 	if !closed {
-		mgr.ClosePIndex(pindex)
+		err := mgr.ClosePIndex(pindex)
+		if err != nil {
+			log.Printf("pindex: ClosePIndex: %s, err: %v", pindex.Name, err)
+		}
 	}
 
 	mgr.Kick("restart-pindex")

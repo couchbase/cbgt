@@ -1129,7 +1129,8 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 						uuidSeqWant.UUID, uuidSeqWant.Seq)
 				} else {
 					r.Logf("rebalance: waitAssignPIndexDone,"+
-						" awaiting a stats sample grab for pindex %s", pindex)
+						" awaiting a stats sample grab for pindex %s,"+
+						" formerPrimaryNode %s", pindex, formerPrimaryNode)
 					err := r.grabCurrentSample(stopCh, stopCh2, pindex, formerPrimaryNode)
 					if err != nil {
 						// adding more resiliency with pindex not found errors to safe guard against

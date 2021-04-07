@@ -683,13 +683,13 @@ func (mgr *Manager) Kick(msg string) {
 // ClosePIndex synchronously has the janitor close a pindex.
 func (mgr *Manager) ClosePIndex(pindex *PIndex) error {
 	return syncWorkReq(mgr.janitorCh, JANITOR_CLOSE_PINDEX,
-		"api-ClosePIndex", pindex)
+		"api-ClosePIndex:"+pindex.Name, pindex)
 }
 
 // RemovePIndex synchronously has the janitor remove a pindex.
 func (mgr *Manager) RemovePIndex(pindex *PIndex) error {
 	return syncWorkReq(mgr.janitorCh, JANITOR_REMOVE_PINDEX,
-		"api-RemovePIndex", pindex)
+		"api-RemovePIndex:"+pindex.Name, pindex)
 }
 
 // GetPIndex retrieves a named pindex instance.

@@ -102,9 +102,9 @@ func (mgr *Manager) JanitorLoop() {
 			} else if m.op == WORK_NOOP {
 				atomic.AddUint64(&mgr.stats.TotJanitorNOOPOk, 1)
 			} else if m.op == JANITOR_CLOSE_PINDEX {
-				mgr.stopPIndex(m.obj.(*PIndex), false)
+				err = mgr.stopPIndex(m.obj.(*PIndex), false)
 			} else if m.op == JANITOR_REMOVE_PINDEX {
-				mgr.stopPIndex(m.obj.(*PIndex), true)
+				err = mgr.stopPIndex(m.obj.(*PIndex), true)
 			} else {
 				err = fmt.Errorf("janitor: unknown op: %s, m: %#v", m.op, m)
 				atomic.AddUint64(&mgr.stats.TotJanitorUnknownErr, 1)
