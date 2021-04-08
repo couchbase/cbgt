@@ -14,7 +14,6 @@ package rest
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -29,6 +28,14 @@ var reqBackoffFactor = float32(2)
 var reqBackoffMaxSleepMS = 10000
 var errRequestProxyingNotNeeded = fmt.Errorf("Current node is the rebalance orchestrator")
 var errNoRetryNeeded = fmt.Errorf("Current error doesn't need a request retry")
+
+type proxyRequestErr struct {
+	msg string
+}
+
+func (e *proxyRequestErr) Error() string {
+	return e.msg
+}
 
 var httpClient = &http.Client{
 	Timeout: time.Second * 20,
@@ -64,9 +71,8 @@ func proxyOrchestratorNodeOnRebalanceDone(w http.ResponseWriter,
 			}
 
 			// exit on no retry errors.
-			if errors.Is(err, errNoRetryNeeded) {
-				// unwrap the error before sending to the end user.
-				err = errors.Unwrap(errNoRetryNeeded)
+			if _, ok := err.(*proxyRequestErr); ok {
+				err = fmt.Errorf("proxy request err: %v", err)
 				return -1
 			}
 
@@ -158,7 +164,7 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 		return nil, err
 	}
 	if rv.Status != "ok" {
-		return nil, fmt.Errorf("err: %s, %w", rv.ErrStr, errNoRetryNeeded)
+		return nil, &proxyRequestErr{msg: rv.ErrStr}
 	}
 
 	log.Printf("rest_util: index method: %s request successfully forwarded"+
@@ -247,11 +253,11 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 				return
 			}
 
-			var req *http.Request
-			req, err = http.NewRequestWithContext(ctx, "GET", url, nil)
+			req, err := http.NewRequest("GET", url, nil)
 			if err != nil {
 				return
 			}
+			req = req.WithContext(ctx)
 
 			var resp *http.Response
 			resp, err = httpClient.Do(req)

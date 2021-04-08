@@ -17,7 +17,6 @@ package ctl
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -954,7 +953,8 @@ func (ctl *Ctl) startCtlLOCKED(
 					if err != nil {
 						log.Warnf("ctl: ReportProgress, err: %v", err)
 						// retry the rebalance upon concurrent planner operations.
-						if !errors.Is(err, rebalance.ErrorConcurrentPlannerInProgress) {
+						if !strings.Contains(err.Error(),
+							rebalance.ErrorConcurrentPlannerInProgress.Error()) {
 							progressDoneCh <- err
 						}
 					}

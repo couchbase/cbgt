@@ -469,7 +469,8 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 		if err2 != nil {
 			r.Logf("rebalance: assignPartitionsFunc, err: %v", err2)
 			// Stop rebalance for all other errors.
-			if err2 != ErrorNoIndexDefinitionFound {
+			if !strings.Contains(err2.Error(),
+				ErrorNoIndexDefinitionFound.Error()) {
 				r.progressCh <- RebalanceProgress{Error: err2}
 				r.Stop()
 				return err2
@@ -668,7 +669,8 @@ func (r *Rebalancer) assignPIndexes(stopCh, stopCh2 chan struct{},
 		r.m.Unlock()
 
 		if err != nil {
-			if err != ErrorNoIndexDefinitionFound {
+			if !strings.Contains(err.Error(),
+				ErrorNoIndexDefinitionFound.Error()) {
 				return fmt.Errorf("assignPIndex: update plan,"+
 					" perhaps a concurrent planner won, err: %w", err)
 			}
@@ -702,12 +704,23 @@ func (r *Rebalancer) assignPIndexes(stopCh, stopCh2 chan struct{},
 		close(doneCh)
 
 		var errs []string
+		indexMissingErrsOnly := true
 		for err := range doneCh {
 			if err != nil {
+				if indexMissingErrsOnly && !strings.Contains(err.Error(),
+					ErrorNoIndexDefinitionFound.Error()) {
+					indexMissingErrsOnly = false
+				}
 				errs = append(errs, err.Error())
 			}
 		}
 		if len(errs) > 0 {
+			// with index definition missing errors rebalance would continue further.
+			if indexMissingErrsOnly {
+				return fmt.Errorf("rebalance: waitAssignPIndexDone missing index: %s,"+
+					" errors: %w", index, ErrorNoIndexDefinitionFound)
+			}
+
 			return fmt.Errorf("rebalance: waitAssignPIndexDone errors: %d, %#v",
 				len(errs), errs)
 		}
@@ -919,6 +932,19 @@ func (r *Rebalancer) updatePlanPIndexesLOCKED(
 		}
 	} else {
 		if planPIndex.Nodes[node] == nil {
+			// check whether the index definition is still alive,
+			// if not, then propagate the ErrorNoIndexDefinitionFound.
+			indexDefs, err := cbgt.PlannerGetIndexDefs(r.cfg, r.version)
+			if err != nil {
+				return "", err
+			}
+			indexDef := indexDefs.IndexDefs[indexDef.Name]
+			if indexDef == nil {
+				return "", fmt.Errorf("updatePlanPIndexes: planPIndex "+
+					" and index missing, pindex: %s, index: %s, err: %w",
+					indexDef.Name, pindex, ErrorNoIndexDefinitionFound)
+			}
+
 			return "", fmt.Errorf("updatePlanPIndexes:"+
 				" planPIndex missing,"+
 				" indexDef.Name: %s, pindex: %s,"+
