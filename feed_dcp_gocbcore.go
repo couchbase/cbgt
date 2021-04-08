@@ -1028,7 +1028,7 @@ func (f *GocbcoreDCPFeed) initiateShutdown(err error) {
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
 func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
-	log.Warnf("feed_dcp_gocbcore: onError, name: %s,"+
+	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, err: %v",
 		f.Name(), f.bucketName, f.bucketUUID, err)
 
