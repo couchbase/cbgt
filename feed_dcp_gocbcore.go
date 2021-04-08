@@ -789,9 +789,9 @@ func (f *GocbcoreDCPFeed) Start() error {
 	}
 
 	log.Printf("feed_dcp_gocbcore: Start, name: %s, num streams: %d,"+
-		" manifestUID: %v, streamOptions: {FilterOptions: %+v, StreamOptions: %+v}",
-		f.Name(), len(f.vbucketIds), f.manifestUID,
-		f.streamOptions.FilterOptions, f.streamOptions.StreamOptions)
+		" manifestUID: %v, streamOptions: {FilterOptions: %+v, StreamOptions: %+v},"+
+		" vbuckets: %v", f.Name(), len(f.vbucketIds), f.manifestUID,
+		f.streamOptions.FilterOptions, f.streamOptions.StreamOptions, f.vbucketIds)
 
 	for _, vbid := range f.vbucketIds {
 		err := f.initiateStream(uint16(vbid))
