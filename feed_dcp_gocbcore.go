@@ -940,7 +940,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				errors.Is(er, gocbcore.ErrSocketClosed) ||
 				errors.Is(er, gocbcore.ErrScopeNotFound) ||
 				errors.Is(er, gocbcore.ErrCollectionNotFound) {
-				f.initiateShutdown(fmt.Errorf("OpenStream, %v", er))
+				f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] OpenStream,"+
+					" vb: %v, err: %v", f.Name(), vbId, er))
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
 				log.Printf("feed_dcp_gocbcore: [%s] Received rollback, for vb: %v,"+
@@ -1206,7 +1207,8 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		errors.Is(err, gocbcore.ErrSocketClosed) ||
 		errors.Is(err, gocbcore.ErrDCPStreamFilterEmpty) {
 		f.complete(vbId)
-		f.initiateShutdown(fmt.Errorf("End, %v", err))
+		f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s], End, vb: %v, err: %v",
+			f.Name(), vbId, err))
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) ||
 		errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
@@ -1270,15 +1272,15 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 	f.lastReceivedSeqno[vbId] = seqNo
 
 	atomic.AddUint64(&f.dcpStats.TotDCPCreateCollections, 1)
-
 }
 
 func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
 	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
 	streamId uint16) {
 	// initiate a feed closure on collection delete
-	f.initiateShutdown(fmt.Errorf("[vb:%v stream:%v] DeleteCollection, collection uid: %d",
-		vbId, streamId, collectionId))
+	f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] DeleteCollection,"+
+		" vb: %v, stream: %v, collection uid: %d",
+		f.Name(), vbId, streamId, collectionId))
 }
 
 func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
@@ -1288,14 +1290,15 @@ func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
 
 func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16, key []byte) {
-	// not supported
+	// Don't expect to see a CreateScope message as indexes cannot span scopes
 }
 
 func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
 	manifestUid uint64, scopeId uint32, streamId uint16) {
 	// initiate a feed closure on scope delete
-	f.initiateShutdown(fmt.Errorf("[vb:%v stream:%v] DeleteScope, scope uid: %d",
-		vbId, streamId, scopeId))
+	f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] DeleteScope,"+
+		" vb: %v, stream: %v, scope uid: %d",
+		f.Name(), vbId, streamId, scopeId))
 }
 
 func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
