@@ -843,20 +843,16 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 	if nodeDefs == nil || refresh {
 		mgr.m.Lock()
 		defer mgr.m.Unlock()
-		start := time.Now()
 		nodeDefs, _, err = CfgGetNodeDefs(mgr.Cfg(), kind)
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("manager: GetNodeDefs, CfgGetNodeDefs took: %s", time.Since(start))
 		mgr.lastNodeDefs[kind] = nodeDefs
 		atomic.AddUint64(&mgr.stats.TotRefreshLastNodeDefs, 1)
 		mgr.coveringCache = nil
 
 		if RegisteredPIndexCallbacks.OnRefresh != nil {
-			start := time.Now()
 			RegisteredPIndexCallbacks.OnRefresh()
-			log.Printf("manager: GetNodeDefs, PIndex OnRefresh took: %s", time.Since(start))
 		}
 	}
 
@@ -876,12 +872,10 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 	if lastIndexDefs == nil || refresh {
 		mgr.m.Lock()
 		defer mgr.m.Unlock()
-		start := time.Now()
 		lastIndexDefs, _, err := CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
 			return nil, nil, err
 		}
-		log.Printf("manager: GetIndexDefs, CfgGetIndexDefs took: %s", time.Since(start))
 		mgr.lastIndexDefs = lastIndexDefs
 		atomic.AddUint64(&mgr.stats.TotRefreshLastIndexDefs, 1)
 
@@ -896,9 +890,7 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 		mgr.coveringCache = nil
 
 		if RegisteredPIndexCallbacks.OnRefresh != nil {
-			start := time.Now()
 			RegisteredPIndexCallbacks.OnRefresh()
-			log.Printf("manager: GetIndexDefs, PIndex OnRefresh took: %s", time.Since(start))
 		}
 	}
 
@@ -966,18 +958,14 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 		mgr.m.Lock()
 		defer mgr.m.Unlock()
 
-		start := time.Now()
 		lastPlanPIndexes, _, err := CfgGetPlanPIndexes(mgr.cfg)
 		if err != nil {
 			return nil, nil, err
 		}
-		log.Printf("manager: GetPlanPIndexes, CfgGetPlanPIndexes took: %s", time.Since(start))
 		// skip disk writes on repeated Cfg callbacks.
 		if !reflect.DeepEqual(mgr.lastPlanPIndexes, lastPlanPIndexes) {
 			// make a local copy of the updated plan,
-			start := time.Now()
 			mgr.checkAndStoreStablePlanPIndexes(lastPlanPIndexes)
-			log.Printf("manager: GetPlanPIndexes, checkAndStoreStablePlanPIndexes took: %s", time.Since(start))
 		}
 
 		mgr.lastPlanPIndexes = lastPlanPIndexes
@@ -999,9 +987,7 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 		mgr.coveringCache = nil
 
 		if RegisteredPIndexCallbacks.OnRefresh != nil {
-			start := time.Now()
 			RegisteredPIndexCallbacks.OnRefresh()
-			log.Printf("manager: GetPlanPIndexes, PIndex OnRefresh took: %s", time.Since(start))
 		}
 	}
 
@@ -1303,13 +1289,11 @@ func (mgr *Manager) SetOptions(options map[string]string) error {
 		}
 	}
 	mgr.optionsMutex.Lock()
-	start := time.Now()
 	_, err := CfgSetClusterOptions(mgr.cfg, &mo, 0)
 	if err != nil {
 		mgr.optionsMutex.Unlock()
 		return err
 	}
-	log.Printf("manager: SetOptions, CfgSetClusterOptions took: %s", time.Since(start))
 	mgr.options = options
 	atomic.AddUint64(&mgr.stats.TotSetOptions, 1)
 	mgr.optionsMutex.Unlock()
