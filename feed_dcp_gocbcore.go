@@ -1248,9 +1248,10 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 
 		if destColl, ok := dest.(DestCollection); ok {
 			// A CreateCollection message for a collection is received only
-			// if the feed has subscribed to the collection, so treat this
-			// this message like we do a SeqnoAdvanced.
-			err = destColl.SeqNoAdvanced(partition, seqNo)
+			// if the feed has subscribed to the collection, so update seqno
+			// received for the feed.
+			err = destColl.CreateCollection(partition, manifestUid, scopeId,
+				collectionId, seqNo)
 		}
 
 		if err != nil {
@@ -1261,7 +1262,7 @@ func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
 		f.updateStopAfter(partition, seqNo)
 
 		return nil
-	}, f.stats.TimerSeqNoAdvanced)
+	}, f.stats.TimerCreateCollection)
 
 	if err != nil {
 		f.onError(true, fmt.Errorf("[vb:%v stream:%v] CreateCollection, err: %v",
@@ -1347,6 +1348,10 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
 		}
 
 		if destColl, ok := dest.(DestCollection); ok {
+			// A SeqNoAdvanced message is received when the feed has subscribed
+			// to collection(s), and it is to be interpreted as a SnapshotEnd
+			// message, indicating that the feed should not expect any more
+			// sequence numbers up until this.
 			err = destColl.SeqNoAdvanced(partition, seqNo)
 		}
 

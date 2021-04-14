@@ -111,6 +111,22 @@ func (t *DestForwarder) OSOSnapshot(partition string,
 		partition)
 }
 
+func (t *DestForwarder) CreateCollection(partition string,
+	manifestUid uint64, scopeId, collectionId uint32, seq uint64) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.CreateCollection(partition, manifestUid,
+			scopeId, collectionId, seq)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found (CreateCollection) for partition %s",
+		partition)
+}
+
 func (t *DestForwarder) SeqNoAdvanced(partition string,
 	seq uint64) error {
 	dest, err := t.DestProvider.Dest(partition)

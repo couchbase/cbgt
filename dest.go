@@ -150,8 +150,14 @@ type DestCollection interface {
 	//   - 0x02: end
 	OSOSnapshot(partition string, snapshotType uint32) error
 
-	// Invoked when there's a DCP message indicating that the seqno
-	// for the partition has to be advanced.
+	// Invoked when there's a DCP message indicating a collection that
+	// the feed has subscribed to was created.
+	CreateCollection(partition string, manifestUid uint64,
+		scopeId, collectionId uint32, seq uint64) error
+
+	// Invoked when there's a DCP message indicating that the consumer
+	// should not expect sequence numbers up until the advertised
+	// sequence number.
 	SeqNoAdvanced(partition string, seq uint64) error
 }
 
@@ -159,25 +165,27 @@ type DestCollection interface {
 type DestStats struct {
 	TotError uint64
 
-	TimerDataUpdate    metrics.Timer
-	TimerDataDelete    metrics.Timer
-	TimerSnapshotStart metrics.Timer
-	TimerOpaqueGet     metrics.Timer
-	TimerOpaqueSet     metrics.Timer
-	TimerRollback      metrics.Timer
-	TimerSeqNoAdvanced metrics.Timer
+	TimerDataUpdate       metrics.Timer
+	TimerDataDelete       metrics.Timer
+	TimerSnapshotStart    metrics.Timer
+	TimerOpaqueGet        metrics.Timer
+	TimerOpaqueSet        metrics.Timer
+	TimerRollback         metrics.Timer
+	TimerCreateCollection metrics.Timer
+	TimerSeqNoAdvanced    metrics.Timer
 }
 
 // NewDestStats creates a new, ready-to-use DestStats.
 func NewDestStats() *DestStats {
 	return &DestStats{
-		TimerDataUpdate:    metrics.NewTimer(),
-		TimerDataDelete:    metrics.NewTimer(),
-		TimerSnapshotStart: metrics.NewTimer(),
-		TimerOpaqueGet:     metrics.NewTimer(),
-		TimerOpaqueSet:     metrics.NewTimer(),
-		TimerRollback:      metrics.NewTimer(),
-		TimerSeqNoAdvanced: metrics.NewTimer(),
+		TimerDataUpdate:       metrics.NewTimer(),
+		TimerDataDelete:       metrics.NewTimer(),
+		TimerSnapshotStart:    metrics.NewTimer(),
+		TimerOpaqueGet:        metrics.NewTimer(),
+		TimerOpaqueSet:        metrics.NewTimer(),
+		TimerRollback:         metrics.NewTimer(),
+		TimerCreateCollection: metrics.NewTimer(),
+		TimerSeqNoAdvanced:    metrics.NewTimer(),
 	}
 }
 
@@ -197,6 +205,8 @@ func (d *DestStats) WriteJSON(w io.Writer) {
 	WriteTimerJSON(w, d.TimerOpaqueSet)
 	w.Write([]byte(`,"TimerRollback":`))
 	WriteTimerJSON(w, d.TimerRollback)
+	w.Write([]byte(`,"TimerCreateCollection":`))
+	WriteTimerJSON(w, d.TimerCreateCollection)
 	w.Write([]byte(`,"TimerSeqNoAdvanced":`))
 	WriteTimerJSON(w, d.TimerSeqNoAdvanced)
 
