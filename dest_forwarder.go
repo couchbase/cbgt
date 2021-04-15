@@ -111,6 +111,21 @@ func (t *DestForwarder) OSOSnapshot(partition string,
 		partition)
 }
 
+func (t *DestForwarder) SeqNoAdvanced(partition string,
+	seq uint64) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.SeqNoAdvanced(partition, seq)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found (SeqNoAdvanced) for partition %s",
+		partition)
+}
+
 func (t *DestForwarder) CreateCollection(partition string,
 	manifestUid uint64, scopeId, collectionId uint32, seq uint64) error {
 	dest, err := t.DestProvider.Dest(partition)
@@ -127,18 +142,51 @@ func (t *DestForwarder) CreateCollection(partition string,
 		partition)
 }
 
-func (t *DestForwarder) SeqNoAdvanced(partition string,
-	seq uint64) error {
+func (t *DestForwarder) DeleteCollection(partition string,
+	manifestUid uint64, scopeId, collectionId uint32, seq uint64) error {
 	dest, err := t.DestProvider.Dest(partition)
 	if err != nil {
 		return err
 	}
 	if destColl, ok := dest.(DestCollection); ok {
-		return destColl.SeqNoAdvanced(partition, seq)
+		return destColl.DeleteCollection(partition, manifestUid,
+			scopeId, collectionId, seq)
 	}
 
 	return fmt.Errorf("dest_forwarder: no DestCollection "+
-		"implementation found (SeqNoAdvanced) for partition %s",
+		"implementation found (DeleteCollection) for partition %s",
+		partition)
+}
+
+func (t *DestForwarder) FlushCollection(partition string,
+	manifestUid uint64, scopeId, collectionId uint32, seq uint64) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.FlushCollection(partition, manifestUid,
+			scopeId, collectionId, seq)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found (FlushCollection) for partition %s",
+		partition)
+}
+
+func (t *DestForwarder) ModifyCollection(partition string,
+	manifestUid uint64, scopeId, collectionId uint32, seq uint64) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+	if destColl, ok := dest.(DestCollection); ok {
+		return destColl.ModifyCollection(partition, manifestUid,
+			scopeId, collectionId, seq)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestCollection "+
+		"implementation found (ModifyCollection) for partition %s",
 		partition)
 }
 
