@@ -169,9 +169,24 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, no servers provided")
 	}
 
+	var useTLS bool
+
 	connStr := svrs[0]
-	if connURL, err := url.Parse(svrs[0]); err == nil {
+	if connURL, err := url.Parse(connStr); err == nil {
 		if strings.HasPrefix(connURL.Scheme, "http") {
+			if (options["authType"] == "cbauth" || len(TLSCertFile) > 0) &&
+				len(options["serverSslPort"]) > 0 {
+				// UseTLS and serverSslPort
+
+				connStr = connURL.Scheme + "://" +
+					connURL.Hostname() + ":" + options["serverSslPort"]
+
+				if newURL, err := url.Parse(connStr); err == nil {
+					connURL = newURL
+					useTLS = true
+				}
+			}
+
 			// tack on an option: bootstrap_on=http for gocbcore SDK
 			// connections to force HTTP config polling
 			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
@@ -186,7 +201,9 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 			" unable to build config from connStr: %s, err: %v", connStr, err)
 	}
 
-	if options != nil && options["authType"] == "cbauth" {
+	config.UseTLS = useTLS
+
+	if options["authType"] == "cbauth" {
 		config.TLSRootCAProvider = FetchGocbcoreSecurityConfig
 	} else {
 		// in the case authType isn't cbauth, check if user has set a TLSCertFile
