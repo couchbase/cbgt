@@ -716,15 +716,11 @@ func (mgr *Manager) registerPIndex(pindex *PIndex) error {
 	mgr.coveringCache = nil
 
 	if mgr.meh != nil {
-		start := time.Now()
 		mgr.meh.OnRegisterPIndex(pindex)
-		log.Printf("manager: registerPIndex, meh OnRegisterPIndex took: %s", time.Since(start))
 	}
 
 	if RegisteredPIndexCallbacks.OnCreate != nil {
-		start := time.Now()
 		RegisteredPIndexCallbacks.OnCreate(pindex.Name)
-		log.Printf("manager: registerPIndex, meh PIndex OnCreate took: %s", time.Since(start))
 	}
 
 	return nil
@@ -750,15 +746,11 @@ func (mgr *Manager) unregisterPIndex(name string, pindexToMatch *PIndex) *PIndex
 		mgr.coveringCache = nil
 
 		if mgr.meh != nil {
-			start := time.Now()
 			mgr.meh.OnUnregisterPIndex(pindex)
-			log.Printf("manager: unregisterPIndex, meh OnUnregisterPIndex took: %s", time.Since(start))
 		}
 
 		if RegisteredPIndexCallbacks.OnDelete != nil {
-			start := time.Now()
 			RegisteredPIndexCallbacks.OnDelete(pindex.Name)
-			log.Printf("manager: unregisterPIndex, meh PIndex OnDelete took: %s", time.Since(start))
 		}
 	}
 
