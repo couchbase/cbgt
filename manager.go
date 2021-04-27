@@ -1262,6 +1262,7 @@ func (mgr *Manager) RefreshOptions() error {
 		}
 	}
 	mgr.options = newOptions
+	log.Printf("manager: RefreshOptions: %+v finished", mgr.options)
 	mgr.optionsMutex.Unlock()
 	return err
 }
