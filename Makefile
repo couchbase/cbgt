@@ -6,7 +6,7 @@ build: gen-bindata
 
 gen-bindata:
 	(cd rest; \
-     go-bindata-assetfs -pkg=rest ./static/...; \
+     go-bindata-assetfs -pkg=rest ./static/... -o bindata_assetfs.go; \
      gofmt -s -w bindata_assetfs.go)
 
 coverage:
