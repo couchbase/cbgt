@@ -424,6 +424,8 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		servers, bucketName, bucketUUID, params, BasicPartitionFunc,
 		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
+		// notify mgr that the feed setup has failed, so the janitor can retry
+		mgr.Kick("gocbcore-feed")
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 			" could not prepare DCP feed, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
