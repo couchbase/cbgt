@@ -434,12 +434,14 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 
 	err = mgr.registerFeed(feed)
 	if err != nil {
+		// another feed already exists, no need to notify manager on
+		// this shutdown
 		return feed.onError(false, err)
 	}
 
 	err = feed.Start()
 	if err != nil {
-		return feed.onError(false,
+		return feed.onError(true,
 			fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 				" could not start, server: %s, err: %v",
 				mgr.server, err))
