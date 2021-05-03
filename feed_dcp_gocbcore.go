@@ -439,7 +439,7 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	err = mgr.registerFeed(feed)
 	if err != nil {
 		// another feed already exists, no need to notify manager on
-		// this shutdown
+		// this closure
 		return feed.onError(false, err)
 	}
 
