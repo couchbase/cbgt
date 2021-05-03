@@ -176,10 +176,14 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		if strings.HasPrefix(connURL.Scheme, "http") {
 			if (options["authType"] == "cbauth" || len(TLSCertFile) > 0) &&
 				len(options["serverSslPort"]) > 0 {
+				hostname := connURL.Hostname()
+				// retain the square brackets with ipv6 address.
+				if strings.Contains(connURL.Host, "[") {
+					hostname = "[" + hostname + "]"
+				}
 				// UseTLS and serverSslPort
-
 				connStr = connURL.Scheme + "://" +
-					connURL.Hostname() + ":" + options["serverSslPort"]
+					hostname + ":" + options["serverSslPort"]
 
 				if newURL, err := url.Parse(connStr); err == nil {
 					connURL = newURL
