@@ -428,8 +428,15 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		servers, bucketName, bucketUUID, params, BasicPartitionFunc,
 		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
-		// notify mgr that the feed setup has failed, so the janitor can retry
-		mgr.Kick("gocbcore-feed")
+		go func() {
+			// Notify manager (asynchronously) that the feed setup has
+			// failed, so the janitor can retry
+			//
+			// This needs to be asynchronous, as "kick"ing the Janitor
+			// from within the JanitorLoop (this API is invoked from
+			// within JanitorOnce) is prohibited - deadlock!
+			mgr.Kick("gocbcore-feed")
+		}()
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 			" could not prepare DCP feed, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
@@ -438,8 +445,8 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 
 	err = mgr.registerFeed(feed)
 	if err != nil {
-		// another feed already exists, no need to notify manager on
-		// this closure
+		// A feed for this pindex already exists, no need to notify
+		// manager on this closure
 		return feed.onError(false, err)
 	}
 
@@ -841,7 +848,9 @@ func (f *GocbcoreDCPFeed) NotifyMgrOnClose() {
 		log.Printf("feed_dcp_gocbcore: Close, name: %s, notify manager",
 			f.Name())
 
-		f.mgr.Kick("gocbcore-feed")
+		go func() {
+			f.mgr.Kick("gocbcore-feed")
+		}()
 	}
 }
 
