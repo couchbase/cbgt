@@ -249,7 +249,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 
 	agent, err := setupGocbcoreDCPAgent(config, dcpConnName, flags)
 	if err != nil {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, setup err: %v", err)
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, setup err: %w", err)
 	}
 
 	dm.entries[key][agent] = 1
@@ -345,7 +345,7 @@ func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
 	*gocbcore.DCPAgent, error) {
 	agent, err := gocbcore.CreateDcpAgent(config, connName, flags)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
 	}
 
 	options := gocbcore.WaitUntilReadyOptions{
@@ -367,7 +367,7 @@ func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
 		log.Warnf("feed_dcp_gocbcore: CreateDcpAgent, err: %v (close DCPAgent: %p)",
 			err, agent)
 		go agent.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
 	}
 
 	log.Printf("feed_dcp_gocbcore: CreateDcpAgent succeeded"+
@@ -428,13 +428,17 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		servers, bucketName, bucketUUID, params, BasicPartitionFunc,
 		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
-		// Notify manager (asynchronously) that the feed setup has
-		// failed, so the janitor can retry
-		//
-		// This needs to be asynchronous, as "kick"ing the Janitor
-		// from within the JanitorLoop (this API is invoked from
-		// within JanitorOnce) is prohibited - deadlock!
-		go mgr.Kick(fmt.Sprintf("gocbcore-feed start error, feed: %v", feedName))
+		if errors.Is(err, errAgentSetupFailed) {
+			// In the event of a connection error (agent setup error,
+			// likely because KV wasn't ready), notify the manager
+			// (asynchronously) that the feed setup has failed, so
+			// the janitor can reattempt this operation.
+			//
+			// This needs to be asynchronous, as "kick"ing the Janitor
+			// from within the JanitorLoop (this API is invoked from
+			// within JanitorOnce) is prohibited - deadlock!
+			go mgr.Kick(fmt.Sprintf("gocbcore-feed-start, feed: %v", feedName))
+		}
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 			" could not prepare DCP feed, name: %s, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
@@ -642,13 +646,13 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 
 	if err = feed.setupStreamOptions(paramsStr, mgr.Options()["authType"]); err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
-			" error in setting up feed's stream options, err: %v", err)
+			" error in setting up feed's stream options, err: %w", err)
 	}
 
 	feed.agent, err = FetchDCPAgent(feed.bucketName, feed.bucketUUID,
 		paramsStr, servers, mgr.Options())
 	if err != nil {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %v", err)
+		return nil, fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %w", err)
 	}
 
 	log.Printf("feed_dcp_gocbcore: newGocbcoreDCPFeed, name: %s, indexName: %s,"+

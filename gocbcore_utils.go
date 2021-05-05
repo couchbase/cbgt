@@ -56,11 +56,13 @@ func setupAgentConfig(name, bucketName string,
 	}
 }
 
+var errAgentSetupFailed = fmt.Errorf("agent setup failed")
+
 func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 	*gocbcore.Agent, error) {
 	agent, err := gocbcore.CreateAgent(config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
 	}
 
 	options := gocbcore.WaitUntilReadyOptions{
@@ -81,7 +83,7 @@ func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 
 	if err != nil {
 		go agent.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
 	}
 
 	log.Printf("gocbcore_utils: CreateAgent succeeded"+
@@ -169,7 +171,7 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: fetchClient, setup err1: %v", err)
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient (1), setup err: %w", err)
 	}
 
 	snapshot, err := agent.ConfigSnapshot()
@@ -192,7 +194,7 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 		log.Warnf("gocbcore_utils: fetchClient, setupGocbcoreDCPAgent err: %v"+
 			" (close Agent: %p)", err, agent)
 		go agent.Close()
-		return nil, fmt.Errorf("gocbcore_utils: fetchClient, setup err2: %v", err)
+		return nil, fmt.Errorf("gocbcore_utils: fetchClient (2), setup err: %w", err)
 	}
 
 	am.entries[key] = &gocbcoreClient{
@@ -468,7 +470,7 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
 		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp,"+
-			" unable to create agent, err: %v", err)
+			" unable to create agent, err: %w", err)
 	}
 
 	defer func() {
