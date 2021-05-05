@@ -428,19 +428,17 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		servers, bucketName, bucketUUID, params, BasicPartitionFunc,
 		dests, mgr.tagsMap != nil && !mgr.tagsMap["feed"], mgr)
 	if err != nil {
-		go func() {
-			// Notify manager (asynchronously) that the feed setup has
-			// failed, so the janitor can retry
-			//
-			// This needs to be asynchronous, as "kick"ing the Janitor
-			// from within the JanitorLoop (this API is invoked from
-			// within JanitorOnce) is prohibited - deadlock!
-			mgr.Kick("gocbcore-feed")
-		}()
+		// Notify manager (asynchronously) that the feed setup has
+		// failed, so the janitor can retry
+		//
+		// This needs to be asynchronous, as "kick"ing the Janitor
+		// from within the JanitorLoop (this API is invoked from
+		// within JanitorOnce) is prohibited - deadlock!
+		go mgr.Kick(fmt.Sprintf("gocbcore-feed start error, feed: %v", feedName))
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
-			" could not prepare DCP feed, server: %s,"+
+			" could not prepare DCP feed, name: %s, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
-			mgr.server, bucketName, indexName, err)
+			feedName, mgr.server, bucketName, indexName, err)
 	}
 
 	err = mgr.registerFeed(feed)
@@ -454,8 +452,8 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 	if err != nil {
 		return feed.onError(true,
 			fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
-				" could not start, server: %s, err: %v",
-				mgr.server, err))
+				" could not start feed: %s, server: %s, err: %v",
+				feed.Name(), mgr.server, err))
 	}
 
 	return nil
@@ -848,9 +846,7 @@ func (f *GocbcoreDCPFeed) NotifyMgrOnClose() {
 		log.Printf("feed_dcp_gocbcore: Close, name: %s, notify manager",
 			f.Name())
 
-		go func() {
-			f.mgr.Kick("gocbcore-feed")
-		}()
+		go f.mgr.Kick(fmt.Sprintf("gocbcore-feed, feed: %v", f.Name()))
 	}
 }
 
