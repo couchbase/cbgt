@@ -48,7 +48,7 @@ type cbBucketMap struct {
 	entries map[string]*cbBucketInfo
 }
 
-var cbBktMap *cbBucketMap
+var statsCBBktMap *cbBucketMap
 
 // Fetches a couchbase bucket instance with the requested uuid,
 // if not found creates a new instance and stashes it in the map.
@@ -118,8 +118,8 @@ func (cb *cbBucketMap) closeCouchbaseBucket(name, uuid string) {
 }
 
 func init() {
-	// Initialize cbBktMap
-	cbBktMap = &cbBucketMap{
+	// Initialize statsCBBktMap
+	statsCBBktMap = &cbBucketMap{
 		entries: make(map[string]*cbBucketInfo),
 	}
 }
@@ -198,7 +198,7 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 func CouchbasePartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (
 	partitions []string, err error) {
-	bucket, err := cbBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
+	bucket, err := statsCBBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
@@ -240,7 +240,7 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
-	bucket, err := cbBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
+	bucket, err := statsCBBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
@@ -300,7 +300,7 @@ func CouchbaseStats(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string, statsKind string) (
 	map[string]interface{}, error) {
-	bucket, err := cbBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
+	bucket, err := statsCBBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err

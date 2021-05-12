@@ -279,11 +279,11 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 			" indexName: %s", indexName)
 	}
 
-	// Close associated couchbase.Bucket instances
-	cbBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
+	// Close associated couchbase.Bucket instances used for stats
+	statsCBBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
 
-	// Close associated gocbcore.Agent/DCPAgent instances
-	agentsMap.closeClient(indexDef.SourceName, indexDef.SourceUUID)
+	// Close associated gocbcore.Agent/DCPAgent instances used for stats
+	statsAgentsMap.closeClient(indexDef.SourceName, indexDef.SourceUUID)
 
 	indexDefs.UUID = NewUUID()
 	delete(indexDefs.IndexDefs, indexName)
@@ -456,11 +456,11 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 			indexDefs.ImplVersion, mgr.version)
 	}
 
-	// close associated couchbase.Bucket instances
-	cbBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
+	// Close associated couchbase.Bucket instances used for stats
+	statsCBBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
 
-	// close associated gocb.Bucket instances
-	agentsMap.closeClient(sourceName, sourceUUID)
+	// Close associated gocbcore.Agent/DCPAgent instances used for stats
+	statsAgentsMap.closeClient(sourceName, sourceUUID)
 
 	var deletedCount uint64
 	for indexName, indexDef := range indexDefs.IndexDefs {

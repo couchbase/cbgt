@@ -210,9 +210,9 @@ func parseParams(src string,
 // ----------------------------------------------------------------
 
 func CloseStatsClients(sourceName, sourceUUID string) {
-	// Close couchbase.Bucket instances
-	cbBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
+	// Close couchbase.Bucket instances used for stats
+	statsCBBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
 
-	// Close gocbcore.Agent/DCPAgent instances
-	agentsMap.closeClient(sourceName, sourceUUID)
+	// Close gocbcore.Agent/DCPAgent instances used for stats
+	statsAgentsMap.closeClient(sourceName, sourceUUID)
 }

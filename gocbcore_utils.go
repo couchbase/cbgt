@@ -107,10 +107,10 @@ type gocbcoreAgentsMap struct {
 	entries map[string]*gocbcoreClient
 }
 
-var agentsMap *gocbcoreAgentsMap
+var statsAgentsMap *gocbcoreAgentsMap
 
 func init() {
-	agentsMap = &gocbcoreAgentsMap{
+	statsAgentsMap = &gocbcoreAgentsMap{
 		entries: make(map[string]*gocbcoreClient),
 	}
 }
@@ -229,7 +229,7 @@ func (am *gocbcoreAgentsMap) closeClient(sourceName, sourceUUID string) {
 func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (
 	partitions []string, err error) {
-	client, err := agentsMap.fetchClient(sourceName, sourceUUID,
+	client, err := statsAgentsMap.fetchClient(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
@@ -262,7 +262,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
-	client, err := agentsMap.fetchClient(sourceName, sourceUUID,
+	client, err := statsAgentsMap.fetchClient(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, fmt.Errorf("CBPartitionSeqs, fetchClient err: %v", err)
@@ -350,7 +350,7 @@ func CBStats(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string, statsKind string) (
 	map[string]interface{}, error) {
-	client, err := agentsMap.fetchClient(sourceName, sourceUUID,
+	client, err := statsAgentsMap.fetchClient(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
 		return nil, err
