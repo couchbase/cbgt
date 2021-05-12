@@ -437,6 +437,11 @@ func (ctl *Ctl) run() {
 								pindexImplType.OnDelete(idef)
 							}
 						}
+
+						// index definition has been deleted, shut down any associated stats
+						// clients (this is needed to delete clients on nodes other than the
+						// one where the index deletion was received)
+						cbgt.CloseStatsClients(idef.SourceName, idef.SourceUUID)
 					}
 				}
 			}

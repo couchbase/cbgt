@@ -206,3 +206,13 @@ func parseParams(src string,
 	}
 	return v.String(), uname, pwd, nil
 }
+
+// ----------------------------------------------------------------
+
+func CloseStatsClients(sourceName, sourceUUID string) {
+	// Close couchbase.Bucket instances
+	cbBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
+
+	// Close gocbcore.Agent/DCPAgent instances
+	agentsMap.closeClient(sourceName, sourceUUID)
+}

@@ -282,7 +282,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 	// Close associated couchbase.Bucket instances
 	cbBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
 
-	// Close associated gocb.Bucket instances
+	// Close associated gocbcore.Agent/DCPAgent instances
 	agentsMap.closeClient(indexDef.SourceName, indexDef.SourceUUID)
 
 	indexDefs.UUID = NewUUID()
