@@ -303,7 +303,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 
 	rv := map[string]UUIDSeq{}
 	addSeqnoToRV := func(vbID uint16, collID uint32, seqNo uint64) {
-		rv[vbucketIdStrings[vbID]+":"+collectionsIDtoName[collID]+":high_seqno"] = UUIDSeq{
+		rv[vbucketIdStrings[vbID]+":"+collectionsIDtoName[collID]] = UUIDSeq{
 			UUID: fmt.Sprintf("%v", collID),
 			Seq:  seqNo,
 		}
