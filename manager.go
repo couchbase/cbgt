@@ -199,6 +199,7 @@ type ClusterOptions struct {
 	MaxFeedsPerDCPAgent                string `json:"maxFeedsPerDCPAgent"`
 	MaxConcurrentPartitionMovesPerNode string `json:"maxConcurrentPartitionMovesPerNode"`
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
+	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")

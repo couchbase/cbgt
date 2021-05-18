@@ -1030,6 +1030,10 @@ func (ctl *Ctl) startCtlLOCKED(
 				if !found {
 					concurrentPartitionsMovesPerNode = ctl.optionsCtl.MaxConcurrentPartitionMovesPerNode
 				}
+
+				seqChecksTimeoutInSec, _ := cbgt.ParseOptionsInt(ctl.getManagerOptions(),
+					"seqChecksTimeoutInSec")
+
 				// Start rebalance and monitor progress.
 				ctl.r, err = rebalance.StartRebalance(version,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
@@ -1037,6 +1041,7 @@ func (ctl *Ctl) startCtlLOCKED(
 					rebalance.RebalanceOptions{
 						FavorMinNodes:                      ctl.optionsCtl.FavorMinNodes,
 						MaxConcurrentPartitionMovesPerNode: concurrentPartitionsMovesPerNode,
+						SeqChecksTimeoutInSec:              seqChecksTimeoutInSec,
 						DryRun:                             ctl.optionsCtl.DryRun,
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,

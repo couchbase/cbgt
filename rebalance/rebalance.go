@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/couchbase/clog"
 
@@ -68,6 +69,13 @@ type RebalanceOptions struct {
 	HttpGet func(url string) (resp *http.Response, err error)
 
 	SkipSeqChecks bool // For unit-testing.
+
+	// SeqChecksTimeoutInSec is an optional configurable timeout value,
+	// which when set would timeout to unblock any of the partition catch
+	// related wait loops. It is applicable to both the sequence number
+	// initialization and catch up wait loops for the formerPrimary as well
+	// as the new partition node.
+	SeqChecksTimeoutInSec int
 
 	Manager *cbgt.Manager
 
@@ -1111,10 +1119,16 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	if r.optionsReb.StatsSampleErrorThreshold != nil {
 		errThreshold = uint8(*r.optionsReb.StatsSampleErrorThreshold)
 	}
+
+	timeout := time.Second *
+		time.Duration(r.optionsReb.SeqChecksTimeoutInSec)
+
 	// Loop to retrieve all the seqs that we need to reach for all
 	// source partitions.
 	if !r.optionsReb.SkipSeqChecks {
 		for _, sourcePartition := range sourcePartitions {
+			start := time.Now()
+
 		INIT_WANT_SEQ:
 			for {
 				_, exists := r.getUUIDSeq(r.wantSeqs, pindex,
@@ -1129,8 +1143,8 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 						uuidSeqWant.UUID, uuidSeqWant.Seq, uuidSeqWant.SourceSeq)
 				} else {
 					r.Logf("rebalance: waitAssignPIndexDone,"+
-						" awaiting a stats sample grab for pindex %s,"+
-						" formerPrimaryNode %s", pindex, formerPrimaryNode)
+						" awaiting a stats sample grab for pindex %s, partition %s,"+
+						" formerPrimaryNode %s", pindex, sourcePartition, formerPrimaryNode)
 					err := r.grabCurrentSample(stopCh, stopCh2, pindex, formerPrimaryNode)
 					if err != nil {
 						// adding more resiliency with pindex not found errors to safe guard against
@@ -1144,6 +1158,15 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 							" failed for pindex: %s, err: %+v", pindex, err)
 						return err
 					}
+
+					// skip sequence checks for this partition upon timeout.
+					if timeout > 0 && time.Now().Sub(start) > timeout {
+						r.Logf("rebalance: waitAssignPIndexDone,"+
+							" skipping a stats sample grab for pindex %s, partition %s,"+
+							" formerPrimaryNode %s, on timeout %d secs",
+							pindex, sourcePartition, formerPrimaryNode, timeout)
+						break INIT_WANT_SEQ
+					}
 				}
 			}
 		}
@@ -1154,10 +1177,13 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	//
 	// TODO: Give up after waiting too long.
 	// TODO: Claim success and proceed if we see it's converging.
+CATCHUP_CUR_SEQ:
 	for _, sourcePartition := range sourcePartitions {
+		start := time.Now()
 		uuidSeqWant, exists := r.getUUIDSeq(r.wantSeqs, pindex,
 			sourcePartition, node)
-		if !exists && !r.optionsReb.SkipSeqChecks {
+		if !exists && !r.optionsReb.SkipSeqChecks &&
+			r.optionsReb.SeqChecksTimeoutInSec == 0 {
 			return fmt.Errorf("rebalance:"+
 				" waitAssignPIndexDone, could not find uuidSeqWant,"+
 				" indexDef: %#v, pindex: %s, sourcePartition: %s, node: %s,"+
@@ -1165,7 +1191,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 				indexDef, pindex, sourcePartition, node, state, op)
 		}
 
-		reached, err := r.uuidSeqReached(indexDef.Name,
+		uuidSeqPrev, reached, err := r.uuidSeqReached(indexDef.Name,
 			pindex, sourcePartition, node, uuidSeqWant)
 		if err != nil {
 			return err
@@ -1177,6 +1203,24 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		}
 
 		caughtUp := false
+
+		catchUpTimeout := func(uuidSeqCurr, uuidSeqPrev *cbgt.UUIDSeq) bool {
+			if uuidSeqCurr.Seq == uuidSeqPrev.Seq {
+				if time.Now().Sub(start) > timeout {
+					r.Logf("rebalance: waitAssignPIndexDone,"+
+						" skipping seq catch up for pindex %s,"+
+						" partition %s, node %s, upon timeout %d secs",
+						pindex, sourcePartition, node, timeout)
+					return true
+				}
+				return false
+			}
+
+			// reset the timer upon any seq number progress.
+			start = time.Now()
+			uuidSeqPrev = uuidSeqCurr
+			return false
+		}
 
 		for !caughtUp {
 			sampleWantCh := make(chan monitor.MonitorSample)
@@ -1207,7 +1251,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 					}
 
 					if sample.Kind == "/api/stats?partitions=true" {
-						reached, err := r.uuidSeqReached(indexDef.Name,
+						uuidSeqCurr, reached, err := r.uuidSeqReached(indexDef.Name,
 							pindex, sourcePartition, node, uuidSeqWant)
 						if err != nil {
 							sampleErr = err
@@ -1216,6 +1260,15 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 
 							r.progressCh <- RebalanceProgress{}
 						}
+
+						// Skip the seq number catch up wait for the
+						// partition on the new node if there is no
+						// progress made before the specified timeout.
+						if timeout > 0 && err != nil &&
+							catchUpTimeout(uuidSeqCurr, uuidSeqPrev) {
+							continue CATCHUP_CUR_SEQ
+						}
+
 						// At the same polling frequency as stats, query cbgt
 						// Manager to verify that the index we are waiting
 						// on has not been deleted.
@@ -1263,9 +1316,9 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 
 func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 	sourcePartition string, node string,
-	uuidSeqWant cbgt.UUIDSeq) (bool, error) {
+	uuidSeqWant cbgt.UUIDSeq) (*cbgt.UUIDSeq, bool, error) {
 	if r.optionsReb.SkipSeqChecks {
-		return true, nil
+		return nil, true, nil
 	}
 
 	uuidSeqCurr, exists :=
@@ -1293,7 +1346,7 @@ func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 		// check whether the new partition caught up with the
 		// former partition.
 		if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
-			return true, nil
+			return &uuidSeqCurr, true, nil
 		}
 		// check whether the new partition has caught up with
 		// the minimum source partition sequence number from
@@ -1307,11 +1360,11 @@ func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 			sourceSeqMin = uuidSeqCurr.SourceSeq
 		}
 		if uuidSeqCurr.Seq >= sourceSeqMin {
-			return true, nil
+			return &uuidSeqCurr, true, nil
 		}
 	}
 
-	return false, nil
+	return &uuidSeqCurr, false, nil
 }
 
 // --------------------------------------------------------
