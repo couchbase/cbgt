@@ -248,9 +248,10 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 
 	rv := map[string]UUIDSeq{}
 
-	stats := bucket.GatherStats("vbucket-details")
+	stats := bucket.GatherStats("vbucket")
+	collectionsStats := bucket.GatherStats("collections-details")
 
-	for _, gatheredStats := range stats {
+	for node, gatheredStats := range stats {
 		if gatheredStats.Err != nil {
 			return nil, gatheredStats.Err
 		}
@@ -260,28 +261,22 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 			continue
 		}
 
-		// TODO: What if vbucket appears across multiple nodes?  Need
-		// to look for the highest (or lowest?) seq number?
 		for _, vbid := range vbucketIdStrings {
 			stateVal, ok := nodeStats["vb_"+vbid]
 			if !ok || stateVal != "active" {
 				continue
 			}
 
-			uuid, ok := nodeStats["vb_"+vbid+":uuid"]
-			if !ok {
-				continue
-			}
-
-			seqStr, ok := nodeStats["vb_"+vbid+":high_seqno"]
+			// obtains seq no. for _default collection of _default scope only
+			seqStr, ok := collectionsStats[node].Stats["vb_"+vbid+":0x0:high_seqno"]
 			if !ok {
 				continue
 			}
 
 			seq, err := strconv.ParseUint(seqStr, 10, 64)
 			if err == nil {
-				rv[vbid] = UUIDSeq{
-					UUID: uuid,
+				rv[vbid+":_default:_default"] = UUIDSeq{
+					UUID: "0",
 					Seq:  seq,
 				}
 			}
