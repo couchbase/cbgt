@@ -67,13 +67,20 @@ type PartitionStatsWriter interface {
 	// in detailed index stats like that of the feeds and other
 	// implementation specific stats.
 	Verbose() bool
+	// Returns the index definition of the pindex.
+	IndexDef() *cbgt.IndexDef
+	// Returns a map of source's partition high sequence numbers.
+	SourcePartitionSeqs() map[string]cbgt.UUIDSeq
+
 	Write([]byte) (n int, err error)
 }
 
 type statsWriter struct {
-	w       io.Writer
-	vbstats bool
-	verbose bool
+	w                   io.Writer
+	vbstats             bool
+	verbose             bool
+	indexDef            *cbgt.IndexDef
+	sourcePartitionSeqs map[string]cbgt.UUIDSeq
 }
 
 func (s *statsWriter) VbStats() bool {
@@ -82,6 +89,14 @@ func (s *statsWriter) VbStats() bool {
 
 func (s *statsWriter) Verbose() bool {
 	return s.verbose
+}
+
+func (s *statsWriter) IndexDef() *cbgt.IndexDef {
+	return s.indexDef
+}
+
+func (s *statsWriter) SourcePartitionSeqs() map[string]cbgt.UUIDSeq {
+	return s.sourcePartitionSeqs
 }
 
 func (s *statsWriter) Write(b []byte) (int, error) {
@@ -131,11 +146,41 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 		vbstats = true
 	}
 
+	// Map of source name -> partition -> UUIDSeq
+	sourcePartitionSeqs := make(map[string]map[string]cbgt.UUIDSeq)
+
 	pindexStats := make(map[string][]byte)
 	for _, pindexName := range pindexNames {
+		pindex := pindexes[pindexName]
+		indexDef, _, err := mgr.GetIndexDef(pindex.IndexName, false)
+		if err != nil {
+			log.Warnf("writePartitionStatsJSON: couldn't obtain index"+
+				" definition for pindex: `%s`, err: %v", pindexName, err)
+		}
+
+		sourceSeqNos, exists := sourcePartitionSeqs[pindex.SourceName]
+		if !exists {
+			feedType, _ := cbgt.FeedTypes[cbgt.SOURCE_GOCBCORE]
+			partitionSeqs, err := feedType.PartitionSeqs(
+				pindex.SourceType, pindex.SourceName, pindex.SourceUUID,
+				pindex.SourceParams, mgr.Server(), mgr.Options())
+			if err != nil {
+				log.Warnf("writePartitionStatsJSON: couldn't obtain source"+
+					" stats for pindex: `%s`, err: %v", pindexName, err)
+			}
+			sourcePartitionSeqs[pindex.SourceName] = partitionSeqs
+			sourceSeqNos = partitionSeqs
+		}
+
 		var buf bytes.Buffer
-		statsWriter := &statsWriter{w: &buf, verbose: true, vbstats: vbstats}
-		err := pindexes[pindexName].Dest.Stats(statsWriter)
+		statsWriter := &statsWriter{
+			w:                   &buf,
+			verbose:             true,
+			vbstats:             vbstats,
+			indexDef:            indexDef,
+			sourcePartitionSeqs: sourceSeqNos,
+		}
+		err = pindexes[pindexName].Dest.Stats(statsWriter)
 		if err != nil {
 			return fmt.Errorf("pindex stats err: %v", err)
 		}
@@ -205,12 +250,35 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 	req *http.Request) {
 	_, pindexes := mgr.CurrentMaps()
 
+	// Map of source name -> partition -> UUIDSeq
+	sourcePartitionSeqs := map[string]map[string]cbgt.UUIDSeq{}
+
 	w.Write(cbgt.JsonOpenBrace)
 	w.Write(statsPIndexesPrefix)
 
 	var buf bytes.Buffer
 	firstEntry := true
 	for pindexName, pindex := range pindexes {
+		indexDef, _, err := mgr.GetIndexDef(pindex.IndexName, false)
+		if err != nil {
+			log.Warnf("writePartitionStatsJSON: couldn't obtain index"+
+				" definition for pindex: `%s`, err: %v", pindexName, err)
+		}
+
+		sourceSeqNos, exists := sourcePartitionSeqs[pindex.SourceName]
+		if !exists {
+			feedType, _ := cbgt.FeedTypes[cbgt.SOURCE_GOCBCORE]
+			partitionSeqs, err := feedType.PartitionSeqs(
+				pindex.SourceType, pindex.SourceName, pindex.SourceUUID,
+				pindex.SourceParams, mgr.Server(), mgr.Options())
+			if err != nil {
+				log.Warnf("writePartitionStatsJSON: couldn't obtain source"+
+					" stats for pindex: `%s`, err: %v", pindexName, err)
+			}
+			sourcePartitionSeqs[pindex.SourceName] = partitionSeqs
+			sourceSeqNos = partitionSeqs
+		}
+
 		if firstEntry {
 			firstEntry = false
 		} else {
@@ -221,8 +289,13 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 		w.Write([]byte(pindexName))
 		w.Write(statsNameSuffix)
 
-		statsWriter := &statsWriter{w: &buf, vbstats: true}
-		err := pindex.Dest.Stats(statsWriter)
+		statsWriter := &statsWriter{
+			w:                   &buf,
+			vbstats:             true,
+			indexDef:            indexDef,
+			sourcePartitionSeqs: sourceSeqNos,
+		}
+		err = pindex.Dest.Stats(statsWriter)
 		if err != nil || len(buf.Bytes()) == 0 || !json.Valid(buf.Bytes()) {
 			log.Warnf("writePartitionStatsJSON: pindex stats invalid for `%s`, err: %v",
 				pindexName, err)
