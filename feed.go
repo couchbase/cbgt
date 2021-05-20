@@ -80,10 +80,11 @@ type FeedPartitionSeqsFunc func(sourceType, sourceName, sourceUUID,
 	options map[string]string) (map[string]UUIDSeq, error)
 
 // A UUIDSeq associates a UUID (such as from a partition's UUID) with
-// a seq number.
+// a seq number, with an optional source's sequence number.
 type UUIDSeq struct {
-	UUID string
-	Seq  uint64
+	UUID      string
+	Seq       uint64
+	SourceSeq uint64
 }
 
 // Returns the current stats from a data source, if available,

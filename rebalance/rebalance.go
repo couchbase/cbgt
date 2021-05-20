@@ -1126,7 +1126,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 					sourcePartition, formerPrimaryNode)
 				if exists {
 					r.setUUIDSeq(r.wantSeqs, pindex, sourcePartition, node,
-						uuidSeqWant.UUID, uuidSeqWant.Seq)
+						uuidSeqWant.UUID, uuidSeqWant.Seq, uuidSeqWant.SourceSeq)
 				} else {
 					r.Logf("rebalance: waitAssignPIndexDone,"+
 						" awaiting a stats sample grab for pindex %s,"+
@@ -1290,7 +1290,23 @@ func (r *Rebalancer) uuidSeqReached(index string, pindex string,
 		// 		uuidSeqWant, uuidSeqCurr)
 		// }
 
+		// check whether the new partition caught up with the
+		// former partition.
 		if uuidSeqCurr.Seq >= uuidSeqWant.Seq {
+			return true, nil
+		}
+		// check whether the new partition has caught up with
+		// the minimum source partition sequence number from
+		// the source stats of former/new fts nodes.
+		// Source partition seq numbers should be same across
+		// former/new fts nodes, but this is to be on the safer
+		// side with any unforeseen kv rebalance/failover
+		// complications.
+		sourceSeqMin := uuidSeqWant.SourceSeq
+		if sourceSeqMin > uuidSeqCurr.SourceSeq {
+			sourceSeqMin = uuidSeqCurr.SourceSeq
+		}
+		if uuidSeqCurr.Seq >= sourceSeqMin {
 			return true, nil
 		}
 	}
@@ -1318,11 +1334,11 @@ func (r *Rebalancer) getUUIDSeq(
 func (r *Rebalancer) setUUIDSeq(
 	m map[string]map[string]map[string]cbgt.UUIDSeq,
 	pindex, sourcePartition, node string,
-	uuid string, seq uint64) (
+	uuid string, seq uint64, sourceSeq uint64) (
 	uuidSeqPrev cbgt.UUIDSeq, uuidSeqPrevExists bool) {
 	r.m.Lock()
 	uuidSeqPrev, uuidSeqPrevExists =
-		SetUUIDSeq(m, pindex, sourcePartition, node, uuid, seq)
+		SetUUIDSeq(m, pindex, sourcePartition, node, uuid, seq, sourceSeq)
 	r.m.Unlock()
 
 	return uuidSeqPrev, uuidSeqPrevExists
@@ -1356,7 +1372,7 @@ func GetUUIDSeq(
 func SetUUIDSeq(
 	m map[string]map[string]map[string]cbgt.UUIDSeq,
 	pindex, sourcePartition, node string,
-	uuid string, seq uint64) (
+	uuid string, seq uint64, sourceSeq uint64) (
 	uuidSeqPrev cbgt.UUIDSeq, uuidSeqPrevExists bool) {
 	sourcePartitions, exists := m[pindex]
 	if !exists || sourcePartitions == nil {
@@ -1374,8 +1390,9 @@ func SetUUIDSeq(
 	uuidSeqPrev, uuidSeqPrevExists = nodes[node]
 
 	nodes[node] = cbgt.UUIDSeq{
-		UUID: uuid,
-		Seq:  seq,
+		UUID:      uuid,
+		Seq:       seq,
+		SourceSeq: sourceSeq,
 	}
 
 	return uuidSeqPrev, uuidSeqPrevExists
@@ -1439,8 +1456,9 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 				m := struct {
 					PIndexes map[string]struct {
 						Partitions map[string]struct {
-							UUID string `json:"uuid"`
-							Seq  uint64 `json:"seq"`
+							UUID      string `json:"uuid"`
+							Seq       uint64 `json:"seq"`
+							SourceSeq uint64 `json:"sourceSeq,omitempty"`
 						} `json:"partitions"`
 					} `json:"pindexes"`
 				}{}
@@ -1463,7 +1481,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 					for sourcePartition, uuidSeq := range x.Partitions {
 						uuidSeqPrev, uuidSeqPrevExists := r.setUUIDSeq(
 							r.currSeqs, pindex, sourcePartition,
-							s.UUID, uuidSeq.UUID, uuidSeq.Seq)
+							s.UUID, uuidSeq.UUID, uuidSeq.Seq, uuidSeq.SourceSeq)
 						if !uuidSeqPrevExists ||
 							uuidSeqPrev.UUID != uuidSeq.UUID ||
 							uuidSeqPrev.Seq != uuidSeq.Seq {
