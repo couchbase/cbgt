@@ -306,7 +306,8 @@ func (h *QueryHandler) ServeHTTP(
 			if d > h.slowQueryLogTimeout {
 				log.Warnf("slow-query: index: %s,"+
 					" query: %s, resultset bytes: %v, duration: %v, err: %v",
-					indexName, string(requestBody), resultSetBytes, d, err)
+					indexName, log.Tag(log.UserData, string(requestBody)),
+					resultSetBytes, d, err)
 				if focusStats != nil {
 					atomic.AddUint64(&focusStats.TotRequestSlow, 1)
 				}
