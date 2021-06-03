@@ -299,6 +299,10 @@ func (mgr *Manager) Start(register string) error {
 // StartCfg will start Cfg subscriptions.
 func (mgr *Manager) StartCfg() error {
 	if mgr.cfg != nil { // TODO: Need err handling for Cfg subscriptions.
+
+		// refresh the cluster options.
+		mgr.RefreshOptions()
+
 		go func() {
 			ei := make(chan CfgEvent)
 			mgr.cfg.Subscribe(INDEX_DEFS_KEY, ei)
@@ -390,6 +394,7 @@ func (mgr *Manager) Register(register string) error {
 	} else if container != "" {
 		mgr.container = container
 	}
+	log.Printf("manager: container: %s", mgr.container)
 
 	if register == "known" || register == "knownForce" ||
 		register == "wanted" || register == "wantedForce" {
