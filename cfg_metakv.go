@@ -146,13 +146,13 @@ func NewCfgMetaKv(nodeUUID string, options map[string]string) (*CfgMetaKv, error
 
 	go ExponentialBackoffLoop("cfg_metakv.RunObserveChildren",
 		func() int {
-			err := metakv.RunObserveChildren(cfg.prefix, cfg.metaKVCallback,
+			err := metakv.RunObserveChildrenV2(cfg.prefix, cfg.metaKVCallback,
 				cfg.cancelCh)
 			if err == nil {
 				return -1 // Success, so stop the loop.
 			}
 
-			log.Warnf("cfg_metakv: RunObserveChildren, err: %v", err)
+			log.Warnf("cfg_metakv: RunObserveChildrenV2, err: %v", err)
 
 			return 0 // No progress, so exponential backoff.
 		},
@@ -249,17 +249,16 @@ func (c *CfgMetaKv) delRawLOCKED(key string, cas uint64) error {
 }
 
 func (c *CfgMetaKv) Load() error {
-	metakv.IterateChildren(c.prefix, c.metaKVCallback)
+	metakv.IterateChildrenV2(c.prefix, c.metaKVCallback)
 
 	return nil
 }
 
-func (c *CfgMetaKv) metaKVCallback(path string,
-	value []byte, rev interface{}) error {
-	key := c.pathToKey(path)
+func (c *CfgMetaKv) metaKVCallback(kve metakv.KVEntry) error {
+	key := c.pathToKey(kve.Path)
 
 	log.Printf("cfg_metakv: metaKVCallback, path: %v, key: %v,"+
-		" deletion: %t", path, key, value == nil)
+		" deletion: %t", kve.Path, key, kve.Value == nil)
 
 	for splitKeyPrefix := range cfgMetaKvAdvancedKeys {
 		// Handle the case when the key from metakv looks like
