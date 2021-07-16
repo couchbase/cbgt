@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -19,7 +18,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -173,68 +171,14 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, no servers provided")
 	}
 
-	var useTLS bool
-
-	connStr := svrs[0]
-	if connURL, err := url.Parse(connStr); err == nil {
-		if strings.HasPrefix(connURL.Scheme, "http") {
-			if (options["authType"] == "cbauth" || len(TLSCertFile) > 0) &&
-				len(options["serverSslPort"]) > 0 {
-				hostname := connURL.Hostname()
-				// retain the square brackets with ipv6 address.
-				if strings.Contains(connURL.Host, "[") {
-					hostname = "[" + hostname + "]"
-				}
-				// UseTLS and serverSslPort
-				connStr = connURL.Scheme + "://" +
-					hostname + ":" + options["serverSslPort"]
-
-				if newURL, err := url.Parse(connStr); err == nil {
-					connURL = newURL
-					useTLS = true
-				}
-			}
-
-			// tack on an option: bootstrap_on=http for gocbcore SDK
-			// connections to force HTTP config polling
-			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
-				connStr = ret.String()
-			}
-		}
-	}
-
+	connStr, useTLS, caProvider := setupConfigParams(svrs[0], options)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent,"+
 			" unable to build config from connStr: %s, err: %v", connStr, err)
 	}
-
 	config.UseTLS = useTLS
-
-	if options["authType"] == "cbauth" {
-		config.TLSRootCAProvider = FetchGocbcoreSecurityConfig
-	} else {
-		// in the case authType isn't cbauth, check if user has set a TLSCertFile
-		var rootCAs *x509.CertPool
-		if len(TLSCertFile) > 0 {
-			certInBytes, err := ioutil.ReadFile(TLSCertFile)
-			if err != nil {
-				return nil, fmt.Errorf("feed_dcp_gocbore: fetchAgent,"+
-					" tls err: %v", err)
-			}
-
-			rootCAs = x509.NewCertPool()
-			ok := rootCAs.AppendCertsFromPEM(certInBytes)
-			if !ok {
-				return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent," +
-					" error in appending certificates for rootCAs")
-			}
-		}
-
-		config.TLSRootCAProvider = func() *x509.CertPool {
-			return rootCAs
-		}
-	}
+	config.TLSRootCAProvider = caProvider
 
 	params := NewDCPFeedParams()
 	err = json.Unmarshal([]byte(paramsStr), params)
@@ -649,7 +593,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 		feed.currVBs[vbid] = &vbucketState{}
 	}
 
-	if err = feed.setupStreamOptions(paramsStr, mgr.Options()["authType"]); err != nil {
+	if err = feed.setupStreamOptions(paramsStr, mgr.Options()); err != nil {
 		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
 			" error in setting up feed's stream options, err: %w", err)
 	}
@@ -667,8 +611,9 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 	return feed, nil
 }
 
-func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr, authType string) error {
-	auth, err := gocbAuth(paramsStr, authType)
+func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr string,
+	options map[string]string) error {
+	auth, err := gocbAuth(paramsStr, options["authType"])
 	if err != nil {
 		return err
 	}
@@ -678,22 +623,15 @@ func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr, authType string) error {
 		return fmt.Errorf("no servers provided")
 	}
 
-	connStr := svrs[0]
-	if connURL, err := url.Parse(svrs[0]); err == nil {
-		if strings.HasPrefix(connURL.Scheme, "http") {
-			// tack on an option: bootstrap_on=http for gocbcore SDK
-			// connections to force HTTP config polling
-			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
-				connStr = ret.String()
-			}
-		}
-	}
-
 	config := setupAgentConfig(f.name, f.bucketName, auth)
+	connStr, useTLS, cp := setupConfigParams(svrs[0], options)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return err
 	}
+
+	config.UseTLS = useTLS
+	config.TLSRootCAProvider = cp
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {

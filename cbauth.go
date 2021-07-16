@@ -178,8 +178,8 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 	configs.EncryptionEnabled = cfg.EncryptData
 	configs.DisableNonSSLPorts = cfg.DisableNonSSLPorts
 
-	if err = updateGocbcoreSecurityConfig(cfg.EncryptData); err != nil {
-		log.Warnf("cbauth: Error updating gocbcore's TLS data, err: %v", err)
+	if err = updateSecurityConfig(cfg.EncryptData); err != nil {
+		log.Warnf("cbauth: Error updating TLS data, err: %v", err)
 		return err
 	}
 
@@ -200,47 +200,60 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 // ----------------------------------------------------------------
 
 // security config for gocbcore DCP Agents
-type gocbcoreSecurityConfig struct {
+type securityConfig struct {
 	encryptData bool
 	rootCAs     *x509.CertPool
 }
 
-var currGocbcoreSecurityConfigMutex sync.RWMutex
-var currGocbcoreSecurityConfig *gocbcoreSecurityConfig
+var currSecurityConfigMutex sync.RWMutex
+var currSecurityConfig *securityConfig
 
 func init() {
-	currGocbcoreSecurityConfig = &gocbcoreSecurityConfig{}
+	currSecurityConfig = &securityConfig{}
 }
 
-func updateGocbcoreSecurityConfig(encryptData bool) error {
-	currGocbcoreSecurityConfigMutex.Lock()
-	defer currGocbcoreSecurityConfigMutex.Unlock()
+func updateSecurityConfig(encryptData bool) error {
+	currSecurityConfigMutex.Lock()
+	defer currSecurityConfigMutex.Unlock()
 
-	currGocbcoreSecurityConfig.encryptData = encryptData
-	if encryptData && len(TLSCertFile) > 0 {
-		certInBytes, err := ioutil.ReadFile(TLSCertFile)
-		if err != nil {
-			return err
+	currSecurityConfig.encryptData = encryptData
+	if encryptData {
+		rootCAs := LoadCertFromTLSCertFile()
+		if rootCAs == nil {
+			return fmt.Errorf("error obtaining certificate")
 		}
-
-		rootCAs := x509.NewCertPool()
-		ok := rootCAs.AppendCertsFromPEM(certInBytes)
-		if !ok {
-			return fmt.Errorf("error appending certificates")
-		}
-
-		currGocbcoreSecurityConfig.rootCAs = rootCAs
+		currSecurityConfig.rootCAs = rootCAs
 	}
 
 	return nil
 }
 
-func FetchGocbcoreSecurityConfig() *x509.CertPool {
+func FetchSecurityConfig() *x509.CertPool {
 	var rootCAs *x509.CertPool
-	currGocbcoreSecurityConfigMutex.RLock()
-	if currGocbcoreSecurityConfig.encryptData {
-		rootCAs = currGocbcoreSecurityConfig.rootCAs
+	currSecurityConfigMutex.RLock()
+	if currSecurityConfig.encryptData {
+		rootCAs = currSecurityConfig.rootCAs
 	}
-	currGocbcoreSecurityConfigMutex.RUnlock()
+	currSecurityConfigMutex.RUnlock()
+	return rootCAs
+}
+
+func LoadCertFromTLSCertFile() *x509.CertPool {
+	var rootCAs *x509.CertPool
+	if len(TLSCertFile) > 0 {
+		certInBytes, err := ioutil.ReadFile(TLSCertFile)
+		if err != nil {
+			log.Warnf("LoadCertFromTLSCertFile, err: %v", err)
+			return nil
+		} else {
+			rootCAs = x509.NewCertPool()
+			ok := rootCAs.AppendCertsFromPEM(certInBytes)
+			if !ok {
+				log.Warnf("LoadCertFromTLSCertFile, error appending certificates")
+				return nil
+			}
+		}
+	}
+
 	return rootCAs
 }
