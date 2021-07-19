@@ -49,6 +49,7 @@ func setupAgentConfig(name, bucketName string,
 		Auth:             auth,
 		ConnectTimeout:   GocbcoreConnectTimeout,
 		KVConnectTimeout: GocbcoreKVConnectTimeout,
+		NetworkType:      "default",
 		UseCollections:   true,
 	}
 }
