@@ -331,6 +331,7 @@ func setupDCPAgentConfig(
 		Auth:             auth,
 		ConnectTimeout:   GocbcoreConnectTimeout,
 		KVConnectTimeout: GocbcoreKVConnectTimeout,
+		NetworkType:      "default",
 		UseCollections:   true,
 		UseOSOBackfill:   useOSOBackfill,
 		UseStreamID:      useStreamID,
