@@ -281,10 +281,6 @@ func (ctl *Ctl) Stop() error {
 
 // ---------------------------------------------------
 
-var defaultCfgDebounceOffsetInMs = int(500)
-
-var defaultNodeOffsetMultiplier = int(4)
-
 // cfgDebounceIntervalInMS computes a debounce interval
 // to be applied for the config events in a cluster.
 // It primarily uses the number of indexes in the system for
@@ -295,18 +291,7 @@ var defaultNodeOffsetMultiplier = int(4)
 // on every node. This ought to help each planner to trigger
 // their work at non-overlapping instant of time.
 func (ctl *Ctl) cfgDebounceIntervalInMS() int {
-	offset, found := cbgt.ParseOptionsInt(
-		ctl.getManagerOptions(), "ctlCfgDebounceOffsetInMs")
-	if !found {
-		offset = defaultCfgDebounceOffsetInMs
-	}
-
-	nm, found := cbgt.ParseOptionsInt(
-		ctl.getManagerOptions(), "ctlNodeOffsetMultiplier")
-	if !found {
-		nm = defaultNodeOffsetMultiplier
-	}
-
+	offset, nm := ctl.optionsCtl.Manager.GetCfgDeBounceOffsetAndMultiplier()
 	var dinterval int
 	var pos int
 
