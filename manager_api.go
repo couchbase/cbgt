@@ -511,3 +511,25 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 
 	return nil
 }
+
+// DefaultCfgDebounceOffsetInMs represents the default value for
+// the debounce interval for the config events.
+var DefaultCfgDebounceOffsetInMs = int(500)
+
+// DefaultNodeOffsetMultiplier represents the default value for
+// of an offset multiplier for nodes.
+var DefaultNodeOffsetMultiplier = int(4)
+
+func (mgr *Manager) GetCfgDeBounceOffsetAndMultiplier() (int, int) {
+	offset, found := ParseOptionsInt(mgr.options, "cfgDebounceOffsetInMs")
+	if !found {
+		offset = DefaultCfgDebounceOffsetInMs
+	}
+
+	nm, found := ParseOptionsInt(mgr.options, "cfgNodeOffsetMultiplier")
+	if !found {
+		nm = DefaultNodeOffsetMultiplier
+	}
+
+	return offset, nm
+}
