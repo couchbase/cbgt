@@ -33,7 +33,7 @@ var TLSKeyFile string
 
 type SecuritySetting struct {
 	EncryptionEnabled  bool
-	DisableNonSSLPorts bool // place holder for future, not used yet
+	DisableNonSSLPorts bool
 	Certificate        *tls.Certificate
 	CertInBytes        []byte
 	TLSConfig          *cbauth.TLSConfig
@@ -73,16 +73,17 @@ func RegisterConfigRefreshCallback(key string, cb ConfigRefreshNotifier) {
 }
 
 func (c *SecurityContext) refresh(code uint64) error {
-	log.Printf("cbauth: received  security change notification, code: %v", code)
+	log.Printf("cbauth: received security change notification, code: %v", code)
 
 	newSetting := &SecuritySetting{}
-	hasEnabled := false
+	var encryptionEnabled, disableNonSSLPorts bool
 
 	oldSetting := GetSecuritySetting()
 	if oldSetting != nil {
 		temp := *oldSetting
 		newSetting = &temp
-		hasEnabled = oldSetting.EncryptionEnabled
+		encryptionEnabled = oldSetting.EncryptionEnabled
+		disableNonSSLPorts = oldSetting.DisableNonSSLPorts
 	}
 
 	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
@@ -108,7 +109,8 @@ func (c *SecurityContext) refresh(code uint64) error {
 	// dcp feeds, http servers and grpc servers.
 	// We are notifying every certificate change irrespective of
 	// the encryption status.
-	if hasEnabled || hasEnabled != newSetting.EncryptionEnabled ||
+	if encryptionEnabled != newSetting.EncryptionEnabled ||
+		disableNonSSLPorts != newSetting.DisableNonSSLPorts ||
 		code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
 		for key, notifier := range c.notifiers {
 			go func(key string, notify ConfigRefreshNotifier) {
