@@ -112,22 +112,17 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	}
 
 	log.Printf("rest_util: ongoing rebalance operation found")
-	hostPort, err := findRebalanceOrchestratorNode(mgr)
+	hostPortUrl, err := findRebalanceOrchestratorNode(mgr)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("rest_util: identified the rebalance orchestrator node: %s", hostPort)
-	// current node is the rebalance orchestrator.
-	if mgr.BindHttp() == hostPort {
-		return nil, errRequestProxyingNotNeeded
-	}
+	log.Printf("rest_util: identified the rebalance orchestrator node: %s", hostPortUrl)
 
 	// forward the incoming index create/update/delete request if the
 	// rebalance orchestrator is a different node in the cluster.
 	// create a new url from the raw RequestURI sent by the client
-	url, err := cbgt.CBAuthURL(fmt.Sprintf("%s://%s%s", "http",
-		hostPort, req.RequestURI))
+	url, err := cbgt.CBAuthURL(hostPortUrl + req.RequestURI)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +159,7 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	}
 
 	log.Printf("rest_util: index method: %s request successfully forwarded"+
-		" to node: %s, resp body: %s", req.Method, hostPort, respBuf)
+		" to node: %s, resp body: %s", req.Method, hostPortUrl, respBuf)
 
 	return respBuf, nil
 }
@@ -209,7 +204,7 @@ func checkRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 }
 
 func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
-	hostport string, err error) {
+	hostPortUrl string, err error) {
 	if mgr == nil {
 		return "", fmt.Errorf("rest_util: invalid manager instance")
 	}
@@ -218,33 +213,30 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 		return "", err
 	}
 
-	// get all the node URLs.
-	nodeURLs := make([]string, len(nodeDefs.NodeDefs))
-	i := 0
-	for _, nodeDef := range nodeDefs.NodeDefs {
-		nodeURLs[i] = nodeDef.HostPort
-		i++
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	var result string
-	errCh := make(chan error, len(nodeURLs))
+	var resultUrl, bindHttp string
+	errCh := make(chan error, len(nodeDefs.NodeDefs))
 
-	for _, hostPort := range nodeURLs {
-		go func(hostPort string) {
+	for _, nd := range nodeDefs.NodeDefs {
+		go func(nodeDef *cbgt.NodeDef) {
 			var err error
 			defer func() {
 				if err != nil {
 					err = fmt.Errorf("Rebalance orchestrator fetch failed for "+
-						"node: %s, err: %v", hostPort, err)
+						"node: %s, err: %v", nodeDef.HostPort, err)
 				}
 				errCh <- err
 			}()
 
+			hostPortUrl := "http://" + nodeDef.HostPort
+			if u, err := nodeDef.HttpsURL(); err == nil {
+				hostPortUrl = u
+			}
+
 			var url string
-			url, err = cbgt.CBAuthURL("http://" + hostPort + "/api/ctlmanager")
+			url, err = cbgt.CBAuthURL(hostPortUrl + "/api/ctlmanager")
 			if err != nil {
 				return
 			}
@@ -263,7 +255,7 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 				// version cluster during upgrade.
 				if resp != nil && resp.StatusCode == 404 {
 					log.Printf("rest_util: findRebalanceOrchestratorNode "+
-						"failed for node: %s, err: %v", hostPort, err)
+						"failed for node: %s, err: %v", hostPortUrl, err)
 					err = nil
 				}
 				return
@@ -285,10 +277,10 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 			}
 
 			if rv.Orchestrator {
-				result = hostPort
+				resultUrl = hostPortUrl
+				bindHttp = nodeDef.HostPort
 			}
-		}(hostPort)
-
+		}(nd)
 	}
 
 	var s []string
@@ -298,14 +290,19 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 			s = append(s, err.Error()+", ")
 		}
 		count++
-		if count >= len(nodeURLs) {
+		if count >= len(nodeDefs.NodeDefs) {
 			break
 		}
 	}
 
 	// found a rebalance orchestrator successfully.
-	if result != "" {
-		return result, nil
+	if resultUrl != "" {
+		if mgr.BindHttp() == bindHttp {
+			// current node is the rebalance orchestrator.
+			return "", errRequestProxyingNotNeeded
+		}
+
+		return resultUrl, nil
 	}
 
 	// propagate the errors.
