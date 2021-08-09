@@ -61,9 +61,15 @@ type SecurityContext struct {
 	notifiers map[string]ConfigRefreshNotifier
 }
 
+const (
+	AuthChange_encryption = 1 << iota
+	AuthChange_nonSSLPorts
+	AuthChange_certificates
+)
+
 // ConfigRefreshNotifier defines the SecuritySetting's refresh
 // callback signature
-type ConfigRefreshNotifier func() error
+type ConfigRefreshNotifier func(status int) error
 
 func RegisterConfigRefreshCallback(key string, cb ConfigRefreshNotifier) {
 	securityCtx.mutex.Lock()
@@ -106,22 +112,30 @@ func (c *SecurityContext) refresh(code uint64) error {
 
 	c.mutex.RLock()
 	// This will notify tls config changes to all the subscribers like
-	// dcp feeds, http servers and grpc servers.
-	// We are notifying every certificate change irrespective of
-	// the encryption status.
-	if encryptionEnabled != newSetting.EncryptionEnabled ||
-		disableNonSSLPorts != newSetting.DisableNonSSLPorts ||
-		code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
+	// dcp feeds, http servers and grpc servers;
+	// Notifying every certificate change irrespective of the encryption status.
+	var status int
+	if encryptionEnabled != newSetting.EncryptionEnabled {
+		status |= AuthChange_encryption
+	}
+	if disableNonSSLPorts != newSetting.DisableNonSSLPorts {
+		status |= AuthChange_nonSSLPorts
+	}
+	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
+		status |= AuthChange_certificates
+	}
+
+	if status != 0 {
 		for key, notifier := range c.notifiers {
 			go func(key string, notify ConfigRefreshNotifier) {
 				log.Printf("cbauth: notifying configs change for key: %v", key)
-				if err := notify(); err != nil {
+				if err := notify(status); err != nil {
 					log.Errorf("cbauth: notify failed, for key: %v: err: %v", key, err)
 				}
 			}(key, notifier)
 		}
 	} else {
-		log.Printf("cbauth: encryption not enabled")
+		log.Printf("cbauth: encryption settings not affected")
 	}
 	c.mutex.RUnlock()
 
