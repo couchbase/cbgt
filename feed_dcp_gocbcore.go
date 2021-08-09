@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -66,8 +67,14 @@ var streamID uint64
 
 func newStreamID() uint16 {
 	// OpenStreamOptions needs streamID to be of type uint16.
+	// Also, KV requires streamID to fall within a range of: 1 to 65535.
 	// Here we do a mod operation, to circle around in case of an overflow.
-	return uint16(atomic.AddUint64(&streamID, 1) % 65536)
+	for {
+		ret := uint16(atomic.AddUint64(&streamID, 1) % (math.MaxUint16 + 1))
+		if ret != 0 {
+			return ret
+		}
+	}
 }
 
 // ----------------------------------------------------------------
