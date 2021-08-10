@@ -16,6 +16,8 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -444,4 +446,21 @@ func ParseOptionsInt(options map[string]string, configKey string) (int, bool) {
 		log.Warnf("parseOptionsInt: %s parse, err: %v", configKey, err)
 	}
 	return 0, false
+}
+
+// GetDirectorySize computes the size of given directory
+// recursively
+func GetDirectorySize(path string) (int64, error) {
+	var dirSize int64
+
+	getSize := func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			dirSize += info.Size()
+		}
+		return err
+	}
+
+	err := filepath.Walk(path, getSize)
+
+	return dirSize, err
 }

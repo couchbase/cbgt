@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -88,6 +89,15 @@ func (p *PIndex) Close(remove bool) error {
 	return nil
 }
 
+// IsFeedable checks whether the pindex is ready to
+// ingest data from a feed.
+func (p *PIndex) IsFeedable() (bool, error) {
+	if pa, ok := p.Dest.(Feedable); ok {
+		return pa.IsFeedable()
+	}
+	return true, nil
+}
+
 // Clone clones the current PIndex
 func (p *PIndex) Clone() *PIndex {
 	if p != nil {
@@ -129,7 +139,7 @@ func restartPIndex(mgr *Manager, pindex *PIndex) {
 		}
 	}
 
-	mgr.Kick("restart-pindex")
+	mgr.Kick("restart-pindex:" + pindex.Name)
 }
 
 // Creates a pindex, including its backend implementation structures,
@@ -151,7 +161,8 @@ func NewPIndex(mgr *Manager, name, uuid,
 		return nil, fmt.Errorf("pindex: NewPIndex, json marshal err: %v", err)
 	}
 
-	impl, dest, err := NewPIndexImpl(indexType, string(pBytes), path, restart)
+	impl, dest, err := NewPIndexImplEx(indexType, string(pBytes), sourceParams,
+		path, mgr, restart)
 	if err != nil {
 		os.RemoveAll(path)
 		return nil, fmt.Errorf("pindex: new indexType: %s, indexParams: %s,"+
@@ -255,6 +266,12 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 func PIndexPath(dataDir, pindexName string) string {
 	// TODO: Need path security checks / mapping here; ex: "../etc/pswd"
 	return dataDir + string(os.PathSeparator) + pindexName + pindexPathSuffix
+}
+
+// Computes the PIndex name from the storage path.
+func PIndexNameFromPath(path string) string {
+	path = filepath.Base(path)
+	return path[0 : len(path)-len(pindexPathSuffix)]
 }
 
 // Retrieves a pindex name from a pindex path.

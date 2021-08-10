@@ -196,6 +196,7 @@ type ClusterOptions struct {
 	MaxConcurrentPartitionMovesPerNode string `json:"maxConcurrentPartitionMovesPerNode"`
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
+	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
@@ -530,6 +531,10 @@ type pindexLoadReq struct {
 
 // ---------------------------------------------------------------
 
+// TempPathPrefix indicates the prefix string applied to
+// name a temp directory.
+var TempPathPrefix = "temp$$"
+
 // Walk the data dir and register pindexes for a Manager instance.
 func (mgr *Manager) LoadDataDir() error {
 	log.Printf("manager: loading dataDir...")
@@ -538,6 +543,17 @@ func (mgr *Manager) LoadDataDir() error {
 		return fmt.Errorf("manager: could not read dataDir: %s, err: %v",
 			mgr.dataDir, err)
 	}
+
+	// clean up any left over temp download directories.
+	for i := len(dirEntries) - 1; i >= 0; i-- {
+		path := filepath.Join(mgr.dataDir, dirEntries[i].Name())
+		if strings.HasPrefix(dirEntries[i].Name(), TempPathPrefix) {
+			log.Printf("manager: purging temp directory: %s", path)
+			os.RemoveAll(path)
+			dirEntries = append(dirEntries[:i], dirEntries[i+1:]...)
+		}
+	}
+
 	size := len(dirEntries)
 	openReqs := make(chan *pindexLoadReq, size)
 	nWorkers := getWorkerCount(size)

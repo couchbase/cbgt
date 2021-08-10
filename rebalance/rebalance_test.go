@@ -284,6 +284,7 @@ func TestRebalance(t *testing.T) {
 			currStates CurrStates,
 			currSeqs CurrSeqs,
 			wantSeqs WantSeqs,
+			transferProgress map[string]float64,
 			nextMoves map[string]*blance.NextMoves) {
 			if !checkCurrStatesIndexes {
 				return
@@ -727,6 +728,7 @@ func TestRebalanceStatsErrorCase(t *testing.T) {
 			currStates CurrStates,
 			currSeqs CurrSeqs,
 			wantSeqs WantSeqs,
+			transferProgress map[string]float64,
 			nextMoves map[string]*blance.NextMoves) {
 			if !checkCurrStatesIndexes {
 				return

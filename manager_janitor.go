@@ -399,6 +399,9 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		CalcFeedsDelta(mgr.uuid, planPIndexes, currFeeds, currPIndexes,
 			feedAllotment)
 
+	// filter out non-ready feeds.
+	addFeeds = filterFeedable(addFeeds)
+
 	log.Printf("janitor: feeds to remove: %d", len(removeFeeds))
 	for _, removeFeed := range removeFeeds {
 		log.Printf("  %s", removeFeed.Name())
@@ -438,6 +441,25 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	}
 
 	return nil
+}
+
+func filterFeedable(addFeeds [][]*PIndex) (rv [][]*PIndex) {
+	for _, pindexes := range addFeeds {
+		plist := make([]*PIndex, 0, len(pindexes))
+		for _, pindex := range pindexes {
+			ready, err := pindex.IsFeedable()
+			if ready && err == nil {
+				plist = append(plist, pindex)
+				continue
+			}
+			log.Printf("janitor: skip feed: %s, err: %v", pindex.Name, err)
+		}
+
+		if len(plist) > 0 {
+			rv = append(rv, plist)
+		}
+	}
+	return rv
 }
 
 func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPIndex,
@@ -891,7 +913,7 @@ func ParseFeedAllotmentOption(sourceParams string) (string, error) {
 	return "", err
 }
 
-func feedAllotmentOption(sourceParams string) string {
+func GetFeedAllotmentOption(sourceParams string) string {
 	if len(sourceParams) > 0 {
 		sp, err := ParseFeedAllotmentOption(sourceParams)
 		if err != nil {
@@ -904,7 +926,7 @@ func feedAllotmentOption(sourceParams string) string {
 
 // FeedNameForPIndex functionally computes the name of a feed given a pindex.
 func FeedNameForPIndex(pindex *PIndex, defaultFeedAllotment string) string {
-	feedAllotment := feedAllotmentOption(pindex.SourceParams)
+	feedAllotment := GetFeedAllotmentOption(pindex.SourceParams)
 	if feedAllotment == "" {
 		feedAllotment = defaultFeedAllotment
 	}

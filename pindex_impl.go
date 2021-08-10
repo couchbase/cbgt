@@ -46,6 +46,13 @@ type PIndexImplType struct {
 	New func(indexType, indexParams, path string, restart func()) (
 		PIndexImpl, Dest, error)
 
+	// NewEx is an optional method that is invoked by the manager when
+	// it wants to create an index partition. The pindex implementation
+	// should persist enough info into the path subdirectory so that
+	// it can reconstitute the pindex during restart and Open().
+	NewEx func(indexType, indexParams, sourceParams, path string, mgr *Manager,
+		restart func()) (PIndexImpl, Dest, error)
+
 	// Invoked by the manager when it wants a pindex implementation to
 	// reconstitute and reload a pindex instance back into the
 	// process, such as when the process has re-started.
@@ -115,6 +122,12 @@ type PIndexImplType struct {
 		indexUUID string, req []byte) (*TaskRequestStatus, error)
 }
 
+type Feedable interface {
+	// IsFeedable implementation checks whether the current pindex
+	// instance is ready for ingesting data from a Feed implementation.
+	IsFeedable() (bool, error)
+}
+
 // ConfigAnalyzeRequest wraps up the various configuration
 // parameters that the PIndexImplType implementations deals with.
 type ConfigAnalyzeRequest struct {
@@ -155,6 +168,20 @@ func NewPIndexImpl(indexType, indexParams, path string, restart func()) (
 	}
 
 	return t.New(indexType, indexParams, path, restart)
+}
+
+// NewPIndexImplEx creates an index partition of the given, registered
+// index type.
+func NewPIndexImplEx(indexType, indexParams, sourceParams, path string,
+	mgr *Manager, restart func()) (
+	PIndexImpl, Dest, error) {
+	t, exists := PIndexImplTypes[indexType]
+	if !exists || t == nil || t.NewEx == nil {
+		// fallback to default NewPIndexImpl implementation.
+		return NewPIndexImpl(indexType, indexParams, path, restart)
+	}
+
+	return t.NewEx(indexType, indexParams, sourceParams, path, mgr, restart)
 }
 
 // OpenPIndexImpl loads an index partition of the given, registered

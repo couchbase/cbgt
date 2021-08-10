@@ -255,3 +255,10 @@ func (t *DestForwarder) Query(pindex *PIndex, req []byte, res io.Writer,
 func (t *DestForwarder) Stats(w io.Writer) error {
 	return t.DestProvider.Stats(w)
 }
+
+func (t *DestForwarder) IsFeedable() (bool, error) {
+	if f, ok := t.DestProvider.(Feedable); ok {
+		return f.IsFeedable()
+	}
+	return true, nil
+}
