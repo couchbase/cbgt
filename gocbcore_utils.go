@@ -262,6 +262,15 @@ func (am *gocbcoreAgentsMap) closeClient(sourceName, sourceUUID string) {
 	am.m.Unlock()
 }
 
+func (dm *gocbcoreAgentsMap) forceReconnectAgents() {
+	dm.m.Lock()
+	for _, client := range dm.entries {
+		go client.agent.ForceReconnect()
+		go client.dcpAgent.ForceReconnect()
+	}
+	dm.m.Unlock()
+}
+
 // ----------------------------------------------------------------
 
 // CBPartitions parses a sourceParams for a couchbase

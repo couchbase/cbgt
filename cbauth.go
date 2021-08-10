@@ -241,6 +241,10 @@ func updateSecurityConfig(encryptData bool) error {
 		currSecurityConfig.rootCAs = rootCAs
 	}
 
+	// force reconnect cached gocbcore.Agents and DCPAgents
+	statsAgentsMap.forceReconnectAgents()
+	dcpAgentMap.forceReconnectAgents()
+
 	return nil
 }
 

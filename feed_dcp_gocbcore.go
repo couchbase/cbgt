@@ -257,6 +257,16 @@ func (dm *gocbcoreDCPAgentMap) releaseAgent(bucketName, bucketUUID string,
 	return nil
 }
 
+func (dm *gocbcoreDCPAgentMap) forceReconnectAgents() {
+	dm.m.Lock()
+	for _, agents := range dm.entries {
+		for agent := range agents {
+			go agent.ForceReconnect()
+		}
+	}
+	dm.m.Unlock()
+}
+
 // ----------------------------------------------------------------
 
 const defaultOSOBackfillMode = false
@@ -943,9 +953,14 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				log.Printf("feed_dcp_gocbcore: [%s] Stream request for vb: %v was canceled,"+
 					" will re-initiate th stream request", f.Name(), vbId)
 				er = nil
+			} else if errors.Is(er, gocbcore.ErrForcedReconnect) {
+				log.Warnf("feed_dcp_gocbcore: [%s] Stream request for vb: %v failed"+
+					" with err: %v, reconnecting ...", f.Name(), vbId, er)
+				go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
+				er = nil
 			} else if er != nil {
 				// unidentified error
-				log.Warnf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
+				log.Errorf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
 					" vb: %v, err: %v", f.Name(), vbId, er)
 				f.complete(vbId)
 			} else {
@@ -1198,7 +1213,8 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 			f.Name(), vbId, err))
 	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) ||
 		errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
-		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
+		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) ||
+		errors.Is(err, gocbcore.ErrForcedReconnect) {
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
 			" `%s`, reconnecting ...", f.Name(), streamId, vbId, err.Error())
 		go func(vb uint16, seqno uint64) {
