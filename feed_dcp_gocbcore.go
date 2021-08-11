@@ -872,15 +872,25 @@ func (f *GocbcoreDCPFeed) Stats(w io.Writer) error {
 
 // ----------------------------------------------------------------
 
-func (f *GocbcoreDCPFeed) initiateStream(vbId uint16) error {
+func (f *GocbcoreDCPFeed) lastVbUUIDSeqFromFailOverLog(vbId uint16) (
+	uint64, uint64, error) {
 	vbMetaData, lastSeq, err := f.getMetaData(vbId)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	var vbuuid uint64
 	if len(vbMetaData.FailOverLog) > 0 {
 		vbuuid = vbMetaData.FailOverLog[0][0]
+	}
+
+	return vbuuid, lastSeq, nil
+}
+
+func (f *GocbcoreDCPFeed) initiateStream(vbId uint16) error {
+	vbuuid, lastSeq, err := f.lastVbUUIDSeqFromFailOverLog(vbId)
+	if err != nil {
+		return err
 	}
 
 	go f.initiateStreamEx(vbId, true, gocbcore.VbUUID(vbuuid),
@@ -1191,8 +1201,11 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) {
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
 			" `%s`, reconnecting ...", f.Name(), streamId, vbId, err.Error())
-		go f.initiateStreamEx(vbId, false, gocbcore.VbUUID(0),
-			gocbcore.SeqNo(lastReceivedSeqno), maxEndSeqno)
+		go func(vb uint16, seqno uint64) {
+			vbuuid, _, _ := f.lastVbUUIDSeqFromFailOverLog(vb)
+			f.initiateStreamEx(vb, false, gocbcore.VbUUID(vbuuid),
+				gocbcore.SeqNo(seqno), maxEndSeqno)
+		}(vbId, lastReceivedSeqno)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
 		f.complete(vbId)
 		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
