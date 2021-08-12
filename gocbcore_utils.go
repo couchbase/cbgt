@@ -10,6 +10,7 @@ package cbgt
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -113,6 +114,52 @@ func init() {
 	}
 }
 
+type certProvider func() *x509.CertPool
+
+// setupConfigParams sets up the following parameters needed to set up
+// gocbcore AgentConfig/DCPAgentConfig ..
+//   - connection string
+//   - useTLS flag
+//   - TLSRootCAProvider
+func setupConfigParams(server string, options map[string]string) (
+	connStr string, useTLS bool, caProvider certProvider) {
+	connStr = server
+	if connURL, err := url.Parse(server); err == nil {
+		if strings.HasPrefix(connURL.Scheme, "http") {
+			if (options["authType"] == "cbauth" || len(TLSCertFile) > 0) &&
+				len(options["serverSslPort"]) > 0 {
+				hostname := connURL.Hostname()
+				// retain the square brackets with ipv6 address.
+				if strings.Contains(connURL.Host, "[") {
+					hostname = "[" + hostname + "]"
+				}
+				// UseTLS and serverSslPort
+				connStr = connURL.Scheme + "://" +
+					hostname + ":" + options["serverSslPort"]
+
+				if newURL, err := url.Parse(connStr); err == nil {
+					connURL = newURL
+					useTLS = true
+				}
+			}
+
+			// tack on an option: bootstrap_on=http for gocbcore SDK
+			// connections to force HTTP config polling
+			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
+				connStr = ret.String()
+			}
+		}
+	}
+
+	if options["authType"] == "cbauth" {
+		caProvider = FetchSecurityConfig
+	} else {
+		caProvider = LoadCertFromTLSCertFile
+	}
+
+	return connStr, useTLS, caProvider
+}
+
 // Fetches gocbcore agent+dcpAgent instance for the bucket (name:uuid),
 // if not found creates a new instance and stashes it in the map,
 // before returning it.
@@ -145,27 +192,22 @@ func (am *gocbcoreAgentsMap) fetchClient(sourceName, sourceUUID, sourceParams,
 		return nil, fmt.Errorf("gocbcore_utils: fetchClient, no servers provided")
 	}
 
-	connStr := svrs[0]
-	if connURL, err := url.Parse(svrs[0]); err == nil {
-		if strings.HasPrefix(connURL.Scheme, "http") {
-			// tack on an option: bootstrap_on=http for gocbcore SDK
-			// connections to force HTTP config polling
-			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
-				connStr = ret.String()
-			}
-		}
-	}
-
+	connStr, useTLS, caProvider := setupConfigParams(svrs[0], options)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return nil, fmt.Errorf("gocbcore_utils: fetchClient, unable to build"+
 			" agent config from connStr: %s, err: %v", connStr, err)
 	}
+	config.UseTLS = useTLS
+	config.TLSRootCAProvider = caProvider
+
 	err = dcpConfig.FromConnStr(connStr)
 	if err != nil {
 		return nil, fmt.Errorf("gocbcore_utils: fetchClient, unable to build"+
 			" dcpAgent config from connStr: %s, err: %v", connStr, err)
 	}
+	dcpConfig.UseTLS = useTLS
+	dcpConfig.TLSRootCAProvider = caProvider
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
@@ -218,6 +260,15 @@ func (am *gocbcoreAgentsMap) closeClient(sourceName, sourceUUID string) {
 		delete(am.entries, key)
 	}
 	am.m.Unlock()
+}
+
+func (dm *gocbcoreAgentsMap) forceReconnectAgents() {
+	dm.m.Lock()
+	for _, client := range dm.entries {
+		go client.agent.ForceReconnect()
+		go client.dcpAgent.ForceReconnect()
+	}
+	dm.m.Unlock()
 }
 
 // ----------------------------------------------------------------
@@ -448,22 +499,14 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 			" no servers provided")
 	}
 
-	connStr := svrs[0]
-	if connURL, err := url.Parse(svrs[0]); err == nil {
-		if strings.HasPrefix(connURL.Scheme, "http") {
-			// tack on an option: bootstrap_on=http for gocbcore SDK
-			// connections to force HTTP config polling
-			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
-				connStr = ret.String()
-			}
-		}
-	}
-
+	connStr, useTLS, caProvider := setupConfigParams(svrs[0], options)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return "", fmt.Errorf("gocbcore_utils: CBSourceUUIDLookUp,"+
 			" unable to build config from connStr: %s, err: %v", connStr, err)
 	}
+	config.UseTLS = useTLS
+	config.TLSRootCAProvider = caProvider
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {

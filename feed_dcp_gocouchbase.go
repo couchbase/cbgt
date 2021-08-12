@@ -115,9 +115,9 @@ func StartDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			mgr.server, err)
 	}
 
-	securityConfigRefreshHandler := func() error {
-		log.Printf("feed_dcp_gocouchbase: %s security refresh kick: %s",
-			feed.name, cbdatasource.UpdateSecuritySettings)
+	securityConfigRefreshHandler := func(status int) error {
+		log.Printf("feed_dcp_gocouchbase: %s security refresh kick: %s, status: %d",
+			feed.name, cbdatasource.UpdateSecuritySettings, status)
 		return feed.bds.Kick(cbdatasource.UpdateSecuritySettings)
 	}
 

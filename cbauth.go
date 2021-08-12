@@ -33,7 +33,7 @@ var TLSKeyFile string
 
 type SecuritySetting struct {
 	EncryptionEnabled  bool
-	DisableNonSSLPorts bool // place holder for future, not used yet
+	DisableNonSSLPorts bool
 	Certificate        *tls.Certificate
 	CertInBytes        []byte
 	TLSConfig          *cbauth.TLSConfig
@@ -61,9 +61,15 @@ type SecurityContext struct {
 	notifiers map[string]ConfigRefreshNotifier
 }
 
+const (
+	AuthChange_encryption = 1 << iota
+	AuthChange_nonSSLPorts
+	AuthChange_certificates
+)
+
 // ConfigRefreshNotifier defines the SecuritySetting's refresh
 // callback signature
-type ConfigRefreshNotifier func() error
+type ConfigRefreshNotifier func(status int) error
 
 func RegisterConfigRefreshCallback(key string, cb ConfigRefreshNotifier) {
 	securityCtx.mutex.Lock()
@@ -73,16 +79,17 @@ func RegisterConfigRefreshCallback(key string, cb ConfigRefreshNotifier) {
 }
 
 func (c *SecurityContext) refresh(code uint64) error {
-	log.Printf("cbauth: received  security change notification, code: %v", code)
+	log.Printf("cbauth: received security change notification, code: %v", code)
 
 	newSetting := &SecuritySetting{}
-	hasEnabled := false
+	var encryptionEnabled, disableNonSSLPorts bool
 
 	oldSetting := GetSecuritySetting()
 	if oldSetting != nil {
 		temp := *oldSetting
 		newSetting = &temp
-		hasEnabled = oldSetting.EncryptionEnabled
+		encryptionEnabled = oldSetting.EncryptionEnabled
+		disableNonSSLPorts = oldSetting.DisableNonSSLPorts
 	}
 
 	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
@@ -105,21 +112,30 @@ func (c *SecurityContext) refresh(code uint64) error {
 
 	c.mutex.RLock()
 	// This will notify tls config changes to all the subscribers like
-	// dcp feeds, http servers and grpc servers.
-	// We are notifying every certificate change irrespective of
-	// the encryption status.
-	if hasEnabled || hasEnabled != newSetting.EncryptionEnabled ||
-		code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
+	// dcp feeds, http servers and grpc servers;
+	// Notifying every certificate change irrespective of the encryption status.
+	var status int
+	if encryptionEnabled != newSetting.EncryptionEnabled {
+		status |= AuthChange_encryption
+	}
+	if disableNonSSLPorts != newSetting.DisableNonSSLPorts {
+		status |= AuthChange_nonSSLPorts
+	}
+	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
+		status |= AuthChange_certificates
+	}
+
+	if status != 0 {
 		for key, notifier := range c.notifiers {
 			go func(key string, notify ConfigRefreshNotifier) {
 				log.Printf("cbauth: notifying configs change for key: %v", key)
-				if err := notify(); err != nil {
+				if err := notify(status); err != nil {
 					log.Errorf("cbauth: notify failed, for key: %v: err: %v", key, err)
 				}
 			}(key, notifier)
 		}
 	} else {
-		log.Printf("cbauth: encryption not enabled")
+		log.Printf("cbauth: encryption settings not affected")
 	}
 	c.mutex.RUnlock()
 
@@ -178,8 +194,8 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 	configs.EncryptionEnabled = cfg.EncryptData
 	configs.DisableNonSSLPorts = cfg.DisableNonSSLPorts
 
-	if err = updateGocbcoreSecurityConfig(cfg.EncryptData); err != nil {
-		log.Warnf("cbauth: Error updating gocbcore's TLS data, err: %v", err)
+	if err = updateSecurityConfig(cfg.EncryptData); err != nil {
+		log.Warnf("cbauth: Error updating TLS data, err: %v", err)
 		return err
 	}
 
@@ -200,47 +216,64 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 // ----------------------------------------------------------------
 
 // security config for gocbcore DCP Agents
-type gocbcoreSecurityConfig struct {
+type securityConfig struct {
 	encryptData bool
 	rootCAs     *x509.CertPool
 }
 
-var currGocbcoreSecurityConfigMutex sync.RWMutex
-var currGocbcoreSecurityConfig *gocbcoreSecurityConfig
+var currSecurityConfigMutex sync.RWMutex
+var currSecurityConfig *securityConfig
 
 func init() {
-	currGocbcoreSecurityConfig = &gocbcoreSecurityConfig{}
+	currSecurityConfig = &securityConfig{}
 }
 
-func updateGocbcoreSecurityConfig(encryptData bool) error {
-	currGocbcoreSecurityConfigMutex.Lock()
-	defer currGocbcoreSecurityConfigMutex.Unlock()
+func updateSecurityConfig(encryptData bool) error {
+	currSecurityConfigMutex.Lock()
+	defer currSecurityConfigMutex.Unlock()
 
-	currGocbcoreSecurityConfig.encryptData = encryptData
-	if encryptData && len(TLSCertFile) > 0 {
-		certInBytes, err := ioutil.ReadFile(TLSCertFile)
-		if err != nil {
-			return err
+	currSecurityConfig.encryptData = encryptData
+	if encryptData {
+		rootCAs := LoadCertFromTLSCertFile()
+		if rootCAs == nil {
+			return fmt.Errorf("error obtaining certificate")
 		}
-
-		rootCAs := x509.NewCertPool()
-		ok := rootCAs.AppendCertsFromPEM(certInBytes)
-		if !ok {
-			return fmt.Errorf("error appending certificates")
-		}
-
-		currGocbcoreSecurityConfig.rootCAs = rootCAs
+		currSecurityConfig.rootCAs = rootCAs
 	}
+
+	// force reconnect cached gocbcore.Agents and DCPAgents
+	statsAgentsMap.forceReconnectAgents()
+	dcpAgentMap.forceReconnectAgents()
 
 	return nil
 }
 
-func FetchGocbcoreSecurityConfig() *x509.CertPool {
+func FetchSecurityConfig() *x509.CertPool {
 	var rootCAs *x509.CertPool
-	currGocbcoreSecurityConfigMutex.RLock()
-	if currGocbcoreSecurityConfig.encryptData {
-		rootCAs = currGocbcoreSecurityConfig.rootCAs
+	currSecurityConfigMutex.RLock()
+	if currSecurityConfig.encryptData {
+		rootCAs = currSecurityConfig.rootCAs
 	}
-	currGocbcoreSecurityConfigMutex.RUnlock()
+	currSecurityConfigMutex.RUnlock()
+	return rootCAs
+}
+
+func LoadCertFromTLSCertFile() *x509.CertPool {
+	var rootCAs *x509.CertPool
+	if len(TLSCertFile) > 0 {
+		certInBytes, err := ioutil.ReadFile(TLSCertFile)
+		if err != nil {
+			log.Warnf("LoadCertFromTLSCertFile, err: %v", err)
+			return nil
+		} else {
+			rootCAs = x509.NewCertPool()
+			ok := rootCAs.AppendCertsFromPEM(certInBytes)
+			if !ok {
+				log.Warnf("LoadCertFromTLSCertFile, error appending certificates")
+				return nil
+			}
+		}
+	}
+
 	return rootCAs
 }

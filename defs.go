@@ -173,6 +173,37 @@ func (n *NodeDef) GetFromParsedExtras(key string) (interface{}, error) {
 	return ret, err
 }
 
+func (n *NodeDef) HttpsURL() (string, error) {
+	hostnameDelimiter := strings.LastIndex(n.HostPort, ":")
+	if hostnameDelimiter < 0 || hostnameDelimiter > len(n.HostPort) {
+		return "", fmt.Errorf("unable to locate hostname")
+	}
+
+	bindHTTPS, err := n.GetFromParsedExtras("bindHTTPS")
+	if err != nil {
+		return "", err
+	}
+
+	if bindHTTPS == nil {
+		return "", fmt.Errorf("no extras entry for bindHTTPS")
+	}
+
+	bindHTTPSstr, ok := bindHTTPS.(string)
+	if !ok {
+		return "", fmt.Errorf("bindHTTPS not a string")
+	}
+
+	portPos := strings.LastIndex(bindHTTPSstr, ":") + 1
+	if portPos < 0 || portPos > len(bindHTTPSstr) {
+		return "", fmt.Errorf("unable to locate port")
+	}
+
+	address := "https://" + n.HostPort[:hostnameDelimiter] +
+		":" + bindHTTPSstr[portPos:]
+
+	return address, nil
+}
+
 // ------------------------------------------------------------------------
 
 // A PlanPIndexes is comprised of zero or more planPIndexes.
