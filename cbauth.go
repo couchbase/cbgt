@@ -28,13 +28,13 @@ func init() {
 	}
 }
 
+var TLSCAFile string
 var TLSCertFile string
 var TLSKeyFile string
 
 type SecuritySetting struct {
 	EncryptionEnabled  bool
 	DisableNonSSLPorts bool
-	Certificate        *tls.Certificate
 	CertInBytes        []byte
 	TLSConfig          *cbauth.TLSConfig
 	ClientAuthType     *tls.ClientAuthType
@@ -162,23 +162,21 @@ func (c *SecurityContext) refreshConfig(configs *SecuritySetting) error {
 }
 
 func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
-	if len(TLSCertFile) == 0 || len(TLSKeyFile) == 0 {
+	if (len(TLSCAFile) == 0 && len(TLSCertFile) == 0) || len(TLSKeyFile) == 0 {
 		return nil
 	}
 
-	cert, err := tls.LoadX509KeyPair(TLSCertFile, TLSKeyFile)
-	if err != nil {
-		log.Printf("cbauth: LoadX509KeyPair err : %v", err)
-		return err
+	caFile := TLSCertFile
+	if len(TLSCAFile) > 0 {
+		caFile = TLSCAFile
 	}
 
-	certInBytes, err := ioutil.ReadFile(TLSCertFile)
+	certInBytes, err := ioutil.ReadFile(caFile)
 	if err != nil {
 		log.Errorf("cbauth: Certificates read err: %v", err)
 		return err
 	}
 
-	configs.Certificate = &cert
 	configs.CertInBytes = certInBytes
 
 	return nil
@@ -234,9 +232,9 @@ func updateSecurityConfig(encryptData bool) error {
 
 	currSecurityConfig.encryptData = encryptData
 	if encryptData {
-		rootCAs := LoadCertFromTLSCertFile()
+		rootCAs := LoadCertsFromTLSFile()
 		if rootCAs == nil {
-			return fmt.Errorf("error obtaining certificate")
+			return fmt.Errorf("error obtaining certificate(s)")
 		}
 		currSecurityConfig.rootCAs = rootCAs
 	}
@@ -258,20 +256,27 @@ func FetchSecurityConfig() *x509.CertPool {
 	return rootCAs
 }
 
-func LoadCertFromTLSCertFile() *x509.CertPool {
-	var rootCAs *x509.CertPool
-	if len(TLSCertFile) > 0 {
-		certInBytes, err := ioutil.ReadFile(TLSCertFile)
-		if err != nil {
-			log.Warnf("LoadCertFromTLSCertFile, err: %v", err)
+func LoadCertsFromTLSFile() (rootCAs *x509.CertPool) {
+	if len(TLSCAFile) == 0 && len(TLSCertFile) == 0 {
+		return
+	}
+
+	caFile := TLSCAFile
+	if len(caFile) == 0 {
+		caFile = TLSCertFile
+	}
+
+	certInBytes, err := ioutil.ReadFile(caFile)
+	if err != nil {
+		log.Warnf("LoadCertsFromTLSFile, path: %v, err: %v", caFile, err)
+		return nil
+	} else {
+		rootCAs = x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM(certInBytes)
+		if !ok {
+			log.Warnf("LoadCertsFromTLSFile, error appending certificates, path: %v",
+				caFile)
 			return nil
-		} else {
-			rootCAs = x509.NewCertPool()
-			ok := rootCAs.AppendCertsFromPEM(certInBytes)
-			if !ok {
-				log.Warnf("LoadCertFromTLSCertFile, error appending certificates")
-				return nil
-			}
 		}
 	}
 

@@ -127,7 +127,7 @@ func setupConfigParams(server string, options map[string]string) (
 	connStr = server
 	if connURL, err := url.Parse(server); err == nil {
 		if strings.HasPrefix(connURL.Scheme, "http") {
-			if len(TLSCertFile) > 0 {
+			if len(TLSCAFile) > 0 || len(TLSCertFile) > 0 {
 				useTLS = true
 			}
 
@@ -142,7 +142,7 @@ func setupConfigParams(server string, options map[string]string) (
 	if options["authType"] == "cbauth" {
 		caProvider = FetchSecurityConfig
 	} else {
-		caProvider = LoadCertFromTLSCertFile
+		caProvider = LoadCertsFromTLSFile
 	}
 
 	return connStr, useTLS, caProvider
