@@ -17,4 +17,5 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20141108142129-dee209f2455f
 	golang.org/x/crypto v0.0.0-20171031160130-bd6f299fb381 // indirect
 	golang.org/x/net v0.0.0-20180120141536-44b7c21cbf19
+	golang.org/x/text v0.3.7 // indirect
 )

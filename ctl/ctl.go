@@ -93,7 +93,6 @@ type CtlOptions struct {
 	WaitForMemberNodes                 int // Seconds to wait for wanted member nodes to appear.
 	MaxConcurrentPartitionMovesPerNode int
 	Manager                            *cbgt.Manager
-	HttpClient                         *http.Client
 }
 
 type CtlNode struct {
@@ -883,9 +882,9 @@ func (ctl *Ctl) startCtlLOCKED(
 
 	httpGetWithAuth := func(urlStr string) (resp *http.Response, err error) {
 		if authType == "cbauth" {
-			if ctl.optionsCtl.HttpClient != nil {
-				return cbgt.CBAuthHttpGetWithClient(urlStr,
-					ctl.optionsCtl.HttpClient)
+			httpClient := cbgt.HttpClient()
+			if httpClient != nil {
+				return cbgt.CBAuthHttpGetWithClient(urlStr, httpClient)
 			}
 			return cbgt.CBAuthHttpGet(urlStr)
 		}
