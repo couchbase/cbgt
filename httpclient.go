@@ -10,6 +10,7 @@ package cbgt
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"net/http"
 	"sync"
@@ -58,8 +59,10 @@ func updateHttpClient(status int) error {
 			TLSClientConfig:       &tls.Config{},
 		}
 
-		rootCAs := LoadCertFromTLSCertFile()
-		if rootCAs != nil {
+		ss := GetSecuritySetting()
+		rootCAs := x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM(ss.CertInBytes)
+		if ok {
 			transport.TLSClientConfig.RootCAs = rootCAs
 			_ = http2.ConfigureTransport(transport)
 		} else {
