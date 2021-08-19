@@ -27,8 +27,6 @@ var HttpTransportIdleConnTimeout = 90 * time.Second      // Go's default is 90 s
 var HttpTransportTLSHandshakeTimeout = 10 * time.Second  // Go's default is 10 secs.
 var HttpTransportExpectContinueTimeout = 1 * time.Second // Go's default is 1 secs.
 
-var HttpClientTimeout = 60 * time.Second
-
 var httpClientM sync.RWMutex
 var httpClient = http.DefaultClient
 
@@ -70,7 +68,6 @@ func updateHttpClient(status int) error {
 		}
 
 		client := &http.Client{
-			Timeout:   HttpClientTimeout,
 			Transport: transport,
 		}
 
