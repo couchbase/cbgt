@@ -1515,7 +1515,10 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 							Seq       uint64 `json:"seq"`
 							SourceSeq uint64 `json:"sourceSeq,omitempty"`
 						} `json:"partitions"`
-						TransferProgress float64 `json:"transferProgress,omitempty"`
+
+						CopyPartitionStats struct {
+							TransferProgress float64 `json:"transferProgress,omitempty"`
+						} `json:"copyPartitionStats,omitempty"`
 					} `json:"pindexes"`
 				}{}
 
@@ -1535,7 +1538,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 
 				for pindex, x := range m.PIndexes {
 					r.m.Lock()
-					r.transferProgress[pindex] = x.TransferProgress
+					r.transferProgress[pindex] = x.CopyPartitionStats.TransferProgress
 					r.m.Unlock()
 
 					for sourcePartition, uuidSeq := range x.Partitions {
