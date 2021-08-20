@@ -226,7 +226,7 @@ func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) 
 
 			key := indexDef.SourceName + ":" + indexDef.SourceUUID
 			if partitions, exists = pCache[key]; !exists {
-				partitions, err := feedType.Partitions(indexDef.SourceType,
+				partitions, err = feedType.Partitions(indexDef.SourceType,
 					indexDef.SourceName, indexDef.SourceUUID,
 					indexDef.SourceParams,
 					ctl.optionsCtl.Manager.Server(),
