@@ -284,18 +284,19 @@ func setupDCPAgentConfig(
 		useOSOBackfill = false
 	}
 	return &gocbcore.DCPAgentConfig{
-		UserAgent:        name,
-		BucketName:       bucketName,
-		Auth:             auth,
-		ConnectTimeout:   GocbcoreConnectTimeout,
-		KVConnectTimeout: GocbcoreKVConnectTimeout,
-		NetworkType:      "default",
-		UseCollections:   true,
-		UseOSOBackfill:   useOSOBackfill,
-		UseStreamID:      useStreamID,
-		BackfillOrder:    gocbcore.DCPBackfillOrderRoundRobin,
-		AgentPriority:    agentPriority,
-		DCPBufferSize:    int(DCPFeedBufferSizeBytes),
+		UserAgent:              name,
+		BucketName:             bucketName,
+		Auth:                   auth,
+		ConnectTimeout:         GocbcoreConnectTimeout,
+		KVConnectTimeout:       GocbcoreKVConnectTimeout,
+		NetworkType:            "default",
+		InitialBootstrapNonTLS: true,
+		UseCollections:         true,
+		UseOSOBackfill:         useOSOBackfill,
+		UseStreamID:            useStreamID,
+		BackfillOrder:          gocbcore.DCPBackfillOrderRoundRobin,
+		AgentPriority:          agentPriority,
+		DCPBufferSize:          int(DCPFeedBufferSizeBytes),
 	}
 }
 
@@ -951,7 +952,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				// request was canceled (likely) by FTS, ignore error as stream request
 				// will be re-attempted
 				log.Printf("feed_dcp_gocbcore: [%s] Stream request for vb: %v was canceled,"+
-					" will re-initiate th stream request", f.Name(), vbId)
+					" will re-initiate the stream request", f.Name(), vbId)
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrForcedReconnect) {
 				log.Warnf("feed_dcp_gocbcore: [%s] Stream request for vb: %v failed"+

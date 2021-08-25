@@ -45,13 +45,14 @@ func (rs *retryStrategy) RetryAfter(req gocbcore.RetryRequest,
 func setupAgentConfig(name, bucketName string,
 	auth gocbcore.AuthProvider) *gocbcore.AgentConfig {
 	return &gocbcore.AgentConfig{
-		UserAgent:        name,
-		BucketName:       bucketName,
-		Auth:             auth,
-		ConnectTimeout:   GocbcoreConnectTimeout,
-		KVConnectTimeout: GocbcoreKVConnectTimeout,
-		NetworkType:      "default",
-		UseCollections:   true,
+		UserAgent:              name,
+		BucketName:             bucketName,
+		Auth:                   auth,
+		ConnectTimeout:         GocbcoreConnectTimeout,
+		KVConnectTimeout:       GocbcoreKVConnectTimeout,
+		NetworkType:            "default",
+		InitialBootstrapNonTLS: true,
+		UseCollections:         true,
 	}
 }
 
@@ -126,21 +127,8 @@ func setupConfigParams(server string, options map[string]string) (
 	connStr = server
 	if connURL, err := url.Parse(server); err == nil {
 		if strings.HasPrefix(connURL.Scheme, "http") {
-			if (options["authType"] == "cbauth" || len(TLSCertFile) > 0) &&
-				len(options["serverSslPort"]) > 0 {
-				hostname := connURL.Hostname()
-				// retain the square brackets with ipv6 address.
-				if strings.Contains(connURL.Host, "[") {
-					hostname = "[" + hostname + "]"
-				}
-				// UseTLS and serverSslPort
-				connStr = connURL.Scheme + "://" +
-					hostname + ":" + options["serverSslPort"]
-
-				if newURL, err := url.Parse(connStr); err == nil {
-					connURL = newURL
-					useTLS = true
-				}
+			if options["authType"] == "cbauth" || len(TLSCertFile) > 0 {
+				useTLS = true
 			}
 
 			// tack on an option: bootstrap_on=http for gocbcore SDK
