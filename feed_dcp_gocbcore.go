@@ -284,18 +284,19 @@ func setupDCPAgentConfig(
 		useOSOBackfill = false
 	}
 	return &gocbcore.DCPAgentConfig{
-		UserAgent:        name,
-		BucketName:       bucketName,
-		Auth:             auth,
-		ConnectTimeout:   GocbcoreConnectTimeout,
-		KVConnectTimeout: GocbcoreKVConnectTimeout,
-		NetworkType:      "default",
-		UseCollections:   true,
-		UseOSOBackfill:   useOSOBackfill,
-		UseStreamID:      useStreamID,
-		BackfillOrder:    gocbcore.DCPBackfillOrderRoundRobin,
-		AgentPriority:    agentPriority,
-		DCPBufferSize:    int(DCPFeedBufferSizeBytes),
+		UserAgent:              name,
+		BucketName:             bucketName,
+		Auth:                   auth,
+		ConnectTimeout:         GocbcoreConnectTimeout,
+		KVConnectTimeout:       GocbcoreKVConnectTimeout,
+		NetworkType:            "default",
+		InitialBootstrapNonTLS: true,
+		UseCollections:         true,
+		UseOSOBackfill:         useOSOBackfill,
+		UseStreamID:            useStreamID,
+		BackfillOrder:          gocbcore.DCPBackfillOrderRoundRobin,
+		AgentPriority:          agentPriority,
+		DCPBufferSize:          int(DCPFeedBufferSizeBytes),
 	}
 }
 
@@ -348,8 +349,11 @@ func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 		return gocbcore.ErrDCPStreamDisconnected
 	case <-timeoutTmr.C:
 		gocbcore.ReleaseTimer(timeoutTmr, true)
+		log.Warnf("feed_dcp_gocbcore: Request has timed out, canceling op")
 		if op != nil {
 			op.Cancel()
+			// wait for confirmation after canceling the PendingOp
+			<-signal
 		}
 		return gocbcore.ErrTimeout
 	}
@@ -948,16 +952,13 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				// rollback will handle this feed closure and setting up of a new feed
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrRequestCanceled) {
-				// request was canceled (likely) by FTS, ignore error as stream request
-				// will be re-attempted
-				log.Printf("feed_dcp_gocbcore: [%s] Stream request for vb: %v was canceled,"+
-					" will re-initiate th stream request", f.Name(), vbId)
-				er = nil
+				// request was canceled by FTS, catch error and re-initiate stream request
+				log.Warnf("feed_dcp_gocbcore: [%s] Stream request for vb: %v was canceled,"+
+					" (timeout) will re-initiate the stream request", f.Name(), vbId)
 			} else if errors.Is(er, gocbcore.ErrForcedReconnect) {
+				// request was canceled by GOCBCORE, catch error and re-initate stream request
 				log.Warnf("feed_dcp_gocbcore: [%s] Stream request for vb: %v failed"+
 					" with err: %v, reconnecting ...", f.Name(), vbId, er)
-				go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
-				er = nil
 			} else if er != nil {
 				// unidentified error
 				log.Errorf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
@@ -998,9 +999,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
 	if err != nil {
-		if errors.Is(err, gocbcore.ErrTimeout) {
-			log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v has timed out",
-				f.Name(), vbId)
+		if errors.Is(err, gocbcore.ErrTimeout) || errors.Is(err, gocbcore.ErrForcedReconnect) {
 			go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 		} else {
 			f.onError(true,

@@ -597,13 +597,14 @@ func (m *CtlMgr) updateProgress(
 			}
 		}
 
-		partitionsCnt := m.ctl.movingPartitionsCount
-		if partitionsCnt > 0 {
-			progress = totPct / float64(partitionsCnt)
-		} else if len(pindexProg) > 0 {
-			// this may happen only at the very start or after all
-			// movement is done, hence worked fine so far.
-			progress = totPct / float64(len(pindexProg))
+		// dynamically adjust the normalising factor.
+		nfactor := m.ctl.movingPartitionsCount
+		if nfactor < len(pindexProg) {
+			nfactor = len(pindexProg)
+		}
+
+		if nfactor > 0 {
+			progress = totPct / float64(nfactor)
 		}
 	}
 

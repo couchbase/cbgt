@@ -97,7 +97,7 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	mgr *cbgt.Manager) ([]byte, error) {
 	// check whether a rebalance operation is in progress
 	// with the local ns-server.
-	running, err := checkRebalanceStatus(mgr)
+	running, err := CheckRebalanceStatus(mgr)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	return respBuf, nil
 }
 
-func checkRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
+func CheckRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 	if mgr == nil {
 		return false, fmt.Errorf("rest_util: invalid manager instance")
 	}
@@ -176,12 +176,7 @@ func checkRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 			mgr.Server()+"/pools/default/rebalanceProgress", err)
 	}
 
-	httpClient := cbgt.HttpClient()
-	if httpClient == nil {
-		return false, fmt.Errorf("rest_util: HttpClient unavailable")
-	}
-
-	resp, err := httpClient.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
 		return false, fmt.Errorf("rest_util: checkRebalanceStatus, err: %v", err)
 	}
