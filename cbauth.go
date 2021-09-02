@@ -162,7 +162,7 @@ func (c *SecurityContext) refreshConfig(configs *SecuritySetting) error {
 }
 
 func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
-	if (len(TLSCAFile) == 0 && len(TLSCertFile) == 0) || len(TLSKeyFile) == 0 {
+	if len(TLSCAFile) == 0 || (len(TLSCertFile) == 0 && len(TLSKeyFile) == 0) {
 		return nil
 	}
 
