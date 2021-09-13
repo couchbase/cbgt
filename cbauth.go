@@ -35,6 +35,7 @@ var TLSKeyFile string
 type SecuritySetting struct {
 	EncryptionEnabled  bool
 	DisableNonSSLPorts bool
+	Certificate        tls.Certificate
 	CertInBytes        []byte
 	TLSConfig          *cbauth.TLSConfig
 	ClientAuthType     *tls.ClientAuthType
@@ -143,32 +144,43 @@ func (c *SecurityContext) refresh(code uint64) error {
 }
 
 func (c *SecurityContext) refreshConfig(configs *SecuritySetting) error {
-	TLSConfig, err := cbauth.GetTLSConfig()
+	tlsConfig, err := cbauth.GetTLSConfig()
 	if err != nil {
 		log.Warnf("cbauth: GetTLSConfig failed, err: %v", err)
 		return err
 	}
 
-	ClientAuthType, err := cbauth.GetClientCertAuthType()
+	clientAuthType, err := cbauth.GetClientCertAuthType()
 	if err != nil {
 		log.Warnf("cbauth: GetClientCertAuthType failed, err: %v", err)
 		return err
 	}
 
-	configs.TLSConfig = &TLSConfig
-	configs.ClientAuthType = &ClientAuthType
+	configs.TLSConfig = &tlsConfig
+	configs.ClientAuthType = &clientAuthType
 
 	return nil
 }
 
 func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
-	if len(TLSCAFile) == 0 || (len(TLSCertFile) == 0 && len(TLSKeyFile) == 0) {
+	if len(TLSCertFile) == 0 || len(TLSKeyFile) == 0 {
 		return nil
 	}
 
-	caFile := TLSCertFile
-	if len(TLSCAFile) > 0 {
-		caFile = TLSCAFile
+	var privateKeyPassphrase []byte
+	if configs.TLSConfig != nil {
+		privateKeyPassphrase = configs.TLSConfig.PrivateKeyPassphrase
+	}
+
+	cert, err := LoadX509KeyPair(TLSCertFile, TLSKeyFile, privateKeyPassphrase)
+	if err != nil {
+		log.Errorf("cbauth: LoadX509KeyPair err : %v", err)
+		return err
+	}
+
+	caFile := TLSCAFile
+	if len(caFile) == 0 {
+		caFile = TLSCertFile
 	}
 
 	certInBytes, err := ioutil.ReadFile(caFile)
@@ -177,6 +189,7 @@ func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
 		return err
 	}
 
+	configs.Certificate = cert
 	configs.CertInBytes = certInBytes
 
 	return nil
