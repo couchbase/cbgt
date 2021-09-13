@@ -566,6 +566,10 @@ func (mgr *Manager) LoadDataDir() error {
 		wg.Add(1)
 		go func() {
 			for req := range openReqs {
+				// check whether the path still exists and if not then skip.
+				if _, err := os.Stat(req.path); os.IsNotExist(err) {
+					continue
+				}
 				// check whether pindex already loaded by the Janitor
 				// its possible after the first kick from a worker.
 				// if not loaded yet, then mark the pindex booting inprogress status
