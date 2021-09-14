@@ -57,7 +57,6 @@ func (mgr *Manager) JanitorLoop() {
 	if mgr.cfg != nil { // Might be nil for testing.
 		go func() {
 			ec := make(chan CfgEvent)
-			mgr.cfg.Subscribe(PLAN_PINDEXES_KEY, ec)
 			mgr.cfg.Subscribe(PLAN_PINDEXES_DIRECTORY_STAMP, ec)
 			mgr.cfg.Subscribe(CfgNodeDefsKey(NODE_DEFS_WANTED), ec)
 			for {
