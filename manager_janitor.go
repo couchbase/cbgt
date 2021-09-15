@@ -718,14 +718,35 @@ func elicitAddPlanPIndexes(addPlanPIndexes []*PlanPIndex, errs []pindexRestartEr
 
 func (mgr *Manager) reusablePIndexesPlanMap(currPIndexes map[string]*PIndex,
 	wantedPlanPIndexes *PlanPIndexes) map[string]*PlanPIndex {
+	if wantedPlanPIndexes == nil || currPIndexes == nil ||
+		len(wantedPlanPIndexes.PlanPIndexes) == 0 {
+		return nil
+	}
+
+	_, indexDefsMap, err := mgr.GetIndexDefs(true)
+	if err != nil {
+		log.Printf("janitor: reusablePIndexesPlanMap, "+
+			"GetIndexDefs, err: %v", err)
+		return nil
+	}
+
+	nodeDefs, err := mgr.GetNodeDefs(NODE_DEFS_WANTED, true)
+	if err != nil {
+		log.Printf("janitor: reusablePIndexesPlanMap, "+
+			"GetNodeDefs, err: %v", err)
+		return nil
+	}
+
 	mapWantedPlanPIndex := make(map[string]*PlanPIndex)
+
 	for _, wantedPlanPIndex := range wantedPlanPIndexes.PlanPIndexes {
 		// if the current pindex is a part of the newer plan then
 		// check the possibility of a plan evolving phase like a
 		// rebalance under progress so that we can skip any immediate
 		// partition removals until the plan is finalised.
 		if cp, exists := currPIndexes[wantedPlanPIndex.Name]; exists {
-			if mgr.planInProgress(cp, wantedPlanPIndex) &&
+			indexDef := indexDefsMap[wantedPlanPIndex.IndexName]
+			if mgr.planInProgress(cp, wantedPlanPIndex, indexDef, nodeDefs) &&
 				PIndexMatchesPlan(cp, wantedPlanPIndex) {
 				mapWantedPlanPIndex[wantedPlanPIndex.Name] = wantedPlanPIndex
 				log.Printf("janitor: skipping removal of pindex %s "+
@@ -736,19 +757,16 @@ func (mgr *Manager) reusablePIndexesPlanMap(currPIndexes map[string]*PIndex,
 	return mapWantedPlanPIndex
 }
 
-func (mgr *Manager) planInProgress(curPIndex *PIndex, planPIndex *PlanPIndex) bool {
-	indexDef, _, err := mgr.GetIndexDef(planPIndex.IndexName, true)
-	if err != nil {
+func (mgr *Manager) planInProgress(curPIndex *PIndex, planPIndex *PlanPIndex,
+	indexDef *IndexDef, nodeDefs *NodeDefs) bool {
+	if indexDef == nil || nodeDefs == nil {
 		return false
 	}
+
 	// get the count of current partition-node assignments.
 	cpna := len(planPIndex.Nodes)
 
 	// get the count of wanted nodes.
-	nodeDefs, err := mgr.GetNodeDefs(NODE_DEFS_WANTED, true)
-	if err != nil {
-		return false
-	}
 	cwn := float64(len(nodeDefs.NodeDefs))
 
 	// if the count of current partition-node assignment is zero or
