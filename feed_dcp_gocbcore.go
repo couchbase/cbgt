@@ -997,7 +997,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		return
 	}
 
-	err = waitForResponse(signal, f.closeCh, op, GocbcoreKVConnectTimeout)
+	err = waitForResponse(signal, f.closeCh, op, GocbcoreConnectTimeout)
 	if err != nil {
 		if errors.Is(err, gocbcore.ErrTimeout) || errors.Is(err, gocbcore.ErrForcedReconnect) {
 			go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
