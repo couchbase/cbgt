@@ -143,7 +143,8 @@ func parsePrivateKey(der, privateKeyPassphrase []byte) (crypto.PrivateKey, error
 	}
 
 	// youmark/pkcs8's ParsePKCS8PrivateKey(..) accepts a password to decode
-	// encrypted PKCS#8 private keys
+	// encrypted PKCS#8 private keys.
+	// This package only handles the PKCS #5 v2.0 scheme.
 	if key, err := pkcs8.ParsePKCS8PrivateKey(der, privateKeyPassphrase); err == nil {
 		switch key := key.(type) {
 		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
