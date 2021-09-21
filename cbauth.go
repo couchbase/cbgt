@@ -39,6 +39,9 @@ type SecuritySetting struct {
 	CertInBytes        []byte
 	TLSConfig          *cbauth.TLSConfig
 	ClientAuthType     *tls.ClientAuthType
+
+	EnforceLimits     bool
+	UserLimitsVersion string
 }
 
 var currentSetting unsafe.Pointer = unsafe.Pointer(new(SecuritySetting))
@@ -66,6 +69,7 @@ const (
 	AuthChange_encryption = 1 << iota
 	AuthChange_nonSSLPorts
 	AuthChange_certificates
+	AuthChange_limits
 )
 
 // ConfigRefreshNotifier defines the SecuritySetting's refresh
@@ -83,7 +87,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 	log.Printf("cbauth: received security change notification, code: %v", code)
 
 	newSetting := &SecuritySetting{}
-	var encryptionEnabled, disableNonSSLPorts bool
+	var encryptionEnabled, disableNonSSLPorts, enforceLimits bool
 
 	oldSetting := GetSecuritySetting()
 	if oldSetting != nil {
@@ -91,6 +95,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 		newSetting = &temp
 		encryptionEnabled = oldSetting.EncryptionEnabled
 		disableNonSSLPorts = oldSetting.DisableNonSSLPorts
+		enforceLimits = oldSetting.EnforceLimits
 	}
 
 	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
@@ -109,10 +114,16 @@ func (c *SecurityContext) refresh(code uint64) error {
 		}
 	}
 
+	if code&cbauth.CFG_CHANGE_USER_LIMITS != 0 {
+		if err := c.refreshLimits(newSetting); err != nil {
+			return err
+		}
+	}
+
 	atomic.StorePointer(&currentSetting, unsafe.Pointer(newSetting))
 
 	c.mutex.RLock()
-	// This will notify tls config changes to all the subscribers like
+	// This will notify tlsConfig/limits changes to all the subscribers like
 	// dcp feeds, http servers and grpc servers;
 	// Notifying every certificate change irrespective of the encryption status.
 	var status int
@@ -125,6 +136,9 @@ func (c *SecurityContext) refresh(code uint64) error {
 	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
 		status |= AuthChange_certificates
 	}
+	if enforceLimits != newSetting.EnforceLimits {
+		status |= AuthChange_limits
+	}
 
 	if status != 0 {
 		for key, notifier := range c.notifiers {
@@ -136,7 +150,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 			}(key, notifier)
 		}
 	} else {
-		log.Printf("cbauth: encryption settings not affected")
+		log.Printf("cbauth: encryption/limits settings not affected")
 	}
 	c.mutex.RUnlock()
 
@@ -220,6 +234,19 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 			" TLS data, err: %v", err)
 		return err
 	}
+
+	return nil
+}
+
+func (c *SecurityContext) refreshLimits(configs *SecuritySetting) error {
+	limitsConfig, err := cbauth.GetLimitsConfig()
+	if err != nil {
+		log.Warnf("cbauth: GetLimitsConfig err: %v", err)
+		return err
+	}
+
+	configs.EnforceLimits = limitsConfig.EnforceLimits
+	configs.UserLimitsVersion = limitsConfig.UserLimitsVersion
 
 	return nil
 }
