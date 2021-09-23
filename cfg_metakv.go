@@ -759,7 +759,7 @@ func (c *CfgMetaKv) ClusterVersion() (uint64, error) {
 
 	req.Header.Add("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := HttpClient().Do(req)
 	if err != nil {
 		return 0, err
 	}

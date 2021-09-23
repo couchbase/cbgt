@@ -1584,7 +1584,7 @@ func doHTTPGetFromURL(url string) ([]byte, error) {
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := HttpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
