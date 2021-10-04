@@ -3,11 +3,11 @@ module github.com/couchbase/cbgt
 go 1.13
 
 require (
-	github.com/couchbase/blance v0.0.0-20210701151549-a83d808be6d1
+	github.com/couchbase/blance v0.1.0
 	github.com/couchbase/cbauth v0.0.0-20210911011937-6a860d4b3951
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-couchbase v0.0.0-20201026062457-7b3be89bbd89
-	github.com/couchbase/gocbcore/v9 v9.1.7-0.20210825200734-fa22caf5138a
+	github.com/couchbase/gocbcore/v9 v9.1.7
 	github.com/couchbase/gomemcached v0.0.0-20200618124739-5bac349aff71
 	github.com/couchbase/goutils v0.1.1
 	github.com/elazarl/go-bindata-assetfs v1.0.0
