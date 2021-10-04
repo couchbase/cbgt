@@ -623,6 +623,18 @@ func (h *ManagerOptions) ServeHTTP(
 		}
 	}
 
+	err = cbgt.PublishSystemEvent(cbgt.NewSystemEvent(
+		cbgt.SettingsUpdateEventID,
+		"info",
+		"Manager options updated",
+		map[string]interface{}{
+			"PrevSettings": opt,
+			"NewSettings":  newOptions,
+		}))
+	if err != nil {
+		log.Errorf("rest_manage: unexpected system_event error"+
+			" err: %v", err)
+	}
 	h.mgr.SetOptions(newOptions)
 	MustEncode(w, struct {
 		Status string `json:"status"`

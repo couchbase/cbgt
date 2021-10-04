@@ -10,6 +10,7 @@ package cbgt
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -113,6 +114,28 @@ func NewUUID() string {
 	val2 := rand.Int63()
 	uuid := fmt.Sprintf("%x%x", val1, val2)
 	return uuid[0:16]
+}
+
+func encodeUUID(dst []byte, uuid []byte) {
+	hex.Encode(dst, uuid[:4])
+	dst[8] = '-'
+	hex.Encode(dst[9:13], uuid[4:6])
+	dst[13] = '-'
+	hex.Encode(dst[14:18], uuid[6:8])
+	dst[18] = '-'
+	hex.Encode(dst[19:23], uuid[8:10])
+	dst[23] = '-'
+	hex.Encode(dst[24:], uuid[10:])
+}
+
+func NewUUIDV4() string {
+	uuid := []byte(NewUUID())
+
+	uuid[6] = (uuid[6] & 0x0f) | 0x40
+	uuid[8] = (uuid[8] & 0x3f) | 0x80
+	var buf [36]byte
+	encodeUUID(buf[:], uuid[:])
+	return string(buf[:])
 }
 
 // Calls f() in a loop, sleeping in an exponential backoff if needed.

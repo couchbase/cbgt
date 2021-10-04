@@ -228,6 +228,29 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
+
+	event := NewSystemEvent(
+		IndexCreateEventID,
+		"info",
+		"Index created",
+		map[string]interface{}{
+			"indexName":  indexDef.Name,
+			"sourceName": indexDef.SourceName,
+			"indexUUID":  indexDef.UUID,
+		})
+
+	if event != nil {
+		if prevIndexUUID != "" {
+			event.EventID = IndexUpdateEventID
+			event.Description = "Index updated"
+		}
+		err = PublishSystemEvent(event)
+		if err != nil {
+			log.Errorf("manager_api: unexpected system_event error"+
+				" err: %v", err)
+		}
+	}
+
 	return indexDef.UUID, nil
 }
 
@@ -304,6 +327,21 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
+
+	err = PublishSystemEvent(NewSystemEvent(
+		IndexDeleteEventID,
+		"info",
+		"Index deleted",
+		map[string]interface{}{
+			"indexName":  indexDef.Name,
+			"sourceName": indexDef.SourceName,
+			"indexUUID":  indexDef.UUID,
+		}))
+	if err != nil {
+		log.Errorf("manager_api: unexpected system_event error"+
+			" err: %v", err)
+	}
+
 	return indexDef.UUID, nil
 }
 
