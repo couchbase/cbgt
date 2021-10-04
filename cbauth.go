@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/cbauth"
 	log "github.com/couchbase/clog"
 	"github.com/couchbase/go-couchbase/cbdatasource"
+	cbtls "github.com/couchbase/goutils/tls"
 )
 
 func init() {
@@ -186,7 +187,7 @@ func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
 		privateKeyPassphrase = configs.TLSConfig.PrivateKeyPassphrase
 	}
 
-	cert, err := LoadX509KeyPair(TLSCertFile, TLSKeyFile, privateKeyPassphrase)
+	cert, err := cbtls.LoadX509KeyPair(TLSCertFile, TLSKeyFile, privateKeyPassphrase)
 	if err != nil {
 		log.Errorf("cbauth: LoadX509KeyPair err : %v", err)
 		return err
