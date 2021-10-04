@@ -2,8 +2,8 @@ github.com/couchbase/blance v0.0.0-20210701151549-a83d808be6d1 h1:pNnbAPSaUD+JFn
 github.com/couchbase/blance v0.0.0-20210701151549-a83d808be6d1/go.mod h1:ELsp57vDmExnh14H7S9dvm5+NJpSfNhNeac9hhOLGZk=
 github.com/couchbase/cbauth v0.0.0-20210911011937-6a860d4b3951 h1:UwvOUfTxifRFENAax/ErvRVswRzLc1dNoNiTHu3K1o4=
 github.com/couchbase/cbauth v0.0.0-20210911011937-6a860d4b3951/go.mod h1:overPK2NvYkkZBWX0eqmuHB82nhhs8rt7A4wi5u7c2g=
-github.com/couchbase/clog v0.0.0-20190523192451-b8e6d5d421bc h1:raV5sJWF+axK2Nv6Zrn/pOlYfbHHlLQ2LsRowsmGABE=
-github.com/couchbase/clog v0.0.0-20190523192451-b8e6d5d421bc/go.mod h1:7tzUpEOsE+fgU81yfcjy5N1H6XtbVC8SgOz/3mCjmd4=
+github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=
+github.com/couchbase/clog v0.1.0/go.mod h1:7tzUpEOsE+fgU81yfcjy5N1H6XtbVC8SgOz/3mCjmd4=
 github.com/couchbase/go-couchbase v0.0.0-20201026062457-7b3be89bbd89 h1:uNLXQ6QO1TocD8BaN/KkRki0Xw0brCM1PKl/ZA5pgfs=
 github.com/couchbase/go-couchbase v0.0.0-20201026062457-7b3be89bbd89/go.mod h1:+/bddYDxXsf9qt0xpDUtRR47A2GjaXmGGAqQ/k3GJ8A=
 github.com/couchbase/gocbcore/v9 v9.1.7-0.20210825200734-fa22caf5138a h1:E3Fa+SjiTClrEIjmfAuH0ZykGf4bpaDmYaYp/ulPYh4=
