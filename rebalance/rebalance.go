@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -470,6 +471,12 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	partitionModel, begMap, endMap, err := r.calcBegEndMaps(indexDef)
 	if err != nil {
 		return false, err
+	}
+
+	if reflect.DeepEqual(begMap, endMap) {
+		r.Logf("rebalanceIndex: skipping indexDef.Name: %s"+
+			" as the begin and end plans are same", indexDef.Name)
+		return true, nil
 	}
 
 	assignPartitionsFunc := func(stopCh2 chan struct{}, node string,
