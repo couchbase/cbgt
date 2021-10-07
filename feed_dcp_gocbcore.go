@@ -1588,6 +1588,7 @@ func doHTTPGetFromURL(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	respBuf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
