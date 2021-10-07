@@ -76,7 +76,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	}
 
 	if pindexImplType.Prepare != nil {
-		indexDef, err = pindexImplType.Prepare(indexDef)
+		indexDef, err = pindexImplType.Prepare(mgr, indexDef)
 		if err != nil {
 			return "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
 				" err: %v", err)

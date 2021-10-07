@@ -28,7 +28,7 @@ type PIndexImpl interface{}
 type PIndexImplType struct {
 	// Invoked by the manager to customize the index definition
 	// during creating or updating indexes (Optional).
-	Prepare func(indexDef *IndexDef) (*IndexDef, error)
+	Prepare func(mgr *Manager, indexDef *IndexDef) (*IndexDef, error)
 
 	// Invoked by the manager to validate the index definition
 	// before going ahead with the actual creation (Optional).
