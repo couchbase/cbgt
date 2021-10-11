@@ -522,6 +522,12 @@ func (mgr *Manager) updateBootingStatus(pindex string, status bool) bool {
 			// already booted by Janitor, no status updates
 			return false
 		}
+
+		if mgr.bootingPIndexes[pindex] {
+			// if booting already in progress
+			return false
+		}
+
 		mgr.bootingPIndexes[pindex] = true
 	}
 	return true

@@ -175,14 +175,21 @@ func (mgr *Manager) pindexesStart(addPlanPIndexes []*PlanPIndex) []error {
 			for pi := range requestCh {
 				// check if this pindex is already in booting
 				// by loadDataDir. If so just skip the processing here.
-				if mgr.bootingPIndex(pi.Name) {
+				// else update the booting status so that the manager's
+				// loadDataDir won't reattempt the same pindex.
+				if !mgr.updateBootingStatus(pi.Name, true) {
+					// 'pi' already loaded
 					continue
 				}
+
 				err := mgr.startPIndex(pi)
 				if err != nil {
 					responseCh <- fmt.Errorf("janitor: adding pindex: %s, err: %v",
 						pi.Name, err)
 				}
+
+				// mark the pindex booting complete status
+				mgr.updateBootingStatus(pi.Name, false)
 			}
 			wg.Done()
 		}()
