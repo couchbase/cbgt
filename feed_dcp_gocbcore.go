@@ -54,10 +54,20 @@ type GocbcoreDCPExtras struct {
 
 var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
 
-var GocbcoreStatsTimeout = time.Duration(60 * time.Second)
+// GocbcoreConnectTimeout and GocbcoreKVConnectTimeout are timeouts used
+// by gocbcore to connect to the cluster manager and KV
 var GocbcoreConnectTimeout = time.Duration(60 * time.Second)
 var GocbcoreKVConnectTimeout = time.Duration(7 * time.Second)
-var GocbcoreAgentSetupTimeout = time.Duration(10 * time.Second)
+
+// GocbcoreAgentSetupTimeout is the time alloted for completing setup of
+// a gocbcore.Agent or a gocbcore.DCPAgent, two factors ..
+//   - cluster state to be online
+//   - memcached service to be ready
+var GocbcoreAgentSetupTimeout = time.Duration(60 * time.Second)
+
+// GocbcoreStatsTimeout is the time alloted to obtain a response from
+// the server for a stats request.
+var GocbcoreStatsTimeout = time.Duration(60 * time.Second)
 
 // ----------------------------------------------------------------
 
