@@ -210,6 +210,6 @@ func CloseStatsClients(sourceName, sourceUUID string) {
 	// Close couchbase.Bucket instances used for stats
 	statsCBBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
 
-	// Close gocbcore.Agent/DCPAgent instances used for stats
-	statsAgentsMap.closeClient(sourceName, sourceUUID)
+	// Release gocbcore.Agent/DCPAgent instances used for stats
+	statsAgentsMap.releaseAgents(sourceName)
 }

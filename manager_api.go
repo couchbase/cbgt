@@ -229,6 +229,9 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
 
+	statsAgentsMap.registerAgents(sourceName, sourceUUID,
+		sourceParams, mgr.Server(), mgr.Options())
+
 	event := NewSystemEvent(
 		IndexCreateEventID,
 		"info",
@@ -299,11 +302,8 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 			" indexName: %s", indexName)
 	}
 
-	// Close associated couchbase.Bucket instances used for stats
-	statsCBBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
-
-	// Close associated gocbcore.Agent/DCPAgent instances used for stats
-	statsAgentsMap.closeClient(indexDef.SourceName, indexDef.SourceUUID)
+	// Associated couchbase.Bucket instances and gocbcore.Agent/DCPAgent
+	// instances that are used for stats are closed by the ctl routine.
 
 	indexDefs.UUID = NewUUID()
 	delete(indexDefs.IndexDefs, indexName)
@@ -494,9 +494,6 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 	// Close associated couchbase.Bucket instances used for stats
 	statsCBBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
 
-	// Close associated gocbcore.Agent/DCPAgent instances used for stats
-	statsAgentsMap.closeClient(sourceName, sourceUUID)
-
 	var deletedCount uint64
 	for indexName, indexDef := range indexDefs.IndexDefs {
 		if indexDef.SourceType == sourceType &&
@@ -514,6 +511,9 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 				indexDef.Type, indexDef.Name, indexDef.UUID)
 
 			deletedCount++
+
+			// Release associated gocbcore.Agent/DCPAgent instances used for stats
+			statsAgentsMap.releaseAgents(sourceName)
 		}
 	}
 	// exit early if nothing to delete

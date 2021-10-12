@@ -427,8 +427,8 @@ func (ctl *Ctl) run() {
 						}
 
 						// index definition has been deleted, shut down any associated stats
-						// clients (this is needed to delete clients on nodes other than the
-						// one where the index deletion was received)
+						// clients (this is needed to close clients on all nodes in the
+						// cluster, where the index partitions existed)
 						cbgt.CloseStatsClients(idef.SourceName, idef.SourceUUID)
 					}
 				}
