@@ -280,6 +280,10 @@ func (ctl *Ctl) Stop() error {
 
 // ---------------------------------------------------
 
+// maxDebounceIntervalMS represents the maximum debounce interval.
+var maxDebounceIntervalMS = 5000
+
+// ---------------------------------------------------
 // cfgDebounceIntervalInMS computes a debounce interval
 // to be applied for the config events in a cluster.
 // It primarily uses the number of indexes in the system for
@@ -297,6 +301,12 @@ func (ctl *Ctl) cfgDebounceIntervalInMS() int {
 	ctl.m.RLock()
 	if ctl.lastIndexDefs != nil {
 		dinterval = len(ctl.lastIndexDefs.IndexDefs) * offset
+		// if the interval is greater than maxDebounceIntervalMS then,
+		// reset so that it would always be under limits than growing
+		// with the number of indexes.
+		if dinterval > maxDebounceIntervalMS {
+			dinterval = maxDebounceIntervalMS
+		}
 	}
 
 	for i, node := range ctl.memberNodes {
