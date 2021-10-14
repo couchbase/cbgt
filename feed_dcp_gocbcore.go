@@ -1010,11 +1010,38 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreConnectTimeout)
 	if err != nil {
 		if errors.Is(err, gocbcore.ErrTimeout) || errors.Is(err, gocbcore.ErrForcedReconnect) {
-			go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
-		} else {
-			f.onError(true,
-				fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
+			// Send a close-stream request for the vbucket to KV to make
+			// certain that the earlier stream isn't still lingering around,
+			// before re-initiating a new stream request.
+			wait := make(chan error, 1)
+			op, err = f.agent.CloseStream(vbId, gocbcore.CloseStreamOptions{
+				StreamOptions: &gocbcore.CloseStreamStreamOptions{
+					StreamID: f.streamOptions.StreamOptions.StreamID,
+				},
+			}, func(er error) {
+				wait <- er
+			})
+
+			if err == nil {
+				err = waitForResponse(wait, f.closeCh, op, GocbcoreConnectTimeout)
+				if err == nil || errors.Is(err, gocbcore.ErrMemdKeyNotFound) {
+					// Send a new open-stream request for the vbucket only if the
+					// error returned by the close-stream request on the earlier
+					// stream is nil or key-not-found, in which case it's safe to
+					// proceed with a repeat stream request for the vbucket.
+					go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
+					return
+				}
+
+				log.Warnf("feed_dcp_gocbcore: CloseStream for vb: %v,"+
+					" streamID: %v, err: %v", vbId,
+					f.streamOptions.StreamOptions.StreamID, err)
+			}
 		}
+
+		// Error cannot be handled without shutting down feed, notify manager
+		f.onError(true,
+			fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
 	}
 }
 
