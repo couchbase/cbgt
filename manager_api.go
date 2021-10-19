@@ -215,6 +215,10 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		break // Success.
 	}
 
+	mgr.GetIndexDefs(true)
+	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
+	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
+
 	if prevIndexUUID == "" {
 		log.Printf("manager_api: index definition created,"+
 			" indexType: %s, indexName: %s, indexUUID: %s",
@@ -224,10 +228,6 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 			" indexType: %s, indexName: %s, indexUUID: %s, prevIndexUUID: %s",
 			indexDef.Type, indexDef.Name, indexDef.UUID, prevIndexUUID)
 	}
-
-	mgr.GetIndexDefs(true)
-	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
-	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
 
 	statsAgentsMap.registerAgents(sourceName, sourceUUID,
 		sourceParams, mgr.Server(), mgr.Options())
@@ -319,14 +319,15 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 			" err: %v", err)
 	}
 
-	log.Printf("manager_api: index definition deleted,"+
-		" indexType: %s, indexName: %s, indexUUID: %s",
-		indexDef.Type, indexDef.Name, indexDef.UUID)
 	mgr.m.Unlock()
 
 	mgr.GetIndexDefs(true)
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
+
+	log.Printf("manager_api: index definition deleted,"+
+		" indexType: %s, indexName: %s, indexUUID: %s",
+		indexDef.Type, indexDef.Name, indexDef.UUID)
 
 	err = PublishSystemEvent(NewSystemEvent(
 		IndexDeleteEventID,
