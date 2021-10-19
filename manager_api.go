@@ -277,6 +277,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 	mgr.m.Lock()
 	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 	if err != nil {
+		mgr.m.Unlock()
 		return "", err
 	}
 	if indexDefs == nil {
