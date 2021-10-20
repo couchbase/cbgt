@@ -828,20 +828,20 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 
 // Returns read-only snapshot of the IndexDefs, also with IndexDef's
 // organized by name.  Use refresh of true to force a read from Cfg.
-func (mgr *Manager) GetIndexDefs(refresh bool) (
-	*IndexDefs, map[string]*IndexDef, error) {
+func (mgr *Manager) GetIndexDefs(refresh bool) (lastIndexDefs *IndexDefs,
+	lastIndexDefsByName map[string]*IndexDef, err error) {
+	if !refresh {
+		mgr.m.RLock()
+		lastIndexDefs = mgr.lastIndexDefs
+		lastIndexDefsByName = mgr.lastIndexDefsByName
+		mgr.m.RUnlock()
+	}
 
-	mgr.m.RLock()
-	lastIndexDefs := mgr.lastIndexDefs
-	lastIndexDefsByName := mgr.lastIndexDefsByName
-	mgr.m.RUnlock()
-
-	if lastIndexDefs == nil || refresh {
-		var err error
+	if lastIndexDefs == nil {
 		mgr.m.Lock()
-		defer mgr.m.Unlock()
 		lastIndexDefs, _, err = CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
+			mgr.m.Unlock()
 			return nil, nil, err
 		}
 		mgr.lastIndexDefs = lastIndexDefs
@@ -856,6 +856,8 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (
 		mgr.lastIndexDefsByName = lastIndexDefsByName
 
 		mgr.coveringCache = nil
+
+		mgr.m.Unlock()
 
 		if RegisteredPIndexCallbacks.OnRefresh != nil {
 			RegisteredPIndexCallbacks.OnRefresh()

@@ -215,7 +215,10 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		break // Success.
 	}
 
-	mgr.GetIndexDefs(true)
+	// mgr's lastIndexDefs cache is updated when an update
+	// is received from metaKV, as it subscribes to updates
+	// on INDEX_DEFS_KEY.
+
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
 
@@ -322,7 +325,10 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 
 	mgr.m.Unlock()
 
-	mgr.GetIndexDefs(true)
+	// mgr's lastIndexDefs cache is updated when an update
+	// is received from metaKV, as it subscribes to updates
+	// on INDEX_DEFS_KEY.
+
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
 
