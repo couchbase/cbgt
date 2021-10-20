@@ -9,7 +9,7 @@ require (
 	github.com/couchbase/go-couchbase v0.0.0-20201026062457-7b3be89bbd89
 	github.com/couchbase/gocbcore/v9 v9.1.7
 	github.com/couchbase/gomemcached v0.0.0-20200618124739-5bac349aff71
-	github.com/couchbase/goutils v0.1.1
+	github.com/couchbase/goutils v0.1.2
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/gorilla/context v0.0.0-20141217160251-215affda49ad // indirect
 	github.com/gorilla/mux v1.4.1-0.20170524010104-043ee6597c29
