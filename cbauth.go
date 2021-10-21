@@ -107,9 +107,11 @@ func (c *SecurityContext) refresh(code uint64) error {
 		if err := c.refreshCert(newSetting); err != nil {
 			return err
 		}
-	}
 
-	if code&cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION != 0 {
+		if err := c.refreshEncryption(newSetting); err != nil {
+			return err
+		}
+	} else if code&cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION != 0 {
 		if err := c.refreshEncryption(newSetting); err != nil {
 			return err
 		}
