@@ -952,27 +952,32 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				errors.Is(er, gocbcore.ErrScopeNotFound) ||
 				errors.Is(er, gocbcore.ErrCollectionNotFound) {
 				f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] OpenStream,"+
-					" vb: %v, err: %v", f.Name(), vbId, er))
+					" vb: %v, stream ID: %v, err: %v", f.Name(),
+					vbId, f.streamOptions.StreamOptions.StreamID, er))
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
-				log.Printf("feed_dcp_gocbcore: [%s] Received rollback, for vb: %v,"+
-					" seqno requested: %v", f.Name(), vbId, seqStart)
+				log.Printf("feed_dcp_gocbcore: [%s] OpenStream received rollback,"+
+					" for vb: %v, stream ID: %v, seqno requested: %v", f.Name(),
+					vbId, f.streamOptions.StreamOptions.StreamID, seqStart)
 				f.complete(vbId)
 				go f.rollback(vbId, entries)
 				// rollback will handle this feed closure and setting up of a new feed
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrRequestCanceled) {
 				// request was canceled by FTS, catch error and re-initiate stream request
-				log.Warnf("feed_dcp_gocbcore: [%s] Stream request for vb: %v was canceled,"+
-					" (timeout) will re-initiate the stream request", f.Name(), vbId)
+				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, stream ID: %v"+
+					" was canceled, (timeout) will re-initiate the stream request",
+					f.Name(), vbId, f.streamOptions.StreamOptions.StreamID)
 			} else if errors.Is(er, gocbcore.ErrForcedReconnect) {
 				// request was canceled by GOCBCORE, catch error and re-initate stream request
-				log.Warnf("feed_dcp_gocbcore: [%s] Stream request for vb: %v failed"+
-					" with err: %v, reconnecting ...", f.Name(), vbId, er)
+				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, stream ID: %v"+
+					"failed with err: %v, reconnecting ...", f.Name(),
+					vbId, f.streamOptions.StreamOptions.StreamID, er)
 			} else if er != nil {
 				// unidentified error
-				log.Errorf("feed_dcp_gocbcore: [%s] Received error on DCP stream for"+
-					" vb: %v, err: %v", f.Name(), vbId, er)
+				log.Errorf("feed_dcp_gocbcore: [%s] OpenStream received error for vb: %v, "+
+					" stream ID: %v, err: %v", f.Name(), vbId,
+					f.streamOptions.StreamOptions.StreamID, er)
 				f.complete(vbId)
 			} else {
 				// er == nil
@@ -1024,7 +1029,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 			if err == nil {
 				err = waitForResponse(wait, f.closeCh, op, GocbcoreConnectTimeout)
-				if err == nil || errors.Is(err, gocbcore.ErrMemdKeyNotFound) {
+				if err == nil || errors.Is(err, gocbcore.ErrDocumentNotFound) {
 					// Send a new open-stream request for the vbucket only if the
 					// error returned by the close-stream request on the earlier
 					// stream is nil or key-not-found, in which case it's safe to
@@ -1033,8 +1038,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					return
 				}
 
-				log.Warnf("feed_dcp_gocbcore: CloseStream for vb: %v,"+
-					" streamID: %v, err: %v", vbId,
+				log.Warnf("feed_dcp_gocbcore: [%s] CloseStream for vb: %v,"+
+					" stream ID: %v, err: %v", f.Name(), vbId,
 					f.streamOptions.StreamOptions.StreamID, err)
 			}
 		}
