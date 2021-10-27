@@ -637,11 +637,13 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 			r.nodesAll, []string{}, r.nodesToRemove,
 			r.nodeWeights, r.nodeHierarchy)
 	} else {
+		nodeWeights := r.adjustNodeWeights(endPlanPIndexesForIndex)
+
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.begPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
-			r.nodeWeights, r.nodeHierarchy)
+			nodeWeights, r.nodeHierarchy)
 	}
 
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
@@ -662,6 +664,31 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	endMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.endPlanPIndexes)
 
 	return partitionModel, begMap, endMap, nil
+}
+
+// adjustNodeWeights overrides the node weights reflective of the
+// existing partition count on those nodes. It helps in balanced
+// partition assignments across nodes for the single partitioned indexes.
+func (r *Rebalancer) adjustNodeWeights(
+	planPIndexesForIndex map[string]*cbgt.PlanPIndex) map[string]int {
+	if r.optionsReb.Manager != nil {
+		options := r.optionsReb.Manager.GetOptions()
+		if enabled, found := options["enablePartitionNodeStickiness"]; found &&
+			enabled == "true" {
+			return r.nodeWeights
+		}
+	}
+
+	nodeWeights := r.nodeWeights
+	blance.NodeScoreBooster = nil
+	// if the index is a single partitioned one,
+	// then try to normalize the node weights.
+	if len(planPIndexesForIndex) == 1 {
+		nodeWeights = cbgt.NormaliseNodeWeights(r.nodeWeights,
+			r.endPlanPIndexes, len(r.begPlanPIndexes.PlanPIndexes))
+	}
+
+	return nodeWeights
 }
 
 // --------------------------------------------------------

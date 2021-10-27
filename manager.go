@@ -197,6 +197,7 @@ type ClusterOptions struct {
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
 	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
+	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
@@ -1046,6 +1047,9 @@ func IsStablePlan(planPIndexes *PlanPIndexes) bool {
 		// node assignments.
 		nodeCount := -1
 		for _, p := range planPIndexes {
+			if len(p.Nodes) == 0 && len(planPIndexes) == 1 {
+				return false
+			}
 			if nodeCount == -1 {
 				nodeCount = len(p.Nodes)
 				continue

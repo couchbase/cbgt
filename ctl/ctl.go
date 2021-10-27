@@ -555,57 +555,6 @@ func updateNodePlanParams(indexDef *cbgt.IndexDef,
 // planner, but only for brand new indexes that don't have any
 // pindexes yet.
 func (ctl *Ctl) IndexDefsChanged() (err error) {
-	plannerFilterNewIndexesOnly := func(indexDef *cbgt.IndexDef,
-		planPIndexesPrev, planPIndexes *cbgt.PlanPIndexes) bool {
-		copyPrevPlan := func() {
-			// Copy over the previous plan, if any, for the index.
-			if planPIndexesPrev != nil && planPIndexes != nil {
-				for n, p := range planPIndexesPrev.PlanPIndexes {
-					if p.IndexName == indexDef.Name &&
-						p.IndexUUID == indexDef.UUID {
-
-						// non nil NodePlanParams indicates some overrides
-						if indexDef.PlanParams.NodePlanParams != nil {
-							updateNodePlanParams(indexDef,
-								planPIndexesPrev, planPIndexes, p, n)
-						}
-
-						if planPIndexes.PlanPIndexes[n] == nil {
-							planPIndexes.PlanPIndexes[n] = p
-						}
-						// Copy over previous warnings, if any.
-						if planPIndexes.Warnings == nil {
-							planPIndexes.Warnings = map[string][]string{}
-						}
-						if planPIndexesPrev.Warnings != nil {
-							prev := planPIndexesPrev.Warnings[indexDef.Name]
-							if prev != nil {
-								planPIndexes.Warnings[indexDef.Name] = prev
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Split each indexDef into 1 or more PlanPIndexes.
-		planPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
-			indexDef, ctl.server, ctl.optionsMgr, nil)
-		if err != nil {
-			copyPrevPlan()
-			return false
-		}
-
-		for pindexName := range planPIndexesForIndex {
-			if planPIndexesPrev.PlanPIndexes[pindexName] != nil {
-				copyPrevPlan()
-				return false
-			}
-		}
-
-		return true
-	}
-
 	go func() {
 		steps := map[string]bool{"planner": true}
 
@@ -614,7 +563,7 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 		cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
-			plannerFilterNewIndexesOnly)
+			ctl.plannerFilterNewIndexesOnly)
 
 		planPIndexes, _, err :=
 			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
@@ -627,6 +576,57 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 	}()
 
 	return nil
+}
+
+func (ctl *Ctl) plannerFilterNewIndexesOnly(indexDef *cbgt.IndexDef,
+	planPIndexesPrev, planPIndexes *cbgt.PlanPIndexes) bool {
+	copyPrevPlan := func() {
+		// Copy over the previous plan, if any, for the index.
+		if planPIndexesPrev != nil && planPIndexes != nil {
+			for n, p := range planPIndexesPrev.PlanPIndexes {
+				if p.IndexName == indexDef.Name &&
+					p.IndexUUID == indexDef.UUID {
+
+					// non nil NodePlanParams indicates some overrides
+					if indexDef.PlanParams.NodePlanParams != nil {
+						updateNodePlanParams(indexDef,
+							planPIndexesPrev, planPIndexes, p, n)
+					}
+
+					if planPIndexes.PlanPIndexes[n] == nil {
+						planPIndexes.PlanPIndexes[n] = p
+					}
+					// Copy over previous warnings, if any.
+					if planPIndexes.Warnings == nil {
+						planPIndexes.Warnings = map[string][]string{}
+					}
+					if planPIndexesPrev.Warnings != nil {
+						prev := planPIndexesPrev.Warnings[indexDef.Name]
+						if prev != nil {
+							planPIndexes.Warnings[indexDef.Name] = prev
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Split each indexDef into 1 or more PlanPIndexes.
+	planPIndexesForIndex, err := cbgt.SplitIndexDefIntoPlanPIndexes(
+		indexDef, ctl.server, ctl.optionsMgr, nil)
+	if err != nil {
+		copyPrevPlan()
+		return false
+	}
+
+	for pindexName := range planPIndexesForIndex {
+		if planPIndexesPrev.PlanPIndexes[pindexName] != nil {
+			copyPrevPlan()
+			return false
+		}
+	}
+
+	return true
 }
 
 // ----------------------------------------------------
@@ -1126,7 +1126,7 @@ func (ctl *Ctl) startCtlLOCKED(
 
 		err = cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove,
-			ctl.optionsCtl.DryRun, nil)
+			ctl.optionsCtl.DryRun, ctl.plannerFilterNewIndexesOnly)
 		if err != nil {
 			log.Warnf("ctl: PlannerSteps, err: %v", err)
 			ctlErrs = append(ctlErrs, err)

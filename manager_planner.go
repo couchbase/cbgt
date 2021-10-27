@@ -493,12 +493,24 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		indexDef = pho.IndexDef
 		planPIndexesForIndex = pho.PlanPIndexesForIndex
 
+		adjustedWeights := nodeWeights
+		// override the node weights for single partitioned index to
+		// favour balanced partition assignments.
+		if len(planPIndexesForIndex) == 1 {
+			// ensure that the node stickiness option is not enabled.
+			if enabled, found := options["enablePartitionNodeStickiness"]; !found ||
+				enabled == "false" {
+				adjustedWeights = NormaliseNodeWeights(nodeWeights,
+					planPIndexesPrev, len(planPIndexesPrev.PlanPIndexes))
+			}
+		}
+
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
 		warnings := BlancePlanPIndexes(mode, indexDef,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
-			nodeWeights, nodeHierarchy)
+			adjustedWeights, nodeHierarchy)
 		planPIndexes.Warnings[indexDef.Name] = warnings
 
 		for _, warning := range warnings {
@@ -772,6 +784,47 @@ func BlancePlanPIndexes(mode string,
 	}
 
 	return warnings
+}
+
+// NormaliseNodeWeights updates the node weights reflective of the
+// existing partition count on those nodes based on the given plans
+// and update factor.
+func NormaliseNodeWeights(nodeWeights map[string]int,
+	planPIndexes *PlanPIndexes, factor int) map[string]int {
+	if planPIndexes == nil ||
+		len(planPIndexes.PlanPIndexes) == 0 {
+		return nodeWeights
+	}
+
+	rv := make(map[string]int)
+	for uuid, wt := range nodeWeights {
+		rv[uuid] = wt
+	}
+
+	nodePartitionCount := make(map[string]int)
+	for _, pindex := range planPIndexes.PlanPIndexes {
+		for nodeUUID := range pindex.Nodes {
+			nodePartitionCount[nodeUUID]++
+		}
+	}
+
+	for uuid, count := range nodePartitionCount {
+		if count > 0 {
+			if weight, ok := nodeWeights[uuid]; ok {
+				rv[uuid] = -factor * (weight + count)
+			}
+		}
+	}
+
+	blance.NodeScoreBooster = func(w int, s float64) float64 {
+		score := float64(-w)
+		if score < s {
+			score = s
+		}
+		return score
+	}
+
+	return rv
 }
 
 // BlancePartitionModel returns a blance library PartitionModel and
