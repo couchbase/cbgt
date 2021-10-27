@@ -230,8 +230,8 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 	if err = cbdatasource.UpdateSecurityConfig(&cbdatasource.SecurityConfig{
 		EncryptData:        cfg.EncryptData,
 		DisableNonSSLPorts: cfg.DisableNonSSLPorts,
-		CertFile:           TLSCertFile,
-		KeyFile:            TLSKeyFile,
+		Certificates:       []tls.Certificate{configs.Certificate},
+		RootCAs:            FetchSecurityConfig(),
 	}); err != nil {
 		log.Warnf("cbauth: Error updating go-couchbase/cbdatasource's"+
 			" TLS data, err: %v", err)
