@@ -232,8 +232,10 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 			indexDef.Type, indexDef.Name, indexDef.UUID, prevIndexUUID)
 	}
 
-	statsAgentsMap.registerAgents(sourceName, sourceUUID,
-		sourceParams, mgr.Server(), mgr.Options())
+	if indexType == "fulltext-index" && len(sourceName) > 0 {
+		statsAgentsMap.registerAgents(sourceName, sourceUUID,
+			sourceParams, mgr.Server(), mgr.Options())
+	}
 
 	event := NewSystemEvent(
 		IndexCreateEventID,
