@@ -215,9 +215,11 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		break // Success.
 	}
 
-	// mgr's lastIndexDefs cache is updated when an update
-	// is received from metaKV, as it subscribes to updates
-	// on INDEX_DEFS_KEY.
+	// Refresh manager's index defs cache to immediately reflect the
+	// latest index definitions in the system on the node where this
+	// request was received (the ctl routine is responsible for
+	// eventually  updating the cache on other nodes).
+	mgr.GetIndexDefs(true)
 
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
@@ -327,9 +329,11 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 
 	mgr.m.Unlock()
 
-	// mgr's lastIndexDefs cache is updated when an update
-	// is received from metaKV, as it subscribes to updates
-	// on INDEX_DEFS_KEY.
+	// Refresh manager's index defs cache to immediately reflect the
+	// latest index definitions in the system on the node where this
+	// request was received (the ctl routine is responsible for
+	// eventually  updating the cache on other nodes).
+	mgr.GetIndexDefs(true)
 
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
