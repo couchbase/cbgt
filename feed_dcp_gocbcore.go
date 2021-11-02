@@ -637,35 +637,16 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 
 func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr string,
 	options map[string]string) error {
-	auth, err := gocbAuth(paramsStr, options["authType"])
-	if err != nil {
-		return err
-	}
-
 	svrs := strings.Split(f.servers, ";")
 	if len(svrs) == 0 {
 		return fmt.Errorf("no servers provided")
 	}
 
-	config := setupAgentConfig(f.name, f.bucketName, auth)
-	connStr, useTLS, cp := setupConfigParams(svrs[0], options)
-	err = config.FromConnStr(connStr)
+	agent, _, err := statsAgentsMap.obtainAgents(f.bucketName, f.bucketUUID,
+		paramsStr, svrs[0], options)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
 	}
-
-	config.UseTLS = useTLS
-	config.TLSRootCAProvider = cp
-
-	agent, err := setupGocbcoreAgent(config)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		log.Printf("feed_dcp_gocbcore: Closing Agent (%p)", agent)
-		go agent.Close()
-	}()
 
 	// the sourceUUID setting in the index definition is optional,
 	// so make sure the feed's bucketUUID is set in case it wasn't
