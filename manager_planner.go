@@ -20,6 +20,18 @@ import (
 	log "github.com/couchbase/clog"
 )
 
+func init() {
+	// custom score booster override for single partioned indexes
+	// to result in better balanced assignments.
+	blance.NodeScoreBooster = func(w int, s float64) float64 {
+		score := float64(-w)
+		if score < s {
+			score = s
+		}
+		return score
+	}
+}
+
 // PlannerHooks allows advanced applications to register callbacks
 // into the planning computation, in order to adjust the planning
 // outcome.  For example, an advanced application might adjust node
@@ -814,14 +826,6 @@ func NormaliseNodeWeights(nodeWeights map[string]int,
 				rv[uuid] = -factor * (weight + count)
 			}
 		}
-	}
-
-	blance.NodeScoreBooster = func(w int, s float64) float64 {
-		score := float64(-w)
-		if score < s {
-			score = s
-		}
-		return score
 	}
 
 	return rv
