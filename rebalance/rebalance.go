@@ -680,7 +680,6 @@ func (r *Rebalancer) adjustNodeWeights(
 	}
 
 	nodeWeights := r.nodeWeights
-	blance.NodeScoreBooster = nil
 	// if the index is a single partitioned one,
 	// then try to normalize the node weights.
 	if len(planPIndexesForIndex) == 1 {
