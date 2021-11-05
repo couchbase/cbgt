@@ -996,6 +996,13 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	err = waitForResponse(signal, f.closeCh, op, GocbcoreConnectTimeout)
 	if err != nil {
 		if errors.Is(err, gocbcore.ErrTimeout) || errors.Is(err, gocbcore.ErrForcedReconnect) {
+			// Verify source exists before closing and re-initiating stream request(s).
+			if gone, _, _ := f.VerifySourceNotExists(); gone {
+				f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s], OpenStream,"+
+					" source is gone, vb: %v, err: %v", f.Name(), vbId, err))
+				return
+			}
+
 			// Send a close-stream request for the vbucket to KV to make
 			// certain that the earlier stream isn't still lingering around,
 			// before re-initiating a new stream request.
