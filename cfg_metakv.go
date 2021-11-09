@@ -53,6 +53,15 @@ var CfgMetaKvPrefix = "/cbgt/cfg/"
 
 var LeanPlanVersion = "5.5.0"
 
+var AdvMetaEncodingFeatureVersion = "5.6.0"
+
+// NodeFeatureAdvMetaEncoding represents the feature flag for the
+// advanced metadata encoding that comprises of two format changes.
+// - compress the data before writing to metakv.
+// - split the plan contents on to multiple keys upon reaching
+//   a per key size threshold of 100KB.
+var NodeFeatureAdvMetaEncoding = "advMetaEncoding"
+
 // CfgAppVersion is a global Cfg variable supposed to be overridden by
 // applications to indicate the current application version.
 // This version information is used to figure out cluster level compatibility
@@ -104,6 +113,8 @@ type CfgMetaKv struct {
 	lastSplitCAS uint64
 	splitEntries map[string]CfgMetaKvEntry
 	nsServerUrl  string
+
+	advMetaEncodingSupported int32
 }
 
 type CfgMetaKvEntry struct {
@@ -183,6 +194,11 @@ func (c *CfgMetaKv) getRawLOCKED(key string, cas uint64) ([]byte, uint64, error)
 		return nil, 0, err
 	}
 
+	v, err = c.uncompressLocked(v)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	return v, 1, nil
 }
 
@@ -212,9 +228,14 @@ func (c *CfgMetaKv) setRawLOCKED(key string, val []byte, cas uint64) (
 	uint64, error) {
 	path := c.keyToPath(key)
 
+	val, err := c.compressLocked(val)
+	if err != nil {
+		return 0, err
+	}
+
 	log.Printf("cfg_metakv: Set path: %v", path)
 
-	err := metakv.Set(path, val, nil) // TODO: Handle rev better.
+	err = metakv.Set(path, val, nil) // TODO: Handle rev better.
 	if err != nil {
 		return 0, err
 	}
@@ -343,7 +364,12 @@ func (a *cfgMetaKvNodeDefsSplitHandler) get(
 	for _, v := range m {
 		var childNodeDefs NodeDefs
 
-		err = json.Unmarshal(v.Value, &childNodeDefs)
+		value, err := c.uncompressLocked(v.Value)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		err = json.Unmarshal(value, &childNodeDefs)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -477,6 +503,11 @@ LOOP:
 		log.Printf("cfg_metakv: Set split, key: %v, childPath: %v",
 			key, childPath)
 
+		val, err := c.compressLocked(val)
+		if err != nil {
+			return 0, err
+		}
+
 		err = metakv.Set(childPath, val, nil)
 		if err != nil {
 			return 0, err
@@ -530,7 +561,7 @@ func (a *cfgMetaKvPlanPIndexesHandler) get(c *CfgMetaKv,
 	// if the cluster contains any nodes which dont support
 	// the Lean planPIndex feature then fallback to older
 	// shared PlanPIndex format
-	if isLeanPlanSupported(c) {
+	if c.isFeatureSupported(LeanPlanVersion, NodeFeatureLeanPlan) {
 		return getLeanPlan(c, key, cas)
 	}
 	return getSharedPlan(c, key, cas)
@@ -541,7 +572,7 @@ func (a *cfgMetaKvPlanPIndexesHandler) set(c *CfgMetaKv,
 	// if the cluster contains any nodes which dont support
 	// the feature Lean planPIndex feature then fallback to older
 	// shared PlanPIndex format
-	if isLeanPlanSupported(c) {
+	if c.isFeatureSupported(LeanPlanVersion, NodeFeatureLeanPlan) {
 		return setLeanPlan(c, key, val, cas)
 	}
 	return setSharedPlan(c, key, val, cas)
@@ -552,53 +583,10 @@ func (a *cfgMetaKvPlanPIndexesHandler) del(c *CfgMetaKv,
 	// if the cluster contains any nodes which dont support
 	// the feature Lean planPIndex feature then fallback to older
 	// shared PlanPIndex format
-	if isLeanPlanSupported(c) {
+	if c.isFeatureSupported(LeanPlanVersion, NodeFeatureLeanPlan) {
 		return delLeanPlan(c, key, cas)
 	}
 	return delSharedPlan(c, key, cas)
-}
-
-func isLeanPlanSupported(c *CfgMetaKv) bool {
-	b, _, err := c.getRawLOCKED(VERSION_KEY, 0)
-	if err != nil {
-		return false
-	}
-	// if the Cfg version is lower than 5.5.0/LeanPlanVersion
-	// then return false
-	if VersionGTE(string(b), LeanPlanVersion) == false {
-		return false
-	}
-
-	// extra check to see if the cluster contains any nodes which
-	// dont support the Lean planPIndex feature then fallback to
-	// older shared PlanPIndex format
-	for _, k := range []string{NODE_DEFS_KNOWN, NODE_DEFS_WANTED} {
-		key := CfgNodeDefsKey(k)
-		handler := cfgMetaKvAdvancedKeys[key]
-		if handler == nil {
-			return false
-		}
-
-		v, _, err := handler.get(c, key, 0)
-		if err != nil {
-			log.Printf("cfg_metakv: isLeanPlanSupported, err: %v", err)
-			return false
-		}
-		if v == nil {
-			return false
-		}
-		rv := &NodeDefs{}
-		err = json.Unmarshal(v, rv)
-		if err != nil {
-			log.Printf("cfg_metakv: isLeanPlanSupported, json unmarshal, err: %v", err)
-			return false
-		}
-
-		if !IsFeatureSupportedByCluster(NodeFeatureLeanPlan, rv) {
-			return false
-		}
-	}
-	return true
 }
 
 // PlanPIndexesShared represents a PlanPIndexes that has been

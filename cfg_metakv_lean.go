@@ -103,6 +103,57 @@ func setLeanPlan(c *CfgMetaKv,
 		return 0, err
 	}
 
+	// check whether adv meta encoding is supported.
+	if isAdvMetaEncodingSupported(c) {
+		_, err = setSplitPlan(c, key, planPIndexes, newPath)
+		if err != nil {
+			return 0, err
+		}
+
+	} else {
+		_, err = setLeanPlanUtil(c, key, planPIndexes, newPath)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// update the curPlanMetaKvKey to point to the latest plan directory
+	meta := &planMeta{UUID: planPIndexes.UUID,
+		ImplVersion: planPIndexes.ImplVersion,
+		Path:        newPath,
+	}
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		metakv.RecursiveDelete(newPath)
+		return 0, err
+	}
+
+	metaJSON, err = c.compressLocked(metaJSON)
+	if err != nil {
+		return 0, err
+	}
+
+	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), metaJSON, nil)
+	if err != nil {
+		log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
+			"set, err: %v", err)
+		metakv.RecursiveDelete(newPath)
+		return 0, err
+	}
+
+	log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
+		"set, val: %s", metaJSON)
+
+	casResult := c.lastSplitCAS + 1
+	c.lastSplitCAS = casResult
+	// purge any orphaned, old enough lean planPIndexes
+	purgeOrphanedLeanPlans(c, newPath)
+	return casResult, err
+}
+
+// setLeanPlan writes the lean plan split by the index name.
+func setLeanPlanUtil(c *CfgMetaKv, key string,
+	planPIndexes *PlanPIndexes, path string) (uint64, error) {
 	leanPlanPIndexes := &LeanPlanPIndexes{
 		IndexPlanPIndexes: make(map[string]*LeanIndexPlanPIndexes),
 		Warnings:          make(map[string][]string),
@@ -145,51 +196,32 @@ func setLeanPlan(c *CfgMetaKv,
 			Warnings:          leanPlanPIndexes.Warnings,
 		}
 		childPlan.IndexPlanPIndexes[name] = ipp
-		val, err = json.Marshal(childPlan)
+		val, err := json.Marshal(childPlan)
 		if err != nil {
 			// clean up the incomplete plan directories
 			log.Errorf("cfg_metakv_lean: setLeanPlan json marshal, err: %v", err)
-			metakv.RecursiveDelete(newPath)
+			metakv.RecursiveDelete(path)
 			return 0, err
 		}
-		childPath := newPath + name
+		childPath := path + name
+
+		val, err = c.compressLocked(val)
+		if err != nil {
+			return 0, err
+		}
+
 		err = metakv.Set(childPath, val, nil)
 		if err != nil {
 			// clean up the incomplete plan directories
 			log.Errorf("cfg_metakv_lean: setLeanPlan metakv.Set, err: %v", err)
-			metakv.RecursiveDelete(newPath)
+			metakv.RecursiveDelete(path)
 			return 0, err
 		}
 		log.Printf("cfg_metakv_lean: setLeanPlan, key: %v, childPath: %v",
 			key, childPath)
 	}
 
-	// update the curPlanMetaKvKey to point to the latest plan directory
-	meta := &planMeta{UUID: planPIndexes.UUID,
-		ImplVersion: planPIndexes.ImplVersion,
-		Path:        newPath,
-	}
-	metaJSON, err := json.Marshal(meta)
-	if err != nil {
-		metakv.RecursiveDelete(newPath)
-		return 0, err
-	}
-	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), metaJSON, nil)
-	if err != nil {
-		log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
-			"set, err: %v", err)
-		metakv.RecursiveDelete(newPath)
-		return 0, err
-	}
-
-	log.Printf("cfg_metakv_lean: setLeanPlan, curMetaKvPlanKey "+
-		"set, val: %s", metaJSON)
-
-	casResult := c.lastSplitCAS + 1
-	c.lastSplitCAS = casResult
-	// purge any orphaned, old enough lean planPIndexes
-	purgeOrphanedLeanPlans(c, newPath)
-	return casResult, err
+	return 0, nil
 }
 
 // getLeanPlan retrieves multiple child entries from the metakv and
@@ -218,25 +250,81 @@ RETRY:
 		return nil, 0, nil
 	}
 
-	rv := &PlanPIndexes{
-		PlanPIndexes: make(map[string]*PlanPIndex),
-		Warnings:     make(map[string][]string),
-	}
-	leanPlanPIndexes := &LeanPlanPIndexes{
-		IndexPlanPIndexes: make(map[string]*LeanIndexPlanPIndexes),
-	}
-	rv.UUID = planMeta.UUID
-	rv.ImplVersion = planMeta.ImplVersion
-
 	children, err := metakv.ListAllChildren(planMeta.Path)
 	if err != nil {
 		return nil, 0, err
 	}
-	for _, v := range children {
-		var childPlan LeanPlanPIndexes
-		err = json.Unmarshal(v.Value, &childPlan)
+
+	var rv *PlanPIndexes
+	var data []byte
+	var hashMD5 string
+
+	// check for split plans.
+	if isSplitPlan(children) {
+		data, hashMD5, err = getSplitPlan(c, planMeta, children)
 		if err != nil {
 			return nil, 0, err
+		}
+	} else {
+		rv, err = getLeanPlanUtil(c, planMeta, children)
+		if err != nil {
+			return nil, 0, err
+		}
+		data, err = json.Marshal(rv)
+		if err != nil {
+			return nil, 0, err
+		}
+		hashMD5, err = computeMD5(data)
+		if err != nil {
+			log.Errorf("cfg_metakv_lean: getLeanPlan, computeMD5, err: %v", err)
+			return nil, 0, err
+		}
+	}
+
+	// compare the hash of the fetched metakv content and
+	// that from the the directory name stamp.
+	hashStart := len(leanPlanKeyPrefix)
+	hashFromName := planMeta.Path[hashStart : hashStart+32]
+	if hashFromName != hashMD5 {
+		if attempt < maxRetry {
+			goto RETRY
+		}
+		err = fmt.Errorf("cfg_metakv_lean: getLeanPlan, hash mismatch"+
+			" between plan hash: %s contents: %s, and directory stamp: %s",
+			hashMD5, data, hashFromName)
+		log.Printf("%+v", err)
+		return data, 0, nil
+	}
+
+	casResult := c.lastSplitCAS + 1
+	c.lastSplitCAS = casResult
+	return data, casResult, nil
+}
+
+func getLeanPlanUtil(c *CfgMetaKv, planMeta *planMeta,
+	children []metakv.KVEntry) (*PlanPIndexes, error) {
+	rv := &PlanPIndexes{
+		PlanPIndexes: make(map[string]*PlanPIndex),
+		Warnings:     make(map[string][]string),
+	}
+	rv.UUID = planMeta.UUID
+	rv.ImplVersion = planMeta.ImplVersion
+
+	leanPlanPIndexes := &LeanPlanPIndexes{
+		IndexPlanPIndexes: make(map[string]*LeanIndexPlanPIndexes),
+	}
+
+	for _, v := range children {
+		var childPlan LeanPlanPIndexes
+
+		value, err := c.uncompressLocked(v.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		err = json.Unmarshal(value, &childPlan)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, ipp := range childPlan.IndexPlanPIndexes {
@@ -288,32 +376,7 @@ RETRY:
 		rv.ImplVersion = version
 	}
 
-	data, err := json.Marshal(rv)
-	if err != nil {
-		return nil, 0, err
-	}
-	// compare the hash of the fetched metakv content and
-	// that from the the directory name stamp.
-	hashMD5, err := computeMD5(data)
-	if err != nil {
-		log.Errorf("cfg_metakv_lean: getLeanPlan, computeMD5, err: %v", err)
-		return nil, 0, err
-	}
-	hashStart := len(leanPlanKeyPrefix)
-	hashFromName := planMeta.Path[hashStart : hashStart+32]
-	if hashFromName != hashMD5 {
-		if attempt < maxRetry {
-			goto RETRY
-		}
-		err = fmt.Errorf("cfg_metakv_lean: getLeanPlan, hash mismatch between"+
-			" plan hash: %s contents: %s, and directory stamp: %s", hashMD5, data, hashFromName)
-		log.Printf("%+v", err)
-		return data, 0, nil
-	}
-
-	casResult := c.lastSplitCAS + 1
-	c.lastSplitCAS = casResult
-	return data, casResult, nil
+	return rv, nil
 }
 
 func delLeanPlan(
@@ -344,6 +407,12 @@ func delLeanPlan(
 	if err != nil {
 		return err
 	}
+
+	metaJSON, err = c.compressLocked(metaJSON)
+	if err != nil {
+		return err
+	}
+
 	err = metakv.Set(c.keyToPath(curMetaKvPlanKey), metaJSON, nil)
 	if err != nil {
 		log.Printf("cfg_metakv_lean: delLeanPlan, curMetaKvPlanKey "+
@@ -412,6 +481,12 @@ func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 	if len(v) == 0 {
 		return nil, nil
 	}
+
+	v, err = c.uncompressLocked(v)
+	if err != nil {
+		return nil, err
+	}
+
 	meta := &planMeta{}
 	err = json.Unmarshal(v, meta)
 	if err != nil {

@@ -26,7 +26,7 @@ import (
 // NOTE: You *must* update cbgt.VERSION if you change what's stored in
 // the Cfg (such as the JSON/struct definitions or the planning
 // algorithms).
-const VERSION = "5.5.0"
+const VERSION = "5.6.0"
 const VERSION_KEY = "version"
 
 // Returns true if a given version is modern enough to modify the Cfg.
