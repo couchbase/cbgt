@@ -37,10 +37,6 @@ func (e *proxyRequestErr) Error() string {
 	return e.msg
 }
 
-var httpClient = &http.Client{
-	Timeout: time.Second * 20,
-}
-
 // RequestProxyStubFunc is mainly for testability.
 var RequestProxyStubFunc func() bool
 
@@ -139,6 +135,11 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	// custom header to differentiate between fresh vs forwarded requests.
 	proxyReq.Header.Add(CLUSTER_ACTION, "orchestrator-forwarded")
 
+	httpClient := cbgt.HttpClient()
+	if httpClient == nil {
+		return nil, fmt.Errorf("rest_util: HttpClient unavailable")
+	}
+
 	resp, err := httpClient.Do(proxyReq)
 	if err != nil {
 		return nil, err
@@ -177,6 +178,11 @@ func checkRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 		return false, fmt.Errorf("rest_util: "+
 			" cbauth url: %s, err: %v",
 			mgr.Server()+"/pools/default/rebalanceProgress", err)
+	}
+
+	httpClient := cbgt.HttpClient()
+	if httpClient == nil {
+		return false, fmt.Errorf("rest_util: HttpClient unavailable")
 	}
 
 	resp, err := httpClient.Get(url)
@@ -250,6 +256,11 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 				return
 			}
 			req = req.WithContext(ctx)
+
+			httpClient := cbgt.HttpClient()
+			if httpClient == nil {
+				return
+			}
 
 			var resp *http.Response
 			resp, err = httpClient.Do(req)
