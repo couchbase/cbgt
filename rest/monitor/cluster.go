@@ -191,8 +191,15 @@ func NodeDefsUrlUUIDs(nodeDefs *cbgt.NodeDefs) (r []UrlUUID) {
 	}
 
 	for _, nodeDef := range nodeDefs.NodeDefs {
-		// TODO: Security/auth.
-		r = append(r, UrlUUID{"http://" + nodeDef.HostPort, nodeDef.UUID})
+		hostPortUrl := "http://" + nodeDef.HostPort
+		if u, err := nodeDef.HttpsURL(); err == nil {
+			hostPortUrl = u
+		}
+
+		r = append(r, UrlUUID{
+			Url:  hostPortUrl,
+			UUID: nodeDef.UUID,
+		})
 	}
 
 	return r

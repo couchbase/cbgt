@@ -1084,9 +1084,14 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 	var memberNodes []CtlNode
 
 	for _, nodeDef := range nodeDefsWanted.NodeDefs {
+		hostPortUrl := "http://" + nodeDef.HostPort
+		if u, err := nodeDef.HttpsURL(); err == nil {
+			hostPortUrl = u
+		}
+
 		memberNode := CtlNode{
 			UUID:       nodeDef.UUID,
-			ServiceURL: "http://" + nodeDef.HostPort,
+			ServiceURL: hostPortUrl,
 		}
 
 		if nodeDef.Extras != "" {
@@ -1104,6 +1109,8 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 				nsHostPort = e.NsHostPort
 			}
 
+			// non-ssl nsHostPort always available for communication
+			// from service via localhost
 			memberNode.ManagerURL = "http://" + nsHostPort
 		}
 
