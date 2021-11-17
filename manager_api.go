@@ -13,9 +13,14 @@ import (
 	"regexp"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	log "github.com/couchbase/clog"
 )
+
+// cfgRefreshWaitExpiry represents the manager's config
+// refresh timeout for metakv api access.
+var cfgRefreshWaitExpiry = time.Second * 10
 
 // INDEX_NAME_REGEXP is used to validate index definition names.
 const INDEX_NAME_REGEXP = `^[A-Za-z][0-9A-Za-z_\-]*$`
@@ -215,11 +220,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		break // Success.
 	}
 
-	// Refresh manager's index defs cache to immediately reflect the
-	// latest index definitions in the system on the node where this
-	// request was received (the ctl routine is responsible for
-	// eventually  updating the cache on other nodes).
-	mgr.GetIndexDefs(true)
+	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
 
 	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
@@ -329,11 +330,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 
 	mgr.m.Unlock()
 
-	// Refresh manager's index defs cache to immediately reflect the
-	// latest index definitions in the system on the node where this
-	// request was received (the ctl routine is responsible for
-	// eventually  updating the cache on other nodes).
-	mgr.GetIndexDefs(true)
+	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
 
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexOk, 1)
@@ -548,7 +545,7 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 	}
 
 	atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceOk, deletedCount)
-	mgr.GetIndexDefs(true)
+	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
 	mgr.PlannerKick("api/DeleteIndexes, for bucket: " + sourceName)
 
 	// With MB-19117, we've seen cfg that strangely had empty
@@ -584,4 +581,26 @@ func (mgr *Manager) GetCfgDeBounceOffsetAndMultiplier() (int, int) {
 	}
 
 	return offset, nm
+}
+
+// refreshIndexDefsWithTimeout refresh manager's index defs cache
+// to immediately reflect the latest index definitions in the system
+// on the node where this request was received (the ctl routine is
+// responsible for eventually  updating the cache on other nodes).
+func (mgr *Manager) refreshIndexDefsWithTimeout(duration time.Duration) {
+	ch := make(chan error, 1)
+	refreshIndexDefCache := func() chan error {
+		go func() {
+			_, _, err := mgr.GetIndexDefs(true)
+			ch <- err
+		}()
+		return ch
+	}
+
+	select {
+	case <-refreshIndexDefCache():
+	case <-time.After(duration):
+		atomic.AddUint64(&mgr.stats.TotSlowConfigAccess, 1)
+		log.Printf("manager_api: GetIndexDefs found to be slow")
+	}
 }

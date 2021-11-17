@@ -176,6 +176,8 @@ type ManagerStats struct {
 	TotRefreshLastNodeDefs     uint64
 	TotRefreshLastIndexDefs    uint64
 	TotRefreshLastPlanPIndexes uint64
+
+	TotSlowConfigAccess uint64
 }
 
 // ClusterOptions stores the configurable cluster-level
