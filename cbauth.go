@@ -62,7 +62,6 @@ type SecurityContext struct {
 	notifiers map[string]ConfigRefreshNotifier
 }
 
-
 const (
 	AuthChange_encryption = 1 << iota
 	AuthChange_nonSSLPorts
@@ -208,6 +207,10 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 		log.Printf("cbauth: Error updating TLS data, err: %v", err)
 		return err
 	}
+
+	// Close all cached couchbase.Bucket instances, so new ones can be
+	// setup with the new config.
+	cbBktMap.closeAllCouchbaseBuckets()
 
 	return nil
 }
