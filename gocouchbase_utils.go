@@ -114,6 +114,17 @@ func (cb *cbBucketMap) closeCouchbaseBucket(name, uuid string) {
 	}
 }
 
+func (cb *cbBucketMap) closeAllCouchbaseBuckets() {
+	cb.m.Lock()
+	for _, entry := range cb.entries {
+		entry.cbBkt.Close()
+	}
+	if len(cb.entries) > 0 {
+		cb.entries = make(map[string]*cbBucketInfo)
+	}
+	cb.m.Unlock()
+}
+
 func init() {
 	// Initialize statsCBBktMap
 	statsCBBktMap = &cbBucketMap{
@@ -164,6 +175,15 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 			" please check that your authUser and authPassword are correct"+
 			" and that your couchbase cluster (%q) is available",
 			server, poolName, bucketName, sourceParams, err, server)
+	}
+
+	ss := GetSecuritySetting()
+	if ss.EncryptionEnabled {
+		if err = client.InitTLS(TLSCertFile, ss.DisableNonSSLPorts); err != nil {
+			return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket"+
+				" failed to initialize TLS for client, server: %s, err: %v",
+				server, err)
+		}
 	}
 
 	pool, err := client.GetPool(poolName)
