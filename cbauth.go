@@ -212,7 +212,7 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 
 	// Close all cached couchbase.Bucket instances, so new ones can be
 	// setup with the new config.
-	cbBktMap.closeAllCouchbaseBuckets()
+	statsCBBktMap.closeAllCouchbaseBuckets()
 
 	return nil
 }
