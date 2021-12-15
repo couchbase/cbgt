@@ -47,7 +47,7 @@ func TestFilesFindMatches(t *testing.T) {
 		t.Errorf("expected err")
 	}
 
-	testDir, _ := ioutil.TempDir("./tmp", "test")
+	testDir, _ := ioutil.TempDir("tmp", "test")
 	defer os.RemoveAll(testDir)
 	err = os.MkdirAll(testDir+
 		string(os.PathSeparator)+"files"+
