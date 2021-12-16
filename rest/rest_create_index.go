@@ -275,3 +275,78 @@ func ExtractSourceTypeName(req *http.Request, indexDef *cbgt.IndexDef, indexName
 	}
 	return sourceType, sourceName
 }
+
+// ---------------------------------------------------
+type statusType string
+
+const (
+	StatusOK   statusType = "ok"
+	InProgress            = "InProgress"
+	Ready                 = "Ready"
+)
+
+// IndexStatusHandler is a REST handler for retrieving
+// the index creation status or the readiness of the index
+// at a metadata level.
+type IndexStatusHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewIndexStatusHandler(mgr *cbgt.Manager) *IndexStatusHandler {
+	return &IndexStatusHandler{mgr: mgr}
+}
+
+func (h *IndexStatusHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	indexName := IndexNameLookup(req)
+	if indexName == "" {
+		ShowError(w, req, "index name is required", http.StatusBadRequest)
+		return
+	}
+
+	nodeDefs, err := h.mgr.GetNodeDefs(cbgt.NODE_DEFS_WANTED, false)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_index: GetNodeDefs, err: %v",
+			err), http.StatusInternalServerError)
+		return
+	}
+
+	_, allPlanPIndexes, err := h.mgr.GetPlanPIndexes(false)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_index: GetPlanPIndexes, err: %v",
+			err), http.StatusInternalServerError)
+		return
+	}
+
+	var indexStatus statusType
+	planPIndexes, exists := allPlanPIndexes[indexName]
+	if !exists || len(planPIndexes) <= 0 {
+		indexStatus = InProgress
+	}
+
+	_, _, missingPIndexes, err := h.mgr.ClassifyPIndexes(indexName, "",
+		planPIndexes, nodeDefs, cbgt.PlanPIndexFilters["canRead"])
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("rest_index: ClassifyPIndexes, err: %v",
+			err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(missingPIndexes) > 0 {
+		indexStatus = InProgress
+	}
+
+	if indexStatus == "" {
+		indexStatus = Ready
+	}
+
+	rv := struct {
+		Status      statusType `json:"status"`
+		IndexStatus statusType `json:"indexStatus"`
+	}{
+		Status:      StatusOK,
+		IndexStatus: indexStatus,
+	}
+
+	MustEncode(w, rv)
+}

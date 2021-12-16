@@ -448,6 +448,29 @@ func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
 				" err: %v", err)
 	}
 
+	_, allPlanPIndexes, err := mgr.GetPlanPIndexes(false)
+	if err != nil {
+		return nil, nil, nil,
+			fmt.Errorf("pindex: could not retrieve allPlanPIndexes,"+
+				" err: %v", err)
+	}
+
+	planPIndexes, exists := allPlanPIndexes[indexName]
+	if !exists || len(planPIndexes) <= 0 {
+		return nil, nil, nil,
+			fmt.Errorf("pindex: no planPIndexes for indexName: %s",
+				indexName)
+	}
+
+	return mgr.ClassifyPIndexes(indexName, indexUUID,
+		planPIndexes, nodeDefs, planPIndexFilter)
+}
+
+func (mgr *Manager) ClassifyPIndexes(indexName, indexUUID string,
+	planPIndexes []*PlanPIndex, nodeDefs *NodeDefs,
+	planPIndexFilter PlanPIndexFilter) (
+	localPIndexes []*PIndex, remotePlanPIndexes []*RemotePlanPIndex,
+	missingPIndexNames []string, err error) {
 	// Returns true if the node has the "pindex" tag.
 	nodeDoesPIndexes := func(nodeUUID string) (*NodeDef, bool) {
 		nodeDef, ok := nodeDefs.NodeDefs[nodeUUID]
@@ -462,20 +485,6 @@ func (mgr *Manager) coveringPIndexesEx(indexName, indexUUID string,
 			}
 		}
 		return nil, false
-	}
-
-	_, allPlanPIndexes, err := mgr.GetPlanPIndexes(false)
-	if err != nil {
-		return nil, nil, nil,
-			fmt.Errorf("pindex: could not retrieve allPlanPIndexes,"+
-				" err: %v", err)
-	}
-
-	planPIndexes, exists := allPlanPIndexes[indexName]
-	if !exists || len(planPIndexes) <= 0 {
-		return nil, nil, nil,
-			fmt.Errorf("pindex: no planPIndexes for indexName: %s",
-				indexName)
 	}
 
 	localPIndexes = make([]*PIndex, 0, len(planPIndexes))

@@ -488,6 +488,14 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			})
 	}
 
+	handle("/api/index/{indexName}/status", "GET",
+		NewIndexStatusHandler(mgr),
+		map[string]string{
+			"_category":          "Index create status",
+			"_about":             `Creation status of an index.`,
+			"version introduced": "7.1.0",
+		})
+
 	handle("/api/index/{indexName}/planFreezeControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "planFreeze", map[string]bool{
 			"freeze":   true,
