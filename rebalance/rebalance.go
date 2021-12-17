@@ -36,6 +36,13 @@ var ErrorConcurrentPlannerInProgress = errors.New("concurrent planner in progres
 // during a heavy rebalance scenario.
 var StatsSampleErrorThreshold = uint8(3)
 
+// ProgressSamplingRate defines the default sampling rate at
+// which the rebalance progressCh is bumped upon receiving the
+// partition stats from the node monitor threads.
+// Lack of sampling results in very frequent rebalance progress state
+// updates which is cumbersome with large number of indexes.
+var ProgressSamplingRate = uint(3)
+
 // RebalanceProgress represents progress status information as the
 // Rebalance() operation proceeds.
 type RebalanceProgress struct {
@@ -1231,6 +1238,7 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	// TODO: Claim success and proceed if we see it's converging.
 CATCHUP_CUR_SEQ:
 	for _, sourcePartition := range sourcePartitions {
+		samplingRate := ProgressSamplingRate
 		start := time.Now()
 		uuidSeqWant, exists := r.getUUIDSeq(r.wantSeqs, pindex,
 			sourcePartition, node)
@@ -1310,7 +1318,14 @@ CATCHUP_CUR_SEQ:
 						} else {
 							caughtUp = caughtUp || reached
 
-							r.progressCh <- RebalanceProgress{}
+							// report the rebalance progress only at
+							// the specified sampling rates.
+							if samplingRate == 0 || caughtUp {
+								r.progressCh <- RebalanceProgress{}
+								samplingRate = ProgressSamplingRate
+							} else {
+								samplingRate--
+							}
 						}
 
 						// Skip the seq number catch up wait for the
