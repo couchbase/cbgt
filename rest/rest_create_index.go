@@ -311,6 +311,19 @@ func (h *IndexStatusHandler) ServeHTTP(
 		return
 	}
 
+	_, indexDefsByName, err := h.mgr.GetIndexDefs(false)
+	if err != nil {
+		ShowError(w, req, fmt.Sprintf("could not retrieve index defs, err: %v", err),
+			http.StatusInternalServerError)
+		return
+	}
+
+	indexDef, exists := indexDefsByName[indexName]
+	if !exists || indexDef == nil {
+		ShowError(w, req, "index not found", http.StatusBadRequest)
+		return
+	}
+
 	_, allPlanPIndexes, err := h.mgr.GetPlanPIndexes(false)
 	if err != nil {
 		ShowError(w, req, fmt.Sprintf("rest_index: GetPlanPIndexes, err: %v",
