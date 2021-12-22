@@ -452,6 +452,10 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 
 	taskId := "rebalance:" + change.ID
 
+	// cache for partition rebalance progress stats per node.
+	// pindex => node => progress.
+	pindexNodeProgressCache := make(map[string]map[string]float64)
+
 	// The progressEntries is a map of pindex ->
 	// source_partition -> node -> *rebalance.ProgressEntry.
 	onProgress := func(maxNodeLen, maxPIndexLen int,
@@ -462,7 +466,8 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 		progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 		errs []error,
 	) string {
-		m.updateProgress(taskId, seenNodes, seenPIndexes, progressEntries, errs)
+		m.updateProgress(taskId, seenNodes, seenPIndexes, pindexNodeProgressCache,
+			progressEntries, errs)
 
 		if progressEntries == nil {
 			return "DONE"
@@ -558,18 +563,26 @@ func (m *CtlMgr) updateProgress(
 	taskId string,
 	seenNodes map[string]bool,
 	seenPIndexes map[string]bool,
+	pindexNodeProgressCache map[string]map[string]float64,
 	progressEntries map[string]map[string]map[string]*rebalance.ProgressEntry,
 	errs []error,
 ) {
 	var progress float64
 	if progressEntries != nil {
-		pindexProg := map[string]float64{}
 		for _, sourcePartitions := range progressEntries {
 			for _, nodes := range sourcePartitions {
 				for _, pex := range nodes {
-					if pex == nil {
+					if pex == nil || pex.WantUUIDSeq.UUID == "" {
 						continue
 					}
+
+					// skip the progress recomputations.
+					if nodeProgMap, exists := pindexNodeProgressCache[pex.PIndex]; exists {
+						if prog, ok := nodeProgMap[pex.Node]; ok && prog >= 1.0 {
+							continue
+						}
+					}
+
 					curProg := m.computeProgPercent(pex, sourcePartitions)
 					if curProg > 0 || pex.TransferProgress > 0 {
 						var t float64
@@ -583,24 +596,34 @@ func (m *CtlMgr) updateProgress(
 						} else {
 							t = curProg
 						}
-						if v, ok := pindexProg[pex.PIndex]; !ok || v < t {
-							pindexProg[pex.PIndex] = t
+
+						if nodeProgMap, exists := pindexNodeProgressCache[pex.PIndex]; !exists {
+							nodeProgMap = make(map[string]float64)
+							nodeProgMap[pex.Node] = t
+							pindexNodeProgressCache[pex.PIndex] = nodeProgMap
+						} else if v, ok := nodeProgMap[pex.Node]; !ok || v < t {
+							nodeProgMap[pex.Node] = t
 						}
 					}
 				}
 			}
 		}
+
+		var pindexCount int
 		totPct := 0.0
-		for _, prog := range pindexProg {
-			if prog > 0 {
-				totPct += prog
+		for _, pindexProg := range pindexNodeProgressCache {
+			for _, prog := range pindexProg {
+				if prog > 0 {
+					totPct += prog
+					pindexCount++
+				}
 			}
 		}
 
 		// dynamically adjust the normalising factor.
 		nfactor := m.ctl.movingPartitionsCount
-		if nfactor < len(pindexProg) {
-			nfactor = len(pindexProg)
+		if nfactor < pindexCount {
+			nfactor = pindexCount
 		}
 
 		if nfactor > 0 {
