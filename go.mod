@@ -7,7 +7,7 @@ require (
 	github.com/couchbase/cbauth v0.1.0
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-couchbase v0.1.1
-	github.com/couchbase/gocbcore/v9 v9.1.7
+	github.com/couchbase/gocbcore/v9 v9.1.8
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
 	github.com/elazarl/go-bindata-assetfs v1.0.0

@@ -1017,11 +1017,12 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 
 			if err == nil {
 				err = waitForResponse(wait, f.closeCh, op, GocbcoreConnectTimeout)
-				if err == nil || errors.Is(err, gocbcore.ErrDocumentNotFound) {
+				if err == nil || errors.Is(err, gocbcore.ErrDocumentNotFound) ||
+					errors.Is(err, gocbcore.ErrDCPStreamIDInvalid) {
 					// Send a new open-stream request for the vbucket only if the
 					// error returned by the close-stream request on the earlier
-					// stream is nil or key-not-found, in which case it's safe to
-					// proceed with a repeat stream request for the vbucket.
+					// stream is nil or key-not-found - vbucket/streamId - in which
+					// case it's safe to proceed with a repeat stream request.
 					go f.initiateStreamEx(vbId, false, vbuuid, seqStart, seqEnd)
 					return
 				}
