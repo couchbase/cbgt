@@ -143,13 +143,13 @@ func NewCfgMetaKv(nodeUUID string, options map[string]string) (*CfgMetaKv, error
 
 	go ExponentialBackoffLoop("cfg_metakv.RunObserveChildren",
 		func() int {
-			err := metakv.RunObserveChildrenV2(cfg.prefix, cfg.metaKVCallback,
+			err := metakv.RunObserveChildren(cfg.prefix, cfg.metaKVCallback,
 				cfg.cancelCh)
 			if err == nil {
 				return -1 // Success, so stop the loop.
 			}
 
-			log.Warnf("cfg_metakv: RunObserveChildrenV2, err: %v", err)
+			log.Warnf("cfg_metakv: RunObserveChildren, err: %v", err)
 
 			return 0 // No progress, so exponential backoff.
 		},
@@ -246,7 +246,7 @@ func (c *CfgMetaKv) delRawLOCKED(key string, cas uint64) error {
 }
 
 func (c *CfgMetaKv) Load() error {
-	metakv.IterateChildrenV2(c.prefix, c.metaKVCallback)
+	metakv.IterateChildren(c.prefix, c.metaKVCallback)
 
 	return nil
 }
