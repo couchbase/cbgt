@@ -206,6 +206,7 @@ type ManagerEventHandlers interface {
 	OnRegisterPIndex(pindex *PIndex)
 	OnUnregisterPIndex(pindex *PIndex)
 	OnFeedError(srcType string, r Feed, err error)
+	OnRefreshManagerOptions(options map[string]string)
 }
 
 // NewManager returns a new, ready-to-be-started Manager instance.
@@ -1164,7 +1165,13 @@ func (mgr *Manager) RefreshOptions() error {
 		}
 	}
 	mgr.options = newOptions
+	log.Printf("manager: RefreshOptions: %+v finished", mgr.options)
 	mgr.m.Unlock()
+	// invoke any manager option refresh callbacks.
+	if mgr.meh != nil {
+		mgr.meh.OnRefreshManagerOptions(newOptions)
+	}
+
 	return err
 }
 
