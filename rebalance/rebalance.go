@@ -547,16 +547,10 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 
 		r.Logf("     progress: %+v", progress)
 
-		// propagate the orchestrator progress for further triggering detailed
-		// rebalance progress computations only when it is absolute necessary,
-		// eg: upon any actual partition movement status related events.
-		if partitionSeqCatchUpInProgress(progress, lastProgress) {
-
-			r.progressCh <- RebalanceProgress{
-				Error:                firstErr,
-				Index:                indexDef.Name,
-				OrchestratorProgress: progress,
-			}
+		r.progressCh <- RebalanceProgress{
+			Error:                firstErr,
+			Index:                indexDef.Name,
+			OrchestratorProgress: progress,
 		}
 
 		numProgress++
@@ -578,17 +572,6 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 	// TODO: Compute proper change response.
 
 	return true, firstErr
-}
-
-// partitionSeqCatchUpInProgress checks whether there's been any
-// progress in the physical partition movement since the last
-// iteration based on the orchestrator stats.
-func partitionSeqCatchUpInProgress(progress,
-	lastProgress blance.OrchestratorProgress) bool {
-	started := progress.TotMoverAssignPartition
-	finished := lastProgress.TotMoverAssignPartitionOk +
-		lastProgress.TotMoverAssignPartitionErr
-	return started > finished
 }
 
 // initPlansForRecoveryRebalance attempts to figure out whether the
