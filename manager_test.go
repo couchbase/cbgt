@@ -44,6 +44,9 @@ func (meh *TestMEH) OnFeedError(srcType string, r Feed,
 	err error) {
 }
 
+func (meh *TestMEH) OnRefreshManagerOptions(o map[string]string) {
+}
+
 func TestPIndexPath(t *testing.T) {
 	m := NewManager(VERSION, nil, NewUUID(), nil,
 		"", 1, "", "", "dir", "svr", nil)
