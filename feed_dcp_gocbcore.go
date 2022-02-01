@@ -1246,12 +1246,13 @@ func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
 		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) ||
 		errors.Is(err, gocbcore.ErrForcedReconnect) {
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
-			" `%s`, reconnecting ...", f.Name(), streamId, vbId, err.Error())
-		go func(vb uint16, seqno uint64) {
-			vbuuid, _, _ := f.lastVbUUIDSeqFromFailOverLog(vb)
+			" `%s`, last seq: %v, reconnecting ...",
+			f.Name(), streamId, vbId, err.Error(), lastReceivedSeqno)
+		go func(vb uint16) {
+			vbuuid, lastSeq, _ := f.lastVbUUIDSeqFromFailOverLog(vb)
 			f.initiateStreamEx(vb, false, gocbcore.VbUUID(vbuuid),
-				gocbcore.SeqNo(seqno), maxEndSeqno)
-		}(vbId, lastReceivedSeqno)
+				gocbcore.SeqNo(lastSeq), maxEndSeqno)
+		}(vbId)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
 		f.complete(vbId)
 		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
