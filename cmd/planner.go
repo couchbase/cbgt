@@ -11,11 +11,14 @@ package cmd
 import (
 	"fmt"
 	"strconv"
+	"sync"
 
 	log "github.com/couchbase/clog"
 
 	"github.com/couchbase/cbgt"
 )
+
+var plannerStepsMutex sync.Mutex
 
 // PlannerSteps helps command-line tools implement the planner steps:
 // * "unregister" - unregisters nodesRemove from the cfg.
@@ -29,6 +32,10 @@ import (
 func PlannerSteps(steps map[string]bool,
 	cfg cbgt.Cfg, version, server string, options map[string]string,
 	nodesRemove []string, dryRun bool, plannerFilter cbgt.PlannerFilter) error {
+	// serialise the access to the PlannerSteps to reduce planning conflicts.
+	plannerStepsMutex.Lock()
+	defer plannerStepsMutex.Unlock()
+
 	if steps != nil && steps["failover"] {
 		steps["unregister"] = true
 		steps["failover_"] = true
