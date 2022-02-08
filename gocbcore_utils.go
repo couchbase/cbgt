@@ -57,6 +57,7 @@ func setupAgentConfig(name, sourceName string,
 }
 
 var errAgentSetupFailed = fmt.Errorf("agent setup failed")
+var errBucketUUIDMismatched = fmt.Errorf("mismatched bucketUUID")
 
 func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
 	*gocbcore.Agent, error) {

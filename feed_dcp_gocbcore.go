@@ -411,7 +411,16 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 			// from within the JanitorLoop (this API is invoked from
 			// within JanitorOnce) is prohibited - deadlock!
 			go mgr.Kick(fmt.Sprintf("gocbcore-feed-start, feed: %v", feedName))
+		} else if errors.Is(err, errBucketUUIDMismatched) {
+			// In the event the bucket UUID changed between index
+			// creation and feed setup - and if the request was for
+			// the older bucket UUID, then due to the feed error drop
+			// the index (asynchronously).
+			log.Warnf("feed_dcp_gocbcore: DeleteIndex, indexName: %s,"+
+				" indexUUID: %s, err: %v", indexName, indexUUID, err)
+			go mgr.DeleteIndexEx(indexName, indexUUID)
 		}
+
 		return fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 			" could not prepare DCP feed, name: %s, server: %s,"+
 			" bucketName: %s, indexName: %s, err: %v",
@@ -660,7 +669,8 @@ func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr string,
 	if len(f.bucketUUID) == 0 {
 		f.bucketUUID = bucketUUID
 	} else if f.bucketUUID != bucketUUID {
-		return fmt.Errorf("mismatched bucketUUID")
+		return fmt.Errorf("%w, bucket: [%s, %s], request: %s",
+			errBucketUUIDMismatched, f.bucketName, bucketUUID, f.bucketUUID)
 	}
 
 	signal := make(chan error, 1)
