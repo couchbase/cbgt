@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
 	"github.com/couchbase/cbgt/rebalance"
+	"github.com/couchbase/cbgt/rest"
 
 	"github.com/couchbase/cbauth/service"
 )
@@ -555,6 +556,13 @@ func updateNodePlanParams(indexDef *cbgt.IndexDef,
 // planner, but only for brand new indexes that don't have any
 // pindexes yet.
 func (ctl *Ctl) IndexDefsChanged() (err error) {
+	// check whether the rebalance operation is already in progress.
+	if ctl.rebalanceInProgress() {
+		log.Printf("ctl: IndexDefsChanged, skipping the planning as the" +
+			" rebalance operation is in progress.")
+		return
+	}
+
 	go func() {
 		steps := map[string]bool{"planner": true}
 
@@ -1111,6 +1119,9 @@ func (ctl *Ctl) startCtlLOCKED(
 					// but, an adversary could still change the
 					// indexDefs before we can run the PlannerSteps().
 					break REBALANCE_LOOP
+				} else {
+					log.Printf("ctl: Retrying the rebalance since the index" +
+						" definitions have changed during the rebalance.")
 				}
 			}
 		}
@@ -1273,4 +1284,22 @@ func (ctl *Ctl) checkAndReregisterSelf(selfUUID string) {
 
 func (ctl *Ctl) rebalanceOrchestrator() bool {
 	return ctl.rebOrchestrator
+}
+
+// ----------------------------------------------------
+
+func (ctl *Ctl) rebalanceInProgress() bool {
+	// check whether the rebalance operation is
+	// already in progress internally.
+	if ctl.rebOrchestrator {
+		return true
+	}
+
+	// check with the cluster manager about the rebalance status.
+	rebInProgress, _ := rest.CheckRebalanceStatus(ctl.optionsCtl.Manager)
+	if rebInProgress {
+		return true
+	}
+
+	return false
 }

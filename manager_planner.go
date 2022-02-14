@@ -202,59 +202,38 @@ type PlannerFilter func(indexDef *IndexDef,
 // Plan runs the planner once.
 func Plan(cfg Cfg, version, uuid, server string, options map[string]string,
 	plannerFilter PlannerFilter) (bool, error) {
-PLANNER_LOOP:
-	for {
-		indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
-			PlannerGetPlan(cfg, version, uuid)
-		if err != nil {
-			return false, err
-		}
-
-		// use the effective version while calculating the new plan
-		eVersion := CfgGetVersion(cfg)
-		if eVersion != version {
-			log.Printf("planner: Plan, incoming version: %s, effective"+
-				"Cfg version used: %s", version, eVersion)
-			version = eVersion
-		}
-
-		planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
-			planPIndexesPrev, version, server, options, plannerFilter)
-		if err != nil {
-			return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
-		}
-
-		if SamePlanPIndexes(planPIndexes, planPIndexesPrev) {
-			return false, nil
-		}
-
-		// The latest plan could have changed here if there is a concurrent
-		// rebalance operation in the background. So, ensure that the plan
-		// hasn't changed before updating by explicitly retrieving the latest
-		// plan from Cfg. Reattempt the planning upon any changes to the plan.
-		latestPlanFromCfg, _, err := CfgGetPlanPIndexes(cfg)
-		if err != nil {
-			log.Printf("planner: Plan, CfgGetPlanPIndexes, err: %v", err)
-			continue PLANNER_LOOP
-		}
-
-		if latestPlanFromCfg != nil &&
-			latestPlanFromCfg.UUID != planPIndexesPrev.UUID {
-			log.Printf("planner: Retrying Plan on the mismatch of working"+
-				" planPIndexes UUID: %s, vs latest planPIndexes UUID: %s",
-				planPIndexesPrev.UUID, latestPlanFromCfg.UUID)
-			continue PLANNER_LOOP
-		}
-
-		_, err = CfgSetPlanPIndexes(cfg, planPIndexes, cas)
-		if err != nil {
-			return false, fmt.Errorf("planner: could not save new plan,"+
-				" perhaps a concurrent planner won, cas: %d, err: %v",
-				cas, err)
-		}
-
-		return true, nil
+	indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
+		PlannerGetPlan(cfg, version, uuid)
+	if err != nil {
+		return false, err
 	}
+
+	// use the effective version while calculating the new plan
+	eVersion := CfgGetVersion(cfg)
+	if eVersion != version {
+		log.Printf("planner: Plan, incoming version: %s, effective"+
+			"Cfg version used: %s", version, eVersion)
+		version = eVersion
+	}
+
+	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
+		planPIndexesPrev, version, server, options, plannerFilter)
+	if err != nil {
+		return false, fmt.Errorf("planner: CalcPlan, err: %v", err)
+	}
+
+	if SamePlanPIndexes(planPIndexes, planPIndexesPrev) {
+		return false, nil
+	}
+
+	_, err = CfgSetPlanPIndexes(cfg, planPIndexes, cas)
+	if err != nil {
+		return false, fmt.Errorf("planner: could not save new plan,"+
+			" perhaps a concurrent planner won, cas: %d, err: %v",
+			cas, err)
+	}
+
+	return true, nil
 }
 
 // PlannerGetPlan retrieves plan related info from the Cfg.
