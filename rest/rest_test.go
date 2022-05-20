@@ -273,8 +273,16 @@ func TestHandlersForRuntimeOps(t *testing.T) {
 }
 
 func TestHandlersForEmptyManager(t *testing.T) {
+	getNumSourcePartitionsForBucket := GetNumSourcePartitionsForBucket
+	GetNumSourcePartitionsForBucket = func(string, string) (int, error) {
+		return 0, nil
+	}
+
 	emptyDir, _ := ioutil.TempDir("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		GetNumSourcePartitionsForBucket = getNumSourcePartitionsForBucket
+		os.RemoveAll(emptyDir)
+	}()
 
 	cfg := cbgt.NewCfgMem()
 	meh := &TestMEH{}

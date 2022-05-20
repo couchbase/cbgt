@@ -15,8 +15,8 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/couchbase/cbgt"
@@ -215,14 +215,28 @@ func (h *CreateIndexHandler) ServeHTTP(
 	}
 
 	if planParams.IndexPartitions > 0 {
-		if options := h.mgr.Options(); options != nil {
-			if numSourcePartitions, ok := options["vbuckets"]; ok {
-				if v, err := strconv.Atoi(numSourcePartitions); err == nil && v > 0 {
-					planParams.MaxPartitionsPerPIndex =
-						int(math.Ceil(float64(v) / float64(planParams.IndexPartitions)))
-				}
-			}
+		numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
+		if err != nil {
+			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
+				" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
+				http.StatusInternalServerError)
+			return
 		}
+
+		planParams.MaxPartitionsPerPIndex =
+			int(math.Ceil(float64(numSourcePartitions) / float64(planParams.IndexPartitions)))
+
+	} else if planParams.MaxPartitionsPerPIndex > 0 {
+		numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
+		if err != nil {
+			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
+				" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
+				http.StatusInternalServerError)
+			return
+		}
+
+		planParams.IndexPartitions =
+			int(math.Ceil(float64(numSourcePartitions) / float64(planParams.MaxPartitionsPerPIndex)))
 	}
 
 	prevIndexUUID := req.FormValue("prevIndexUUID")
@@ -276,7 +290,8 @@ func ExtractSourceTypeName(req *http.Request, indexDef *cbgt.IndexDef, indexName
 	return sourceType, sourceName
 }
 
-// ---------------------------------------------------
+// -----------------------------------------------------------------------------
+
 type statusType string
 
 const (
@@ -362,4 +377,68 @@ func (h *IndexStatusHandler) ServeHTTP(
 	}
 
 	MustEncode(w, rv)
+}
+
+// -----------------------------------------------------------------------------
+
+// For unit-test overrideablity
+var GetNumSourcePartitionsForBucket = getNumSourcePartitionsForBucket
+
+func getNumSourcePartitionsForBucket(server, bucketName string) (int, error) {
+	url := server + "/pools/default/buckets/" + url.QueryEscape(bucketName)
+
+	u, err := cbgt.CBAuthURL(url)
+	if err != nil {
+		return 0, err
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	var respErr error
+	var respBuf []byte
+	max_attempts := 5
+	cbgt.ExponentialBackoffLoop(
+		"getPoolsDefaultForBucket",
+		func() int {
+			resp, err := cbgt.HttpClient().Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+
+				buf, err := ioutil.ReadAll(resp.Body)
+				if err == nil && len(buf) > 0 {
+					respBuf = buf
+					respErr = nil
+					return -1
+				}
+			}
+
+			max_attempts--
+			if max_attempts == 0 {
+				respErr = fmt.Errorf("couldn't obtain a response from cluster manager")
+				return -1
+			}
+
+			return 0 // exponential backoff
+		},
+		reqBackoffStartSleepMS,
+		reqBackoffFactor,
+		reqBackoffMaxSleepMS,
+	)
+
+	if respErr != nil {
+		return 0, respErr
+	}
+
+	rv := struct {
+		NumVBuckets int `json:"numVBuckets"`
+	}{}
+
+	if err := json.Unmarshal(respBuf, &rv); err != nil {
+		return 0, err
+	}
+
+	return rv.NumVBuckets, nil
 }
