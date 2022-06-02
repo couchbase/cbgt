@@ -200,6 +200,7 @@ type ClusterOptions struct {
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
 	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
 	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
+	DisableGeoPointSpatialPlugin       string `json:"disableGeoPointSpatialPlugin"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
