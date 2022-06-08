@@ -214,29 +214,31 @@ func (h *CreateIndexHandler) ServeHTTP(
 		planParams = indexDef.PlanParams
 	}
 
-	if planParams.IndexPartitions > 0 {
-		numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
-		if err != nil {
-			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
-				" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
-				http.StatusInternalServerError)
-			return
+	if indexType == "fulltext-index" {
+		if planParams.IndexPartitions > 0 {
+			numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
+			if err != nil {
+				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
+					" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
+					http.StatusInternalServerError)
+				return
+			}
+
+			planParams.MaxPartitionsPerPIndex =
+				int(math.Ceil(float64(numSourcePartitions) / float64(planParams.IndexPartitions)))
+
+		} else if planParams.MaxPartitionsPerPIndex > 0 {
+			numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
+			if err != nil {
+				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
+					" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
+					http.StatusInternalServerError)
+				return
+			}
+
+			planParams.IndexPartitions =
+				int(math.Ceil(float64(numSourcePartitions) / float64(planParams.MaxPartitionsPerPIndex)))
 		}
-
-		planParams.MaxPartitionsPerPIndex =
-			int(math.Ceil(float64(numSourcePartitions) / float64(planParams.IndexPartitions)))
-
-	} else if planParams.MaxPartitionsPerPIndex > 0 {
-		numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
-		if err != nil {
-			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
-				" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
-				http.StatusInternalServerError)
-			return
-		}
-
-		planParams.IndexPartitions =
-			int(math.Ceil(float64(numSourcePartitions) / float64(planParams.MaxPartitionsPerPIndex)))
 	}
 
 	prevIndexUUID := req.FormValue("prevIndexUUID")
