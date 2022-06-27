@@ -52,16 +52,22 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	prevIndexUUID string) (string, error) {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
-	matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(indexName))
-	if err != nil {
-		return "", fmt.Errorf("manager_api: CreateIndex,"+
-			" indexName parsing problem,"+
-			" indexName: %s, err: %v", indexName, err)
+	if prevIndexUUID == "" {
+		// index name validations during the fresh index creation.
+		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(indexName))
+		if err != nil {
+			return "", fmt.Errorf("manager_api: CreateIndex,"+
+				" indexName parsing problem,"+
+				" indexName: %s, err: %v", indexName, err)
+		}
+		if !matched {
+			return "", fmt.Errorf("manager_api: CreateIndex,"+
+				" indexName is invalid, indexName: %q", indexName)
+		}
 	}
-	if !matched {
-		return "", fmt.Errorf("manager_api: CreateIndex,"+
-			" indexName is invalid, indexName: %q", indexName)
-	}
+
+	// save the original index name.
+	prevIndexName := indexName
 
 	indexDef := &IndexDef{
 		Type:         indexType,
@@ -80,6 +86,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 			" unknown indexType: %s", indexType)
 	}
 
+	var err error
 	if pindexImplType.Prepare != nil {
 		indexDef, err = pindexImplType.Prepare(mgr, indexDef)
 		if err != nil {
@@ -89,6 +96,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	}
 	sourceParams = indexDef.SourceParams
 	indexParams = indexDef.Params
+	indexName = indexDef.Name
 
 	if pindexImplType.Validate != nil {
 		err = pindexImplType.Validate(indexType, indexName, indexParams)
@@ -162,12 +170,26 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				indexDefs.ImplVersion, mgr.version)
 		}
 
-		prevIndex, exists := indexDefs.IndexDefs[indexName]
+		// check whether an index already exists within the keyspace/
+		// with the decorated name.
+		if _, exists := indexDefs.IndexDefs[indexName]; exists &&
+			(prevIndexUUID == "" || indexName != prevIndexName) {
+			return "", fmt.Errorf("manager_api: cannot create/update index"+
+				" because an index with the same name already exists: %s",
+				indexName)
+		}
+
+		prevIndex, exists := indexDefs.IndexDefs[prevIndexName]
 		if prevIndexUUID == "" { // New index creation.
 			if exists || prevIndex != nil {
-				return "", fmt.Errorf("manager_api: cannot create index because"+
-					" an index with the same name already exists: %s",
-					indexName)
+				// there could be a previous undecorated index which can coexist
+				// with the new indexName as long the $keyspace prefixed new
+				// indexName is different from the previous index name.
+				if prevIndex.Name == indexName {
+					return "", fmt.Errorf("here manager_api: cannot create index because"+
+						" an index with the same name already exists: %s",
+						indexName)
+				}
 			}
 		} else if prevIndexUUID == "*" {
 			if exists && prevIndex != nil {
@@ -196,6 +218,14 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				}
 			}
 
+			if prevIndexName != indexName {
+				// delete the original index name prior update since the
+				// index got a decorated new name according to the new
+				// index definition.
+				delete(indexDefs.IndexDefs, prevIndexName)
+				log.Printf("manager_api: Updated from index name: %s"+
+					" to index name: %s", prevIndexName, indexName)
+			}
 		}
 
 		indexUUID := NewUUID()

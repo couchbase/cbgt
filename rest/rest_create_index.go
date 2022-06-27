@@ -265,9 +265,11 @@ func (h *CreateIndexHandler) ServeHTTP(
 	MustEncode(w, struct {
 		// TODO: Should return created vs 200 HTTP code?
 		Status string `json:"status"`
+		Name   string `json:"name"`
 		UUID   string `json:"uuid"`
 	}{
 		Status: "ok",
+		Name:   indexDef.Name,
 		UUID:   indexUUID,
 	})
 }
