@@ -907,7 +907,7 @@ func (ctl *Ctl) startCtlLOCKED(
 			return cbgt.CBAuthHttpGet(urlStr)
 		}
 
-		return http.Get(urlStr)
+		return cbgt.HttpClient().Get(urlStr)
 	}
 
 	ctl.movingPartitionsCount = movingPartitionsCount
