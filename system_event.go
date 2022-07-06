@@ -133,7 +133,13 @@ func processSystemEvent(retryAfter int, evBytes []byte) {
 	}
 
 	resp, err := postEvent(evBytes, sysEventMgr.restEndPoint)
+	if err != nil {
+		log.Errorf("system_event: error while POST'ing the event to ns_server,"+
+			" err: %v", err)
+		return
+	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode == 503 {
 		retryAfter, err = strconv.Atoi(resp.Header.Get("Retry-after"))
 		if err != nil {
@@ -153,11 +159,6 @@ func processSystemEvent(retryAfter int, evBytes []byte) {
 		respString := string(respBytes)
 		log.Warnf("system_event: event request unsuccessful,"+
 			" err: %v", respString)
-	}
-
-	if err != nil {
-		log.Errorf("system_event: error while POST'ing the event to ns_server,"+
-			" err: %v", err)
 	}
 }
 
