@@ -176,7 +176,7 @@ func CheckRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 			mgr.Server()+"/pools/default/rebalanceProgress", err)
 	}
 
-	resp, err := http.Get(url)
+	resp, err := cbgt.HttpClient().Get(url)
 	if err != nil {
 		return false, fmt.Errorf("rest_util: checkRebalanceStatus, err: %v", err)
 	}

@@ -11,6 +11,7 @@ package cbgt
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -28,14 +29,54 @@ var HttpTransportTLSHandshakeTimeout = 10 * time.Second  // Go's default is 10 s
 var HttpTransportExpectContinueTimeout = 1 * time.Second // Go's default is 1 secs.
 
 var httpClientM sync.RWMutex
-var httpClient = http.DefaultClient
+
+type HTTPClient interface {
+	Get(string) (*http.Response, error)
+	Post(string, string, io.Reader) (*http.Response, error)
+	Do(*http.Request) (*http.Response, error)
+}
+
+// A wrapper over the HTTP client.
+type WrapperHTTPClient struct {
+	Client *http.Client
+}
+
+var httpClient = &WrapperHTTPClient{
+	Client: http.DefaultClient,
+}
+
+func (w *WrapperHTTPClient) Get(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return w.Do(req)
+}
+
+func (w *WrapperHTTPClient) Post(url, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+
+	return w.Do(req)
+}
+
+var UserAgentStr = "CB-SearchService"
+
+func (w *WrapperHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", UserAgentStr)
+	return w.Client.Do(req)
+}
 
 func RegisterHttpClient() {
 	RegisterConfigRefreshCallback("cbgt/httpClient", updateHttpClient)
 	updateHttpClient(AuthChange_certificates)
 }
 
-func HttpClient() *http.Client {
+func HttpClient() HTTPClient {
 	httpClientM.RLock()
 	client := httpClient
 	httpClientM.RUnlock()
@@ -72,7 +113,7 @@ func updateHttpClient(status int) error {
 		}
 
 		httpClientM.Lock()
-		httpClient = client
+		httpClient.Client = client
 		httpClientM.Unlock()
 	}
 
