@@ -43,7 +43,14 @@ func (rs *retryStrategy) RetryAfter(req gocbcore.RetryRequest,
 }
 
 func setupAgentConfig(name, sourceName string,
-	auth gocbcore.AuthProvider) *gocbcore.AgentConfig {
+	auth gocbcore.AuthProvider, options map[string]string) *gocbcore.AgentConfig {
+	initialBootstrapNonTLS := defaultInitialBootstrapNonTLS
+	if options["feedInitialBootstrapNonTLS"] == "true" {
+		initialBootstrapNonTLS = true
+	} else if options["feedInitialBootstrapNonTLS"] == "false" {
+		initialBootstrapNonTLS = false
+	}
+
 	return &gocbcore.AgentConfig{
 		UserAgent:              name,
 		BucketName:             sourceName,
@@ -51,7 +58,7 @@ func setupAgentConfig(name, sourceName string,
 		ConnectTimeout:         GocbcoreConnectTimeout,
 		KVConnectTimeout:       GocbcoreKVConnectTimeout,
 		NetworkType:            "default",
-		InitialBootstrapNonTLS: true,
+		InitialBootstrapNonTLS: initialBootstrapNonTLS,
 		UseCollections:         true,
 	}
 }
@@ -251,10 +258,10 @@ func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 			" sourceName: %s, err: %v", sourceName, err)
 	}
 
-	config := setupAgentConfig("stats", sourceName, auth)
+	config := setupAgentConfig("stats", sourceName, auth, options)
 	dcpConnName := fmt.Sprintf("stats-%s-%x", sourceName, rand.Int31())
 	dcpConfig := setupDCPAgentConfig(dcpConnName, sourceName, auth,
-		gocbcore.DcpAgentPriorityLow, false /* no need for streamID */, nil)
+		gocbcore.DcpAgentPriorityLow, false /* no need for streamID */, options)
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) == 0 {

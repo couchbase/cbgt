@@ -280,6 +280,7 @@ func (dm *gocbcoreDCPAgentMap) forceReconnectAgents() {
 // ----------------------------------------------------------------
 
 const defaultOSOBackfillMode = false
+const defaultInitialBootstrapNonTLS = true
 
 func setupDCPAgentConfig(
 	name, bucketName string,
@@ -293,6 +294,14 @@ func setupDCPAgentConfig(
 	} else if options["useOSOBackfill"] == "false" {
 		useOSOBackfill = false
 	}
+
+	initialBootstrapNonTLS := defaultInitialBootstrapNonTLS
+	if options["feedInitialBootstrapNonTLS"] == "true" {
+		initialBootstrapNonTLS = true
+	} else if options["feedInitialBootstrapNonTLS"] == "false" {
+		initialBootstrapNonTLS = false
+	}
+
 	return &gocbcore.DCPAgentConfig{
 		UserAgent:              name,
 		BucketName:             bucketName,
@@ -300,7 +309,7 @@ func setupDCPAgentConfig(
 		ConnectTimeout:         GocbcoreConnectTimeout,
 		KVConnectTimeout:       GocbcoreKVConnectTimeout,
 		NetworkType:            "default",
-		InitialBootstrapNonTLS: true,
+		InitialBootstrapNonTLS: initialBootstrapNonTLS,
 		UseCollections:         true,
 		UseOSOBackfill:         useOSOBackfill,
 		UseStreamID:            useStreamID,
