@@ -110,7 +110,9 @@ type gocbcoreDCPAgentMap struct {
 }
 
 // Max references for a gocbcore.DCPAgent
-var DefaultMaxFeedsPerDCPAgent = int(6)
+// NOTE: Increasing this value to > 1 will cause agents to be reused for
+//       multiple feeds, provided they're up against the same source.
+const defaultMaxFeedsPerDCPAgent = int(1)
 
 var dcpAgentMap *gocbcoreDCPAgentMap
 
@@ -145,7 +147,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		}
 	}
 	if maxFeedsPerDCPAgent <= 0 {
-		maxFeedsPerDCPAgent = DefaultMaxFeedsPerDCPAgent
+		maxFeedsPerDCPAgent = defaultMaxFeedsPerDCPAgent
 	}
 
 	dm.m.Lock()

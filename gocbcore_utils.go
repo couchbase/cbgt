@@ -152,7 +152,7 @@ func setupConfigParams(server string, options map[string]string) (
 	if options["authType"] == "cbauth" {
 		caProvider = FetchSecurityConfig
 	} else {
-		caProvider = LoadCertsFromTLSFile
+		caProvider = LoadRootCAsFromTLSFile
 	}
 
 	return connStr, useTLS, caProvider

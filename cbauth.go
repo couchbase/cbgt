@@ -279,7 +279,7 @@ func updateSecurityConfig(encryptData bool) error {
 
 	currSecurityConfig.encryptData = encryptData
 	if encryptData {
-		rootCAs := LoadCertsFromTLSFile()
+		rootCAs := LoadRootCAsFromTLSFile()
 		if rootCAs == nil {
 			return fmt.Errorf("error obtaining certificate(s)")
 		}
@@ -303,7 +303,7 @@ func FetchSecurityConfig() *x509.CertPool {
 	return rootCAs
 }
 
-func LoadCertsFromTLSFile() (rootCAs *x509.CertPool) {
+var LoadRootCAsFromTLSFile = func() (rootCAs *x509.CertPool) {
 	if len(TLSCAFile) == 0 && len(TLSCertFile) == 0 {
 		return
 	}
