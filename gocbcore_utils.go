@@ -140,21 +140,26 @@ func setupConfigParams(bucketName, bucketUUID, server string, options map[string
 	connStr string, useTLS bool, caProvider certProvider) {
 	if options["authType"] == "cbauth" {
 		caProvider = FetchSecurityConfig
+		if FetchSecurityConfig() != nil {
+			// Use TLS only rootCAs is available
+			useTLS = true
+		}
 	} else {
 		if RootCAsProvider != nil {
 			caProvider = RootCAsProvider(bucketName, bucketUUID)
 		} else {
 			caProvider = LoadRootCAsFromTLSFile
 		}
+
+		if caProvider != nil {
+			// Use TLS only if caProvider is available
+			useTLS = true
+		}
 	}
 
 	connStr = server
 	if connURL, err := url.Parse(server); err == nil {
 		if strings.HasPrefix(connURL.Scheme, "http") {
-			if caProvider != nil {
-				useTLS = true
-			}
-
 			// tack on an option: bootstrap_on=http for gocbcore SDK
 			// connections to force HTTP config polling
 			if ret, err := connURL.Parse("?bootstrap_on=http"); err == nil {
