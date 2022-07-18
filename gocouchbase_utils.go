@@ -257,6 +257,11 @@ func CouchbasePartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
+	if options["disableCollectionsSupport"] == "true" {
+		return nil,
+			fmt.Errorf("CouchbasePartitionSeqs supported only with collections")
+	}
+
 	bucket, err := statsCBBktMap.fetchCouchbaseBucket(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {

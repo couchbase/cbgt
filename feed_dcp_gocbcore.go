@@ -176,7 +176,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 
 	dcpConnName := fmt.Sprintf("%s%s-%x", DCPFeedPrefix, key, rand.Int31())
 	config := setupDCPAgentConfig(dcpConnName, bucketName, auth,
-		gocbcore.DcpAgentPriorityMed, true /* use streamID */, options)
+		gocbcore.DcpAgentPriorityMed, options)
 
 	svrs := strings.Split(servers, ";")
 	if len(svrs) == 0 {
@@ -288,7 +288,6 @@ func setupDCPAgentConfig(
 	name, bucketName string,
 	auth gocbcore.AuthProvider,
 	agentPriority gocbcore.DcpAgentPriority,
-	useStreamID bool,
 	options map[string]string) *gocbcore.DCPAgentConfig {
 	useOSOBackfill := defaultOSOBackfillMode
 	if options["useOSOBackfill"] == "true" {
@@ -304,6 +303,16 @@ func setupDCPAgentConfig(
 		initialBootstrapNonTLS = false
 	}
 
+	useCollections := true
+	if options["disableCollectionsSupport"] == "true" {
+		useCollections = false
+	}
+
+	useStreamID := true
+	if options["disableStreamIDs"] == "true" {
+		useStreamID = false
+	}
+
 	return &gocbcore.DCPAgentConfig{
 		UserAgent:              name,
 		BucketName:             bucketName,
@@ -312,7 +321,7 @@ func setupDCPAgentConfig(
 		KVConnectTimeout:       GocbcoreKVConnectTimeout,
 		NetworkType:            "default",
 		InitialBootstrapNonTLS: initialBootstrapNonTLS,
-		UseCollections:         true,
+		UseCollections:         useCollections,
 		UseOSOBackfill:         useOSOBackfill,
 		UseStreamID:            useStreamID,
 		BackfillOrder:          gocbcore.DCPBackfillOrderRoundRobin,
@@ -684,6 +693,12 @@ func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr string,
 			errBucketUUIDMismatched, f.bucketName, bucketUUID, f.bucketUUID)
 	}
 
+	f.streamOptions = gocbcore.OpenStreamOptions{}
+	if !agent.HasCollectionsSupport() {
+		// No support for collections
+		return nil
+	}
+
 	signal := make(chan error, 1)
 	var manifest gocbcore.Manifest
 	op, err := agent.GetCollectionManifest(
@@ -724,7 +739,6 @@ func (f *GocbcoreDCPFeed) setupStreamOptions(paramsStr string,
 		return fmt.Errorf("scope not found: %v", f.scope)
 	}
 
-	f.streamOptions = gocbcore.OpenStreamOptions{}
 	f.streamOptions.StreamOptions = &gocbcore.OpenStreamStreamOptions{
 		StreamID: newStreamID(),
 	}
@@ -842,19 +856,26 @@ func (f *GocbcoreDCPFeed) close() bool {
 	return true
 }
 
+func (f *GocbcoreDCPFeed) getCloseStreamOptions() gocbcore.CloseStreamOptions {
+	rv := gocbcore.CloseStreamOptions{}
+	if f.agent.HasCollectionsSupport() {
+		rv.StreamOptions = &gocbcore.CloseStreamStreamOptions{
+			StreamID: f.streamOptions.StreamOptions.StreamID,
+		}
+	}
+
+	return rv
+}
+
 // This will call close on all streams on feed closure. Note that
 // streams would then see an END message with the reason: "closed by
 // consumer".
 func (f *GocbcoreDCPFeed) closeAllStreamsLOCKED() {
-	closeStreamOptions := gocbcore.CloseStreamOptions{
-		StreamOptions: &gocbcore.CloseStreamStreamOptions{
-			StreamID: f.streamOptions.StreamOptions.StreamID,
-		},
-	}
+	closeStreamOptions := f.getCloseStreamOptions()
 
-	log.Printf("feed_dcp_gocbcore: name: %s, stream ID: %v,"+
+	log.Printf("feed_dcp_gocbcore: name: %s, streamOptions: %+v,"+
 		" close any open streams over vbuckets: %v",
-		f.Name(), closeStreamOptions.StreamOptions.StreamID, f.vbucketIds)
+		f.Name(), closeStreamOptions.StreamOptions, f.vbucketIds)
 
 	for _, vbId := range f.vbucketIds {
 		if f.active[vbId] {
@@ -954,32 +975,32 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				errors.Is(er, gocbcore.ErrScopeNotFound) ||
 				errors.Is(er, gocbcore.ErrCollectionNotFound) {
 				f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] OpenStream,"+
-					" vb: %v, stream ID: %v, err: %v", f.Name(),
-					vbId, f.streamOptions.StreamOptions.StreamID, er))
+					" vb: %v, streamOptions: %+v, err: %v", f.Name(),
+					vbId, f.streamOptions.StreamOptions, er))
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrMemdRollback) {
 				log.Printf("feed_dcp_gocbcore: [%s] OpenStream received rollback,"+
-					" for vb: %v, stream ID: %v, seqno requested: %v", f.Name(),
-					vbId, f.streamOptions.StreamOptions.StreamID, seqStart)
+					" for vb: %v, streamOptions: %+v, seqno requested: %v", f.Name(),
+					vbId, f.streamOptions.StreamOptions, seqStart)
 				f.complete(vbId)
 				go f.rollback(vbId, entries)
 				// rollback will handle this feed closure and setting up of a new feed
 				er = nil
 			} else if errors.Is(er, gocbcore.ErrRequestCanceled) {
 				// request was canceled by FTS, catch error and re-initiate stream request
-				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, stream ID: %v"+
+				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, streamOptions: %+v"+
 					" was canceled, (timeout) will re-initiate the stream request",
-					f.Name(), vbId, f.streamOptions.StreamOptions.StreamID)
+					f.Name(), vbId, f.streamOptions.StreamOptions)
 			} else if errors.Is(er, gocbcore.ErrForcedReconnect) {
 				// request was canceled by GOCBCORE, catch error and re-initate stream request
-				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, stream ID: %v"+
+				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, streamOptions: %+v"+
 					"failed with err: %v, reconnecting ...", f.Name(),
-					vbId, f.streamOptions.StreamOptions.StreamID, er)
+					vbId, f.streamOptions.StreamOptions, er)
 			} else if er != nil {
 				// unidentified error
 				log.Errorf("feed_dcp_gocbcore: [%s] OpenStream received error for vb: %v, "+
-					" stream ID: %v, err: %v", f.Name(), vbId,
-					f.streamOptions.StreamOptions.StreamID, er)
+					" streamOptions: %+v, err: %v", f.Name(), vbId,
+					f.streamOptions.StreamOptions, er)
 				f.complete(vbId)
 			} else {
 				// er == nil
@@ -1028,11 +1049,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 			// certain that the earlier stream isn't still lingering around,
 			// before re-initiating a new stream request.
 			wait := make(chan error, 1)
-			op, err = f.agent.CloseStream(vbId, gocbcore.CloseStreamOptions{
-				StreamOptions: &gocbcore.CloseStreamStreamOptions{
-					StreamID: f.streamOptions.StreamOptions.StreamID,
-				},
-			}, func(er error) {
+			op, err = f.agent.CloseStream(vbId, f.getCloseStreamOptions(), func(er error) {
 				wait <- er
 			})
 
@@ -1049,8 +1066,8 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				}
 
 				log.Warnf("feed_dcp_gocbcore: [%s] CloseStream for vb: %v,"+
-					" stream ID: %v, err: %v", f.Name(), vbId,
-					f.streamOptions.StreamOptions.StreamID, err)
+					" streamOptions: %+v, err: %v", f.Name(), vbId,
+					f.streamOptions.StreamOptions, err)
 			}
 		}
 
@@ -1153,11 +1170,13 @@ func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbcoreDCPExtras{
-				ScopeId:      f.streamOptions.FilterOptions.ScopeID,
-				CollectionId: collectionId,
-				Expiry:       expiry,
-				Flags:        flags,
-				Datatype:     datatype,
+				Expiry:   expiry,
+				Flags:    flags,
+				Datatype: datatype,
+			}
+			if f.agent.HasCollectionsSupport() {
+				extras.ScopeId = f.streamOptions.FilterOptions.ScopeID
+				extras.CollectionId = collectionId
 			}
 			err = destEx.DataUpdateEx(partition, key, seqNo, value, cas,
 				DEST_EXTRAS_TYPE_GOCBCORE_DCP, extras)
@@ -1208,10 +1227,12 @@ func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbcoreDCPExtras{
-				ScopeId:      f.streamOptions.FilterOptions.ScopeID,
-				CollectionId: collectionId,
-				Datatype:     datatype,
-				Value:        value,
+				Datatype: datatype,
+				Value:    value,
+			}
+			if f.agent.HasCollectionsSupport() {
+				extras.ScopeId = f.streamOptions.FilterOptions.ScopeID
+				extras.CollectionId = collectionId
 			}
 			err = destEx.DataDeleteEx(partition, key, seqNo, cas,
 				DEST_EXTRAS_TYPE_GOCBCORE_DCP, extras)
@@ -1626,30 +1647,41 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 
 // ----------------------------------------------------------------
 
-func doHTTPGetFromURL(url string) ([]byte, error) {
+// This implementation of GetPoolsDefaultForBucket works with CBAUTH only;
+// For all other authtypes, the application will have to override this function.
+var GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte, error) {
+	if len(bucket) == 0 {
+		return nil, fmt.Errorf("GetPoolsDefaultForBucket: bucket not provided")
+	}
+
+	url := server + "/pools/default/buckets/" + bucket
+	if scopes {
+		url += "/scopes"
+	}
+
 	u, err := CBAuthURL(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
 	}
 
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
 	}
 
 	resp, err := HttpClient().Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
 	}
 	defer resp.Body.Close()
 
 	respBuf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
 	}
 
 	if len(respBuf) == 0 {
-		return nil, fmt.Errorf("empty response for url: %v", url)
+		return nil, fmt.Errorf("GetPoolsDefaultForBucket, empty response for url: %v", url)
 	}
 
 	return respBuf, nil
@@ -1662,8 +1694,7 @@ func doHTTPGetFromURL(url string) ([]byte, error) {
 // needs to be dropped, the index UUID is passed on in this
 // scenario.
 func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
-	url := f.mgr.Server() + "/pools/default/buckets/" + f.bucketName
-	resp, err := doHTTPGetFromURL(url)
+	resp, err := GetPoolsDefaultForBucket(f.mgr.Server(), f.bucketName, false)
 	if err != nil {
 		return false, "", err
 	}
@@ -1682,9 +1713,7 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 		return true, "", err
 	}
 
-	url = fmt.Sprintf("%s/pools/default/buckets/%s/scopes",
-		f.mgr.Server(), f.bucketName)
-	resp, err = doHTTPGetFromURL(url)
+	resp, err = GetPoolsDefaultForBucket(f.mgr.Server(), f.bucketName, true)
 	if err != nil {
 		return false, "", err
 	}

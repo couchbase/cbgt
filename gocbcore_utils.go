@@ -51,6 +51,11 @@ func setupAgentConfig(name, sourceName string,
 		initialBootstrapNonTLS = false
 	}
 
+	useCollections := true
+	if options["disableCollectionsSupport"] == "true" {
+		useCollections = false
+	}
+
 	return &gocbcore.AgentConfig{
 		UserAgent:              name,
 		BucketName:             sourceName,
@@ -59,7 +64,7 @@ func setupAgentConfig(name, sourceName string,
 		KVConnectTimeout:       GocbcoreKVConnectTimeout,
 		NetworkType:            "default",
 		InitialBootstrapNonTLS: initialBootstrapNonTLS,
-		UseCollections:         true,
+		UseCollections:         useCollections,
 	}
 }
 
@@ -274,7 +279,7 @@ func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 	config := setupAgentConfig("stats", sourceName, auth, options)
 	dcpConnName := fmt.Sprintf("stats-%s-%x", sourceName, rand.Int31())
 	dcpConfig := setupDCPAgentConfig(dcpConnName, sourceName, auth,
-		gocbcore.DcpAgentPriorityLow, false /* no need for streamID */, options)
+		gocbcore.DcpAgentPriorityLow, options)
 
 	svrs := strings.Split(server, ";")
 	if len(svrs) == 0 {
@@ -379,6 +384,11 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
 	map[string]UUIDSeq, error) {
+	if options["disableCollectionsSupport"] == "true" {
+		return nil,
+			fmt.Errorf("CBPartitionSeqs supported only with collections")
+	}
+
 	agent, dcpAgent, err := statsAgentsMap.obtainAgents(sourceName, sourceUUID,
 		sourceParams, serverIn, options)
 	if err != nil {
