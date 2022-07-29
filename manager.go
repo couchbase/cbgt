@@ -201,6 +201,7 @@ type ClusterOptions struct {
 	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
 	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
 	DisableGeoPointSpatialPlugin       string `json:"disableGeoPointSpatialPlugin"`
+	MaxIndexCountPerSource             string `json:"maxIndexCountPerSource"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
