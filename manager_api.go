@@ -39,7 +39,7 @@ func (mgr *Manager) CreateIndex(sourceType,
 	sourceName, sourceUUID, sourceParams,
 	indexType, indexName, indexParams string, planParams PlanParams,
 	prevIndexUUID string) error {
-	_, err := mgr.CreateIndexEx(sourceType, sourceName, sourceUUID,
+	_, _, err := mgr.CreateIndexEx(sourceType, sourceName, sourceUUID,
 		sourceParams, indexType, indexName, indexParams, planParams,
 		prevIndexUUID)
 
@@ -49,19 +49,19 @@ func (mgr *Manager) CreateIndex(sourceType,
 func (mgr *Manager) CreateIndexEx(sourceType,
 	sourceName, sourceUUID, sourceParams,
 	indexType, indexName, indexParams string, planParams PlanParams,
-	prevIndexUUID string) (string, error) {
+	prevIndexUUID string) (string, string, error) {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
 	if prevIndexUUID == "" {
 		// index name validations during the fresh index creation.
 		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(indexName))
 		if err != nil {
-			return "", fmt.Errorf("manager_api: CreateIndex,"+
+			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
 				" indexName parsing problem,"+
 				" indexName: %s, err: %v", indexName, err)
 		}
 		if !matched {
-			return "", fmt.Errorf("manager_api: CreateIndex,"+
+			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
 				" indexName is invalid, indexName: %q", indexName)
 		}
 	}
@@ -82,7 +82,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 
 	pindexImplType, exists := PIndexImplTypes[indexType]
 	if !exists {
-		return "", fmt.Errorf("manager_api: CreateIndex,"+
+		return "", "", fmt.Errorf("manager_api: CreateIndex,"+
 			" unknown indexType: %s", indexType)
 	}
 
@@ -90,7 +90,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	if pindexImplType.Prepare != nil {
 		indexDef, err = pindexImplType.Prepare(mgr, indexDef)
 		if err != nil {
-			return "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
+			return "", "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
 				" err: %v", err)
 		}
 	}
@@ -101,7 +101,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	if pindexImplType.Validate != nil {
 		err = pindexImplType.Validate(indexType, indexName, indexParams)
 		if err != nil {
-			return "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
+			return "", "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
 				" err: %v", err)
 		}
 	}
@@ -110,7 +110,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	sourceParams, err = DataSourcePrepParams(sourceType,
 		sourceName, sourceUUID, sourceParams, mgr.server, mgr.Options())
 	if err != nil {
-		return "", fmt.Errorf("manager_api: failed to connect to"+
+		return "", "", fmt.Errorf("manager_api: failed to connect to"+
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			sourceType, sourceName, sourceUUID, err)
@@ -123,7 +123,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		sourceUUID, err = DataSourceUUID(sourceType, sourceName, sourceParams,
 			mgr.server, mgr.Options())
 		if err != nil {
-			return "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
+			return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
 				" for sourceName: %s, sourceType: %s, err: %v",
 				sourceName, sourceType, err)
 		}
@@ -133,17 +133,17 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	// Validate maxReplicasAllowed here.
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if planParams.NumReplicas < 0 || planParams.NumReplicas > maxReplicasAllowed {
-		return "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
+		return "", "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, planParams.NumReplicas)
 	}
 
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.cfg, NODE_DEFS_KNOWN)
 	if err != nil {
-		return "", fmt.Errorf("manager_api: CreateIndex failed, "+
+		return "", "", fmt.Errorf("manager_api: CreateIndex failed, "+
 			"CfgGetNodeDefs err: %v", err)
 	}
 	if len(nodeDefs.NodeDefs) < planParams.NumReplicas+1 {
-		return "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
+		return "", "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
 			"search nodes to support the requested replica count of %d",
 			planParams.NumReplicas+1, planParams.NumReplicas)
 	}
@@ -153,19 +153,19 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	for {
 		tries += 1
 		if tries > 100 {
-			return "", fmt.Errorf("manager_api: CreateIndex,"+
+			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
 				" too many tries: %d", tries)
 		}
 
 		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
-			return "", fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
+			return "", "", fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
 		}
 		if indexDefs == nil {
 			indexDefs = NewIndexDefs(version)
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-			return "", fmt.Errorf("manager_api: could not create index,"+
+			return "", "", fmt.Errorf("manager_api: could not create index,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)
 		}
@@ -174,7 +174,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		// with the decorated name.
 		if _, exists := indexDefs.IndexDefs[indexName]; exists &&
 			(prevIndexUUID == "" || indexName != prevIndexName) {
-			return "", fmt.Errorf("manager_api: cannot create/update index"+
+			return "", "", fmt.Errorf("manager_api: cannot create/update index"+
 				" because an index with the same name already exists: %s",
 				indexName)
 		}
@@ -186,7 +186,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				// with the new indexName as long the $keyspace prefixed new
 				// indexName is different from the previous index name.
 				if prevIndex.Name == indexName {
-					return "", fmt.Errorf("here manager_api: cannot create index because"+
+					return "", "", fmt.Errorf("here manager_api: cannot create index because"+
 						" an index with the same name already exists: %s",
 						indexName)
 				}
@@ -197,11 +197,11 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 			}
 		} else { // Update index definition.
 			if !exists || prevIndex == nil {
-				return "", fmt.Errorf("manager_api: index missing for update,"+
+				return "", "", fmt.Errorf("manager_api: index missing for update,"+
 					" indexName: %s", indexName)
 			}
 			if prevIndex.UUID != prevIndexUUID {
-				return "", fmt.Errorf("manager_api:"+
+				return "", "", fmt.Errorf("manager_api:"+
 					" perhaps there was concurrent index definition update,"+
 					" current index UUID: %s, did not match input UUID: %s",
 					prevIndex.UUID, prevIndexUUID)
@@ -212,7 +212,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 					indexDef.PlanParams.MaxPartitionsPerPIndex) ||
 					(prevIndex.PlanParams.NumReplicas !=
 						indexDef.PlanParams.NumReplicas) {
-					return "", fmt.Errorf("manager_api: cannot update"+
+					return "", "", fmt.Errorf("manager_api: cannot update"+
 						" partition or replica count for a planFrozen index,"+
 						" indexName: %s", indexName)
 				}
@@ -243,7 +243,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				continue // Retry on CAS mismatch.
 			}
 
-			return "", fmt.Errorf("manager_api: could not save indexDefs,"+
+			return "", "", fmt.Errorf("manager_api: could not save indexDefs,"+
 				" err: %v", err)
 		}
 
@@ -292,7 +292,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		}
 	}
 
-	return indexDef.UUID, nil
+	return indexDef.Name, indexDef.UUID, nil
 }
 
 // DeleteIndex deletes a logical index definition.

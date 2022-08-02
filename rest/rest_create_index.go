@@ -251,7 +251,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	log.Printf("rest_create_index: create index request received for %v", indexName)
 
-	indexUUID, err := h.mgr.CreateIndexEx(sourceType, sourceName,
+	indexName, indexUUID, err := h.mgr.CreateIndexEx(sourceType, sourceName,
 		sourceUUID, sourceParams,
 		indexType, indexName, string(indexParams),
 		planParams, prevIndexUUID)
@@ -269,7 +269,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		UUID   string `json:"uuid"`
 	}{
 		Status: "ok",
-		Name:   indexDef.Name,
+		Name:   indexName,
 		UUID:   indexUUID,
 	})
 }
