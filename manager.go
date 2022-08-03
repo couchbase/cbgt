@@ -202,6 +202,8 @@ type ClusterOptions struct {
 	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
 	DisableGeoPointSpatialPlugin       string `json:"disableGeoPointSpatialPlugin"`
 	MaxIndexCountPerSource             string `json:"maxIndexCountPerSource"`
+	MinBackoffTimeForBatchLimitingMS   string `json:"minBackoffTimeForBatchLimitingMS"`
+	MaxBackoffTimeForBatchLimitingMS   string `json:"maxBackoffTimeForBatchLimitingMS"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
