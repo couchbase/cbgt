@@ -588,6 +588,9 @@ type AuthParams struct {
 
 	AuthSaslUser     string `json:"authSaslUser"`
 	AuthSaslPassword string `json:"authSaslPassword"`
+
+	ClientCertPath string `json:"client_cert_path"`
+	ClientKeyPath  string `json:"client_key_path"`
 }
 
 func (a *AuthParams) Credentials(req gocbcore.AuthCredsRequest) (
@@ -633,6 +636,37 @@ func (a *AuthParamsSasl) SupportsTLS() bool {
 }
 
 func (a *AuthParamsSasl) SupportsNonTLS() bool {
+	return true
+}
+
+type AuthParamsCert struct {
+	AuthParams
+}
+
+func (a *AuthParamsCert) Credentials(req gocbcore.AuthCredsRequest) (
+	[]gocbcore.UserPassPair, error) {
+	return []gocbcore.UserPassPair{{}}, nil
+}
+
+func (a *AuthParamsCert) Certificate(req gocbcore.AuthCertRequest) (
+	*tls.Certificate, error) {
+	if len(a.ClientCertPath) > 0 && len(a.ClientKeyPath) > 0 {
+		cert, err := tls.LoadX509KeyPair(a.ClientCertPath, a.ClientKeyPath)
+		if err != nil {
+			return nil, err
+		}
+
+		return &cert, nil
+	}
+
+	return nil, fmt.Errorf("AuthParamsCert: certPath/keyPath unavailable")
+}
+
+func (a *AuthParamsCert) SupportsTLS() bool {
+	return true
+}
+
+func (a *AuthParamsCert) SupportsNonTLS() bool {
 	return true
 }
 
@@ -684,6 +718,10 @@ func gocbAuth(sourceParams string, authType string) (
 
 	if params.AuthSaslUser != "" {
 		auth = &AuthParamsSasl{*params}
+	}
+
+	if len(params.ClientCertPath) > 0 && len(params.ClientKeyPath) > 0 {
+		auth = &AuthParamsCert{*params}
 	}
 
 	if authType == "cbauth" {
