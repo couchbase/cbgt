@@ -42,6 +42,9 @@ type DCPFeedParams struct {
 	AuthSaslUser     string `json:"authSaslUser,omitempty"` // May be "" for no auth.
 	AuthSaslPassword string `json:"authSaslPassword,omitempty"`
 
+	ClientCertPath string `json:"clientCertPath,omitempty"`
+	ClientKeyPath  string `json:"clientKeyPath,omitempty"`
+
 	// Factor (like 1.5) to increase sleep time between retries
 	// in connecting to a cluster manager node.
 	ClusterManagerBackoffFactor float32 `json:"clusterManagerBackoffFactor,omitempty"`

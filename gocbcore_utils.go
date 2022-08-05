@@ -589,8 +589,8 @@ type AuthParams struct {
 	AuthSaslUser     string `json:"authSaslUser"`
 	AuthSaslPassword string `json:"authSaslPassword"`
 
-	ClientCertPath string `json:"client_cert_path"`
-	ClientKeyPath  string `json:"client_key_path"`
+	ClientCertPath string `json:"clientCertPath"`
+	ClientKeyPath  string `json:"clientKeyPath"`
 }
 
 func (a *AuthParams) Credentials(req gocbcore.AuthCredsRequest) (
