@@ -419,6 +419,10 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		return pho, skip, err
 	}
 
+	if planPIndexes == nil {
+		planPIndexes = NewPlanPIndexes(version)
+	}
+
 	_, skip, err := plannerHookCall("begin", nil, nil)
 	if skip || err != nil {
 		return planPIndexes, err
@@ -437,10 +441,6 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	_, skip, err = plannerHookCall("nodes", nil, nil)
 	if skip || err != nil {
 		return planPIndexes, err
-	}
-
-	if planPIndexes == nil {
-		planPIndexes = NewPlanPIndexes(version)
 	}
 
 	// Examine every indexDef, ordered by name for stability...
@@ -821,10 +821,8 @@ func NormaliseNodeWeights(nodeWeights map[string]int,
 	}
 
 	for uuid, count := range nodePartitionCount {
-		if count > 0 {
-			if weight, ok := nodeWeights[uuid]; ok {
-				rv[uuid] = -factor * (weight + count)
-			}
+		if weight, ok := nodeWeights[uuid]; ok {
+			rv[uuid] = -factor * (weight + count)
 		}
 	}
 
