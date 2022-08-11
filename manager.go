@@ -1035,7 +1035,7 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 // same exact node assignments count, then the partition assignment is considered
 // stable for that index. If all the indexes in a plan is having stable node,
 // assignments then that plan is considered stable and can be stored for recovery.
-func IsStablePlan(planPIndexes *PlanPIndexes) bool {
+func (mgr *Manager) IsStablePlan(planPIndexes *PlanPIndexes) bool {
 	if planPIndexes == nil || planPIndexes.PlanPIndexes == nil {
 		return false
 	}
@@ -1055,6 +1055,17 @@ func IsStablePlan(planPIndexes *PlanPIndexes) bool {
 			if len(p.Nodes) == 0 && len(planPIndexes) == 1 {
 				return false
 			}
+
+			// get the partition count from the index definition.
+			if mgr.lastIndexDefsByName != nil {
+				indexDef := mgr.lastIndexDefsByName[p.IndexName]
+				if indexDef.PlanParams.NumReplicas+1 != len(p.Nodes) {
+					// plan doesn't contain the full partition-node assignments
+					// as per the index definitions then its not a stable/final plan.
+					return false
+				}
+			}
+
 			if nodeCount == -1 {
 				nodeCount = len(p.Nodes)
 				continue
@@ -1068,7 +1079,7 @@ func IsStablePlan(planPIndexes *PlanPIndexes) bool {
 }
 
 func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) {
-	if !IsStablePlan(planPIndexes) {
+	if !mgr.IsStablePlan(planPIndexes) {
 		return
 	}
 	val, err := json.Marshal(planPIndexes)
