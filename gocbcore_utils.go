@@ -145,20 +145,11 @@ func setupConfigParams(bucketName, bucketUUID, server string, options map[string
 	connStr string, useTLS bool, caProvider certProvider) {
 	if options["authType"] == "cbauth" {
 		caProvider = FetchSecurityConfig
-		if FetchSecurityConfig() != nil {
-			// Use TLS only rootCAs is available
-			useTLS = true
-		}
 	} else {
 		if RootCAsProvider != nil {
 			caProvider = RootCAsProvider(bucketName, bucketUUID)
 		} else {
 			caProvider = LoadRootCAsFromTLSFile
-		}
-
-		if caProvider != nil {
-			// Use TLS only if caProvider is available
-			useTLS = true
 		}
 	}
 
@@ -171,6 +162,10 @@ func setupConfigParams(bucketName, bucketUUID, server string, options map[string
 				connStr = ret.String()
 			}
 		}
+	}
+
+	if caProvider != nil {
+		useTLS = true
 	}
 
 	return connStr, useTLS, caProvider
