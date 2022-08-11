@@ -73,7 +73,7 @@ func (w *WrapperHTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 func RegisterHttpClient() {
 	RegisterConfigRefreshCallback("cbgt/httpClient", updateHttpClient)
-	updateHttpClient(AuthChange_certificates)
+	updateHttpClient(AuthChange_certificates | AuthChange_clientCertificates)
 }
 
 func HttpClient() HTTPClient {
@@ -84,7 +84,8 @@ func HttpClient() HTTPClient {
 }
 
 func updateHttpClient(status int) error {
-	if status&AuthChange_certificates != 0 {
+	if status&AuthChange_certificates != 0 ||
+		status&AuthChange_clientCertificates != 0 {
 		transport := &http.Transport{
 			DialContext: (&net.Dialer{
 				Timeout:   HttpTransportDialContextTimeout,
@@ -100,9 +101,10 @@ func updateHttpClient(status int) error {
 
 		ss := GetSecuritySetting()
 		rootCAs := x509.NewCertPool()
-		ok := rootCAs.AppendCertsFromPEM(ss.CertInBytes)
+		ok := rootCAs.AppendCertsFromPEM(ss.CACertInBytes)
 		if ok {
 			transport.TLSClientConfig.RootCAs = rootCAs
+			transport.TLSClientConfig.Certificates = []tls.Certificate{ss.ClientCertificate}
 			_ = http2.ConfigureTransport(transport)
 		} else {
 			transport.TLSClientConfig.InsecureSkipVerify = true

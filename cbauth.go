@@ -18,6 +18,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/cbauthimpl"
 	log "github.com/couchbase/clog"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	cbtls "github.com/couchbase/goutils/tls"
@@ -33,16 +34,22 @@ var TLSCAFile string
 var TLSCertFile string
 var TLSKeyFile string
 
+var ClientCertFile string
+var ClientKeyFile string
+
 type SecuritySetting struct {
-	EncryptionEnabled  bool
-	DisableNonSSLPorts bool
-	Certificate        tls.Certificate
-	CertInBytes        []byte
 	TLSConfig          *cbauth.TLSConfig
 	ClientAuthType     *tls.ClientAuthType
+	EncryptionEnabled  bool
+	DisableNonSSLPorts bool
+
+	ServerCertificate tls.Certificate
+	CACertInBytes     []byte
 
 	EnforceLimits     bool
 	UserLimitsVersion string
+
+	ClientCertificate tls.Certificate
 }
 
 var currentSetting unsafe.Pointer = unsafe.Pointer(new(SecuritySetting))
@@ -71,6 +78,7 @@ const (
 	AuthChange_nonSSLPorts
 	AuthChange_certificates
 	AuthChange_limits
+	AuthChange_clientCertificates
 )
 
 // ConfigRefreshNotifier defines the SecuritySetting's refresh
@@ -87,43 +95,51 @@ func RegisterConfigRefreshCallback(key string, cb ConfigRefreshNotifier) {
 func (c *SecurityContext) refresh(code uint64) error {
 	log.Printf("cbauth: received security change notification, code: %v", code)
 
-	newSetting := &SecuritySetting{}
+	newSetting := SecuritySetting{}
 	var encryptionEnabled, disableNonSSLPorts, enforceLimits bool
 
 	oldSetting := GetSecuritySetting()
 	if oldSetting != nil {
 		temp := *oldSetting
-		newSetting = &temp
+		newSetting = temp
 		encryptionEnabled = oldSetting.EncryptionEnabled
 		disableNonSSLPorts = oldSetting.DisableNonSSLPorts
 		enforceLimits = oldSetting.EnforceLimits
 	}
 
-	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
-		if err := c.refreshConfig(newSetting); err != nil {
-			return err
-		}
-
-		if err := c.refreshCert(newSetting); err != nil {
-			return err
-		}
-
-		if err := c.refreshEncryption(newSetting); err != nil {
-			return err
-		}
-	} else if code&cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION != 0 {
-		if err := c.refreshEncryption(newSetting); err != nil {
+	if code&cbauthimpl.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
+		if err := c.refreshConfigAndCert(&newSetting); err != nil {
 			return err
 		}
 	}
 
-	if code&cbauth.CFG_CHANGE_USER_LIMITS != 0 {
-		if err := c.refreshLimits(newSetting); err != nil {
+	if code&cbauthimpl.CFG_CHANGE_CLUSTER_ENCRYPTION != 0 {
+		if err := c.refreshEncryption(&newSetting); err != nil {
 			return err
 		}
 	}
 
-	atomic.StorePointer(&currentSetting, unsafe.Pointer(newSetting))
+	if code&cbauthimpl.CFG_CHANGE_USER_LIMITS != 0 {
+		if err := c.refreshLimits(&newSetting); err != nil {
+			return err
+		}
+	}
+
+	if code&cbauthimpl.CFG_CHANGE_CLIENT_CERTS_TLSCONFIG != 0 {
+		if err := c.refreshClientCert(&newSetting); err != nil {
+			return err
+		}
+	}
+
+	atomic.StorePointer(&currentSetting, unsafe.Pointer(&newSetting))
+
+	if code&cbauthimpl.CFG_CHANGE_CERTS_TLSCONFIG != 0 ||
+		encryptionEnabled != newSetting.EncryptionEnabled ||
+		code&cbauthimpl.CFG_CHANGE_CLIENT_CERTS_TLSCONFIG != 0 {
+		if err := c.refreshClients(GetSecuritySetting()); err != nil {
+			return err
+		}
+	}
 
 	c.mutex.RLock()
 	// This will notify tlsConfig/limits changes to all the subscribers like
@@ -136,11 +152,14 @@ func (c *SecurityContext) refresh(code uint64) error {
 	if disableNonSSLPorts != newSetting.DisableNonSSLPorts {
 		status |= AuthChange_nonSSLPorts
 	}
-	if code&cbauth.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
+	if code&cbauthimpl.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
 		status |= AuthChange_certificates
 	}
 	if enforceLimits != newSetting.EnforceLimits {
 		status |= AuthChange_limits
+	}
+	if code&cbauthimpl.CFG_CHANGE_CLIENT_CERTS_TLSCONFIG != 0 {
+		status |= AuthChange_clientCertificates
 	}
 
 	if status != 0 {
@@ -160,7 +179,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 	return nil
 }
 
-func (c *SecurityContext) refreshConfig(configs *SecuritySetting) error {
+func (c *SecurityContext) refreshConfigAndCert(configs *SecuritySetting) error {
 	tlsConfig, err := cbauth.GetTLSConfig()
 	if err != nil {
 		log.Warnf("cbauth: GetTLSConfig failed, err: %v", err)
@@ -176,11 +195,7 @@ func (c *SecurityContext) refreshConfig(configs *SecuritySetting) error {
 	configs.TLSConfig = &tlsConfig
 	configs.ClientAuthType = &clientAuthType
 
-	return nil
-}
-
-func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
-	if len(TLSCertFile) == 0 || len(TLSKeyFile) == 0 {
+	if len(TLSCAFile) == 0 || len(TLSCertFile) == 0 || len(TLSKeyFile) == 0 {
 		return nil
 	}
 
@@ -191,23 +206,18 @@ func (c *SecurityContext) refreshCert(configs *SecuritySetting) error {
 
 	cert, err := cbtls.LoadX509KeyPair(TLSCertFile, TLSKeyFile, privateKeyPassphrase)
 	if err != nil {
-		log.Errorf("cbauth: LoadX509KeyPair err : %v", err)
+		log.Errorf("cbauth: LoadX509KeyPair err: %v", err)
 		return err
 	}
 
-	caFile := TLSCAFile
-	if len(caFile) == 0 {
-		caFile = TLSCertFile
-	}
-
-	certInBytes, err := ioutil.ReadFile(caFile)
+	certInBytes, err := ioutil.ReadFile(TLSCAFile)
 	if err != nil {
-		log.Errorf("cbauth: Certificates read err: %v", err)
+		log.Errorf("cbauth: Certificate read err: %v", err)
 		return err
 	}
 
-	configs.Certificate = cert
-	configs.CertInBytes = certInBytes
+	configs.ServerCertificate = cert
+	configs.CACertInBytes = certInBytes
 
 	return nil
 }
@@ -222,26 +232,6 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 	configs.EncryptionEnabled = cfg.EncryptData
 	configs.DisableNonSSLPorts = cfg.DisableNonSSLPorts
 
-	if err = updateSecurityConfig(cfg.EncryptData); err != nil {
-		log.Warnf("cbauth: Error updating TLS data, err: %v", err)
-		return err
-	}
-
-	if err = cbdatasource.UpdateSecurityConfig(&cbdatasource.SecurityConfig{
-		EncryptData:        cfg.EncryptData,
-		DisableNonSSLPorts: cfg.DisableNonSSLPorts,
-		Certificates:       []tls.Certificate{configs.Certificate},
-		RootCAs:            FetchSecurityConfig(),
-	}); err != nil {
-		log.Warnf("cbauth: Error updating go-couchbase/cbdatasource's"+
-			" TLS data, err: %v", err)
-		return err
-	}
-
-	// Close all cached couchbase.Bucket instances, so new ones can be
-	// setup with the new config.
-	statsCBBktMap.closeAllCouchbaseBuckets()
-
 	return nil
 }
 
@@ -254,6 +244,52 @@ func (c *SecurityContext) refreshLimits(configs *SecuritySetting) error {
 
 	configs.EnforceLimits = limitsConfig.EnforceLimits
 	configs.UserLimitsVersion = limitsConfig.UserLimitsVersion
+
+	return nil
+}
+
+func (c *SecurityContext) refreshClientCert(configs *SecuritySetting) error {
+	if len(ClientCertFile) == 0 || len(ClientKeyFile) == 0 {
+		return nil
+	}
+
+	var clientPrivateKeyPassPhrase []byte
+	if configs.TLSConfig != nil {
+		clientPrivateKeyPassPhrase = configs.TLSConfig.ClientPrivateKeyPassphrase
+	}
+
+	cert, err := cbtls.LoadX509KeyPair(ClientCertFile, ClientKeyFile,
+		clientPrivateKeyPassPhrase)
+	if err != nil {
+		log.Errorf("cbauth: LoadX509KeyPair (client cert) err: %v", err)
+	}
+
+	configs.ClientCertificate = cert
+
+	return nil
+}
+
+func (c *SecurityContext) refreshClients(configs *SecuritySetting) error {
+	if err := updateSecurityConfig(
+		configs.EncryptionEnabled, configs.CACertInBytes); err != nil {
+		log.Warnf("cbauth: Error updating TLS data, err: %v", err)
+		return err
+	}
+
+	if err := cbdatasource.UpdateSecurityConfig(&cbdatasource.SecurityConfig{
+		EncryptData:        configs.EncryptionEnabled,
+		DisableNonSSLPorts: configs.DisableNonSSLPorts,
+		Certificates:       []tls.Certificate{configs.ClientCertificate},
+		RootCAs:            FetchRootCAs(),
+	}); err != nil {
+		log.Warnf("cbauth: Error updating go-couchbase/cbdatasource's"+
+			" TLS data, err: %v", err)
+		return err
+	}
+
+	// Close all cached couchbase.Bucket instances, so new ones can be
+	// setup with the new config.
+	statsCBBktMap.closeAllCouchbaseBuckets()
 
 	return nil
 }
@@ -273,14 +309,16 @@ func init() {
 	currSecurityConfig = &securityConfig{}
 }
 
-func updateSecurityConfig(encryptData bool) error {
+func updateSecurityConfig(encryptData bool, caCertInBytes []byte) error {
 	currSecurityConfigMutex.Lock()
 	defer currSecurityConfigMutex.Unlock()
 
 	currSecurityConfig.encryptData = encryptData
 	if encryptData {
-		rootCAs := LoadRootCAsFromTLSFile()
-		if rootCAs == nil {
+		rootCAs := x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM(caCertInBytes)
+		if !ok || rootCAs == nil {
+			log.Warnf("updateSecurityConfig: error appending certificate(s): %v", ok)
 			return fmt.Errorf("error obtaining certificate(s)")
 		}
 		currSecurityConfig.rootCAs = rootCAs
@@ -293,39 +331,12 @@ func updateSecurityConfig(encryptData bool) error {
 	return nil
 }
 
-func FetchSecurityConfig() *x509.CertPool {
+func FetchRootCAs() *x509.CertPool {
 	var rootCAs *x509.CertPool
 	currSecurityConfigMutex.RLock()
 	if currSecurityConfig.encryptData {
 		rootCAs = currSecurityConfig.rootCAs
 	}
 	currSecurityConfigMutex.RUnlock()
-	return rootCAs
-}
-
-var LoadRootCAsFromTLSFile = func() (rootCAs *x509.CertPool) {
-	if len(TLSCAFile) == 0 && len(TLSCertFile) == 0 {
-		return
-	}
-
-	caFile := TLSCAFile
-	if len(caFile) == 0 {
-		caFile = TLSCertFile
-	}
-
-	certInBytes, err := ioutil.ReadFile(caFile)
-	if err != nil {
-		log.Warnf("LoadCertsFromTLSFile, path: %v, err: %v", caFile, err)
-		return nil
-	} else {
-		rootCAs = x509.NewCertPool()
-		ok := rootCAs.AppendCertsFromPEM(certInBytes)
-		if !ok {
-			log.Warnf("LoadCertsFromTLSFile, error appending certificates, path: %v",
-				caFile)
-			return nil
-		}
-	}
-
 	return rootCAs
 }

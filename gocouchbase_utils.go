@@ -179,7 +179,7 @@ func CouchbaseBucket(sourceName, sourceUUID, sourceParams, serverIn string,
 
 	ss := GetSecuritySetting()
 	if ss.EncryptionEnabled {
-		if err = client.InitTLS(TLSCertFile); err != nil {
+		if err = client.InitTLS(ClientCertFile); err != nil {
 			return nil, fmt.Errorf("gocouchbase_helper: CouchbaseBucket"+
 				" failed to initialize TLS for client, server: %s, err: %v",
 				server, err)
