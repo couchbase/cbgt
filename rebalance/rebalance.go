@@ -644,7 +644,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 			r.nodesAll, []string{}, r.nodesToRemove,
 			r.nodeWeights, r.nodeHierarchy)
 	} else {
-		nodeWeights := r.adjustNodeWeights(endPlanPIndexesForIndex)
+		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex)
 
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
@@ -673,22 +673,70 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	return partitionModel, begMap, endMap, nil
 }
 
+// --------------------------------------------------------
+
+// RebalanceHook allows advanced applications to register a callback
+// into the planning computation, in order to adjust the rebalancing plan
+// outcome. For example, an advanced appplication migh adjust node weights
+// more dynamically in order to achieve a custom layout of pindexes across
+// the cluster. This should be set only during the init()'ialization phase
+// of process startup.
+var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo, err error)
+
+// RebalanceHookInfo is the in/out information provided to the
+// RebalanceHook. If the RebalanceHook wishes to modify any of these
+// fields to affect the planning outcome, it must copy the field value
+// (e.g, copy-on-write).
+type RebalanceHookInfo struct {
+	IndexDefs *cbgt.IndexDefs
+	IndexDef  *cbgt.IndexDef
+
+	BegNodeDefs       *cbgt.NodeDefs
+	NodeUUIDsAll      []string
+	NodeUUIDsToAdd    []string
+	NodeUUIDsToRemove []string
+	NodeWeights       map[string]int
+	NodeHierarchy     map[string]string
+
+	BegPlanPIndexes      *cbgt.PlanPIndexes
+	PlanPIndexesForIndex map[string]*cbgt.PlanPIndex
+}
+
 // adjustNodeWeights overrides the node weights reflective of the
 // existing partition count on those nodes. It helps in balanced
 // partition assignments across nodes for the single partitioned indexes.
-func (r *Rebalancer) adjustNodeWeights(
+func (r *Rebalancer) adjustNodeWeights(indexDef *cbgt.IndexDef,
 	planPIndexesForIndex map[string]*cbgt.PlanPIndex) map[string]int {
+	nodeWeights := r.nodeWeights
+	if RebalanceHook != nil {
+		rho, err := RebalanceHook(RebalanceHookInfo{
+			IndexDefs:            r.begIndexDefs,
+			IndexDef:             indexDef,
+			BegNodeDefs:          r.begNodeDefs,
+			NodeUUIDsAll:         r.nodesAll,
+			NodeUUIDsToAdd:       r.nodesToAdd,
+			NodeUUIDsToRemove:    r.nodesToRemove,
+			NodeWeights:          r.nodeWeights,
+			NodeHierarchy:        r.nodeHierarchy,
+			BegPlanPIndexes:      r.begPlanPIndexes,
+			PlanPIndexesForIndex: planPIndexesForIndex,
+		})
+
+		if err == nil {
+			nodeWeights = rho.NodeWeights
+		}
+	}
+
 	if r.optionsReb.Manager != nil {
 		options := r.optionsReb.Manager.GetOptions()
 		if enabled, found := options["enablePartitionNodeStickiness"]; found &&
 			enabled == "true" {
-			return r.nodeWeights
+			return nodeWeights
 		}
 	}
 
-	nodeWeights := r.nodeWeights
-	// if the index is a single partitioned one,
-	// then try to normalize the node weights.
+	// if the index is a single partitioned, then try to normalise the
+	// node weights, only if enablePartitionNodeStickiness^ weren't true.
 	if len(planPIndexesForIndex) == 1 {
 		nodeWeights = cbgt.NormaliseNodeWeights(r.nodeWeights,
 			r.endPlanPIndexes, len(r.begPlanPIndexes.PlanPIndexes))
@@ -698,6 +746,7 @@ func (r *Rebalancer) adjustNodeWeights(
 }
 
 // --------------------------------------------------------
+
 // pindexMoves is a wrapper for a pindex movement containing
 // the detailed/multi-step stateOps transitions.
 type pindexMoves struct {
