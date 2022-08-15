@@ -204,6 +204,9 @@ type ClusterOptions struct {
 	MaxIndexCountPerSource             string `json:"maxIndexCountPerSource"`
 	MinBackoffTimeForBatchLimitingMS   string `json:"minBackoffTimeForBatchLimitingMS"`
 	MaxBackoffTimeForBatchLimitingMS   string `json:"maxBackoffTimeForBatchLimitingMS"`
+	ResourceUtilizationHighWaterMark   string `json:"resourceUtilizationHighWaterMark"`
+	ResourceUtilizationLowWaterMark    string `json:"resourceUtilizationLowWaterMark"`
+	ResourceUnderUtilizationWaterMark  string `json:"resourceUnderUtilizationWaterMark"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
