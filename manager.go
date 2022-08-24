@@ -1061,7 +1061,8 @@ func (mgr *Manager) IsStablePlan(planPIndexes *PlanPIndexes) bool {
 			// get the partition count from the index definition.
 			if mgr.lastIndexDefsByName != nil {
 				indexDef := mgr.lastIndexDefsByName[p.IndexName]
-				if indexDef.PlanParams.NumReplicas+1 != len(p.Nodes) {
+				if indexDef != nil &&
+					indexDef.PlanParams.NumReplicas+1 != len(p.Nodes) {
 					// plan doesn't contain the full partition-node assignments
 					// as per the index definitions then its not a stable/final plan.
 					return false
