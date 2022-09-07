@@ -204,6 +204,7 @@ type ClusterOptions struct {
 	MaxIndexCountPerSource             string `json:"maxIndexCountPerSource"`
 	MinBackoffTimeForBatchLimitingMS   string `json:"minBackoffTimeForBatchLimitingMS"`
 	MaxBackoffTimeForBatchLimitingMS   string `json:"maxBackoffTimeForBatchLimitingMS"`
+	DisableRegulatorControl            string `json:"disableRegulatorControl"`
 	ResourceUtilizationHighWaterMark   string `json:"resourceUtilizationHighWaterMark"`
 	ResourceUtilizationLowWaterMark    string `json:"resourceUtilizationLowWaterMark"`
 	ResourceUnderUtilizationWaterMark  string `json:"resourceUnderUtilizationWaterMark"`
