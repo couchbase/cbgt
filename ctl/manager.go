@@ -21,13 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/cbgt/rest"
-
-	log "github.com/couchbase/clog"
-
-	"github.com/couchbase/cbgt/rebalance"
-
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/rebalance"
+	"github.com/couchbase/cbgt/rest"
+	log "github.com/couchbase/clog"
 )
 
 // Timeout for CtlMgr's exported APIs
@@ -784,4 +782,26 @@ func (h *CtlManagerStatusHandler) ServeHTTP(
 		Orchestrator: h.m.ctl.rebalanceOrchestrator(),
 	}
 	rest.MustEncode(w, rv)
+}
+
+// ------------------------------------------------
+
+// DefragmentedUtilizationHook allows applications to register a
+// callback to determine the projected "defragmented" utilization
+// stats for the nodes belonging to the service. This should be
+// set only during the init()'ialization phase of the process.
+var DefragmentedUtilizationHook func(nodeDefs *cbgt.NodeDefs) (
+	*service.DefragmentedUtilizationInfo, error)
+
+func (m *CtlMgr) GetDefragmentedUtilization() (
+	*service.DefragmentedUtilizationInfo, error) {
+	if DefragmentedUtilizationHook != nil {
+		nodeDefsKnown, _, err := cbgt.CfgGetNodeDefs(m.ctl.cfg, cbgt.NODE_DEFS_KNOWN)
+		if err != nil {
+			return nil, err
+		}
+		return DefragmentedUtilizationHook(nodeDefsKnown)
+	}
+
+	return nil, nil
 }

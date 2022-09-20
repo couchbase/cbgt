@@ -680,7 +680,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // outcome. For example, an advanced appplication migh adjust node weights
 // more dynamically in order to achieve a custom layout of pindexes across
 // the cluster. This should be set only during the init()'ialization phase
-// of process startup.
+// of the process.
 var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo, err error)
 
 // RebalanceHookInfo is the in/out information provided to the
