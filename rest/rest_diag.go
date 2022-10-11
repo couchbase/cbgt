@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/couchbase/cbgt"
@@ -44,6 +45,19 @@ func NewDiagGetHandler(versionMain string,
 		assetDir:    assetDir,
 		asset:       asset,
 	}
+}
+
+var extDiagHandlerMutex sync.RWMutex
+var extDiagHandlers = []cbgt.DiagHandler{}
+
+// RegisterDiagHandler accounts for external DiagHandlers that
+// an application can register with cbgt. The REST endpoint
+// handler for /api/diag will include these in the list of
+// endpoints to obtain data.
+func RegisterDiagHandler(h cbgt.DiagHandler) {
+	extDiagHandlerMutex.Lock()
+	extDiagHandlers = append(extDiagHandlers, h)
+	extDiagHandlerMutex.Unlock()
 }
 
 func (h *DiagGetHandler) ServeHTTP(
@@ -83,6 +97,10 @@ func (h *DiagGetHandler) ServeHTTP(
 				DiagGetPProf(w, "threadcreate", 1)
 			}},
 	}
+
+	extDiagHandlerMutex.RLock()
+	handlers = append(handlers, extDiagHandlers...)
+	extDiagHandlerMutex.RUnlock()
 
 	for _, t := range cbgt.PIndexImplTypes {
 		for _, h := range t.DiagHandlers {
