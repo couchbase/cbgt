@@ -642,7 +642,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.recoveryPlanPIndexes,
 			r.nodesAll, []string{}, r.nodesToRemove,
-			r.nodeWeights, r.nodeHierarchy)
+			r.nodeWeights, r.nodeHierarchy, true)
 	} else {
 		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex)
 
@@ -650,7 +650,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.begPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
-			nodeWeights, r.nodeHierarchy)
+			nodeWeights, r.nodeHierarchy, true)
 	}
 
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
@@ -667,8 +667,8 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
 
-	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.begPlanPIndexes)
-	endMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.endPlanPIndexes)
+	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.begPlanPIndexes, true)
+	endMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.endPlanPIndexes, true)
 
 	return partitionModel, begMap, endMap, nil
 }
