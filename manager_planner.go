@@ -522,7 +522,7 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		warnings := BlancePlanPIndexes(mode, indexDef,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
-			adjustedWeights, nodeHierarchy)
+			adjustedWeights, nodeHierarchy, false)
 		planPIndexes.Warnings[indexDef.Name] = warnings
 
 		for _, warning := range warnings {
@@ -686,11 +686,12 @@ func BlancePlanPIndexes(mode string,
 	nodeUUIDsToAdd []string,
 	nodeUUIDsToRemove []string,
 	nodeWeights map[string]int,
-	nodeHierarchy map[string]string) []string {
+	nodeHierarchy map[string]string,
+	skipExistingPartitions bool) []string {
 	model, modelConstraints := BlancePartitionModel(indexDef)
 
 	// First, reconstruct previous blance map from planPIndexesPrev.
-	blancePrevMap := BlanceMap(planPIndexesForIndex, planPIndexesPrev)
+	blancePrevMap := BlanceMap(planPIndexesForIndex, planPIndexesPrev, skipExistingPartitions)
 
 	partitionWeights := indexDef.PlanParams.PIndexWeights
 
@@ -747,7 +748,12 @@ func BlancePlanPIndexes(mode string,
 		indexDef.PlanParams.HierarchyRules)
 
 	for planPIndexName, blancePartition := range blanceNextMap {
-		planPIndex := planPIndexesForIndex[planPIndexName]
+		// Update settings for new plan pindexes ONLY
+		planPIndex, exists := planPIndexesForIndex[planPIndexName]
+		if !exists {
+			continue
+		}
+
 		planPIndex.Nodes = map[string]*PlanPIndexNode{}
 
 		for i, nodeUUID := range blancePartition.NodesByState["primary"] {
@@ -866,9 +872,40 @@ func getPrevPlanName(newPlan *PlanPIndex,
 func BlanceMap(
 	planPIndexesForIndex map[string]*PlanPIndex,
 	planPIndexes *PlanPIndexes,
+	skipExistingPartitions bool,
 ) blance.PartitionMap {
 	m := blance.PartitionMap{}
 
+	// Map to track prev plans that don't need to be added to blance map
+	// on account of index definition updates.
+	updatedPlans := make(map[string]struct{})
+
+	sortNodesByState := func(nodes map[string]*PlanPIndexNode) map[string][]string {
+		nodesByState := make(map[string][]string)
+
+		// Sort by planPIndexNode.Priority for stability.
+		planPIndexNodeRefs := PlanPIndexNodeRefs{}
+		for nodeUUIDPrev, planPIndexNode := range nodes {
+			planPIndexNodeRefs =
+				append(planPIndexNodeRefs, &PlanPIndexNodeRef{
+					UUID: nodeUUIDPrev,
+					Node: planPIndexNode,
+				})
+		}
+		sort.Sort(planPIndexNodeRefs)
+
+		for _, planPIndexNodeRef := range planPIndexNodeRefs {
+			state := "replica"
+			if planPIndexNodeRef.Node.Priority <= 0 {
+				state = "primary"
+			}
+			nodesByState[state] = append(nodesByState[state], planPIndexNodeRef.UUID)
+		}
+
+		return nodesByState
+	}
+
+	// Account for the new partitions (current index)
 	for _, planPIndex := range planPIndexesForIndex {
 		blancePartition := &blance.Partition{
 			Name:         planPIndex.Name,
@@ -879,7 +916,7 @@ func BlanceMap(
 		if planPIndexes != nil {
 			p, exists := planPIndexes.PlanPIndexes[planPIndex.Name]
 			if !exists {
-				// in case of indexDefinition updates, the planName
+				// In case of indexDefinition updates, the planName
 				// would have changed, hence pick the planName from the
 				// prev pindex. This doesn't affect the new plans
 				// or reloadability of the indexDefinition changes.
@@ -891,27 +928,26 @@ func BlanceMap(
 					planPIndexes.PlanPIndexes)]
 			}
 			if exists && p != nil {
-				// Sort by planPIndexNode.Priority for stability.
-				planPIndexNodeRefs := PlanPIndexNodeRefs{}
-				for nodeUUIDPrev, planPIndexNode := range p.Nodes {
-					planPIndexNodeRefs =
-						append(planPIndexNodeRefs, &PlanPIndexNodeRef{
-							UUID: nodeUUIDPrev,
-							Node: planPIndexNode,
-						})
-				}
-				sort.Sort(planPIndexNodeRefs)
-
-				for _, planPIndexNodeRef := range planPIndexNodeRefs {
-					state := "replica"
-					if planPIndexNodeRef.Node.Priority <= 0 {
-						state = "primary"
-					}
-					blancePartition.NodesByState[state] =
-						append(blancePartition.NodesByState[state],
-							planPIndexNodeRef.UUID)
-				}
+				updatedPlans[p.Name] = struct{}{}
+				blancePartition.NodesByState = sortNodesByState(p.Nodes)
 			}
+		}
+	}
+
+	// Now account for any pre-existing partitions
+	if !skipExistingPartitions && planPIndexes != nil {
+		for planName, planPIndex := range planPIndexes.PlanPIndexes {
+			// Do not account for indexes whose definition was updated,
+			// in which case the plan name would change.
+			if _, exists := updatedPlans[planName]; exists {
+				continue
+			}
+
+			blancePartition := &blance.Partition{
+				Name:         planPIndex.Name,
+				NodesByState: sortNodesByState(planPIndex.Nodes),
+			}
+			m[planPIndex.Name] = blancePartition
 		}
 	}
 
