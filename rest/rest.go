@@ -777,6 +777,14 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"version introduced": "4.2.0",
 		})
 
+	handle("/api/indexes/source/{bucketName}", "GET",
+		NewListIndexesForSourceHandler(mgr),
+		map[string]string{
+			"_category":          "Indexing|Index monitoring",
+			"_about":             `Returns all index names for source as JSON.`,
+			"version introduced": "5.6.0",
+		})
+
 	PIndexTypesInitRouter(r, "manager.after", mgr)
 
 	return r, meta, nil

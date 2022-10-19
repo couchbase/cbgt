@@ -60,6 +60,51 @@ func (h *ListIndexHandler) ServeHTTP(
 
 // ---------------------------------------------------
 
+// ListIndexesForSourceHandler is a REST handler to list all index names for
+// the provided sourceName.
+type ListIndexesForSourceHandler struct {
+	mgr *cbgt.Manager
+}
+
+func NewListIndexesForSourceHandler(mgr *cbgt.Manager) *ListIndexesForSourceHandler {
+	return &ListIndexesForSourceHandler{mgr: mgr}
+}
+
+func (h *ListIndexesForSourceHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	indexDefs, _, err := h.mgr.GetIndexDefs(false)
+	if err != nil {
+		ShowError(w, req, "could not retrieve index defs", http.StatusInternalServerError)
+		return
+	}
+
+	bucketName := BucketNameLookup(req)
+	if bucketName == "" {
+		ShowError(w, req, "bucket name is required",
+			http.StatusBadRequest)
+		return
+	}
+
+	var indexes []string
+	if indexDefs != nil {
+		for _, indexDef := range indexDefs.IndexDefs {
+			if bucketName == indexDef.SourceName {
+				indexes = append(indexes, indexDef.Name)
+			}
+		}
+	}
+
+	MustEncode(w, struct {
+		Status  string   `json:"status"`
+		Indexes []string `json:"indexes"`
+	}{
+		Status:  "ok",
+		Indexes: indexes,
+	})
+}
+
+// ---------------------------------------------------
+
 // GetIndexHandler is a REST handler for retrieving an index
 // definition.
 type GetIndexHandler struct {
