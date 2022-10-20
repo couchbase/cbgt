@@ -14,6 +14,7 @@ import (
 	"io"
 	"sync"
 
+	log "github.com/couchbase/clog"
 	"github.com/gorilla/mux"
 
 	"github.com/rcrowley/go-metrics"
@@ -52,6 +53,15 @@ type PIndexImplType struct {
 	// it can reconstitute the pindex during restart and Open().
 	NewEx func(indexType, indexParams, sourceParams, path string, mgr *Manager,
 		restart func()) (PIndexImpl, Dest, error)
+
+	// Hibernate is an optional method that is invoked for enterprise edition users
+	// when a pindex is to be hibernated and uploaded to a remote object storage.
+	Hibernate func(mgr *Manager, remotePath, pindexName, path string) error
+
+	// Unhibernate is an optional method that is invoked for enterprise edition
+	// users when a pindex is to be unhibernated after download from remote object storage
+	// and made feedable.
+	Unhibernate func(mgr *Manager, pindex *PIndex)
 
 	// Invoked by the manager when it wants a pindex implementation to
 	// reconstitute and reload a pindex instance back into the
@@ -182,6 +192,25 @@ func NewPIndexImplEx(indexType, indexParams, sourceParams, path string,
 	}
 
 	return t.NewEx(indexType, indexParams, sourceParams, path, mgr, restart)
+}
+
+func Hibernate(mgr *Manager, indexType, remotePath, name, path string) error {
+	t, exists := PIndexImplTypes[indexType]
+	if !exists {
+		return fmt.Errorf("pindex_impl: cannot hibernate since pindex "+
+			" implementation type %s does not exist", indexType)
+	}
+	return t.Hibernate(mgr, remotePath, name, path)
+}
+
+func Unhibernate(mgr *Manager, pindex *PIndex) {
+	t, exists := PIndexImplTypes[pindex.IndexType]
+	if !exists {
+		log.Errorf("pindex_impl: cannot unhibernate since pindex "+
+			" implementation type %s does not exist", pindex.IndexType)
+		return
+	}
+	t.Unhibernate(mgr, pindex)
 }
 
 // OpenPIndexImpl loads an index partition of the given, registered

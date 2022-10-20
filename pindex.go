@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	log "github.com/couchbase/clog"
+	"github.com/couchbase/tools-common/fsutil"
 )
 
 const PINDEX_META_FILENAME string = "PINDEX_META"
@@ -42,6 +43,7 @@ type PIndex struct {
 	Path             string     `json:"-"` // Transient, not persisted.
 	Impl             PIndexImpl `json:"-"` // Transient, not persisted.
 	Dest             Dest       `json:"-"` // Transient, not persisted.
+	HibernationPath  string     `json:"-"`
 
 	sourcePartitionsMap map[string]bool // Non-persisted memoization.
 
@@ -197,6 +199,14 @@ func NewPIndex(mgr *Manager, name, uuid,
 			dest.Close()
 			os.RemoveAll(path)
 			return nil, err
+		}
+
+		// Creating a directory to store the PINDEX_META file.
+		log.Printf("pindex: creating directory at %s", path)
+		err = fsutil.Mkdir(path, 0700, true, true)
+		if err != nil {
+			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
+				path, err)
 		}
 
 		err = ioutil.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,

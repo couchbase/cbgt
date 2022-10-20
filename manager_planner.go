@@ -647,6 +647,7 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 			SourceParams:     indexDef.SourceParams,
 			SourcePartitions: sourcePartitions,
 			Nodes:            make(map[string]*PlanPIndexNode),
+			HibernationPath:  indexDef.HibernationPath,
 		}
 
 		if planPIndexesOut != nil {

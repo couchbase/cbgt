@@ -335,6 +335,95 @@ func (mgr *Manager) pindexesRestart(
 	return errs
 }
 
+func (mgr *Manager) hibernatePIndexUtil(pi *PIndex) error {
+	hibernateParams := struct {
+		RemotePath string `json:"hibernate"`
+	}{}
+
+	err := json.Unmarshal([]byte(pi.IndexParams), &hibernateParams)
+	if err != nil {
+		return err
+	}
+	return Hibernate(mgr, pi.IndexType, hibernateParams.RemotePath,
+		pi.Name, pi.Path)
+}
+
+// In resume, register a no-op pindex without attempting to open it.
+// Later in resume, start the bucket state tracker for this new pindex.
+// When the bucket is 'online', make feedable and kick the index.
+func (mgr *Manager) resumePIndex(req []*pindexRestartReq) []error {
+
+	var errs []error
+
+	for _, r := range req {
+		// stop the pindex first
+		err := mgr.stopPIndex(r.pindex, false)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("janitor: resumePIndex stopping "+
+				" pindex: %s, err: %v", r.pindex.Name, err))
+			continue
+		}
+		// rename the pindex folder and name as per the new plan
+		newPath := mgr.PIndexPath(r.planPIndexName)
+		if newPath != r.pindex.Path {
+			err = os.Rename(r.pindex.Path, newPath)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("janitor: resumePIndex"+
+					" updating pindex: %s path: %s failed, err: %v",
+					r.pindex.Name, newPath, err))
+				continue
+			}
+		}
+
+		pi := r.pindex.Clone()
+		pi.Name = r.planPIndexName
+		pi.Path = newPath
+
+		// persist PINDEX_META only if manager's dataDir is set
+		if len(mgr.dataDir) > 0 {
+			// update the new indexdef param changes
+			buf, err := json.Marshal(pi)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("janitor: resumePIndex"+
+					" Marshal pindex: %s, err: %v", pi.Name, err))
+				continue
+
+			}
+			err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
+				PINDEX_META_FILENAME, buf, 0600)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("janitor: resumePIndex could not save "+
+					"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err))
+				continue
+			}
+		}
+
+		err = mgr.registerPIndex(pi)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("janitor: restartPIndex failed to "+
+				"register pindex: %s, err: %v", pi.Name, err))
+			continue
+		}
+
+		Unhibernate(mgr, pi)
+	}
+
+	return errs
+}
+
+func (mgr *Manager) hibernatePIndex(pindexesToHibernate []*PIndex) []error {
+	var errs []error
+
+	for _, pi := range pindexesToHibernate {
+		err := mgr.hibernatePIndexUtil(pi)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errs
+}
+
 // JanitorOnce is the main body of a JanitorLoop.
 func (mgr *Manager) JanitorOnce(reason string) error {
 	if mgr.cfg == nil { // Can occur during testing.
@@ -364,7 +453,8 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 
 	// check for any pindexes for restart and get classified lists of
 	// pindexes to add, remove and restart
-	planPIndexesToAdd, pindexesToRemove, pindexesToRestart :=
+	planPIndexesToAdd, pindexesToRemove, pindexesToRestart, pindexesToHibernate,
+		pindexesToUnhibernate :=
 		classifyAddRemoveRestartPIndexes(mgr, addPlanPIndexes, removePIndexes)
 	log.Printf("janitor: pindexes to remove: %d", len(pindexesToRemove))
 	for _, pi := range pindexesToRemove {
@@ -389,6 +479,22 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		planPIndexesToAdd = append(planPIndexesToAdd, elicitAddPlanPIndexes(addPlanPIndexes, restartErrs)...)
 	}
 	var errs []error
+	log.Printf("janitor: pindexes to hibernate: %d", len(pindexesToHibernate))
+	for _, pi := range pindexesToHibernate {
+		if pi != nil {
+			log.Printf(" pindex %v; UUID: %v", pi.Name, pi.UUID)
+		}
+	}
+	errs = append(errs, mgr.hibernatePIndex(pindexesToHibernate)...)
+
+	log.Printf("janitor: pindexes to unhibernate: %d", len(pindexesToUnhibernate))
+	for _, pi := range pindexesToUnhibernate {
+		if pi.pindex != nil {
+			log.Printf(" pindex %v; UUID: %v", pi.pindex.Name, pi.pindex.UUID)
+		}
+	}
+	errs = append(errs, mgr.resumePIndex(pindexesToUnhibernate)...)
+
 	// First, teardown pindexes that need to be removed.
 	// batching the stop, aiming to expedite the
 	// whole JanitorOnce call
@@ -470,14 +576,17 @@ func filterFeedable(addFeeds [][]*PIndex) (rv [][]*PIndex) {
 
 func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPIndex,
 	removePIndexes []*PIndex) (planPIndexesToAdd []*PlanPIndex,
-	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq) {
+	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq,
+	pindexesToHibernate []*PIndex, pindexesToUnhibernate []*pindexRestartReq) {
 	// if there are no pindexes to be removed as per planner,
 	// then there won't be anything to restart as well.
 	if len(removePIndexes) == 0 {
-		return addPlanPIndexes, nil, nil
+		return addPlanPIndexes, nil, nil, nil, nil
 	}
 	pindexesToRestart = make([]*pindexRestartReq, 0)
 	pindexesToRemove = make([]*PIndex, 0)
+	pindexesToHibernate = make([]*PIndex, 0)
+	pindexesToUnhibernate = make([]*pindexRestartReq, 0)
 	planPIndexesToAdd = make([]*PlanPIndex, 0)
 	// grouping addPlanPIndexes and removePIndexes as per index for
 	// checking restartable indexDef changes per index
@@ -504,9 +613,9 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 		if len(pindexes) > 0 && pindexes[0] != nil {
 			pindex := pindexes[0]
 			if planPIndexes, ok := indexPlanPIndexMap[indexName]; ok {
+				indexDefnCurr := getIndexDefFromPlanPIndexes(planPIndexes)
 				configAnalyzeReq := &ConfigAnalyzeRequest{
-					IndexDefnCur: getIndexDefFromPlanPIndexes(
-						planPIndexes),
+					IndexDefnCur:  indexDefnCurr,
 					IndexDefnPrev: getIndexDefFromPIndex(pindex),
 					SourcePartitionsCur: getSourcePartitionsMapFromPlanPIndexes(
 						planPIndexes),
@@ -519,29 +628,73 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 					planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
 					continue
 				}
+				pathChange := metadataPathChange(configAnalyzeReq, pindex.Path)
+				if pathChange == UNHIBERNATE_TASK {
+					pindexesToUnhibernate = append(pindexesToUnhibernate,
+						getPIndexesToHibernate(pindexes, planPIndexes)...)
+					continue
+				}
+				if pathChange == HIBERNATE_TASK {
+					pidxList := getPIndexesToHibernate(pindexes, planPIndexes)
+					// If there was a crash during upload, this condition is added to
+					// avoid a re upload on restart.
+					for _, pidx := range pidxList {
+						pindexesToHibernate = append(pindexesToHibernate, pidx.pindex)
+					}
+					continue
+				}
 				if pindexImplType.AnalyzeIndexDefUpdates != nil &&
 					pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq) ==
 						PINDEXES_RESTART {
 					pindexesToRestart = append(pindexesToRestart,
 						getPIndexesToRestart(pindexes, planPIndexes)...)
 					continue
+				} else {
+					pindexesToRemove = append(pindexesToRemove, pindexes...)
+					planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
 				}
-				pindexesToRemove = append(pindexesToRemove, pindexes...)
-				planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
 			} else {
 				pindexesToRemove = append(pindexesToRemove, pindexes...)
 			}
 		}
 	}
-	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart
+	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart, pindexesToHibernate,
+		pindexesToUnhibernate
+}
+
+const (
+	HIBERNATE_TASK   = "pause"
+	UNHIBERNATE_TASK = "resume"
+)
+
+func isHibernateChange(curr, prev string) bool {
+	return strings.HasPrefix(curr, HIBERNATE_TASK) && curr != prev
+	// Add condition to check if pindex files are present locally.
+}
+
+func metadataPathChange(configAnalyzeReq *ConfigAnalyzeRequest, pindexPath string) string {
+	if isHibernateChange(configAnalyzeReq.IndexDefnCur.HibernationPath,
+		configAnalyzeReq.IndexDefnPrev.HibernationPath) {
+		return HIBERNATE_TASK
+	}
+
+	if strings.HasPrefix(configAnalyzeReq.IndexDefnPrev.HibernationPath, UNHIBERNATE_TASK) &&
+		configAnalyzeReq.IndexDefnCur.HibernationPath == "" {
+		return UNHIBERNATE_TASK
+	}
+
+	return ""
 }
 
 func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
 	indexPlanPIndexMap map[string][]*PlanPIndex) (planPIndexesToAdd []*PlanPIndex,
-	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq) {
+	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq,
+	pindexesToHibernate []*PIndex, pindexesToUnhibernate []*pindexRestartReq) {
 	pindexesToRestart = make([]*pindexRestartReq, 0)
 	pindexesToRemove = make([]*PIndex, 0)
 	planPIndexesToAdd = make([]*PlanPIndex, 0)
+	pindexesToHibernate = make([]*PIndex, 0)
+	pindexesToUnhibernate = make([]*pindexRestartReq, 0)
 
 	// take every pindex to remove and check the config change
 	// and sort out the pindexes to add, remove or restart
@@ -568,7 +721,6 @@ func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
 						pindexesToRemove = append(pindexesToRemove, pindex)
 						continue
 					}
-					// check for restartability on the target plan
 					configAnalyzeReq := &ConfigAnalyzeRequest{
 						IndexDefnCur:  indexDefnCur,
 						IndexDefnPrev: indexDefnPrev,
@@ -576,12 +728,25 @@ func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
 							targetPlan.SourcePartitions: true},
 						SourcePartitionsPrev: getSourcePartitionsMapFromPIndexes(
 							[]*PIndex{pindex})}
-
 					pindexImplType, exists := PIndexImplTypes[pindex.IndexType]
 					if !exists || pindexImplType == nil {
 						pindexesToRemove = append(pindexesToRemove, pindex)
 						continue
 					}
+					pathChange := metadataPathChange(configAnalyzeReq, pindex.Path)
+					if pathChange == UNHIBERNATE_TASK {
+						pindexesToUnhibernate = append(pindexesToUnhibernate,
+							newPIndexHibernateReq(targetPlan, pindex))
+						restartable[targetPlan.Name] = struct{}{}
+						continue
+					}
+					if pathChange == HIBERNATE_TASK {
+						pidx := newPIndexHibernateReq(targetPlan, pindex)
+						pindexesToHibernate = append(pindexesToHibernate, pidx.pindex)
+						restartable[targetPlan.Name] = struct{}{}
+						continue
+					}
+
 					// restartable pindex found from plan
 					if pindexImplType.AnalyzeIndexDefUpdates != nil &&
 						pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq) ==
@@ -617,7 +782,8 @@ func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
 		planPIndexesToAdd = append(planPIndexesToAdd, addPlans...)
 	}
 
-	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart
+	return planPIndexesToAdd, pindexesToRemove, pindexesToRestart, pindexesToHibernate,
+		pindexesToUnhibernate
 }
 
 func newPIndexRestartReq(addPlanPI *PlanPIndex,
@@ -652,16 +818,51 @@ func getPIndexesToRestart(pindexesToRemove []*PIndex,
 	return pindexesToRestart
 }
 
+func newPIndexHibernateReq(addPlanPI *PlanPIndex,
+	pindex *PIndex) *pindexRestartReq {
+	pindex.IndexUUID = addPlanPI.IndexUUID
+	pindex.IndexParams = addPlanPI.IndexParams
+	pindex.SourceParams = addPlanPI.SourceParams
+	pindex.HibernationPath = addPlanPI.HibernationPath
+	return &pindexRestartReq{
+		pindex:         pindex,
+		planPIndexName: addPlanPI.Name,
+	}
+}
+
+func getPIndexesToHibernate(pindexesToRemove []*PIndex,
+	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
+	pindexesToHibernate := make([]*pindexRestartReq, len(pindexesToRemove))
+	i := 0
+	for _, pindex := range pindexesToRemove {
+		for _, addPlanPI := range addPlanPIndexes {
+			if addPlanPI.SourcePartitions == pindex.SourcePartitions {
+				pindex.IndexUUID = addPlanPI.IndexUUID
+				pindex.IndexParams = addPlanPI.IndexParams
+				pindex.SourceParams = addPlanPI.SourceParams
+				pindex.HibernationPath = addPlanPI.HibernationPath
+				pindexesToHibernate[i] = &pindexRestartReq{
+					pindex:         pindex,
+					planPIndexName: addPlanPI.Name,
+				}
+				i++
+			}
+		}
+	}
+	return pindexesToHibernate
+}
+
 func getIndexDefFromPIndex(pindex *PIndex) *IndexDef {
 	if pindex != nil {
 		return &IndexDef{Name: pindex.IndexName,
-			UUID:         pindex.IndexUUID,
-			SourceName:   pindex.SourceName,
-			SourceParams: pindex.SourceParams,
-			SourceType:   pindex.SourceType,
-			SourceUUID:   pindex.SourceUUID,
-			Type:         pindex.IndexType,
-			Params:       pindex.IndexParams,
+			UUID:            pindex.IndexUUID,
+			SourceName:      pindex.SourceName,
+			SourceParams:    pindex.SourceParams,
+			SourceType:      pindex.SourceType,
+			SourceUUID:      pindex.SourceUUID,
+			Type:            pindex.IndexType,
+			Params:          pindex.IndexParams,
+			HibernationPath: pindex.HibernationPath,
 		}
 	}
 	return nil
@@ -670,13 +871,14 @@ func getIndexDefFromPIndex(pindex *PIndex) *IndexDef {
 func getIndexDefFromPlanPIndexes(planPIndexes []*PlanPIndex) *IndexDef {
 	if len(planPIndexes) != 0 && planPIndexes[0] != nil {
 		return &IndexDef{Name: planPIndexes[0].IndexName,
-			UUID:         planPIndexes[0].IndexUUID,
-			SourceName:   planPIndexes[0].SourceName,
-			SourceParams: planPIndexes[0].SourceParams,
-			SourceType:   planPIndexes[0].SourceType,
-			SourceUUID:   planPIndexes[0].SourceUUID,
-			Type:         planPIndexes[0].IndexType,
-			Params:       planPIndexes[0].IndexParams,
+			UUID:            planPIndexes[0].IndexUUID,
+			SourceName:      planPIndexes[0].SourceName,
+			SourceParams:    planPIndexes[0].SourceParams,
+			SourceType:      planPIndexes[0].SourceType,
+			SourceUUID:      planPIndexes[0].SourceUUID,
+			Type:            planPIndexes[0].IndexType,
+			Params:          planPIndexes[0].IndexParams,
+			HibernationPath: planPIndexes[0].HibernationPath,
 		}
 	}
 	return nil
@@ -821,7 +1023,7 @@ func CalcPIndexesDelta(mgrUUID string,
 			currPIndex, exists := currPIndexes[wantedPlanPIndex.Name]
 			if !exists {
 				addPlanPIndexes = append(addPlanPIndexes, wantedPlanPIndex)
-			} else if PIndexMatchesPlan(currPIndex, wantedPlanPIndex) == false {
+			} else if !PIndexMatchesPlan(currPIndex, wantedPlanPIndex) {
 				addPlanPIndexes = append(addPlanPIndexes, wantedPlanPIndex)
 				removePIndexes = append(removePIndexes, currPIndex)
 				mapRemovePIndex[currPIndex.Name] = currPIndex
@@ -1019,6 +1221,8 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 				planPIndex.Name, err)
 		}
 	}
+
+	pindex.HibernationPath = planPIndex.HibernationPath
 
 	err = mgr.registerPIndex(pindex)
 	if err != nil {

@@ -21,11 +21,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/cbgt/hibernate"
 	"github.com/couchbase/cbgt/rebalance"
 	"github.com/couchbase/cbgt/rest"
+
+	"github.com/couchbase/cbauth/service"
 	log "github.com/couchbase/clog"
+	"github.com/couchbase/tools-common/objstore/objcli"
 )
 
 // Timeout for CtlMgr's exported APIs
@@ -550,6 +553,32 @@ func (m *CtlMgr) computeProgPercent(pe *rebalance.ProgressEntry,
 	return avgPct
 }
 
+func (m *CtlMgr) updateHibernationProgress(taskId string,
+	progressEntries map[string]float64, errs []error) {
+	var totalProgress float64
+	if progressEntries != nil {
+		var currTotalProgress float64
+		for _, progress := range progressEntries {
+			currTotalProgress += progress
+		}
+		totalProgress = currTotalProgress / float64(len(progressEntries))
+	}
+	taskProgressVal := taskProgress{
+		taskId:         taskId,
+		errs:           errs,
+		progressExists: progressEntries != nil,
+		progress:       totalProgress,
+	}
+
+	select {
+	case m.taskProgressCh <- taskProgressVal:
+		// NO-OP.
+	default:
+		// NO-OP, if the handleTaskProgress() goroutine is behind,
+		// drop notifications rather than hold up the hibernation manager.
+	}
+}
+
 // ------------------------------------------------
 
 // The progressEntries is a map of...
@@ -804,4 +833,311 @@ func (m *CtlMgr) GetDefragmentedUtilization() (
 	}
 
 	return nil, nil
+}
+
+// ------------------------------------------------
+
+var HibernationClientHook = func() (objcli.Client, error) {
+	return nil, fmt.Errorf("not-implemented")
+}
+
+// PreparePause just updates the task lists with the prepared task
+// type along with some basic validations.
+func (m *CtlMgr) PreparePause(params service.PauseParams) error {
+	log.Printf("ctl/manager: PreparePause, params: %v", params)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, taskHandle := range m.tasks.taskHandles {
+		if taskHandle.task.Type == service.TaskTypePrepared ||
+			taskHandle.task.Type == service.TaskTypeBucketPause ||
+			taskHandle.task.Type == service.TaskTypeBucketResume ||
+			taskHandle.task.Type == service.TaskTypeRebalance {
+			// NOTE: If there's an existing rebalance, preparation,
+			// bucket pause/resume task, even if it's done, then treat
+			// as a conflict, as the caller should cancel them all first.
+			log.Errorf("ctl/manager: PreparePause, conflicts with task type: %s,"+
+				" err: %v", taskHandle.task.Type, service.ErrConflict)
+			return service.ErrConflict
+		}
+	}
+
+	taskHandlesNext := append([]*taskHandle(nil),
+		m.tasks.taskHandles...)
+	taskHandlesNext = append(taskHandlesNext,
+		&taskHandle{
+			startTime: time.Now(),
+			task: &service.Task{
+				ID:               "prepare:" + params.ID,
+				Type:             service.TaskTypePrepared,
+				Status:           service.TaskStatusRunning,
+				IsCancelable:     true,
+				Progress:         100.0,
+				DetailedProgress: nil,
+				Description:      "prepare pause handler",
+				ErrorMessage:     "",
+				Extra: map[string]interface{}{
+					"preparePause": params,
+				},
+			},
+			stop: func() {
+				log.Printf("ctl/manager: stop preparePause: %v",
+					params)
+
+				m.ctl.StopHibernationTask()
+			},
+		})
+
+	m.updateTasksLOCKED(func(s *tasks) {
+		s.taskHandles = taskHandlesNext
+	})
+
+	m.ctl.optionsCtl.Manager.SetHibernationContext()
+	objStoreClient, err := HibernationClientHook()
+	if err != nil {
+		return fmt.Errorf("ctl: unable to get object store client: %e", err)
+	}
+	m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
+
+	log.Printf("ctl/manager: PreparePause, done")
+
+	return nil
+}
+
+// PrepareResume just updates the task lists with the prepared task
+// type along with some basic validations.
+func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
+	log.Printf("ctl/manager: PrepareResume, params: %v", params)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, taskHandle := range m.tasks.taskHandles {
+		if taskHandle.task.Type == service.TaskTypePrepared ||
+			taskHandle.task.Type == service.TaskTypeBucketPause ||
+			taskHandle.task.Type == service.TaskTypeBucketResume ||
+			taskHandle.task.Type == service.TaskTypeRebalance {
+			// NOTE: If there's an existing rebalance, preparation,
+			// bucket pause/resume task, even if it's done, then treat
+			// as a conflict, as the caller should cancel them all first.
+			log.Errorf("ctl/manager: PrepareResume, conflicts with task type: %s,"+
+				" err: %v", taskHandle.task.Type, service.ErrConflict)
+			return service.ErrConflict
+		}
+	}
+
+	newTaskHandle := &taskHandle{
+		startTime: time.Now(),
+		task: &service.Task{
+			ID:               "prepare:" + params.ID,
+			Type:             service.TaskTypePrepared,
+			Status:           service.TaskStatusRunning,
+			IsCancelable:     true,
+			Progress:         100.0,
+			DetailedProgress: nil,
+			Description:      "prepare resume handler",
+			ErrorMessage:     "",
+			Extra: map[string]interface{}{
+				"prepareResume": params,
+			},
+		},
+		stop: func() {
+			log.Printf("ctl/manager: stop prepareResume: %v",
+				params)
+
+			m.ctl.StopHibernationTask()
+		}}
+
+	if params.DryRun {
+		// Task marked as failed if the path is invalid.
+		if !hibernate.CheckIfRemotePathIsValidHook(params.RemotePath) {
+			newTaskHandle.task.Status = service.TaskStatusCannotResume
+			newTaskHandle.task.ErrorMessage = "invalid remote path"
+		}
+	} else {
+		m.ctl.optionsCtl.Manager.SetHibernationContext()
+		objStoreClient, err := HibernationClientHook()
+		if err != nil {
+			return fmt.Errorf("ctl: unable to get object store client: %e", err)
+		}
+		m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
+	}
+
+	taskHandlesNext := append([]*taskHandle(nil),
+		m.tasks.taskHandles...)
+	taskHandlesNext = append(taskHandlesNext, newTaskHandle)
+
+	m.updateTasksLOCKED(func(s *tasks) {
+		s.taskHandles = taskHandlesNext
+	})
+
+	log.Printf("ctl/manager: PrepareResume, done")
+
+	return nil
+}
+
+// Pause is the starting point for pause operation.
+// It adds pause tasks to the tasks list and updates it.
+func (m *CtlMgr) Pause(params service.PauseParams) error {
+	log.Printf("ctl/manager: Pause, params: %v", params)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var taskHandlesNext []*taskHandle
+
+	for _, th := range m.tasks.taskHandles {
+		if th.task.Type == service.TaskTypeRebalance ||
+			th.task.Type == service.TaskTypeBucketPause ||
+			th.task.Type == service.TaskTypeBucketResume {
+			log.Errorf("ctl/manager: Pause, conflicts with task type: %s,"+
+				" err: %v", th.task.Type, service.ErrConflict)
+			return service.ErrConflict
+		}
+	}
+
+	th, err := m.pauseTaskHandleLOCKED(params)
+	if err != nil {
+		log.Errorf("ctl/manager: Pause, err: %v", err)
+		return err
+
+	}
+
+	taskHandlesNext = append(taskHandlesNext, th)
+
+	m.updateTasksLOCKED(func(s *tasks) {
+		s.taskHandles = taskHandlesNext
+	})
+
+	log.Printf("ctl/manager: Pause, started")
+
+	return nil
+}
+
+func (m *CtlMgr) pauseTaskHandleLOCKED(
+	params service.PauseParams) (*taskHandle, error) {
+	log.Printf("ctl/manager: pauseTaskHandleLOCKED, params: %v", params)
+
+	taskId := string(hibernate.OperationType(cbgt.HIBERNATE_TASK)) + ":" + params.ID
+
+	onProgress := func(progressEntries map[string]float64, errs []error) {
+		m.updateHibernationProgress(taskId, progressEntries, errs)
+	}
+
+	params.RemotePath = string(hibernate.OperationType(cbgt.HIBERNATE_TASK)) + ":" +
+		params.RemotePath
+	err := m.ctl.startHibernation(false, params.Bucket, params.RemotePath,
+		hibernate.OperationType(cbgt.HIBERNATE_TASK), onProgress)
+	if err != nil {
+		return nil, err
+	}
+
+	revNum := m.allocRevNumLOCKED(m.tasks.revNum)
+
+	th := &taskHandle{
+		startTime: time.Now(),
+		task: &service.Task{
+			Rev:              EncodeRev(revNum),
+			ID:               taskId,
+			Type:             service.TaskTypeBucketPause,
+			Status:           service.TaskStatusRunning,
+			IsCancelable:     true,
+			Progress:         0.0,
+			DetailedProgress: map[service.NodeID]float64{},
+			Description:      "pause change",
+			ErrorMessage:     "",
+			Extra: map[string]interface{}{
+				"pause": params,
+			},
+		},
+		stop: func() {
+			log.Printf("ctl/manager: stop Pause: %v", params)
+
+			m.ctl.StopHibernationTask()
+		},
+	}
+
+	return th, nil
+}
+
+func (m *CtlMgr) Resume(params service.ResumeParams) error {
+	log.Printf("ctl/manager: Resume, params: %v", params)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var taskHandlesNext []*taskHandle
+
+	for _, th := range m.tasks.taskHandles {
+		if th.task.Type == service.TaskTypeRebalance ||
+			th.task.Type == service.TaskTypeBucketPause ||
+			th.task.Type == service.TaskTypeBucketResume {
+			log.Errorf("ctl/manager: Resume, conflicts with task type: %s,"+
+				" err: %v", th.task.Type, service.ErrConflict)
+			return service.ErrConflict
+		}
+	}
+
+	th, err := m.resumeTaskHandleLOCKED(params)
+	if err != nil {
+		log.Errorf("ctl/manager: Resume, err: %v", err)
+		return err
+
+	}
+
+	taskHandlesNext = append(taskHandlesNext, th)
+
+	m.updateTasksLOCKED(func(s *tasks) {
+		s.taskHandles = taskHandlesNext
+	})
+
+	log.Printf("ctl/manager: Resume, started")
+
+	return nil
+}
+
+func (m *CtlMgr) resumeTaskHandleLOCKED(
+	params service.ResumeParams) (*taskHandle, error) {
+	log.Printf("ctl/manager: resumeTaskHandleLOCKED, params: %v", params)
+
+	taskId := string(hibernate.OperationType(cbgt.UNHIBERNATE_TASK)) + ":" + params.ID
+
+	revNum := m.allocRevNumLOCKED(m.tasks.revNum)
+	th := &taskHandle{
+		startTime: time.Now(),
+		task: &service.Task{
+			Rev:              EncodeRev(revNum),
+			ID:               taskId,
+			Type:             service.TaskTypeBucketResume,
+			Status:           service.TaskStatusRunning,
+			IsCancelable:     true,
+			Progress:         0.0,
+			DetailedProgress: map[service.NodeID]float64{},
+			Description:      "resume change",
+			ErrorMessage:     "",
+			Extra: map[string]interface{}{
+				"resume": params,
+			},
+		},
+		stop: func() {
+			log.Printf("ctl/manager: stop Resume: %v", params)
+
+			m.ctl.StopHibernationTask()
+		},
+	}
+
+	onProgress := func(progressEntries map[string]float64, errs []error) {
+		m.updateHibernationProgress(taskId, progressEntries, errs)
+	}
+
+	params.RemotePath = string(hibernate.OperationType(cbgt.UNHIBERNATE_TASK)) + ":" +
+		params.RemotePath
+	err := m.ctl.startHibernation(params.DryRun, params.Bucket, params.RemotePath,
+		hibernate.OperationType(cbgt.UNHIBERNATE_TASK), onProgress)
+	if err != nil {
+		return nil, err
+	}
+
+	return th, nil
 }

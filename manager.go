@@ -10,6 +10,7 @@ package cbgt
 
 import (
 	"container/list"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
+	"github.com/couchbase/tools-common/objstore/objcli"
 )
 
 // A Manager represents a runtime node in a cluster.
@@ -89,6 +91,28 @@ type Manager struct {
 	peh PlannerEventHandlerCallback
 
 	stablePlanPIndexesMutex sync.RWMutex // Protects the local stable plan access.
+
+	// The below fields are optional.
+	objStoreClient    objcli.Client
+	hibernationCtx    context.Context
+	hibernationCancel context.CancelFunc
+}
+
+func (mgr *Manager) GetHibernationContext() (context.Context, context.CancelFunc) {
+	return mgr.hibernationCtx, mgr.hibernationCancel
+}
+
+func (mgr *Manager) SetHibernationContext() {
+	mgr.hibernationCtx = context.Background()
+	mgr.hibernationCtx, mgr.hibernationCancel = context.WithCancel(mgr.hibernationCtx)
+}
+
+func (mgr *Manager) GetObjStoreClient() objcli.Client {
+	return mgr.objStoreClient
+}
+
+func (mgr *Manager) SetObjStoreClient(client objcli.Client) {
+	mgr.objStoreClient = client
 }
 
 // PlannerEventHandlerCallback is an optional event
@@ -924,6 +948,38 @@ func (mgr *Manager) GetIndexDef(indexName string, refresh bool) (
 	}
 
 	return indexDef, pindexImplType, nil
+}
+
+var LimitIndexDefHook func(mgr *Manager, indexDef *IndexDef) (*IndexDef, error)
+
+func (mgr *Manager) CheckIfIndexesCanBeAdded(indexDefs *IndexDefs) error {
+	if LimitIndexDefHook != nil {
+		for _, index := range indexDefs.IndexDefs {
+			_, err := LimitIndexDefHook(mgr, index)
+			if err != nil {
+				// Returning an error if even one index cannot be accommodated.
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (mgr *Manager) GetIndexNameForPIndex(pindexName string) (
+	string, error) {
+	_, indexPlansMap, err := mgr.GetPlanPIndexes(false)
+	if err != nil {
+		return "", fmt.Errorf("hibernate: error getting plan pindexes: %e",
+			err)
+	}
+	for index, plans := range indexPlansMap {
+		for _, plan := range plans {
+			if plan.Name == pindexName {
+				return index, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 // Returns read-only snapshot of the PlanPIndexes, also with PlanPIndex's

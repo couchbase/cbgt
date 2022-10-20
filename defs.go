@@ -34,15 +34,16 @@ type IndexDefs struct {
 
 // An IndexDef is a logical index definition.
 type IndexDef struct {
-	Type         string     `json:"type"` // Ex: "blackhole", etc.
-	Name         string     `json:"name"`
-	UUID         string     `json:"uuid"` // Like a revision id.
-	Params       string     `json:"params"`
-	SourceType   string     `json:"sourceType"`
-	SourceName   string     `json:"sourceName,omitempty"`
-	SourceUUID   string     `json:"sourceUUID,omitempty"`
-	SourceParams string     `json:"sourceParams,omitempty"` // Optional connection info.
-	PlanParams   PlanParams `json:"planParams,omitempty"`
+	Type            string     `json:"type"` // Ex: "blackhole", etc.
+	Name            string     `json:"name"`
+	UUID            string     `json:"uuid"` // Like a revision id.
+	Params          string     `json:"params"`
+	SourceType      string     `json:"sourceType"`
+	SourceName      string     `json:"sourceName,omitempty"`
+	SourceUUID      string     `json:"sourceUUID,omitempty"`
+	SourceParams    string     `json:"sourceParams,omitempty"` // Optional connection info.
+	PlanParams      PlanParams `json:"planParams,omitempty"`
+	HibernationPath string     `json:"hibernationPath,omitempty"`
 
 	// NOTE: Any auth credentials to access datasource, if any, may be
 	// stored as part of SourceParams.
@@ -55,13 +56,14 @@ type IndexDef struct {
 // struct definition.  If you change IndexDef struct, you must change
 // this indexDefBase definition, too; and also see defs_json.go.
 type indexDefBase struct {
-	Type       string     `json:"type"` // Ex: "blackhole", etc.
-	Name       string     `json:"name"`
-	UUID       string     `json:"uuid"` // Like a revision id.
-	SourceType string     `json:"sourceType"`
-	SourceName string     `json:"sourceName,omitempty"`
-	SourceUUID string     `json:"sourceUUID,omitempty"`
-	PlanParams PlanParams `json:"planParams,omitempty"`
+	Type            string     `json:"type"` // Ex: "blackhole", etc.
+	Name            string     `json:"name"`
+	UUID            string     `json:"uuid"` // Like a revision id.
+	SourceType      string     `json:"sourceType"`
+	SourceName      string     `json:"sourceName,omitempty"`
+	SourceUUID      string     `json:"sourceUUID,omitempty"`
+	PlanParams      PlanParams `json:"planParams,omitempty"`
+	HibernationPath string     `json:"hibernationPath,omitempty"`
 }
 
 // A PlanParams holds input parameters to the planner, that control
@@ -231,6 +233,7 @@ type PlanPIndex struct {
 	SourceUUID       string `json:"sourceUUID,omitempty"`
 	SourceParams     string `json:"sourceParams,omitempty"` // Optional connection info.
 	SourcePartitions string `json:"sourcePartitions"`
+	HibernationPath  string `json:"hibernationPath,omitempty"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
 }
@@ -251,6 +254,7 @@ type planPIndexBase struct {
 	SourceName       string `json:"sourceName,omitempty"`
 	SourceUUID       string `json:"sourceUUID,omitempty"`
 	SourcePartitions string `json:"sourcePartitions"`
+	HibernationPath  string `json:"hibernationPath,omitempty"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
 }

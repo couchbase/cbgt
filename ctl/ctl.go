@@ -24,6 +24,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
+	"github.com/couchbase/cbgt/hibernate"
 	"github.com/couchbase/cbgt/rebalance"
 	"github.com/couchbase/cbgt/rest"
 
@@ -41,7 +42,6 @@ var ErrCtlCanceled = service.ErrCanceled
 // off a new replan/rebalance, because the new topology change request
 // will have the latest, wanted topology.  This might happen if some
 // stopChangeTopology request or signal got lost somewhere.
-//
 type Ctl struct {
 	cfg        cbgt.Cfg
 	cfgEventCh chan cbgt.CfgEvent
@@ -85,6 +85,8 @@ type Ctl struct {
 	rebOrchestrator bool
 
 	lastIndexDefs *cbgt.IndexDefs
+
+	hm *hibernate.Manager
 }
 
 type CtlOptions struct {
@@ -1298,4 +1300,132 @@ func (ctl *Ctl) rebalanceInProgress() bool {
 	}
 
 	return false
+}
+
+// ----------------------------------------------------
+
+func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
+	taskType hibernate.OperationType,
+	onProgress func(progressEntries map[string]float64,
+		errs []error)) error {
+	var err error
+	// first check whether there are indexes for the given bucketName.
+	indexDefs, _, err := cbgt.CfgGetIndexDefs(ctl.cfg)
+	if err != nil {
+		log.Warnf("ctl: startHibernation, CfgGetIndexDefs failed,"+
+			" err: %v", err)
+		return err
+	}
+
+	// Early exit paths for hibernate
+	if taskType == hibernate.OperationType(cbgt.HIBERNATE_TASK) {
+		if indexDefs == nil || len(indexDefs.IndexDefs) == 0 {
+			log.Printf("ctl: no indexes to hibernate")
+			return nil
+		}
+
+		var found bool
+		for _, indexDef := range indexDefs.IndexDefs {
+			if indexDef.SourceName == bucketName {
+				found = true
+				break
+			}
+		}
+
+		// Indexes on a bucket will not exist when a bucket is to be resumed.
+		// They will be created only after the download process.
+		if !found {
+			log.Printf("ctl: startHibernation, no index definitions found for the"+
+				" bucketName: %s", bucketName)
+			return nil
+		}
+	}
+
+	client := cbgt.HttpClient()
+
+	hibOptions := hibernate.HibernationOptions{
+		BucketName:      bucketName,
+		ArchiveLocation: remotePath,
+		HttpGet:         client.Get,
+		Manager:         ctl.optionsCtl.Manager,
+		DryRun:          dryRun,
+	}
+
+	ctlStopCh := make(chan struct{})
+	ctl.ctlStopCh = ctlStopCh
+
+	ctlDoneCh := make(chan struct{})
+	ctl.ctlDoneCh = ctlDoneCh
+
+	go func() {
+		var ctlErrs []error
+		defer func() {
+			ctl.m.Lock()
+
+			if ctl.ctlStopCh == ctlStopCh {
+				ctl.ctlStopCh = nil
+			}
+
+			// additional safety check to see if the right chan
+			// is being set to nil
+			if ctl.ctlDoneCh == ctlDoneCh {
+				ctl.ctlDoneCh = nil
+			}
+
+			ctl.prevErrs = ctlErrs
+
+			if onProgress != nil {
+				onProgress(nil, ctlErrs)
+			}
+
+			ctl.m.Unlock()
+
+			close(ctlDoneCh)
+		}()
+		version := cbgt.CfgGetVersion(ctl.cfg)
+
+		ctl.hm, err = hibernate.Start(version, ctl.cfg, ctl.server,
+			hibOptions, taskType)
+		if err != nil {
+			ctlErrs = append(ctlErrs, err)
+			return
+		}
+
+		progressDoneCh := make(chan error)
+		go func() {
+			defer close(progressDoneCh)
+
+			err := ctl.hm.ReportProgress(onProgress)
+			if err != nil {
+				log.Warnf("ctl: ReportProgress, err: %v", err)
+				progressDoneCh <- err
+			}
+		}()
+
+		// Required here if ctlStopCh abruptly receives a signal to stop.
+		defer ctl.hm.Stop()
+
+		select {
+		case <-ctlStopCh:
+			return
+
+		case err = <-progressDoneCh:
+			if err != nil {
+				ctlErrs = append(ctlErrs, err)
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+// StopHibernationTask asynchronously stops any ongoing hibernation
+// operations like a hibernate/unhibernate.
+func (ctl *Ctl) StopHibernationTask() {
+	ctl.m.Lock()
+	if ctl.ctlStopCh != nil {
+		close(ctl.ctlStopCh)
+	}
+	ctl.m.Unlock()
 }
