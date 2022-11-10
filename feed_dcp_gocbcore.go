@@ -251,7 +251,7 @@ func (dm *gocbcoreDCPAgentMap) releaseAgent(bucketName, bucketUUID string,
 		}
 		// ref count of agent down to 0
 		delete(dm.entries[key], agent)
-		atomic.AddUint64(&dm.numDCPAgents, ^uint64(0))
+		atomic.AddUint64(&dm.numDCPAgents, ^uint64(0)) // decrement by 1
 
 		log.Printf("feed_dcp_gocbcore: releaseAgent, closing DCPAgent"+
 			" (key: %v, agent: %p, number of agents for key: %v)",

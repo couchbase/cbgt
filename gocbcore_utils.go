@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/cbauth"
@@ -120,6 +121,8 @@ type gocbcoreAgentsMap struct {
 	m sync.Mutex
 	// map of gocbcore.Agent, gocbcore.DCPAgent instances by bucket <name>:<uuid>
 	entries map[string]*gocbcoreClient
+	// stat to track number of live agents (connections)
+	numAgents uint64
 }
 
 var statsAgentsMap *gocbcoreAgentsMap
@@ -128,6 +131,14 @@ func init() {
 	statsAgentsMap = &gocbcoreAgentsMap{
 		entries: make(map[string]*gocbcoreClient),
 	}
+}
+
+func NumStatsAgents() uint64 {
+	if statsAgentsMap != nil {
+		return atomic.LoadUint64(&statsAgentsMap.numAgents)
+	}
+
+	return 0
 }
 
 type certProvider func() *x509.CertPool
@@ -244,6 +255,7 @@ func (am *gocbcoreAgentsMap) releaseAgents(sourceName string) {
 				entry.dcpAgent.Close()
 			}()
 			delete(am.entries, sourceName)
+			atomic.AddUint64(&am.numAgents, ^uint64(1)) // decrement by 2
 		}
 	}
 	am.m.Unlock()
@@ -333,6 +345,7 @@ func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 		dcpAgent: dcpAgent,
 		ref:      1,
 	}
+	atomic.AddUint64(&am.numAgents, 2)
 
 	return agent, dcpAgent, nil
 }
