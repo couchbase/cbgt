@@ -17,8 +17,6 @@ import (
 	"net/http"
 	"sort"
 
-	"math"
-
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
 )
@@ -482,7 +480,7 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 	}
 
 	nodeDefs.UUID = cbgt.NewUUID()
-	_, err = cbgt.CfgSetNodeDefs(h.mgr.Cfg(), defs.Kind, &nodeDefs, math.MaxUint64)
+	_, err = cbgt.CfgSetNodeDefs(h.mgr.Cfg(), defs.Kind, &nodeDefs, cbgt.CFG_CAS_FORCE)
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage: CfgSetNodeDefs "+
 			"failed, err: %v", err), http.StatusBadRequest)

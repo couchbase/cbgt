@@ -12,7 +12,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -28,79 +27,77 @@ func compareNodeDefs(a, b *NodeDefs) bool {
 	return true
 }
 
-func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey string) {
-	c := &NodeDefs{
-		UUID:        "abcd",
-		NodeDefs:    make(map[string]*NodeDef),
-		ImplVersion: "111",
+func splitKeyTest(g *CfgMetaKv, t *testing.T, splitKey, uuid string) {
+	nodeDefs, cas1, err := CfgGetNodeDefs(g, splitKey)
+	if err != nil {
+		t.Errorf("unexpected error getting node defs: %v", err)
+		return
 	}
-	c.NodeDefs["1"] = &NodeDef{
-		HostPort:    "12",
-		UUID:        "111",
-		ImplVersion: "2",
+
+	// expecting empty node defs at this point.
+	if nodeDefs == nil {
+		nodeDefs = NewNodeDefs(CfgGetVersion(g))
 	}
-	c.NodeDefs["2"] = &NodeDef{
+
+	nodeDefs.NodeDefs[uuid] = &NodeDef{
 		HostPort:    "13",
-		UUID:        "111",
-		ImplVersion: "2",
+		UUID:        uuid,
+		ImplVersion: CfgGetVersion(g),
 	}
-	c.NodeDefs["3"] = &NodeDef{
+	uuid2 := NewUUID()
+	nodeDefs.NodeDefs[uuid2] = &NodeDef{
 		HostPort:    "14",
-		UUID:        "111",
-		ImplVersion: "2",
+		UUID:        uuid2,
+		ImplVersion: CfgGetVersion(g),
 	}
-	val, _ := json.Marshal(c)
-	cas, err := g.Set(splitKey, val, 0)
+
+	_, err = CfgSetNodeDefs(g, splitKey, nodeDefs, cas1)
 	if err != nil {
-		t.Errorf("error in setting nodedefs-wanted key to metakv")
+		t.Errorf("unexpected error setting node defs: %v", err)
+		return
 	}
-	//check if splitting happend.so take the keys directly from metakv.
-	l, _ := g.listChildPaths(splitKey)
-	if len(l) != 3 {
+
+	l, _ := g.listChildPaths(CfgNodeDefsKey(splitKey))
+	// Expect the length to be 1 since each node's cfg will save only
+	// the one whose UUID matches its UUID.
+	if len(l) != 1 {
 		t.Errorf("incorrect keys %v", l)
 	}
-	val, cas2, err := g.Get(splitKey, cas)
+
+	nodeDefs, cas3, err := CfgGetNodeDefs(g, splitKey)
 	if err != nil {
-		t.Errorf("error in getting nodedefs-wanted key")
+		t.Errorf("unexpected error getting node defs: %v", err)
+		return
 	}
-	k := &NodeDefs{}
-	json.Unmarshal(val, k)
-	if !compareNodeDefs(k, c) {
-		t.Errorf("set and get key for nodeDefs are different")
+
+	nodeDefs.NodeDefs[uuid] = &NodeDef{
+		HostPort:    "15",
+		UUID:        uuid,
+		ImplVersion: CfgGetVersion(g),
 	}
-	d := &NodeDefs{
-		UUID:        "abcd1",
-		NodeDefs:    make(map[string]*NodeDef),
-		ImplVersion: "222",
-	}
-	d.NodeDefs["4"] = &NodeDef{
-		HostPort:    "12",
-		UUID:        "111",
-		ImplVersion: "2",
-	}
-	val, _ = json.Marshal(d)
-	cas3, err := g.Set(splitKey, val, cas2)
+
+	// Initially setting it with an older CAS.
+	_, err = CfgSetNodeDefs(g, splitKey, nodeDefs, cas1)
 	if err != nil {
-		t.Errorf("error in setting nodedefs-wanted key to metakv")
-	}
-	l, _ = g.listChildPaths(splitKey)
-	if len(l) != 4 {
-		t.Errorf("incorrect keys %v", l)
-	}
-	val, _, err = g.Get(splitKey, cas3)
-	if err != nil {
-		t.Errorf("error in setting key")
-	}
-	k = &NodeDefs{}
-	json.Unmarshal(val, k)
-	c.NodeDefs["4"] = d.NodeDefs["4"]
-	if !compareNodeDefs(k, c) {
-		t.Errorf("set and get key for nodeDefs are different")
+		if _, ok := err.(*CfgCASError); ok {
+			_, err = CfgSetNodeDefs(g, splitKey, nodeDefs, cas3)
+			if err != nil {
+				t.Errorf("unexpected error setting node defs: %v", err)
+				return
+			}
+		} else {
+			t.Errorf("unexpected error setting node defs: %v", err)
+			return
+		}
 	}
 }
 
+// Tests setting and getting a simple key from cfg metakv.
 func TestMetaKV(t *testing.T) {
-	g, _ := NewCfgMetaKv()
+	options := make(map[string]string)
+	options["nsServerUrl"] = "http://127.0.0.0:9000"
+
+	g, _ := NewCfgMetaKv(NewUUID(), options)
 	cas, _ := g.Set("test", []byte("test2"), 2)
 	val, _, err := g.Get("test", cas)
 	if err != nil {
@@ -109,21 +106,33 @@ func TestMetaKV(t *testing.T) {
 	if "test2" != string(val) {
 		t.Errorf("wrong get value from metakv")
 	}
-	splitKeyTest(g, t, CfgNodeDefsKey(NODE_DEFS_KNOWN))
-	splitKeyTest(g, t, CfgNodeDefsKey(NODE_DEFS_WANTED))
+
+}
+
+func TestCfgSetNodeDefs(t *testing.T) {
+	options := make(map[string]string)
+	options["nsServerUrl"] = "http://127.0.0.0:9000"
+
+	nodeUUID := NewUUID()
+	g, _ := NewCfgMetaKv(nodeUUID, options)
+
+	splitKeyTest(g, t, NODE_DEFS_KNOWN, nodeUUID)
+	splitKeyTest(g, t, NODE_DEFS_WANTED, nodeUUID)
 }
 
 // ------------------------------------------------
 
 // Disabled as metakv just spams with endless log messages of...
 //
-//    2015/08/21 22:17:39 metakv notifier failed \
-//       (Post /_metakv: Unable to initialize cbauth's revrpc: \
-//       Some cbauth environment variables are not set. \
-//       I.e.: (rpc-url: `', user: `', pwd: `'))
-//
+//	2015/08/21 22:17:39 metakv notifier failed \
+//	   (Post /_metakv: Unable to initialize cbauth's revrpc: \
+//	   Some cbauth environment variables are not set. \
+//	   I.e.: (rpc-url: `', user: `', pwd: `'))
 func disabled_TestCfgMetaKvIllConfigured(t *testing.T) {
-	m, err := NewCfgMetaKv()
+	options := make(map[string]string)
+	options["nsServerUrl"] = "http://127.0.0.0:9000"
+
+	m, err := NewCfgMetaKv(NewUUID(), options)
 	if err != nil || m == nil {
 		t.Errorf("expected no err")
 	}

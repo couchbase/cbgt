@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/ioutil"
-	"math"
 	"net/http"
 	"reflect"
 	"sort"
@@ -101,6 +100,7 @@ var cfgMetaKvAdvancedKeys map[string]cfgMetaKvAdvancedHandler = map[string]cfgMe
 	CfgNodeDefsKey(NODE_DEFS_WANTED): &cfgMetaKvNodeDefsSplitHandler{},
 	CfgNodeDefsKey(NODE_DEFS_KNOWN):  &cfgMetaKvNodeDefsSplitHandler{},
 	PLAN_PINDEXES_KEY:                &cfgMetaKvPlanPIndexesHandler{},
+	INDEX_DEFS_KEY:                   &cfgMetaKvIndexDefsHandler{},
 }
 
 type CfgMetaKv struct {
@@ -421,7 +421,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 
 	curEntry := c.splitEntries[key]
 
-	if cas != math.MaxUint64 && cas != 0 && cas != curEntry.cas {
+	if cas != CFG_CAS_FORCE && cas != 0 && cas != curEntry.cas {
 		log.Warnf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
 			key, cas, curEntry.cas)
 
@@ -475,7 +475,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 
 LOOP:
 	for k, v := range nd.NodeDefs {
-		if cas != math.MaxUint64 && c.nodeUUID != "" && c.nodeUUID != v.UUID {
+		if cas != CFG_CAS_FORCE && c.nodeUUID != "" && c.nodeUUID != v.UUID {
 			// If we have a nodeUUID, only add/update our
 			// nodeDef, where other nodes will each add/update
 			// only their own nodeDef's.
@@ -512,7 +512,7 @@ LOOP:
 		if err != nil {
 			return 0, err
 		}
-		if cas != math.MaxUint64 {
+		if cas != CFG_CAS_FORCE {
 			break LOOP
 		}
 	}
@@ -542,6 +542,64 @@ LOOP:
 }
 
 func (a *cfgMetaKvNodeDefsSplitHandler) del(
+	c *CfgMetaKv, key string, cas uint64) error {
+	delete(c.splitEntries, key)
+
+	path := c.keyToPath(key)
+
+	return metakv.RecursiveDelete(path + "/")
+}
+
+// ----------------------------------------------------------------
+
+type cfgMetaKvIndexDefsHandler struct{}
+
+// set() splits an indexDefs into multiple child metakv entries and must
+// be invoked with c.m.Lock()'ed.
+func (a *cfgMetaKvIndexDefsHandler) set(
+	c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error) {
+	curEntry := c.splitEntries[key]
+
+	// Skipping CAS checks if the force key is passed.
+	if cas != CFG_CAS_FORCE && cas != 0 && cas != curEntry.cas {
+		log.Warnf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
+			key, cas, curEntry.cas)
+
+		return 0, &CfgCASError{}
+	}
+
+	_, err := c.setRawLOCKED(key, val, cas)
+	if err != nil {
+		return 0, err
+	}
+
+	casResult := c.lastSplitCAS + 1
+	c.lastSplitCAS = casResult
+	return casResult, nil
+}
+
+// get() retrieves multiple child entries from the metakv and weaves
+// the results back into a composite indexDefs.  get() must be invoked
+// with c.m.Lock()'ed.
+func (a *cfgMetaKvIndexDefsHandler) get(
+	c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error) {
+	data, _, err := c.getRawLOCKED(key, cas)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	casResult := c.lastSplitCAS + 1
+	c.lastSplitCAS = casResult
+
+	c.splitEntries[key] = CfgMetaKvEntry{
+		cas:  casResult,
+		data: data,
+	}
+
+	return data, casResult, nil
+}
+
+func (a *cfgMetaKvIndexDefsHandler) del(
 	c *CfgMetaKv, key string, cas uint64) error {
 	delete(c.splitEntries, key)
 
