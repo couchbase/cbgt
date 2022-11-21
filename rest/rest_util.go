@@ -165,15 +165,26 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	return respBuf, nil
 }
 
+type taskProgress struct {
+	Type      string `json:"type"`
+	StageInfo struct {
+		Search struct {
+			StartTime     interface{} `json:"startTime,omitempty"`
+			CompletedTime interface{} `json:"completedTime,omitempty"`
+		} `json:"search"`
+	} `json:"stageInfo,omitempty"`
+}
+
 func CheckRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 	if mgr == nil {
 		return false, fmt.Errorf("rest_util: invalid manager instance")
 	}
-	url, err := cbgt.CBAuthURL(mgr.Server() + "/pools/default/rebalanceProgress")
+	tasksURL := mgr.Server() + "/pools/default/tasks"
+
+	url, err := cbgt.CBAuthURL(tasksURL)
 	if err != nil {
 		return false, fmt.Errorf("rest_util: "+
-			" cbauth url: %s, err: %v",
-			mgr.Server()+"/pools/default/rebalanceProgress", err)
+			" cbauth url: %s, err: %v", tasksURL, err)
 	}
 
 	httpClient := cbgt.HttpClient()
@@ -193,17 +204,57 @@ func CheckRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 			return false, fmt.Errorf("rest_util: error reading resp.Body,"+
 				" resp: %#v, err: %v", resp, err)
 		}
-		res := struct {
-			Status string `json:"status"`
-		}{}
+
+		var res []taskProgress
 		err = json.Unmarshal(respBuf, &res)
 		if err != nil {
 			return false, err
 		}
 
-		if res.Status == "running" {
-			return true, nil
+		rebFound := false
+		var rebProgress taskProgress
+		for _, task := range res {
+			if task.Type == "rebalance" {
+				rebFound = true
+				rebProgress = task
+				break
+			}
 		}
+
+		if !rebFound {
+			return false, nil
+		}
+
+		taskProgress := rebProgress
+
+		if taskProgress.StageInfo.Search.StartTime == nil ||
+			taskProgress.StageInfo.Search.CompletedTime == nil {
+			return false, nil
+		}
+
+		started, ok := taskProgress.StageInfo.Search.StartTime.(bool)
+		// If FTS rebalance has not yet started.
+		if ok && started == false {
+			return false, nil
+		}
+
+		if completedStatus, ok := taskProgress.StageInfo.Search.CompletedTime.(bool); ok {
+			if completedStatus == false {
+				// Not completed, still in progress.
+				return true, nil
+			}
+		}
+		completedTime, err := time.Parse("2006-01-02T15:04:05-07:00",
+			taskProgress.StageInfo.Search.CompletedTime.(string))
+		if err != nil {
+			return false, err
+		}
+		// If FTS rebalance has already completed/just completed.
+		if completedTime.Before(time.Now()) || completedTime.Equal(time.Now()) {
+			return false, nil
+		}
+
+		return false, nil
 	}
 
 	return false, nil
