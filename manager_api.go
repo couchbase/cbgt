@@ -360,12 +360,6 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 
 	mgr.m.Unlock()
 
-	// Close associated couchbase.Bucket instances used for stats
-	statsCBBktMap.closeCouchbaseBucket(indexDef.SourceName, indexDef.SourceUUID)
-
-	// Release associated gocbcore.Agent/DCPAgent instances used for stats
-	statsAgentsMap.releaseAgents(indexDef.SourceName)
-
 	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
 
 	mgr.PlannerKick("api/DeleteIndex, indexName: " + indexName)
