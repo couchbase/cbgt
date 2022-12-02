@@ -36,7 +36,7 @@ type TaskRequest struct {
 type PartitionErrMap map[string]error
 
 // TaskPartitionStatusMap tracks the current state
-/// of a task across the partitions
+// of a task across the partitions
 type TaskPartitionStatusMap map[string]string
 
 // MarshalJSON seralizes the error into a string for JSON consumption

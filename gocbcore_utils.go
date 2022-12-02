@@ -20,12 +20,11 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/couchbase/cbauth"
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/gocbcore/v9"
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // ----------------------------------------------------------------
@@ -41,70 +40,6 @@ func (rs *retryStrategy) RetryAfter(req gocbcore.RetryRequest,
 	}
 
 	return &gocbcore.NoRetryRetryAction{}
-}
-
-func setupAgentConfig(name, sourceName string,
-	auth gocbcore.AuthProvider, options map[string]string) *gocbcore.AgentConfig {
-	initialBootstrapNonTLS := defaultInitialBootstrapNonTLS
-	if options["feedInitialBootstrapNonTLS"] == "true" {
-		initialBootstrapNonTLS = true
-	} else if options["feedInitialBootstrapNonTLS"] == "false" {
-		initialBootstrapNonTLS = false
-	}
-
-	useCollections := true
-	if options["disableCollectionsSupport"] == "true" {
-		useCollections = false
-	}
-
-	return &gocbcore.AgentConfig{
-		UserAgent:              name,
-		BucketName:             sourceName,
-		Auth:                   auth,
-		ConnectTimeout:         GocbcoreConnectTimeout,
-		KVConnectTimeout:       GocbcoreKVConnectTimeout,
-		NetworkType:            "default",
-		InitialBootstrapNonTLS: initialBootstrapNonTLS,
-		UseCollections:         useCollections,
-	}
-}
-
-var errAgentSetupFailed = fmt.Errorf("agent setup failed")
-var errBucketUUIDMismatched = fmt.Errorf("mismatched bucketUUID")
-
-func setupGocbcoreAgent(config *gocbcore.AgentConfig) (
-	*gocbcore.Agent, error) {
-	agent, err := gocbcore.CreateAgent(config)
-	if err != nil {
-		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
-	}
-
-	options := gocbcore.WaitUntilReadyOptions{
-		DesiredState:  gocbcore.ClusterStateOnline,
-		ServiceTypes:  []gocbcore.ServiceType{gocbcore.MemdService},
-		RetryStrategy: &retryStrategy{},
-	}
-
-	signal := make(chan error, 1)
-	_, err = agent.WaitUntilReady(time.Now().Add(GocbcoreAgentSetupTimeout),
-		options, func(res *gocbcore.WaitUntilReadyResult, er error) {
-			signal <- er
-		})
-
-	if err == nil {
-		err = <-signal
-	}
-
-	if err != nil {
-		go agent.Close()
-		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
-	}
-
-	log.Printf("gocbcore_utils: CreateAgent succeeded"+
-		" (agent: %p, bucket: %s, name: %s)",
-		agent, config.BucketName, config.UserAgent)
-
-	return agent, nil
 }
 
 // ----------------------------------------------------------------
@@ -298,16 +233,16 @@ func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 		return nil, nil, fmt.Errorf("gocbcore_utils: createAgents, unable to build"+
 			" agent config from connStr: %s, err: %v", connStr, err)
 	}
-	config.UseTLS = useTLS
-	config.TLSRootCAProvider = caProvider
+	config.SecurityConfig.UseTLS = useTLS
+	config.SecurityConfig.TLSRootCAProvider = caProvider
 
 	err = dcpConfig.FromConnStr(connStr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gocbcore_utils: createAgents, unable to build"+
 			" dcpAgent config from connStr: %s, err: %v", connStr, err)
 	}
-	dcpConfig.UseTLS = useTLS
-	dcpConfig.TLSRootCAProvider = caProvider
+	dcpConfig.SecurityConfig.UseTLS = useTLS
+	dcpConfig.SecurityConfig.TLSRootCAProvider = caProvider
 
 	agent, err := setupGocbcoreAgent(config)
 	if err != nil {

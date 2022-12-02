@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,47 +26,15 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/gocbcore/v9"
-	"github.com/couchbase/gocbcore/v9/memd"
+	"github.com/couchbase/gocbcore/v10"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 const SOURCE_GOCBCORE = "gocbcore"
 
-// DEST_EXTRAS_TYPE_GOCBCORE_DCP represents gocb DCP mutation/deletion metadata
-// not included in DataUpdate/DataDelete (GocbcoreDCPExtras).
-const DEST_EXTRAS_TYPE_GOCBCORE_DCP = DestExtrasType(0x0004)
-
-// DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION represents gocb DCP mutation/deletion
-// scope id and collection id written to []byte of len=8 (4bytes each)
-const DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION = DestExtrasType(0x0005)
-
-// GocbcoreDCPExtras packages additional DCP mutation metadata for use by
-// DataUpdateEx, DataDeleteEx.
-type GocbcoreDCPExtras struct {
-	ScopeId      uint32
-	CollectionId uint32
-	Expiry       uint32
-	Flags        uint32
-	Datatype     uint8
-	Value        []byte // carries xattr information (if available) for DataDeleteEx
-}
-
 var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
 
-// GocbcoreConnectTimeout and GocbcoreKVConnectTimeout are timeouts used
-// by gocbcore to connect to the cluster manager and KV
-var GocbcoreConnectTimeout = time.Duration(60 * time.Second)
-var GocbcoreKVConnectTimeout = time.Duration(7 * time.Second)
-
-// GocbcoreAgentSetupTimeout is the time alloted for completing setup of
-// a gocbcore.Agent or a gocbcore.DCPAgent, two factors ..
-//   - cluster state to be online
-//   - memcached service to be ready
-var GocbcoreAgentSetupTimeout = time.Duration(60 * time.Second)
-
-// GocbcoreStatsTimeout is the time alloted to obtain a response from
-// the server for a stats request.
-var GocbcoreStatsTimeout = time.Duration(60 * time.Second)
+var errBucketUUIDMismatched = fmt.Errorf("mismatched bucketUUID")
 
 // ----------------------------------------------------------------
 
@@ -111,7 +78,7 @@ type gocbcoreDCPAgentMap struct {
 
 // Max references for a gocbcore.DCPAgent
 // NOTE: Increasing this value to > 1 will cause agents to be reused for
-//       multiple feeds, provided they're up against the same source.
+// multiple feeds, provided they're up against the same source.
 const defaultMaxFeedsPerDCPAgent = int(1)
 
 var dcpAgentMap *gocbcoreDCPAgentMap
@@ -189,8 +156,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent,"+
 			" unable to build config from connStr: %s, err: %v", connStr, err)
 	}
-	config.UseTLS = useTLS
-	config.TLSRootCAProvider = caProvider
+	config.SecurityConfig.UseTLS = useTLS
+	config.SecurityConfig.TLSRootCAProvider = caProvider
 
 	params := NewDCPFeedParams()
 	err = json.Unmarshal([]byte(paramsStr), params)
@@ -280,92 +247,6 @@ func (dm *gocbcoreDCPAgentMap) forceReconnectAgents() {
 }
 
 // ----------------------------------------------------------------
-
-const defaultOSOBackfillMode = false
-const defaultInitialBootstrapNonTLS = true
-
-func setupDCPAgentConfig(
-	name, bucketName string,
-	auth gocbcore.AuthProvider,
-	agentPriority gocbcore.DcpAgentPriority,
-	options map[string]string) *gocbcore.DCPAgentConfig {
-	useOSOBackfill := defaultOSOBackfillMode
-	if options["useOSOBackfill"] == "true" {
-		useOSOBackfill = true
-	} else if options["useOSOBackfill"] == "false" {
-		useOSOBackfill = false
-	}
-
-	initialBootstrapNonTLS := defaultInitialBootstrapNonTLS
-	if options["feedInitialBootstrapNonTLS"] == "true" {
-		initialBootstrapNonTLS = true
-	} else if options["feedInitialBootstrapNonTLS"] == "false" {
-		initialBootstrapNonTLS = false
-	}
-
-	useCollections := true
-	if options["disableCollectionsSupport"] == "true" {
-		useCollections = false
-	}
-
-	useStreamID := true
-	if options["disableStreamIDs"] == "true" {
-		useStreamID = false
-	}
-
-	return &gocbcore.DCPAgentConfig{
-		UserAgent:              name,
-		BucketName:             bucketName,
-		Auth:                   auth,
-		ConnectTimeout:         GocbcoreConnectTimeout,
-		KVConnectTimeout:       GocbcoreKVConnectTimeout,
-		NetworkType:            "default",
-		InitialBootstrapNonTLS: initialBootstrapNonTLS,
-		UseCollections:         useCollections,
-		UseOSOBackfill:         useOSOBackfill,
-		UseStreamID:            useStreamID,
-		BackfillOrder:          gocbcore.DCPBackfillOrderRoundRobin,
-		AgentPriority:          agentPriority,
-		DCPBufferSize:          int(DCPFeedBufferSizeBytes),
-	}
-}
-
-func setupGocbcoreDCPAgent(config *gocbcore.DCPAgentConfig,
-	connName string, flags memd.DcpOpenFlag) (
-	*gocbcore.DCPAgent, error) {
-	agent, err := gocbcore.CreateDcpAgent(config, connName, flags)
-	if err != nil {
-		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
-	}
-
-	options := gocbcore.WaitUntilReadyOptions{
-		DesiredState: gocbcore.ClusterStateOnline,
-		ServiceTypes: []gocbcore.ServiceType{gocbcore.MemdService},
-	}
-
-	signal := make(chan error, 1)
-	_, err = agent.WaitUntilReady(time.Now().Add(GocbcoreAgentSetupTimeout),
-		options, func(res *gocbcore.WaitUntilReadyResult, er error) {
-			signal <- er
-		})
-
-	if err == nil {
-		err = <-signal
-	}
-
-	if err != nil {
-		log.Warnf("feed_dcp_gocbcore: CreateDcpAgent, err: %v (close DCPAgent: %p)",
-			err, agent)
-		go agent.Close()
-		return nil, fmt.Errorf("%w, err: %v", errAgentSetupFailed, err)
-	}
-
-	log.Printf("feed_dcp_gocbcore: CreateDcpAgent succeeded"+
-		" (agent: %p, bucketName: %s, name: %s)",
-		agent, config.BucketName, config.UserAgent)
-
-	return agent, nil
-}
 
 func waitForResponse(signal <-chan error, closeCh <-chan struct{},
 	op gocbcore.PendingOp, timeout time.Duration) error {
@@ -1109,350 +990,6 @@ func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
 	}
 
 	return err
-}
-
-// ----------------------------------------------------------------
-
-func (f *GocbcoreDCPFeed) SnapshotMarker(startSeqNo, endSeqNo uint64,
-	vbId uint16, streamId uint16, snapshotType gocbcore.SnapshotState) {
-	if f.currVBs[vbId] == nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SnapshotMarker, invalid vb",
-			vbId, streamId))
-		return
-	}
-
-	f.currVBs[vbId].snapStart = startSeqNo
-	f.currVBs[vbId].snapEnd = endSeqNo
-	f.currVBs[vbId].snapSaved = false
-
-	err := Timer(func() error {
-		partition, dest, err :=
-			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if err != nil || f.checkStopAfter(partition) {
-			return err
-		}
-
-		if f.stopAfter != nil {
-			uuidSeq, exists := f.stopAfter[partition]
-			if exists && endSeqNo > uuidSeq.Seq { // TODO: Check UUID.
-				// Clamp the snapEnd so batches are executed.
-				endSeqNo = uuidSeq.Seq
-			}
-		}
-
-		return dest.SnapshotStart(partition, startSeqNo, endSeqNo)
-	}, f.stats.TimerSnapshotStart)
-
-	if err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SnapshotMarker, err: %v",
-			vbId, streamId, err))
-		return
-	}
-
-	atomic.AddUint64(&f.dcpStats.TotDCPSnapshotMarkers, 1)
-}
-
-func (f *GocbcoreDCPFeed) Mutation(seqNo, revNo uint64,
-	flags, expiry, lockTime uint32, cas uint64, datatype uint8, vbId uint16,
-	collectionId uint32, streamId uint16, key, value []byte) {
-	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Mutation, %v",
-			vbId, streamId, err))
-		return
-	}
-
-	err := Timer(func() error {
-		partition, dest, err :=
-			VBucketIdToPartitionDest(f.pf, f.dests, vbId, key)
-		if err != nil || f.checkStopAfter(partition) {
-			return err
-		}
-
-		if destEx, ok := dest.(DestEx); ok {
-			extras := GocbcoreDCPExtras{
-				Expiry:   expiry,
-				Flags:    flags,
-				Datatype: datatype,
-			}
-			if f.agent.HasCollectionsSupport() {
-				extras.ScopeId = f.streamOptions.FilterOptions.ScopeID
-				extras.CollectionId = collectionId
-			}
-			err = destEx.DataUpdateEx(partition, key, seqNo, value, cas,
-				DEST_EXTRAS_TYPE_GOCBCORE_DCP, extras)
-		} else {
-			extras := make([]byte, 8) // 8 bytes needed to hold 2 uint32s
-			binary.LittleEndian.PutUint32(extras[0:], f.scopeID)
-			binary.LittleEndian.PutUint32(extras[4:], collectionId)
-			err = dest.DataUpdate(partition, key, seqNo, value, cas,
-				DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION, extras)
-		}
-
-		if err != nil {
-			return fmt.Errorf("name: %s, partition: %s, key: %v, seq: %d, err: %v",
-				f.Name(), partition, log.Tag(log.UserData, key), seqNo, err)
-		}
-
-		f.updateStopAfter(partition, seqNo)
-
-		return nil
-	}, f.stats.TimerDataUpdate)
-
-	if err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Mutation, err: %v",
-			vbId, streamId, err))
-		return
-	}
-
-	f.lastReceivedSeqno[vbId] = seqNo
-
-	atomic.AddUint64(&f.dcpStats.TotDCPMutations, 1)
-}
-
-func (f *GocbcoreDCPFeed) Deletion(seqNo, revNo uint64, deleteTime uint32,
-	cas uint64, datatype uint8, vbId uint16, collectionId uint32, streamId uint16,
-	key, value []byte) {
-	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Deletion, %v",
-			vbId, streamId, err))
-		return
-	}
-
-	err := Timer(func() error {
-		partition, dest, err :=
-			VBucketIdToPartitionDest(f.pf, f.dests, vbId, key)
-		if err != nil || f.checkStopAfter(partition) {
-			return err
-		}
-
-		if destEx, ok := dest.(DestEx); ok {
-			extras := GocbcoreDCPExtras{
-				Datatype: datatype,
-				Value:    value,
-			}
-			if f.agent.HasCollectionsSupport() {
-				extras.ScopeId = f.streamOptions.FilterOptions.ScopeID
-				extras.CollectionId = collectionId
-			}
-			err = destEx.DataDeleteEx(partition, key, seqNo, cas,
-				DEST_EXTRAS_TYPE_GOCBCORE_DCP, extras)
-		} else {
-			extras := make([]byte, 8) // 8 bytes needed to hold 2 uint32s
-			binary.LittleEndian.PutUint32(extras[0:], f.scopeID)
-			binary.LittleEndian.PutUint32(extras[4:], collectionId)
-			err = dest.DataDelete(partition, key, seqNo, cas,
-				DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION, extras)
-		}
-
-		if err != nil {
-			return fmt.Errorf("name: %s, partition: %s, key: %v, seq: %d, err: %v",
-				f.Name(), partition, log.Tag(log.UserData, key), seqNo, err)
-		}
-
-		f.updateStopAfter(partition, seqNo)
-
-		return nil
-	}, f.stats.TimerDataDelete)
-
-	if err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] Deletion, err: %v",
-			vbId, streamId, err))
-		return
-	}
-
-	f.lastReceivedSeqno[vbId] = seqNo
-
-	atomic.AddUint64(&f.dcpStats.TotDCPDeletions, 1)
-}
-
-func (f *GocbcoreDCPFeed) Expiration(seqNo, revNo uint64, deleteTime uint32,
-	cas uint64, vbId uint16, collectionId uint32, streamId uint16, key []byte) {
-	f.Deletion(seqNo, revNo, deleteTime, cas, 0, vbId, collectionId, streamId, key, nil)
-}
-
-func (f *GocbcoreDCPFeed) End(vbId uint16, streamId uint16, err error) {
-	atomic.AddUint64(&f.dcpStats.TotDCPStreamEnds, 1)
-	lastReceivedSeqno := f.lastReceivedSeqno[vbId]
-	if err == nil {
-		f.complete(vbId)
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] ended for vb: %v,"+
-			" last seq: %v", f.Name(), streamId, vbId, lastReceivedSeqno)
-	} else if errors.Is(err, gocbcore.ErrShutdown) ||
-		errors.Is(err, gocbcore.ErrSocketClosed) ||
-		errors.Is(err, gocbcore.ErrDCPStreamFilterEmpty) {
-		f.complete(vbId)
-		f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s], End, vb: %v, err: %v",
-			f.Name(), vbId, err))
-	} else if errors.Is(err, gocbcore.ErrDCPStreamStateChanged) ||
-		errors.Is(err, gocbcore.ErrDCPStreamTooSlow) ||
-		errors.Is(err, gocbcore.ErrDCPStreamDisconnected) ||
-		errors.Is(err, gocbcore.ErrForcedReconnect) {
-		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v, closed due to"+
-			" `%s`, last seq: %v, reconnecting ...",
-			f.Name(), streamId, vbId, err.Error(), lastReceivedSeqno)
-		go func(vb uint16) {
-			vbuuid, lastSeq, _ := f.lastVbUUIDSeqFromFailOverLog(vb)
-			f.initiateStreamEx(vb, false, gocbcore.VbUUID(vbuuid),
-				gocbcore.SeqNo(lastSeq), maxEndSeqno)
-		}(vbId)
-	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
-		f.complete(vbId)
-		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
-			" closed by consumer", f.Name(), streamId, vbId)
-	} else {
-		f.complete(vbId)
-		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] closed for vb: %v,"+
-			" last seq: %v, err: `%s`",
-			f.Name(), streamId, vbId, lastReceivedSeqno, err.Error())
-	}
-}
-
-// ----------------------------------------------------------------
-
-func (f *GocbcoreDCPFeed) CreateCollection(seqNo uint64, version uint8,
-	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
-	ttl uint32, streamId uint16, key []byte) {
-	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] CreateCollection, %v",
-			vbId, streamId, err))
-		return
-	}
-
-	err := Timer(func() error {
-		partition, dest, err :=
-			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if err != nil || f.checkStopAfter(partition) {
-			return err
-		}
-
-		if destColl, ok := dest.(DestCollection); ok {
-			// A CreateCollection message for a collection is received only
-			// if the feed has subscribed to the collection, so update seqno
-			// received for the feed.
-			err = destColl.CreateCollection(partition, manifestUid, scopeId,
-				collectionId, seqNo)
-		}
-
-		if err != nil {
-			return fmt.Errorf("name: %s, partition: %s,"+
-				" seq: %d, err: %v", f.Name(), partition, seqNo, err)
-		}
-
-		f.updateStopAfter(partition, seqNo)
-
-		return nil
-	}, f.stats.TimerCreateCollection)
-
-	if err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] CreateCollection, err: %v",
-			vbId, streamId, err))
-		return
-	}
-
-	f.lastReceivedSeqno[vbId] = seqNo
-
-	atomic.AddUint64(&f.dcpStats.TotDCPCreateCollections, 1)
-}
-
-func (f *GocbcoreDCPFeed) DeleteCollection(seqNo uint64, version uint8,
-	vbId uint16, manifestUid uint64, scopeId uint32, collectionId uint32,
-	streamId uint16) {
-	// initiate a feed closure on collection delete
-	f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] DeleteCollection,"+
-		" vb: %v, stream: %v, collection uid: %d",
-		f.Name(), vbId, streamId, collectionId))
-}
-
-func (f *GocbcoreDCPFeed) FlushCollection(seqNo uint64, version uint8,
-	vbId uint16, manifestUid uint64, collectionId uint32) {
-	// FIXME: not supported for CC
-}
-
-func (f *GocbcoreDCPFeed) CreateScope(seqNo uint64, version uint8, vbId uint16,
-	manifestUid uint64, scopeId uint32, streamId uint16, key []byte) {
-	// Don't expect to see a CreateScope message as indexes cannot span scopes
-}
-
-func (f *GocbcoreDCPFeed) DeleteScope(seqNo uint64, version uint8, vbId uint16,
-	manifestUid uint64, scopeId uint32, streamId uint16) {
-	// initiate a feed closure on scope delete
-	f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] DeleteScope,"+
-		" vb: %v, stream: %v, scope uid: %d",
-		f.Name(), vbId, streamId, scopeId))
-}
-
-func (f *GocbcoreDCPFeed) ModifyCollection(seqNo uint64, version uint8, vbId uint16,
-	manifestUid uint64, collectionId uint32, ttl uint32, streamId uint16) {
-	// FIXME: not supported for CC
-}
-
-// ----------------------------------------------------------------
-
-func (f *GocbcoreDCPFeed) OSOSnapshot(vbId uint16, snapshotType uint32,
-	streamId uint16) {
-	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] OSOSnapshot, %v",
-			vbId, streamId, err))
-		return
-	}
-
-	partition, dest, err :=
-		VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-	if err == nil && !f.checkStopAfter(partition) {
-		if destColl, ok := dest.(DestCollection); ok {
-			err = destColl.OSOSnapshot(partition, snapshotType)
-		}
-	}
-
-	if err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] OSOSnapshot, err: %v",
-			vbId, streamId, err))
-		return
-	}
-}
-
-func (f *GocbcoreDCPFeed) SeqNoAdvanced(vbId uint16, seqNo uint64,
-	streamId uint16) {
-	if err := f.checkAndUpdateVBucketState(vbId); err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SeqNoAdvanced, %v",
-			vbId, streamId, err))
-		return
-	}
-
-	err := Timer(func() error {
-		partition, dest, err :=
-			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if err != nil || f.checkStopAfter(partition) {
-			return err
-		}
-
-		if destColl, ok := dest.(DestCollection); ok {
-			// A SeqNoAdvanced message is received when the feed has subscribed
-			// to collection(s), and it is to be interpreted as a SnapshotEnd
-			// message, indicating that the feed should not expect any more
-			// sequence numbers up until this.
-			err = destColl.SeqNoAdvanced(partition, seqNo)
-		}
-
-		if err != nil {
-			return fmt.Errorf("name: %s, partition: %s,"+
-				" seq: %d, err: %v", f.Name(), partition, seqNo, err)
-		}
-
-		f.updateStopAfter(partition, seqNo)
-
-		return nil
-	}, f.stats.TimerSeqNoAdvanced)
-
-	if err != nil {
-		f.onError(true, fmt.Errorf("[vb:%v stream:%v] SeqNoAdvanced, err: %v",
-			vbId, streamId, err))
-		return
-	}
-
-	f.lastReceivedSeqno[vbId] = seqNo
-
-	atomic.AddUint64(&f.dcpStats.TotDCPSeqNoAdvanceds, 1)
 }
 
 // ----------------------------------------------------------------
