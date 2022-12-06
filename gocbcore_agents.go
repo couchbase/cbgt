@@ -136,9 +136,6 @@ func setupDCPAgentConfig(
 		},
 		KVConfig: gocbcore.KVConfig{
 			ConnectTimeout: GocbcoreKVConnectTimeout,
-			// FIXME ServerWaitBackoff: ?,
-			// FIXME PoolSize: ?,
-			// FIXME ConnectionBufferSize: ?,
 		},
 		HTTPConfig: gocbcore.HTTPConfig{
 			MaxIdleConns:        HttpTransportMaxIdleConns,
