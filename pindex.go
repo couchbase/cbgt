@@ -284,6 +284,10 @@ func PIndexNameFromPath(path string) string {
 	return path[0 : len(path)-len(pindexPathSuffix)]
 }
 
+func (pindex *PIndex) HibernationInProgress() bool {
+	return strings.HasPrefix(pindex.HibernationPath, HIBERNATE_TASK)
+}
+
 // Retrieves a pindex name from a pindex path.
 func ParsePIndexPath(dataDir, pindexPath string) (string, bool) {
 	if !strings.HasSuffix(pindexPath, pindexPathSuffix) {

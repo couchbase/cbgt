@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/rebalance"
@@ -35,6 +34,10 @@ var (
 	// storage, used when checking if a remote path exists.
 	GetRemoteBucketAndPathHook = func(remotePath string) (string, string, error) {
 		return "", "", fmt.Errorf("not-implemented")
+	}
+
+	BucketStateTrackerHook = func(*cbgt.Manager, string, string) (int, error) {
+		return 0, fmt.Errorf("not-implemented")
 	}
 
 	// This hook is used to download the index metadata(definitions) from the
@@ -289,18 +292,41 @@ func (hm *Manager) uploadIndexMetadata() error {
 	return UploadIndexMetadataHook(client, ctx, data, hm.options.ArchiveLocation)
 }
 
+func (hm *Manager) startPauseBucketStateTracker() {
+	status, err := BucketStateTrackerHook(hm.options.Manager, cbgt.HIBERNATE_TASK,
+		hm.options.BucketName)
+	if err != nil {
+		log.Errorf("hibernate: pause: error tracking bucket: %v", err)
+		return
+	}
+
+	if status == 1 {
+		log.Printf("hibernate: hibernation succeeded, deleting indexes for "+
+			"bucket %s", hm.options.BucketName)
+
+		// TODO Better way of getting source type?
+		var sourceType string
+		for _, index := range hm.indexDefsToHibernate.IndexDefs {
+			if index.SourceName == hm.options.BucketName {
+				sourceType = index.SourceType
+				break
+			}
+		}
+		hm.options.Manager.DeleteAllIndexFromSource(sourceType, hm.options.BucketName, "")
+	}
+}
+
 func (hm *Manager) runHibernateIndexes() {
 	var err error
 	defer func() {
 		// Completion of hibernation operation, whether naturally or due
 		// to error/Stop(), needs this cleanup.  Wait for runMonitor()
 		// to finish as it may have more sends to progressCh.
-		hm.Stop()
-
 		hm.monitor.Stop()
-
 		close(hm.monitorSampleCh)
 		<-hm.monitorDoneCh
+
+		hm.Stop()
 
 		if err != nil {
 			hm.progressCh <- HibernationProgress{Error: err}
@@ -314,7 +340,9 @@ func (hm *Manager) runHibernateIndexes() {
 		return
 	}
 
-	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) {
+	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
+		go hm.startPauseBucketStateTracker()
+	} else if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) {
 		// This distinction between dry and non-dry run for Resume is made here
 		// since in a dry run, no index is 'hibernated' per se, it's a checking of remote
 		// paths.
@@ -501,12 +529,9 @@ func (hm *Manager) waitUntilFileTransferDone(indexDefs *cbgt.IndexDefs) error {
 	// listen to the stats from the hibernation channels and
 	// wait until the bytes transferred and bytes expected matches.
 
-	// TODO: Make configurable.
-	ctxTimeout, cancel := context.WithTimeout(context.Background(), time.Minute*5)
-	defer cancel()
-
+	var caughtUp bool
 MONITOR_LOOP:
-	for {
+	for !caughtUp {
 		sampleWantCh := make(chan monitor.MonitorSample)
 		select {
 		case <-hm.stopCh:
@@ -551,12 +576,12 @@ MONITOR_LOOP:
 						split := strings.Split(nodePIndex, ":")
 						// Here, index-metadata progress is not considered; only the transfer progress
 						if len(split) <= 1 {
-							continue
+							continue MONITOR_LOOP
 						}
 						indexName, err := hm.options.Manager.GetIndexNameForPIndex(split[1])
 						if err != nil {
-							log.Errorf("hibernate: error getting idx: %e", err)
-							continue
+							log.Errorf("hibernate: error getting index: %v", err)
+							continue MONITOR_LOOP
 						}
 						if indexName != "" {
 							indexProgress[indexName] += progress
@@ -576,12 +601,15 @@ MONITOR_LOOP:
 					for _, index := range indexDefs.IndexDefs {
 						// If even one index has not completed their transfer, continue monitoring.
 						if indexProgress[index.Name] < 1 {
+							caughtUp = false
 							continue MONITOR_LOOP
 						}
 					}
 
+					caughtUp = true
+
 					if sampleErr != nil {
-						log.Printf("hibernate: hibernation complete for indexes,despite error %e:",
+						log.Printf("hibernate: hibernation complete for indexes,despite error %v:",
 							sampleErr)
 					} else {
 						log.Printf("hibernate: hibernation complete for indexes:")
@@ -596,12 +624,9 @@ MONITOR_LOOP:
 			if sampleErr != nil {
 				return sampleErr
 			}
-
-		// if upload takes longer than a (configurable) max period, stop the op.
-		case <-ctxTimeout.Done():
-			return fmt.Errorf("stopped due to timeout exceeded")
 		}
 	}
+	return nil
 }
 
 // --------------------------------------------------------
@@ -734,9 +759,6 @@ func (hm *Manager) Stop() {
 // This function rolls back the effects of hibernation if
 // cancelled midway/aborted.
 func (hm *Manager) rollbackHibernation() {
-	// Used for cancellations/aborted hibernation.
-	_, cancel := hm.options.Manager.GetHibernationContext()
-	cancel()
 
 	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) && !hm.options.DryRun {
 		indexDefs, _, err := hm.options.Manager.GetIndexDefs(false)

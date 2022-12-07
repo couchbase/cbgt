@@ -335,31 +335,19 @@ func (mgr *Manager) pindexesRestart(
 	return errs
 }
 
-func (mgr *Manager) hibernatePIndexUtil(pi *PIndex) error {
-	hibernateParams := struct {
-		RemotePath string `json:"hibernate"`
-	}{}
-
-	err := json.Unmarshal([]byte(pi.IndexParams), &hibernateParams)
-	if err != nil {
-		return err
-	}
-	return Hibernate(mgr, pi.IndexType, hibernateParams.RemotePath,
-		pi.Name, pi.Path)
-}
-
 // In resume, register a no-op pindex without attempting to open it.
 // Later in resume, start the bucket state tracker for this new pindex.
 // When the bucket is 'online', make feedable and kick the index.
-func (mgr *Manager) resumePIndex(req []*pindexRestartReq) []error {
+func (mgr *Manager) unhibernatePIndex(req []*pindexRestartReq) []error {
 
 	var errs []error
+	var pindexesToUnhibernate []*PIndex
 
 	for _, r := range req {
 		// stop the pindex first
 		err := mgr.stopPIndex(r.pindex, false)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("janitor: resumePIndex stopping "+
+			errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex stopping "+
 				" pindex: %s, err: %v", r.pindex.Name, err))
 			continue
 		}
@@ -368,7 +356,7 @@ func (mgr *Manager) resumePIndex(req []*pindexRestartReq) []error {
 		if newPath != r.pindex.Path {
 			err = os.Rename(r.pindex.Path, newPath)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("janitor: resumePIndex"+
+				errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex"+
 					" updating pindex: %s path: %s failed, err: %v",
 					r.pindex.Name, newPath, err))
 				continue
@@ -384,7 +372,7 @@ func (mgr *Manager) resumePIndex(req []*pindexRestartReq) []error {
 			// update the new indexdef param changes
 			buf, err := json.Marshal(pi)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("janitor: resumePIndex"+
+				errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex"+
 					" Marshal pindex: %s, err: %v", pi.Name, err))
 				continue
 
@@ -392,7 +380,7 @@ func (mgr *Manager) resumePIndex(req []*pindexRestartReq) []error {
 			err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
 				PINDEX_META_FILENAME, buf, 0600)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("janitor: resumePIndex could not save "+
+				errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex could not save "+
 					"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err))
 				continue
 			}
@@ -405,23 +393,36 @@ func (mgr *Manager) resumePIndex(req []*pindexRestartReq) []error {
 			continue
 		}
 
-		Unhibernate(mgr, pi)
+		pindexesToUnhibernate = append(pindexesToUnhibernate, pi)
+	}
+
+	if UnhibernatePartitionsHook != nil && len(pindexesToUnhibernate) > 0 {
+		UnhibernatePartitionsHook(mgr, pindexesToUnhibernate,
+			pindexesToUnhibernate[0].SourceName, pindexesToUnhibernate[0].SourceType)
 	}
 
 	return errs
 }
 
-func (mgr *Manager) hibernatePIndex(pindexesToHibernate []*PIndex) []error {
-	var errs []error
+var UnhibernatePartitionsHook func(mgr *Manager, pindexes []*PIndex,
+	sourceType, sourceName string)
 
-	for _, pi := range pindexesToHibernate {
-		err := mgr.hibernatePIndexUtil(pi)
-		if err != nil {
-			errs = append(errs, err)
-		}
+var HibernatePartitionsHook func(mgr *Manager, pindexes []*PIndex,
+	sourceType, sourceName string) error
+
+func (mgr *Manager) hibernatePIndex(pindexes []*PIndex) error {
+	var pindexesToHibernate []*PIndex
+
+	for _, pi := range pindexes {
+		pindexesToHibernate = append(pindexesToHibernate, pi)
 	}
 
-	return errs
+	if HibernatePartitionsHook != nil && len(pindexesToHibernate) > 0 {
+		return HibernatePartitionsHook(mgr, pindexesToHibernate, pindexesToHibernate[0].SourceName,
+			pindexesToHibernate[0].SourceType)
+	}
+
+	return nil
 }
 
 // JanitorOnce is the main body of a JanitorLoop.
@@ -485,7 +486,9 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 			log.Printf(" pindex %v; UUID: %v", pi.Name, pi.UUID)
 		}
 	}
-	errs = append(errs, mgr.hibernatePIndex(pindexesToHibernate)...)
+	if len(pindexesToHibernate) > 0 {
+		errs = append(errs, mgr.hibernatePIndex(pindexesToHibernate))
+	}
 
 	log.Printf("janitor: pindexes to unhibernate: %d", len(pindexesToUnhibernate))
 	for _, pi := range pindexesToUnhibernate {
@@ -493,7 +496,9 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 			log.Printf(" pindex %v; UUID: %v", pi.pindex.Name, pi.pindex.UUID)
 		}
 	}
-	errs = append(errs, mgr.resumePIndex(pindexesToUnhibernate)...)
+	if len(pindexesToUnhibernate) > 0 {
+		errs = append(errs, mgr.unhibernatePIndex(pindexesToUnhibernate)...)
+	}
 
 	// First, teardown pindexes that need to be removed.
 	// batching the stop, aiming to expedite the
@@ -559,6 +564,11 @@ func filterFeedable(addFeeds [][]*PIndex) (rv [][]*PIndex) {
 	for _, pindexes := range addFeeds {
 		plist := make([]*PIndex, 0, len(pindexes))
 		for _, pindex := range pindexes {
+			// Do not attempt to add feeds if the pindex is being paused
+			if pindex.HibernationInProgress() {
+				log.Printf("janitor: skipping feed: %s since it's being paused", pindex.Name)
+				continue
+			}
 			ready, err := pindex.IsFeedable()
 			if ready && err == nil {
 				plist = append(plist, pindex)
@@ -830,11 +840,11 @@ func newPIndexHibernateReq(addPlanPI *PlanPIndex,
 	}
 }
 
-func getPIndexesToHibernate(pindexesToRemove []*PIndex,
+func getPIndexesToHibernate(currPindexes []*PIndex,
 	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
-	pindexesToHibernate := make([]*pindexRestartReq, len(pindexesToRemove))
+	pindexesToHibernate := make([]*pindexRestartReq, len(currPindexes))
 	i := 0
-	for _, pindex := range pindexesToRemove {
+	for _, pindex := range currPindexes {
 		for _, addPlanPI := range addPlanPIndexes {
 			if addPlanPI.SourcePartitions == pindex.SourcePartitions {
 				pindex.IndexUUID = addPlanPI.IndexUUID
