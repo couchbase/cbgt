@@ -118,6 +118,7 @@ func (p *PIndex) Clone() *PIndex {
 			SourcePartitions:    p.SourcePartitions,
 			sourcePartitionsMap: p.sourcePartitionsMap,
 			Path:                p.Path,
+			HibernationPath:     p.HibernationPath,
 			Impl:                p.Impl,
 			Dest:                p.Dest,
 			closed:              p.closed,

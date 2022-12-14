@@ -344,52 +344,9 @@ func (mgr *Manager) unhibernatePIndex(req []*pindexRestartReq) []error {
 	var pindexesToUnhibernate []*PIndex
 
 	for _, r := range req {
-		// stop the pindex first
-		err := mgr.stopPIndex(r.pindex, false)
+		pi, err := mgr.hibernateRestart(r)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex stopping "+
-				" pindex: %s, err: %v", r.pindex.Name, err))
-			continue
-		}
-		// rename the pindex folder and name as per the new plan
-		newPath := mgr.PIndexPath(r.planPIndexName)
-		if newPath != r.pindex.Path {
-			err = os.Rename(r.pindex.Path, newPath)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex"+
-					" updating pindex: %s path: %s failed, err: %v",
-					r.pindex.Name, newPath, err))
-				continue
-			}
-		}
-
-		pi := r.pindex.Clone()
-		pi.Name = r.planPIndexName
-		pi.Path = newPath
-
-		// persist PINDEX_META only if manager's dataDir is set
-		if len(mgr.dataDir) > 0 {
-			// update the new indexdef param changes
-			buf, err := json.Marshal(pi)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex"+
-					" Marshal pindex: %s, err: %v", pi.Name, err))
-				continue
-
-			}
-			err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
-				PINDEX_META_FILENAME, buf, 0600)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("janitor: unhibernatePIndex could not save "+
-					"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err))
-				continue
-			}
-		}
-
-		err = mgr.registerPIndex(pi)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("janitor: restartPIndex failed to "+
-				"register pindex: %s, err: %v", pi.Name, err))
+			errs = append(errs, err)
 			continue
 		}
 
@@ -408,21 +365,83 @@ var UnhibernatePartitionsHook func(mgr *Manager, pindexes []*PIndex,
 	sourceType, sourceName string)
 
 var HibernatePartitionsHook func(mgr *Manager, pindexes []*PIndex,
-	sourceType, sourceName string) error
+	sourceType, sourceName string) []error
 
-func (mgr *Manager) hibernatePIndex(pindexes []*PIndex) error {
+// Specific restart and registration used in hibernation - followed by specific
+// hibernation/unhibernation functions.
+func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
+	// stop the pindex first
+	err := mgr.stopPIndex(r.pindex, false)
+	if err != nil {
+		return nil, fmt.Errorf("janitor: hibernateRestart stopping "+
+			" pindex: %s, err: %v", r.pindex.Name, err)
+	}
+	// rename the pindex folder and name as per the new plan
+	newPath := mgr.PIndexPath(r.planPIndexName)
+	if newPath != r.pindex.Path {
+		err = os.Rename(r.pindex.Path, newPath)
+		if err != nil {
+			return nil, fmt.Errorf("janitor: hibernateRestart"+
+				" updating pindex: %s path: %s failed, err: %v",
+				r.pindex.Name, newPath, err)
+		}
+	}
+
+	pi := r.pindex.Clone()
+	pi.Name = r.planPIndexName
+	pi.Path = newPath
+
+	// persist PINDEX_META only if manager's dataDir is set
+	if len(mgr.dataDir) > 0 {
+		buf, err := json.Marshal(pi)
+		if err != nil {
+			return nil, fmt.Errorf("janitor: hibernateRestart"+
+				" Marshal pindex: %s, err: %v", pi.Name, err)
+
+		}
+		err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
+			PINDEX_META_FILENAME, buf, 0600)
+		if err != nil {
+			return nil, fmt.Errorf("janitor: hibernateRestart could not save "+
+				"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err)
+		}
+	}
+
+	err = mgr.registerPIndex(pi)
+	if err != nil {
+		return nil, fmt.Errorf("janitor: hibernateRestart failed to "+
+			"register pindex: %s, err: %v", pi.Name, err)
+	}
+
+	return pi, nil
+}
+
+func (mgr *Manager) hibernatePIndex(req []*pindexRestartReq) []error {
 	var pindexesToHibernate []*PIndex
+	var errs []error
 
-	for _, pi := range pindexes {
+	for _, r := range req {
+		pi, err := mgr.hibernateRestart(r)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		// Change 'closed' to false so that its files gets deleted on a successful hibernation.
+		pi.closed = false
+
 		pindexesToHibernate = append(pindexesToHibernate, pi)
 	}
 
 	if HibernatePartitionsHook != nil && len(pindexesToHibernate) > 0 {
-		return HibernatePartitionsHook(mgr, pindexesToHibernate, pindexesToHibernate[0].SourceName,
-			pindexesToHibernate[0].SourceType)
+		hibErrs := HibernatePartitionsHook(mgr, pindexesToHibernate,
+			pindexesToHibernate[0].SourceName, pindexesToHibernate[0].SourceType)
+		if len(hibErrs) > 0 {
+			errs = append(errs, hibErrs...)
+		}
 	}
 
-	return nil
+	return errs
 }
 
 // JanitorOnce is the main body of a JanitorLoop.
@@ -483,12 +502,11 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	log.Printf("janitor: pindexes to hibernate: %d", len(pindexesToHibernate))
 	for _, pi := range pindexesToHibernate {
 		if pi != nil {
-			log.Printf(" pindex %v; UUID: %v", pi.Name, pi.UUID)
+			log.Printf(" pindex %v; UUID: %v", pi.pindex.Name, pi.pindex.UUID)
 		}
 	}
-	if len(pindexesToHibernate) > 0 {
-		errs = append(errs, mgr.hibernatePIndex(pindexesToHibernate))
-	}
+
+	errs = append(errs, mgr.hibernatePIndex(pindexesToHibernate)...)
 
 	log.Printf("janitor: pindexes to unhibernate: %d", len(pindexesToUnhibernate))
 	for _, pi := range pindexesToUnhibernate {
@@ -496,9 +514,8 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 			log.Printf(" pindex %v; UUID: %v", pi.pindex.Name, pi.pindex.UUID)
 		}
 	}
-	if len(pindexesToUnhibernate) > 0 {
-		errs = append(errs, mgr.unhibernatePIndex(pindexesToUnhibernate)...)
-	}
+
+	errs = append(errs, mgr.unhibernatePIndex(pindexesToUnhibernate)...)
 
 	// First, teardown pindexes that need to be removed.
 	// batching the stop, aiming to expedite the
@@ -587,7 +604,7 @@ func filterFeedable(addFeeds [][]*PIndex) (rv [][]*PIndex) {
 func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPIndex,
 	removePIndexes []*PIndex) (planPIndexesToAdd []*PlanPIndex,
 	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq,
-	pindexesToHibernate []*PIndex, pindexesToUnhibernate []*pindexRestartReq) {
+	pindexesToHibernate, pindexesToUnhibernate []*pindexRestartReq) {
 	// if there are no pindexes to be removed as per planner,
 	// then there won't be anything to restart as well.
 	if len(removePIndexes) == 0 {
@@ -595,7 +612,7 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 	}
 	pindexesToRestart = make([]*pindexRestartReq, 0)
 	pindexesToRemove = make([]*PIndex, 0)
-	pindexesToHibernate = make([]*PIndex, 0)
+	pindexesToHibernate = make([]*pindexRestartReq, 0)
 	pindexesToUnhibernate = make([]*pindexRestartReq, 0)
 	planPIndexesToAdd = make([]*PlanPIndex, 0)
 	// grouping addPlanPIndexes and removePIndexes as per index for
@@ -614,7 +631,7 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 	// unless overridden
 	if v, ok := mgr.Options()["rebuildOnReplicaUpdate"]; !ok ||
 		v != "true" {
-		return advPIndexClassifier(indexPIndexMap, indexPlanPIndexMap)
+		return advPIndexClassifier(mgr, indexPIndexMap, indexPlanPIndexMap)
 	}
 
 	// take every pindex to remove and check the config change
@@ -641,15 +658,13 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 				pathChange := metadataPathChange(configAnalyzeReq, pindex.Path)
 				if pathChange == UNHIBERNATE_TASK {
 					pindexesToUnhibernate = append(pindexesToUnhibernate,
-						getPIndexesToHibernate(pindexes, planPIndexes)...)
+						getPIndexesToUnhibernate(pindexes, planPIndexes)...)
 					continue
 				}
 				if pathChange == HIBERNATE_TASK {
-					pidxList := getPIndexesToHibernate(pindexes, planPIndexes)
-					// If there was a crash during upload, this condition is added to
-					// avoid a re upload on restart.
+					pidxList := getPIndexesToHibernate(mgr.uuid, pindexes, planPIndexes)
 					for _, pidx := range pidxList {
-						pindexesToHibernate = append(pindexesToHibernate, pidx.pindex)
+						pindexesToHibernate = append(pindexesToHibernate, pidx)
 					}
 					continue
 				}
@@ -688,6 +703,9 @@ func metadataPathChange(configAnalyzeReq *ConfigAnalyzeRequest, pindexPath strin
 		return HIBERNATE_TASK
 	}
 
+	// This condition occurs during resume, when the download of the pindex files has
+	// complete, the hibernation path is changed to a blank path, followed by waiting for
+	// the right bucket state to add feeds(which is part of the current janitor kick).
 	if strings.HasPrefix(configAnalyzeReq.IndexDefnPrev.HibernationPath, UNHIBERNATE_TASK) &&
 		configAnalyzeReq.IndexDefnCur.HibernationPath == "" {
 		return UNHIBERNATE_TASK
@@ -696,14 +714,14 @@ func metadataPathChange(configAnalyzeReq *ConfigAnalyzeRequest, pindexPath strin
 	return ""
 }
 
-func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
+func advPIndexClassifier(mgr *Manager, indexPIndexMap map[string][]*PIndex,
 	indexPlanPIndexMap map[string][]*PlanPIndex) (planPIndexesToAdd []*PlanPIndex,
 	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq,
-	pindexesToHibernate []*PIndex, pindexesToUnhibernate []*pindexRestartReq) {
+	pindexesToHibernate, pindexesToUnhibernate []*pindexRestartReq) {
 	pindexesToRestart = make([]*pindexRestartReq, 0)
 	pindexesToRemove = make([]*PIndex, 0)
 	planPIndexesToAdd = make([]*PlanPIndex, 0)
-	pindexesToHibernate = make([]*PIndex, 0)
+	pindexesToHibernate = make([]*pindexRestartReq, 0)
 	pindexesToUnhibernate = make([]*pindexRestartReq, 0)
 
 	// take every pindex to remove and check the config change
@@ -751,8 +769,10 @@ func advPIndexClassifier(indexPIndexMap map[string][]*PIndex,
 						continue
 					}
 					if pathChange == HIBERNATE_TASK {
-						pidx := newPIndexHibernateReq(targetPlan, pindex)
-						pindexesToHibernate = append(pindexesToHibernate, pidx.pindex)
+						if targetPlan.Nodes[mgr.uuid].Priority <= 0 {
+							pidx := newPIndexHibernateReq(targetPlan, pindex)
+							pindexesToHibernate = append(pindexesToHibernate, pidx)
+						}
 						restartable[targetPlan.Name] = struct{}{}
 						continue
 					}
@@ -840,7 +860,7 @@ func newPIndexHibernateReq(addPlanPI *PlanPIndex,
 	}
 }
 
-func getPIndexesToHibernate(currPindexes []*PIndex,
+func getPIndexesToHibernate(selfUUID string, currPindexes []*PIndex,
 	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
 	pindexesToHibernate := make([]*pindexRestartReq, len(currPindexes))
 	i := 0
@@ -851,7 +871,32 @@ func getPIndexesToHibernate(currPindexes []*PIndex,
 				pindex.IndexParams = addPlanPI.IndexParams
 				pindex.SourceParams = addPlanPI.SourceParams
 				pindex.HibernationPath = addPlanPI.HibernationPath
-				pindexesToHibernate[i] = &pindexRestartReq{
+				// Only hibernating if it's an active node.
+				if addPlanPI.Nodes[selfUUID].Priority <= 0 {
+					pindexesToHibernate[i] = &pindexRestartReq{
+						pindex:         pindex,
+						planPIndexName: addPlanPI.Name,
+					}
+				}
+				i++
+			}
+		}
+	}
+	return pindexesToHibernate
+}
+
+func getPIndexesToUnhibernate(currPindexes []*PIndex,
+	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
+	pindexesToUnhibernate := make([]*pindexRestartReq, len(currPindexes))
+	i := 0
+	for _, pindex := range currPindexes {
+		for _, addPlanPI := range addPlanPIndexes {
+			if addPlanPI.SourcePartitions == pindex.SourcePartitions {
+				pindex.IndexUUID = addPlanPI.IndexUUID
+				pindex.IndexParams = addPlanPI.IndexParams
+				pindex.SourceParams = addPlanPI.SourceParams
+				pindex.HibernationPath = addPlanPI.HibernationPath
+				pindexesToUnhibernate[i] = &pindexRestartReq{
 					pindex:         pindex,
 					planPIndexName: addPlanPI.Name,
 				}
@@ -859,7 +904,7 @@ func getPIndexesToHibernate(currPindexes []*PIndex,
 			}
 		}
 	}
-	return pindexesToHibernate
+	return pindexesToUnhibernate
 }
 
 func getIndexDefFromPIndex(pindex *PIndex) *IndexDef {

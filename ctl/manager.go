@@ -896,7 +896,7 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 	m.ctl.optionsCtl.Manager.SetHibernationContext()
 	objStoreClient, err := HibernationClientHook()
 	if err != nil {
-		return fmt.Errorf("ctl: unable to get object store client: %e", err)
+		return fmt.Errorf("ctl: unable to get object store client: %v", err)
 	}
 	m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
 
@@ -959,7 +959,7 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 		m.ctl.optionsCtl.Manager.SetHibernationContext()
 		objStoreClient, err := HibernationClientHook()
 		if err != nil {
-			return fmt.Errorf("ctl: unable to get object store client: %e", err)
+			return fmt.Errorf("ctl: unable to get object store client: %v", err)
 		}
 		m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
 	}

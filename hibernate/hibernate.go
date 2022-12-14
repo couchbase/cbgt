@@ -279,6 +279,7 @@ func (hm *Manager) uploadIndexMetadata() error {
 	ctx, _ := hm.options.Manager.GetHibernationContext()
 
 	indexDefs := cbgt.NewIndexDefs(hm.version)
+	indexDefs.UUID = cbgt.NewUUID()
 
 	for _, index := range hm.indexDefsToHibernate.IndexDefs {
 		indexDefs.IndexDefs[index.Name] = index
@@ -286,10 +287,42 @@ func (hm *Manager) uploadIndexMetadata() error {
 
 	data, err := json.Marshal(indexDefs)
 	if err != nil {
-		return fmt.Errorf("hibernate: error marshalling index defs: %e", err)
+		return fmt.Errorf("hibernate: error marshalling index defs: %v", err)
 	}
 
 	return UploadIndexMetadataHook(client, ctx, data, hm.options.ArchiveLocation)
+}
+
+func (hm *Manager) resetHibernationPaths() {
+	hm.options.ArchiveLocation = ""
+
+	indexUUID := cbgt.NewUUID()
+	var err error
+
+	indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
+	if err != nil {
+		return
+	}
+
+	if indexDefs == nil {
+		indexDefs = cbgt.NewIndexDefs(hm.version)
+	}
+
+	for _, indexDef := range hm.indexDefsToHibernate.IndexDefs {
+		if _, exists := indexDefs.IndexDefs[indexDef.Name]; exists {
+			indexDef.UUID = cbgt.NewUUID()
+			indexDef.HibernationPath = ""
+			indexDefs.IndexDefs[indexDef.Name] = indexDef
+		}
+	}
+
+	indexDefs.UUID = indexUUID
+	indexDefs.ImplVersion = hm.indexDefsToHibernate.ImplVersion
+
+	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
+	if err != nil {
+		return
+	}
 }
 
 func (hm *Manager) startPauseBucketStateTracker() {
@@ -313,6 +346,10 @@ func (hm *Manager) startPauseBucketStateTracker() {
 			}
 		}
 		hm.options.Manager.DeleteAllIndexFromSource(sourceType, hm.options.BucketName, "")
+	} else if status == -1 {
+		log.Errorf("hibernate: hibernation has failed, undoing pause changes for bucket %s.",
+			hm.options.BucketName)
+		hm.resetHibernationPaths()
 	}
 }
 
@@ -350,7 +387,7 @@ func (hm *Manager) runHibernateIndexes() {
 			hm.options.ArchiveLocation = ""
 			err = hm.removeHibernationPath(hm.indexDefsToHibernate)
 			if err != nil {
-				hm.Logf("hibernate: error removing path: %e", err)
+				hm.Logf("hibernate: error removing path: %v", err)
 				return
 			}
 		}
@@ -363,50 +400,71 @@ func (hm *Manager) runHibernateIndexes() {
 
 // --------------------------------------------------------
 
-// TODO Think of an alternative name for pauseIndexes and resumeIndexes.
-func (hm *Manager) pauseIndexes(indexDefsToPause *cbgt.IndexDefs) error {
-	for indexName, index := range indexDefsToPause.IndexDefs {
-		// Skip indexDef's with no instantiatable pindexImplType, such
-		// as index aliases.
-		pindexImplType, exists := cbgt.PIndexImplTypes[index.Type]
-		if !exists || pindexImplType == nil ||
-			pindexImplType.New == nil || pindexImplType.Open == nil {
-			delete(indexDefsToPause.IndexDefs, indexName)
+func (hm *Manager) pauseIndexes() error {
+	var uploadedIndexMetadata bool
+
+	tries := 0
+	var err error
+
+	for {
+		tries += 1
+		if tries >= 100 {
+			return fmt.Errorf("hibernate: error setting index defs for hibernation: %v",
+				err)
 		}
-	}
 
-	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(hm.cfg, hm.version)
-	if err != nil {
-		return err
-	}
-
-	indexNameDef := make(map[string]*cbgt.IndexDef)
-	for _, index := range indexDefsToPause.IndexDefs {
-		indexNameDef[index.Name] = index
-	}
-
-	planUUID := cbgt.NewUUID()
-	for _, planPIndex := range planPIndexes.PlanPIndexes {
-		if _, exists := indexNameDef[planPIndex.IndexName]; exists {
-			planPIndex.HibernationPath = hm.options.ArchiveLocation
-			planPIndex.UUID = planUUID
-			planPIndex.IndexParams = hm.AppendHibernatePath(planPIndex.IndexParams)
+		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
+		if err != nil {
+			return err
 		}
+
+		if indexDefs == nil {
+			indexDefs = cbgt.NewIndexDefs(hm.version)
+		}
+
+		for _, indexDef := range hm.indexDefsToHibernate.IndexDefs {
+			if _, exists := indexDefs.IndexDefs[indexDef.Name]; exists {
+				indexDef.UUID = cbgt.NewUUID()
+				indexDef.HibernationPath = hm.options.ArchiveLocation
+				indexDefs.IndexDefs[indexDef.Name] = indexDef
+			}
+		}
+
+		indexDefs.UUID = cbgt.NewUUID()
+		indexDefs.ImplVersion = hm.indexDefsToHibernate.ImplVersion
+
+		if !uploadedIndexMetadata {
+			err = hm.uploadIndexMetadata()
+			if err != nil {
+				return err
+			}
+			uploadedIndexMetadata = true
+		}
+
+		select {
+		case <-hm.stopCh:
+			// No rollback required here since no Cfg changes have taken place yet.
+			hm.rollbackRequired = false
+			return fmt.Errorf("hibernate: pausing of indexes of source %s stopped",
+				hm.options.BucketName)
+
+		default:
+			//NO-OP
+		}
+
+		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
+		if err != nil {
+			if _, ok := err.(*cbgt.CfgCASError); ok {
+				continue // Retry on CAS mismatch.
+			}
+
+			return fmt.Errorf("hibernate: could not save indexDefs,"+
+				" err: %v", err)
+		}
+
+		break // Success.
 	}
-	planPIndexes.UUID = planUUID
-
-	select {
-	case <-hm.stopCh:
-		// No rollback required here since no Cfg changes have taken place yet.
-		hm.rollbackRequired = false
-		return fmt.Errorf("hibernate: pausing of indexes stopped")
-
-	default:
-		//NO-OP
-	}
-
-	_, err = cbgt.CfgSetPlanPIndexes(hm.cfg, planPIndexes, cas)
-	return err
+	return nil
 }
 
 func (hm *Manager) UpdateIndexParams(indexDef *cbgt.IndexDef, uuid string) {
@@ -418,8 +476,16 @@ func (hm *Manager) UpdateIndexParams(indexDef *cbgt.IndexDef, uuid string) {
 }
 
 func (hm *Manager) AppendHibernatePath(params string) string {
-	return params[0:len(params)-1] + ",\"hibernate\":\"" +
-		hm.options.ArchiveLocation + "\"}"
+	hibernateField := "\"hibernate\":"
+	if strings.Index(params, hibernateField) == -1 {
+		return params[0:len(params)-1] + ",\"hibernate\":\"" +
+			hm.options.ArchiveLocation + "\"}"
+	}
+
+	pos := strings.Index(params, hibernateField) + len(hibernateField)
+	firstComma := strings.Index(params[pos:], ",")
+
+	return params[:pos] + "\"" + hm.options.ArchiveLocation + "\"" + params[firstComma+pos:]
 }
 
 func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
@@ -433,7 +499,7 @@ func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 		return hm.options.Manager.CheckIfIndexesCanBeAdded(hm.indexDefsToHibernate)
 	}
 
-	indexDefs, _, err := hm.options.Manager.GetIndexDefs(false)
+	indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
 	if err != nil {
 		return err
 	}
@@ -456,25 +522,20 @@ func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 	case <-hm.stopCh:
 		// No rollback required here since no Cfg changes have taken place yet.
 		hm.rollbackRequired = false
-		return fmt.Errorf("hibernate: resuming of indexes stopped")
+		return fmt.Errorf("hibernate: resuming of indexes of source %s stopped",
+			hm.options.BucketName)
 
 	default:
 		//NO-OP
 	}
 
-	// TODO: Avoid force_cas key.
-	_, err = cbgt.CfgSetIndexDefs(hm.options.Manager.Cfg(), indexDefs, cbgt.CFG_CAS_FORCE)
+	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
 	return err
 }
 
 func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
 	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
-		err := hm.uploadIndexMetadata()
-		if err != nil {
-			return err
-		}
-
-		err = hm.pauseIndexes(indexDefs)
+		err := hm.pauseIndexes()
 		if err != nil {
 			return err
 		}
@@ -495,7 +556,7 @@ func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
 
 // This function removes the remote paths from indexes.
 func (hm *Manager) removeHibernationPath(indexesToChange *cbgt.IndexDefs) error {
-	indexDefs, _, err := hm.options.Manager.GetIndexDefs(false)
+	indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
 	if err != nil {
 		return err
 	}
@@ -516,10 +577,9 @@ func (hm *Manager) removeHibernationPath(indexesToChange *cbgt.IndexDefs) error 
 	}
 
 	indexDefs.UUID = indexUUID
-	indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.options.Manager.Cfg())
+	indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.cfg)
 
-	// TODO: Avoid force_cas key.
-	_, err = cbgt.CfgSetIndexDefs(hm.options.Manager.Cfg(), indexDefs, cbgt.CFG_CAS_FORCE)
+	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
 	return err
 }
 
@@ -583,6 +643,7 @@ MONITOR_LOOP:
 							log.Errorf("hibernate: error getting index: %v", err)
 							continue MONITOR_LOOP
 						}
+						// This is used for older pindexes which are now deleted.
 						if indexName != "" {
 							indexProgress[indexName] += progress
 							indexCount[indexName] += 1
@@ -631,6 +692,34 @@ MONITOR_LOOP:
 
 // --------------------------------------------------------
 
+// This function returns a map which maps the pindex name to the node UUID
+// of the node with the active partition(a pindex with 1 or more replicas can
+// have replica partitions on multiple nodes).
+func (hm *Manager) getPIndexActiveNodeMap() (map[string]string, error) {
+	pindexActiveNodeMap := make(map[string]string)
+
+	_, indexPlanPIndexMap, err := hm.options.Manager.GetPlanPIndexes(true)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for indexName, _ := range hm.indexDefsToHibernate.IndexDefs {
+		for _, plan := range indexPlanPIndexMap[indexName] {
+			if plan.IndexName == indexName {
+				for nodeUUID, node := range plan.Nodes {
+					// Indicates active partition.
+					if node.Priority <= 0 {
+						pindexActiveNodeMap[plan.Name] = nodeUUID
+					}
+				}
+			}
+		}
+	}
+
+	return pindexActiveNodeMap, nil
+}
+
 // runMonitor handles any error from the nodes monitoring subsystem by
 // stopping the hibernation.
 func (hm *Manager) runMonitor() {
@@ -641,6 +730,12 @@ func (hm *Manager) runMonitor() {
 	errThreshold := rebalance.StatsSampleErrorThreshold
 	if hm.options.StatsSampleErrorThreshold != nil {
 		errThreshold = uint8(*hm.options.StatsSampleErrorThreshold)
+	}
+
+	pindexActiveNodeMap, err := hm.getPIndexActiveNodeMap()
+	if err != nil {
+		log.Errorf("hibernate: error getting pindex-node map: %v", err)
+		return
 	}
 
 	for {
@@ -696,9 +791,19 @@ func (hm *Manager) runMonitor() {
 				}
 
 				for pindex, stats := range m.Status {
+					if _, exists := pindexActiveNodeMap[pindex]; !exists {
+						pindexActiveNodeMap, _ = hm.getPIndexActiveNodeMap()
+					}
+					// Only nodes with active partitions are monitored for hibernation/pause
+					// tasks since only they perform uploads.
+					if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) &&
+						s.UUID != pindexActiveNodeMap[pindex] {
+						continue
+					}
+
 					indexName, err := hm.options.Manager.GetIndexNameForPIndex(pindex)
 					if err != nil {
-						log.Errorf("hibernate: error getting idx: %e", err)
+						log.Errorf("hibernate: error getting idx: %v", err)
 						continue
 					}
 					// If the pindex from the /stats endpoint is not linked to the hibernation indexes
@@ -774,10 +879,10 @@ func (hm *Manager) rollbackHibernation() {
 		}
 
 		indexDefs.UUID = cbgt.NewUUID()
-		indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.options.Manager.Cfg())
+		indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.cfg)
 
 		// TODO: Avoid force_cas key.
-		_, err = cbgt.CfgSetIndexDefs(hm.options.Manager.Cfg(), indexDefs, cbgt.CFG_CAS_FORCE)
+		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cbgt.CFG_CAS_FORCE)
 		if err != nil {
 			return
 		}

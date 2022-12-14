@@ -967,9 +967,9 @@ func (mgr *Manager) CheckIfIndexesCanBeAdded(indexDefs *IndexDefs) error {
 
 func (mgr *Manager) GetIndexNameForPIndex(pindexName string) (
 	string, error) {
-	_, indexPlansMap, err := mgr.GetPlanPIndexes(false)
+	_, indexPlansMap, err := mgr.GetPlanPIndexes(true)
 	if err != nil {
-		return "", fmt.Errorf("hibernate: error getting plan pindexes: %e",
+		return "", fmt.Errorf("hibernate: error getting plan pindexes: %v",
 			err)
 	}
 	for index, plans := range indexPlansMap {
