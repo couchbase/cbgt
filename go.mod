@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/couchbase/blance v0.1.3
-	github.com/couchbase/cbauth v0.1.4
+	github.com/couchbase/cbauth v0.1.5
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocbcore/v10 v10.1.6
