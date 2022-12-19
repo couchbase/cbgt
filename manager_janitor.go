@@ -284,6 +284,11 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	return nil
 }
 
+type pindexHibernateReq struct {
+	pindex     *PIndex
+	planPIndex *PlanPIndex
+}
+
 type pindexRestartReq struct {
 	pindex         *PIndex
 	planPIndexName string
@@ -340,7 +345,6 @@ func (mgr *Manager) pindexesRestart(
 func (mgr *Manager) unhibernatePIndex(req []*pindexRestartReq) []error {
 
 	var errs []error
-	var pindexesToUnhibernate []*PIndex
 
 	for _, r := range req {
 		pi, err := mgr.hibernateRestart(r)
@@ -349,22 +353,22 @@ func (mgr *Manager) unhibernatePIndex(req []*pindexRestartReq) []error {
 			continue
 		}
 
-		pindexesToUnhibernate = append(pindexesToUnhibernate, pi)
-	}
-
-	if UnhibernatePartitionsHook != nil && len(pindexesToUnhibernate) > 0 {
-		UnhibernatePartitionsHook(mgr, pindexesToUnhibernate,
-			pindexesToUnhibernate[0].SourceName, pindexesToUnhibernate[0].SourceType)
+		dest, err := NoOpDest(pi.IndexType, pi.Path, pi.IndexParams, nil)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("janitor: no op dest error: %v", err))
+		}
+		pi.Dest = dest
 	}
 
 	return errs
 }
 
-var UnhibernatePartitionsHook func(mgr *Manager, pindexes []*PIndex,
-	sourceType, sourceName string)
+var UnhibernatePartitionsHook func(mgr *Manager, sourceType, sourceName string)
 
-var HibernatePartitionsHook func(mgr *Manager, pindexes []*PIndex,
-	sourceType, sourceName string) []error
+var HibernatePartitionsHook func(mgr *Manager, activePIndexes,
+	replicaPIndexes []*PIndex) []error
+
+var HibernationBucketStateTrackerHook func(*Manager, string, string)
 
 // Specific restart and registration used in hibernation - followed by specific
 // hibernation/unhibernation functions.
@@ -389,6 +393,7 @@ func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
 	pi := r.pindex.Clone()
 	pi.Name = r.planPIndexName
 	pi.Path = newPath
+	pi.HibernationPath = r.pindex.HibernationPath
 
 	// persist PINDEX_META only if manager's dataDir is set
 	if len(mgr.dataDir) > 0 {
@@ -415,28 +420,47 @@ func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
 	return pi, nil
 }
 
-func (mgr *Manager) hibernatePIndex(req []*pindexRestartReq) []error {
-	var pindexesToHibernate []*PIndex
+func (mgr *Manager) hibernatePIndex(req []*pindexHibernateReq) []error {
+	// map of source name -> list of pindexes with the same source
+	pindexesToHibernate := make(map[string][][]*PIndex)
 	var errs []error
 
 	for _, r := range req {
-		pi, err := mgr.hibernateRestart(r)
+		tempReq := &pindexRestartReq{pindex: r.pindex,
+			planPIndexName: r.planPIndex.Name}
+		pi, err := mgr.hibernateRestart(tempReq)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 
-		// Change 'closed' to false so that its files gets deleted on a successful hibernation.
+		// Change 'closed' to false so that its files gets deleted on a
+		// successful hibernation.
 		pi.closed = false
 
-		pindexesToHibernate = append(pindexesToHibernate, pi)
+		if _, exists := pindexesToHibernate[pi.SourceName]; !exists {
+			pindexesToHibernate[pi.SourceName] = make([][]*PIndex, 2)
+		}
+
+		// Only hibernating if it's an active partition node.
+		if r.planPIndex.Nodes[mgr.uuid].Priority <= 0 {
+			pindexesToHibernate[pi.SourceName][0] = append(pindexesToHibernate[pi.SourceName][0],
+				pi)
+		} else {
+			pindexesToHibernate[pi.SourceName][1] = append(pindexesToHibernate[pi.SourceName][1],
+				pi)
+		}
 	}
 
-	if HibernatePartitionsHook != nil && len(pindexesToHibernate) > 0 {
-		hibErrs := HibernatePartitionsHook(mgr, pindexesToHibernate,
-			pindexesToHibernate[0].SourceName, pindexesToHibernate[0].SourceType)
-		if len(hibErrs) > 0 {
-			errs = append(errs, hibErrs...)
+	if HibernatePartitionsHook != nil {
+		for source, pindexes := range pindexesToHibernate {
+			// Assuming bucket state is already being tracked for pause
+			mgr.RegisterHibernationBucketTracker(source)
+
+			hibErrs := HibernatePartitionsHook(mgr, pindexes[0], pindexes[1])
+			if len(hibErrs) > 0 {
+				errs = append(errs, hibErrs...)
+			}
 		}
 	}
 
@@ -528,12 +552,25 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	var currFeeds map[string]Feed
 	currFeeds, currPIndexes = mgr.CurrentMaps()
 
+	hibernationTask, hibernationBucket, hibernationSourceType :=
+		mgr.findHibernationBucketsToMonitor()
+
+	if hibernationTask == UNHIBERNATE_TASK {
+		log.Printf("janitor: bucket to track for unhibernation: %s", hibernationBucket)
+		mgr.trackResumeBucketState(hibernationBucket, hibernationSourceType)
+	}
+
+	if hibernationTask == HIBERNATE_TASK {
+		log.Printf("janitor: bucket to track for hibernation: %s", hibernationBucket)
+		mgr.trackPauseBucketState(hibernationBucket, hibernationSourceType)
+	}
+
 	addFeeds, removeFeeds :=
 		CalcFeedsDelta(mgr.uuid, planPIndexes, currFeeds, currPIndexes,
 			feedAllotment)
 
 	// filter out non-ready feeds.
-	addFeeds = filterFeedable(addFeeds)
+	addFeeds = filterFeedable(mgr, addFeeds)
 
 	log.Printf("janitor: feeds to remove: %d", len(removeFeeds))
 	for _, removeFeed := range removeFeeds {
@@ -576,34 +613,36 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	return nil
 }
 
-func filterFeedable(addFeeds [][]*PIndex) (rv [][]*PIndex) {
+func filterFeedable(mgr *Manager, addFeeds [][]*PIndex) (af [][]*PIndex) {
 	for _, pindexes := range addFeeds {
-		plist := make([]*PIndex, 0, len(pindexes))
+		addList := make([]*PIndex, 0, len(pindexes))
 		for _, pindex := range pindexes {
-			// Do not attempt to add feeds if the pindex is being paused
-			if pindex.HibernationInProgress() {
-				log.Printf("janitor: skipping feed: %s since it's being paused", pindex.Name)
-				continue
-			}
 			ready, err := pindex.IsFeedable()
 			if ready && err == nil {
-				plist = append(plist, pindex)
+				// Need to filter pindexes which are being pause/
+				// were being paused before start to avoid adding feeds to them.
+				hibernationInProgress := mgr.IsBucketBeingHibernated(pindex.SourceName)
+				// if the pindex source name has a bucket being tracked, don't add it
+				if !hibernationInProgress {
+					addList = append(addList, pindex)
+				}
 				continue
 			}
 			log.Printf("janitor: skip feed: %s, err: %v", pindex.Name, err)
 		}
 
-		if len(plist) > 0 {
-			rv = append(rv, plist)
+		if len(addList) > 0 {
+			af = append(af, addList)
 		}
 	}
-	return rv
+	return af
 }
 
 func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPIndex,
 	removePIndexes []*PIndex) (planPIndexesToAdd []*PlanPIndex,
 	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq,
-	pindexesToHibernate, pindexesToUnhibernate []*pindexRestartReq) {
+	pindexesToHibernate []*pindexHibernateReq,
+	pindexesToUnhibernate []*pindexRestartReq) {
 	// if there are no pindexes to be removed as per planner,
 	// then there won't be anything to restart as well.
 	if len(removePIndexes) == 0 {
@@ -611,7 +650,7 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 	}
 	pindexesToRestart = make([]*pindexRestartReq, 0)
 	pindexesToRemove = make([]*PIndex, 0)
-	pindexesToHibernate = make([]*pindexRestartReq, 0)
+	pindexesToHibernate = make([]*pindexHibernateReq, 0)
 	pindexesToUnhibernate = make([]*pindexRestartReq, 0)
 	planPIndexesToAdd = make([]*PlanPIndex, 0)
 	// grouping addPlanPIndexes and removePIndexes as per index for
@@ -661,7 +700,7 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 					continue
 				}
 				if pathChange == HIBERNATE_TASK {
-					pidxList := getPIndexesToHibernate(mgr.uuid, pindexes, planPIndexes)
+					pidxList := getPIndexesToHibernate(pindexes, planPIndexes)
 					for _, pidx := range pidxList {
 						pindexesToHibernate = append(pindexesToHibernate, pidx)
 					}
@@ -716,11 +755,12 @@ func metadataPathChange(configAnalyzeReq *ConfigAnalyzeRequest, pindexPath strin
 func advPIndexClassifier(mgr *Manager, indexPIndexMap map[string][]*PIndex,
 	indexPlanPIndexMap map[string][]*PlanPIndex) (planPIndexesToAdd []*PlanPIndex,
 	pindexesToRemove []*PIndex, pindexesToRestart []*pindexRestartReq,
-	pindexesToHibernate, pindexesToUnhibernate []*pindexRestartReq) {
+	pindexesToHibernate []*pindexHibernateReq,
+	pindexesToUnhibernate []*pindexRestartReq) {
 	pindexesToRestart = make([]*pindexRestartReq, 0)
 	pindexesToRemove = make([]*PIndex, 0)
 	planPIndexesToAdd = make([]*PlanPIndex, 0)
-	pindexesToHibernate = make([]*pindexRestartReq, 0)
+	pindexesToHibernate = make([]*pindexHibernateReq, 0)
 	pindexesToUnhibernate = make([]*pindexRestartReq, 0)
 
 	// take every pindex to remove and check the config change
@@ -763,15 +803,13 @@ func advPIndexClassifier(mgr *Manager, indexPIndexMap map[string][]*PIndex,
 					pathChange := metadataPathChange(configAnalyzeReq, pindex.Path)
 					if pathChange == UNHIBERNATE_TASK {
 						pindexesToUnhibernate = append(pindexesToUnhibernate,
-							newPIndexHibernateReq(targetPlan, pindex))
+							newPIndexUnhibernateReq(targetPlan, pindex))
 						restartable[targetPlan.Name] = struct{}{}
 						continue
 					}
 					if pathChange == HIBERNATE_TASK {
-						if targetPlan.Nodes[mgr.uuid].Priority <= 0 {
-							pidx := newPIndexHibernateReq(targetPlan, pindex)
-							pindexesToHibernate = append(pindexesToHibernate, pidx)
-						}
+						pindexesToHibernate = append(pindexesToHibernate,
+							newPIndexHibernateReq(targetPlan, pindex))
 						restartable[targetPlan.Name] = struct{}{}
 						continue
 					}
@@ -848,6 +886,18 @@ func getPIndexesToRestart(pindexesToRemove []*PIndex,
 }
 
 func newPIndexHibernateReq(addPlanPI *PlanPIndex,
+	pindex *PIndex) *pindexHibernateReq {
+	pindex.IndexUUID = addPlanPI.IndexUUID
+	pindex.IndexParams = addPlanPI.IndexParams
+	pindex.SourceParams = addPlanPI.SourceParams
+	pindex.HibernationPath = addPlanPI.HibernationPath
+	return &pindexHibernateReq{
+		pindex:     pindex,
+		planPIndex: addPlanPI,
+	}
+}
+
+func newPIndexUnhibernateReq(addPlanPI *PlanPIndex,
 	pindex *PIndex) *pindexRestartReq {
 	pindex.IndexUUID = addPlanPI.IndexUUID
 	pindex.IndexParams = addPlanPI.IndexParams
@@ -859,9 +909,9 @@ func newPIndexHibernateReq(addPlanPI *PlanPIndex,
 	}
 }
 
-func getPIndexesToHibernate(selfUUID string, currPindexes []*PIndex,
-	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
-	pindexesToHibernate := make([]*pindexRestartReq, len(currPindexes))
+func getPIndexesToHibernate(currPindexes []*PIndex,
+	addPlanPIndexes []*PlanPIndex) []*pindexHibernateReq {
+	pindexesToHibernate := make([]*pindexHibernateReq, len(currPindexes))
 	i := 0
 	for _, pindex := range currPindexes {
 		for _, addPlanPI := range addPlanPIndexes {
@@ -870,12 +920,9 @@ func getPIndexesToHibernate(selfUUID string, currPindexes []*PIndex,
 				pindex.IndexParams = addPlanPI.IndexParams
 				pindex.SourceParams = addPlanPI.SourceParams
 				pindex.HibernationPath = addPlanPI.HibernationPath
-				// Only hibernating if it's an active node.
-				if addPlanPI.Nodes[selfUUID].Priority <= 0 {
-					pindexesToHibernate[i] = &pindexRestartReq{
-						pindex:         pindex,
-						planPIndexName: addPlanPI.Name,
-					}
+				pindexesToHibernate[i] = &pindexHibernateReq{
+					pindex:     pindex,
+					planPIndex: addPlanPI,
 				}
 				i++
 			}
@@ -1099,6 +1146,52 @@ func CalcPIndexesDelta(mgrUUID string,
 	}
 
 	return addPlanPIndexes, removePIndexes
+}
+
+// --------------------------------------------------------
+
+// This function returns the hibernation task type and the hibernating bucket
+// and source type if it isn't being tracked.
+// 'Tracking' these buckets involves starting routines which track change in
+// these buckets' states.
+func (mgr *Manager) findHibernationBucketsToMonitor() (string, string, string) {
+	// Assuming that only one bucket can be tracked at a time, since only 1 bucket
+	// can be paused/resumed at a time.
+	bucketInHibernation := mgr.Options()[bucketInHibernationKey]
+	if bucketInHibernation == NoBucketInHibernation {
+		log.Printf("janitor: no hibernation bucket to track right now")
+		// Removing any remaining trackers
+		mgr.UnregisterBucketTracker()
+		return "", "", ""
+	}
+
+	var task string
+	var sourceType string
+
+	currBucketBeingTracked := mgr.bucketInHibernation
+
+	// If a bucket is there in cluster options, it has to be tracked
+	_, currPIndexes := mgr.CurrentMaps()
+	for _, pindex := range currPIndexes {
+		// Track the bucket if not already being tracked.
+		if pindex.SourceName == bucketInHibernation &&
+			currBucketBeingTracked != bucketInHibernation {
+			// Task needs to be set only once since at a time, only one operation is
+			// in progress.
+			if task == "" {
+				if strings.HasPrefix(pindex.HibernationPath, HIBERNATE_TASK) {
+					task = HIBERNATE_TASK
+				} else {
+					task = UNHIBERNATE_TASK
+				}
+			}
+			if sourceType == "" {
+				sourceType = pindex.SourceType
+			}
+		}
+	}
+
+	return task, bucketInHibernation, sourceType
 }
 
 // --------------------------------------------------------
@@ -1380,6 +1473,20 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 		pindexFirst.SourceType, pindexFirst.SourceName,
 		pindexFirst.SourceUUID, pindexFirst.SourceParams,
 		dests)
+}
+
+func (mgr *Manager) trackResumeBucketState(source, sourceType string) {
+	if UnhibernatePartitionsHook != nil {
+		UnhibernatePartitionsHook(mgr, source, sourceType)
+	}
+}
+
+func (mgr *Manager) trackPauseBucketState(source, sourceType string) {
+	mgr.RegisterHibernationBucketTracker(source)
+
+	if HibernationBucketStateTrackerHook != nil {
+		go HibernationBucketStateTrackerHook(mgr, source, sourceType)
+	}
 }
 
 // TODO: Need way to track dead cows (non-beef)

@@ -28,7 +28,6 @@ import (
 
 	"github.com/couchbase/cbauth/service"
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/tools-common/objstore/objcli"
 )
 
 // Timeout for CtlMgr's exported APIs
@@ -848,10 +847,6 @@ func (m *CtlMgr) GetDefragmentedUtilization() (
 
 // ------------------------------------------------
 
-var HibernationClientHook = func() (objcli.Client, error) {
-	return nil, fmt.Errorf("not-implemented")
-}
-
 // PreparePause just updates the task lists with the prepared task
 // type along with some basic validations.
 func (m *CtlMgr) PreparePause(params service.PauseParams) error {
@@ -884,12 +879,21 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 		}
 	}
 
+	err = m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.HIBERNATE_TASK, params.Bucket)
+	if err != nil {
+		return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
+			params.Bucket, err)
+	}
+
+	revNum := m.allocRevNumLOCKED(0)
+
 	taskHandlesNext := append([]*taskHandle(nil),
 		m.tasks.taskHandles...)
 	taskHandlesNext = append(taskHandlesNext,
 		&taskHandle{
 			startTime: time.Now(),
 			task: &service.Task{
+				Rev:              EncodeRev(revNum),
 				ID:               "prepare:" + params.ID,
 				Type:             service.TaskTypePrepared,
 				Status:           service.TaskStatusRunning,
@@ -906,6 +910,9 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 				log.Printf("ctl/manager: stop preparePause: %v",
 					params)
 
+				// Unsetting the relevant manager options when pause is stopped/ended.
+				m.ctl.optionsCtl.Manager.SetOption(cbgt.HIBERNATE_TASK, "", false)
+				m.ctl.optionsCtl.Manager.ResetBucketTrackedForHibernation()
 				m.ctl.StopHibernationTask()
 			},
 		})
@@ -913,14 +920,6 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 	m.updateTasksLOCKED(func(s *tasks) {
 		s.taskHandles = taskHandlesNext
 	})
-
-	m.ctl.optionsCtl.Manager.SetHibernationContext()
-	objStoreClient, err := HibernationClientHook()
-	if err != nil {
-		err = fmt.Errorf("ctl: unable to get object store client: %v", err)
-		return err
-	}
-	m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
 
 	log.Printf("ctl/manager: PreparePause, done")
 
@@ -959,9 +958,12 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 		}
 	}
 
+	revNum := m.allocRevNumLOCKED(0)
+
 	newTaskHandle := &taskHandle{
 		startTime: time.Now(),
 		task: &service.Task{
+			Rev:              EncodeRev(revNum),
 			ID:               "prepare:" + params.ID,
 			Type:             service.TaskTypePrepared,
 			Status:           service.TaskStatusRunning,
@@ -978,6 +980,12 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 			log.Printf("ctl/manager: stop prepareResume: %v",
 				params)
 
+			// Unsetting the relevant manager options when resume is stopped/ended.
+			if !params.DryRun {
+				m.ctl.optionsCtl.Manager.ResetBucketTrackedForHibernation()
+				m.ctl.optionsCtl.Manager.SetOption(cbgt.UNHIBERNATE_TASK, "", false)
+			}
+
 			m.ctl.StopHibernationTask()
 		}}
 
@@ -988,13 +996,11 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 			newTaskHandle.task.ErrorMessage = "invalid remote path"
 		}
 	} else {
-		m.ctl.optionsCtl.Manager.SetHibernationContext()
-		objStoreClient, err := HibernationClientHook()
+		err := m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.UNHIBERNATE_TASK, params.Bucket)
 		if err != nil {
-			err = fmt.Errorf("ctl: unable to get object store client: %v", err)
-			return err
+			return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
+				params.Bucket, err)
 		}
-		m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
 	}
 
 	taskHandlesNext := append([]*taskHandle(nil),
@@ -1087,6 +1093,7 @@ func (m *CtlMgr) pauseTaskHandleLOCKED(
 		stop: func() {
 			log.Printf("ctl/manager: stop Pause: %v", params)
 
+			m.ctl.optionsCtl.Manager.ResetBucketTrackedForHibernation()
 			m.ctl.StopHibernationTask()
 		},
 	}
@@ -1156,6 +1163,7 @@ func (m *CtlMgr) resumeTaskHandleLOCKED(
 		stop: func() {
 			log.Printf("ctl/manager: stop Resume: %v", params)
 
+			m.ctl.optionsCtl.Manager.ResetBucketTrackedForHibernation()
 			m.ctl.StopHibernationTask()
 		},
 	}

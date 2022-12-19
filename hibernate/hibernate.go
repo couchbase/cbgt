@@ -72,6 +72,7 @@ type HibernationProgress struct {
 
 type HibernationOptions struct {
 	BucketName string
+	SourceType string
 
 	ArchiveLocation string
 
@@ -202,6 +203,11 @@ func Start(version string, cfg cbgt.Cfg, server string,
 		if err != nil {
 			return nil, err
 		}
+
+		for _, index := range indexDefsToHibernate.IndexDefs {
+			hm.options.SourceType = index.SourceType
+			break
+		}
 	}
 
 	nodesAll, _, _, _, _ := cbgt.CalcNodesLayout(begIndexDefs,
@@ -293,43 +299,62 @@ func (hm *Manager) uploadIndexMetadata() error {
 	return UploadIndexMetadataHook(client, ctx, data, hm.options.ArchiveLocation)
 }
 
+func DropRemotePaths(mgr *cbgt.Manager, indexDefsToModify *cbgt.IndexDefs) {
+	err := cbgt.RetryOnCASMismatch(func() error {
+		var err error
+
+		indexDefs, cas, err := cbgt.CfgGetIndexDefs(mgr.Cfg())
+		if err != nil {
+			return nil
+		}
+
+		var indexesWithRemotePath bool
+
+		for _, indexDef := range indexDefsToModify.IndexDefs {
+			if _, exists := indexDefs.IndexDefs[indexDef.Name]; exists {
+				if indexDef.HibernationPath != "" {
+					indexesWithRemotePath = true
+					indexDef.UUID = cbgt.NewUUID()
+					indexDef.HibernationPath = ""
+					indexDefs.IndexDefs[indexDef.Name] = indexDef
+				}
+			}
+		}
+
+		// If the index remote paths have already been changed, avoid doing
+		// it another time.
+		if !indexesWithRemotePath {
+			return nil
+		}
+
+		indexDefs.UUID = cbgt.NewUUID()
+		indexDefs.ImplVersion = indexDefsToModify.ImplVersion
+
+		_, err = cbgt.CfgSetIndexDefs(mgr.Cfg(), indexDefs, cas)
+		return err
+	}, 100)
+	if err != nil {
+		log.Errorf("hibernate: DropRemotePaths: err: %v", err)
+		return
+	}
+}
+
 func (hm *Manager) resetHibernationPaths() {
 	hm.options.ArchiveLocation = ""
 
-	indexUUID := cbgt.NewUUID()
-	var err error
-
-	indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
-	if err != nil {
-		return
-	}
-
-	if indexDefs == nil {
-		indexDefs = cbgt.NewIndexDefs(hm.version)
-	}
-
-	for _, indexDef := range hm.indexDefsToHibernate.IndexDefs {
-		if _, exists := indexDefs.IndexDefs[indexDef.Name]; exists {
-			indexDef.UUID = cbgt.NewUUID()
-			indexDef.HibernationPath = ""
-			indexDefs.IndexDefs[indexDef.Name] = indexDef
-		}
-	}
-
-	indexDefs.UUID = indexUUID
-	indexDefs.ImplVersion = hm.indexDefsToHibernate.ImplVersion
-
-	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
-	if err != nil {
-		return
-	}
+	DropRemotePaths(hm.options.Manager, hm.indexDefsToHibernate)
 }
 
 func (hm *Manager) startPauseBucketStateTracker() {
 	status, err := BucketStateTrackerHook(hm.options.Manager, cbgt.HIBERNATE_TASK,
 		hm.options.BucketName)
+
+	hm.options.Manager.ResetBucketTrackedForHibernation()
+	hm.options.Manager.UnregisterBucketTracker()
+
 	if err != nil {
-		log.Errorf("hibernate: pause: error tracking bucket: %v", err)
+		log.Errorf("hibernate: pause: error tracking bucket %s: %v",
+			hm.options.BucketName, err)
 		return
 	}
 
@@ -337,15 +362,8 @@ func (hm *Manager) startPauseBucketStateTracker() {
 		log.Printf("hibernate: hibernation succeeded, deleting indexes for "+
 			"bucket %s", hm.options.BucketName)
 
-		// TODO Better way of getting source type?
-		var sourceType string
-		for _, index := range hm.indexDefsToHibernate.IndexDefs {
-			if index.SourceName == hm.options.BucketName {
-				sourceType = index.SourceType
-				break
-			}
-		}
-		hm.options.Manager.DeleteAllIndexFromSource(sourceType, hm.options.BucketName, "")
+		hm.options.Manager.DeleteAllIndexFromSource(hm.options.SourceType,
+			hm.options.BucketName, "")
 	} else if status == -1 {
 		log.Errorf("hibernate: hibernation has failed, undoing pause changes for bucket %s.",
 			hm.options.BucketName)
@@ -359,16 +377,25 @@ func (hm *Manager) runHibernateIndexes() {
 		// Completion of hibernation operation, whether naturally or due
 		// to error/Stop(), needs this cleanup.  Wait for runMonitor()
 		// to finish as it may have more sends to progressCh.
-		hm.monitor.Stop()
-		close(hm.monitorSampleCh)
-		<-hm.monitorDoneCh
-
 		hm.Stop()
+
+		hm.monitor.Stop()
+		<-hm.monitorDoneCh
+		// Closing this channel causes the 'send on closed chan' panic
+		close(hm.monitorSampleCh)
 
 		if err != nil {
 			hm.progressCh <- HibernationProgress{Error: err}
 		}
 		close(hm.progressCh)
+
+		// Unsetting the hibernate/unhibernate manager option for the
+		// orchestrator node before it's removed from the task list.
+		if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
+			hm.options.Manager.SetOption(cbgt.HIBERNATE_TASK, "", false)
+		} else {
+			hm.options.Manager.SetOption(cbgt.UNHIBERNATE_TASK, "", false)
+		}
 	}()
 
 	err = hm.hibernateIndexes(hm.indexDefsToHibernate)
@@ -377,9 +404,7 @@ func (hm *Manager) runHibernateIndexes() {
 		return
 	}
 
-	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
-		go hm.startPauseBucketStateTracker()
-	} else if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) {
+	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) {
 		// This distinction between dry and non-dry run for Resume is made here
 		// since in a dry run, no index is 'hibernated' per se, it's a checking of remote
 		// paths.
@@ -401,18 +426,12 @@ func (hm *Manager) runHibernateIndexes() {
 // --------------------------------------------------------
 
 func (hm *Manager) pauseIndexes() error {
+	// Starting to track bucket state.
+	go hm.startPauseBucketStateTracker()
+
 	var uploadedIndexMetadata bool
 
-	tries := 0
-	var err error
-
-	for {
-		tries += 1
-		if tries >= 100 {
-			return fmt.Errorf("hibernate: error setting index defs for hibernation: %v",
-				err)
-		}
-
+	pauseFunc := func() error {
 		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
 		if err != nil {
 			return err
@@ -441,30 +460,11 @@ func (hm *Manager) pauseIndexes() error {
 			uploadedIndexMetadata = true
 		}
 
-		select {
-		case <-hm.stopCh:
-			// No rollback required here since no Cfg changes have taken place yet.
-			hm.rollbackRequired = false
-			return fmt.Errorf("hibernate: pausing of indexes of source %s stopped",
-				hm.options.BucketName)
-
-		default:
-			//NO-OP
-		}
-
 		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
-		if err != nil {
-			if _, ok := err.(*cbgt.CfgCASError); ok {
-				continue // Retry on CAS mismatch.
-			}
-
-			return fmt.Errorf("hibernate: could not save indexDefs,"+
-				" err: %v", err)
-		}
-
-		break // Success.
+		return err
 	}
-	return nil
+
+	return cbgt.RetryOnCASMismatch(pauseFunc, 100)
 }
 
 func (hm *Manager) UpdateIndexParams(indexDef *cbgt.IndexDef, uuid string) {
@@ -518,17 +518,6 @@ func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 	indexDefs.UUID = cbgt.NewUUID()
 	indexDefs.ImplVersion = indexesToResume.ImplVersion
 
-	select {
-	case <-hm.stopCh:
-		// No rollback required here since no Cfg changes have taken place yet.
-		hm.rollbackRequired = false
-		return fmt.Errorf("hibernate: resuming of indexes of source %s stopped",
-			hm.options.BucketName)
-
-	default:
-		//NO-OP
-	}
-
 	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
 	return err
 }
@@ -556,31 +545,31 @@ func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
 
 // This function removes the remote paths from indexes.
 func (hm *Manager) removeHibernationPath(indexesToChange *cbgt.IndexDefs) error {
-	indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
-	if err != nil {
-		return err
-	}
-
-	indexUUID := cbgt.NewUUID()
-
-	for _, index := range indexesToChange.IndexDefs {
-		var indexDef *cbgt.IndexDef
-
-		if _, exists := indexDefs.IndexDefs[index.Name]; !exists {
-			return fmt.Errorf("hibernate: index def does not exist")
-		} else {
-			indexDef = indexDefs.IndexDefs[index.Name]
+	return cbgt.RetryOnCASMismatch(func() error {
+		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
+		if err != nil {
+			return err
 		}
 
-		hm.UpdateIndexParams(indexDef, indexUUID)
-		indexDefs.IndexDefs[indexDef.Name] = indexDef
-	}
+		for _, index := range indexesToChange.IndexDefs {
+			var indexDef *cbgt.IndexDef
 
-	indexDefs.UUID = indexUUID
-	indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.cfg)
+			if _, exists := indexDefs.IndexDefs[index.Name]; !exists {
+				return fmt.Errorf("hibernate: index def does not exist")
+			} else {
+				indexDef = indexDefs.IndexDefs[index.Name]
+			}
 
-	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
-	return err
+			hm.UpdateIndexParams(indexDef, cbgt.NewUUID())
+			indexDefs.IndexDefs[indexDef.Name] = indexDef
+		}
+
+		indexDefs.UUID = cbgt.NewUUID()
+		indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.cfg)
+
+		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
+		return err
+	}, 100)
 }
 
 // --------------------------------------------------------
@@ -791,8 +780,14 @@ func (hm *Manager) runMonitor() {
 				}
 
 				for pindex, stats := range m.Status {
+					// Refresh the map in case the pindex doesn't exist due to
+					// pindex name change.
 					if _, exists := pindexActiveNodeMap[pindex]; !exists {
 						pindexActiveNodeMap, _ = hm.getPIndexActiveNodeMap()
+					}
+					// Doesn't exist despite refreshing the map.
+					if _, exists := pindexActiveNodeMap[pindex]; !exists {
+						continue
 					}
 					// Only nodes with active partitions are monitored for hibernation/pause
 					// tasks since only they perform uploads.
@@ -865,27 +860,9 @@ func (hm *Manager) Stop() {
 // cancelled midway/aborted.
 func (hm *Manager) rollbackHibernation() {
 
-	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) && !hm.options.DryRun {
-		indexDefs, _, err := hm.options.Manager.GetIndexDefs(false)
-		if err != nil {
-			return
-		}
-
-		for _, index := range hm.indexDefsToHibernate.IndexDefs {
-			if _, exists := indexDefs.IndexDefs[index.Name]; exists {
-				// Deleting the indexes that are resumed/in the process of resuming.
-				delete(indexDefs.IndexDefs, index.Name)
-			}
-		}
-
-		indexDefs.UUID = cbgt.NewUUID()
-		indexDefs.ImplVersion = cbgt.CfgGetVersion(hm.cfg)
-
-		// TODO: Avoid force_cas key.
-		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cbgt.CFG_CAS_FORCE)
-		if err != nil {
-			return
-		}
+	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) &&
+		!hm.options.DryRun {
+		hm.options.Manager.DeleteAllIndexFromSource(hm.options.SourceType, hm.options.BucketName, "")
 	}
 
 	hm.m.Lock()

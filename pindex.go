@@ -39,10 +39,10 @@ type PIndex struct {
 	SourceUUID       string     `json:"sourceUUID"`
 	SourceParams     string     `json:"sourceParams"`
 	SourcePartitions string     `json:"sourcePartitions"`
+	HibernationPath  string     `json:"hibernationPath"`
 	Path             string     `json:"-"` // Transient, not persisted.
 	Impl             PIndexImpl `json:"-"` // Transient, not persisted.
 	Dest             Dest       `json:"-"` // Transient, not persisted.
-	HibernationPath  string     `json:"-"`
 
 	sourcePartitionsMap map[string]bool // Non-persisted memoization.
 
@@ -117,7 +117,6 @@ func (p *PIndex) Clone() *PIndex {
 			SourcePartitions:    p.SourcePartitions,
 			sourcePartitionsMap: p.sourcePartitionsMap,
 			Path:                p.Path,
-			HibernationPath:     p.HibernationPath,
 			Impl:                p.Impl,
 			Dest:                p.Dest,
 			closed:              p.closed,
@@ -144,6 +143,8 @@ func restartPIndex(mgr *Manager, pindex *PIndex) {
 	mgr.Kick("restart-pindex:" + pindex.Name)
 }
 
+var ErrTerminatedDownload = fmt.Errorf("pindex: case of abruptly terminated download")
+
 // Creates a pindex, including its backend implementation structures,
 // and its files.
 func NewPIndex(mgr *Manager, name, uuid,
@@ -165,7 +166,7 @@ func NewPIndex(mgr *Manager, name, uuid,
 
 	impl, dest, err := NewPIndexImplEx(indexType, string(pBytes), sourceParams,
 		path, mgr, restart)
-	if err != nil {
+	if err != nil && err != ErrTerminatedDownload {
 		os.RemoveAll(path)
 		return nil, fmt.Errorf("pindex: new indexType: %s, indexParams: %s,"+
 			" path: %s, err: %s", indexType, indexParams, path, err)
@@ -281,10 +282,6 @@ func PIndexPath(dataDir, pindexName string) string {
 func PIndexNameFromPath(path string) string {
 	path = filepath.Base(path)
 	return path[0 : len(path)-len(pindexPathSuffix)]
-}
-
-func (pindex *PIndex) HibernationInProgress() bool {
-	return strings.HasPrefix(pindex.HibernationPath, HIBERNATE_TASK)
 }
 
 // Retrieves a pindex name from a pindex path.

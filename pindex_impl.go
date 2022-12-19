@@ -70,6 +70,9 @@ type PIndexImplType struct {
 	Count func(mgr *Manager, indexName, indexUUID string) (
 		uint64, error)
 
+	// Creates and returns a no-op dest
+	NoOpDest func(path, indexParams string, restart func()) (Dest, error)
+
 	// Invoked by the manager when it wants to query an index.  The
 	// registered Query() function can be nil.
 	Query func(mgr *Manager, indexName, indexUUID string,
@@ -182,6 +185,16 @@ func NewPIndexImplEx(indexType, indexParams, sourceParams, path string,
 	}
 
 	return t.NewEx(indexType, indexParams, sourceParams, path, mgr, restart)
+}
+
+func NoOpDest(indexType, path, indexParams string, restart func()) (Dest, error) {
+	t, exists := PIndexImplTypes[indexType]
+	if !exists || t == nil || t.NoOpDest == nil {
+		return nil, fmt.Errorf("pindex_impl: NoOpDest"+
+			" indexType: %s", indexType)
+	}
+
+	return t.NoOpDest(path, indexParams, restart)
 }
 
 // OpenPIndexImpl loads an index partition of the given, registered

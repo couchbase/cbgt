@@ -91,17 +91,19 @@ type Manager struct {
 
 	stablePlanPIndexesMutex sync.RWMutex // Protects the local stable plan access.
 
-	// The below fields are optional.
-	objStoreClient    objcli.Client
-	hibernationCtx    context.Context
-	hibernationCancel context.CancelFunc
+	// The below fields are related to hibernationa and optional.
+	objStoreClient           objcli.Client
+	hibernationCtx           context.Context
+	hibernationCancel        context.CancelFunc
+	bucketInHibernationMutex sync.RWMutex
+	bucketInHibernation      string
 }
 
 func (mgr *Manager) GetHibernationContext() (context.Context, context.CancelFunc) {
 	return mgr.hibernationCtx, mgr.hibernationCancel
 }
 
-func (mgr *Manager) SetHibernationContext() {
+func (mgr *Manager) setHibernationContext() {
 	mgr.hibernationCtx = context.Background()
 	mgr.hibernationCtx, mgr.hibernationCancel = context.WithCancel(mgr.hibernationCtx)
 }
@@ -110,8 +112,86 @@ func (mgr *Manager) GetObjStoreClient() objcli.Client {
 	return mgr.objStoreClient
 }
 
-func (mgr *Manager) SetObjStoreClient(client objcli.Client) {
+func (mgr *Manager) setObjStoreClient(client objcli.Client) {
 	mgr.objStoreClient = client
+}
+
+// This is the key for the manager option to track which bucket
+// is currently being tracked for hibernation.
+// If set to "$", it indicates that currently, no bucket is
+// being hibernated/tracked for hibernation.
+const bucketInHibernationKey = "bucketInHibernation"
+const NoBucketInHibernation = "$"
+
+func (mgr *Manager) markBucketForHibernation(bucket string) error {
+	return mgr.SetOption(bucketInHibernationKey, bucket, true)
+}
+
+func (mgr *Manager) ResetBucketTrackedForHibernation() error {
+	return mgr.SetOption(bucketInHibernationKey, NoBucketInHibernation, true)
+}
+
+func (mgr *Manager) IsBucketBeingHibernated(bucket string) bool {
+	mgr.bucketInHibernationMutex.RLock()
+	bucketInHibernation := mgr.bucketInHibernation
+	mgr.bucketInHibernationMutex.RUnlock()
+
+	return bucketInHibernation == bucket
+}
+
+func (mgr *Manager) RegisterHibernationBucketTracker(bucket string) {
+	mgr.bucketInHibernationMutex.Lock()
+	defer mgr.bucketInHibernationMutex.Unlock()
+
+	if mgr.bucketInHibernation == bucket {
+		return
+	}
+
+	mgr.bucketInHibernation = bucket
+
+	atomic.AddUint64(&mgr.stats.TotRegisterHibernationBucketTracker, 1)
+}
+
+func (mgr *Manager) UnregisterBucketTracker() {
+	mgr.bucketInHibernationMutex.Lock()
+	defer mgr.bucketInHibernationMutex.Unlock()
+
+	if mgr.bucketInHibernation == NoBucketInHibernation {
+		return
+	}
+
+	mgr.bucketInHibernation = NoBucketInHibernation
+
+	atomic.AddUint64(&mgr.stats.TotUnregisterHibernationBucketTracker, 1)
+}
+
+// Sets options in manager and optionally persists them as cluster options
+// if cfgSet is true
+func (mgr *Manager) SetOption(key, value string, cfgSet bool) error {
+	mgr.optionsMutex.Lock()
+	defer mgr.optionsMutex.Unlock()
+
+	mgr.options[key] = value
+
+	if !cfgSet {
+		return nil
+	}
+
+	mo := ClusterOptions{}
+	oval := reflect.ValueOf(&mo)
+	for k, v := range mgr.options {
+		fName := strings.ToUpper(string(k[0])) + k[1:]
+		f := oval.Elem().FieldByName(fName)
+		if f.IsValid() {
+			f.SetString(v)
+		}
+	}
+	_, err := CfgSetClusterOptions(mgr.cfg, &mo, 0)
+	if err != nil {
+		return err
+	}
+	atomic.AddUint64(&mgr.stats.TotSetOptions, 1)
+	return nil
 }
 
 // PlannerEventHandlerCallback is an optional event
@@ -201,6 +281,9 @@ type ManagerStats struct {
 	TotRefreshLastPlanPIndexes uint64
 
 	TotSlowConfigAccess uint64
+
+	TotRegisterHibernationBucketTracker   uint64
+	TotUnregisterHibernationBucketTracker uint64
 }
 
 // ClusterOptions stores the configurable cluster-level
@@ -231,6 +314,7 @@ type ClusterOptions struct {
 	ResourceUtilizationHighWaterMark   string `json:"resourceUtilizationHighWaterMark"`
 	ResourceUtilizationLowWaterMark    string `json:"resourceUtilizationLowWaterMark"`
 	ResourceUnderUtilizationWaterMark  string `json:"resourceUnderUtilizationWaterMark"`
+	BucketInHibernation                string `json:"bucketInHibernation"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
@@ -950,6 +1034,24 @@ func (mgr *Manager) GetIndexDef(indexName string, refresh bool) (
 }
 
 var LimitIndexDefHook func(mgr *Manager, indexDef *IndexDef) (*IndexDef, error)
+
+var HibernationClientHook = func() (objcli.Client, error) {
+	return nil, fmt.Errorf("not-implemented")
+}
+
+// This function does the groundwork/preparation for hibernation tasks.
+func (mgr *Manager) HibernationPrepareUtil(task, bucket string) error {
+	mgr.setHibernationContext()
+	objStoreClient, err := HibernationClientHook()
+	if err != nil {
+		return fmt.Errorf("manager: unable to get object store client: %v", err)
+	}
+	mgr.setObjStoreClient(objStoreClient)
+	mgr.SetOption(task, "true", false)
+	mgr.markBucketForHibernation(bucket)
+
+	return nil
+}
 
 func (mgr *Manager) CheckIfIndexesCanBeAdded(indexDefs *IndexDefs) error {
 	if LimitIndexDefHook != nil {

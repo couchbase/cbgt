@@ -1326,6 +1326,8 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 		return err
 	}
 
+	var sourceType string
+
 	// Early exit paths for hibernate
 	if taskType == hibernate.OperationType(cbgt.HIBERNATE_TASK) {
 		if indexDefs == nil || len(indexDefs.IndexDefs) == 0 {
@@ -1337,6 +1339,7 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 		for _, indexDef := range indexDefs.IndexDefs {
 			if indexDef.SourceName == bucketName {
 				found = true
+				sourceType = indexDef.SourceType
 				break
 			}
 		}
@@ -1354,6 +1357,7 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 
 	hibOptions := hibernate.HibernationOptions{
 		BucketName:      bucketName,
+		SourceType:      sourceType,
 		ArchiveLocation: remotePath,
 		HttpGet:         client.Get,
 		Manager:         ctl.optionsCtl.Manager,
@@ -1388,6 +1392,9 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 			}
 
 			ctl.m.Unlock()
+
+			// Unsetting the manager options at the end of hibernation.
+			ctl.optionsCtl.Manager.SetOption(string(taskType), "", false)
 
 			close(ctlDoneCh)
 		}()
@@ -1432,6 +1439,10 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 // StopHibernationTask asynchronously stops any ongoing hibernation
 // operations like a hibernate/unhibernate.
 func (ctl *Ctl) StopHibernationTask() {
+	// Used for stopping upload/download
+	_, cancel := ctl.optionsCtl.Manager.GetHibernationContext()
+	cancel()
+
 	ctl.m.Lock()
 	if ctl.ctlStopCh != nil {
 		close(ctl.ctlStopCh)

@@ -138,6 +138,30 @@ func NewUUIDV4() string {
 	return string(buf[:])
 }
 
+func RetryOnCASMismatch(task func() error, retrycount int) error {
+	var err error
+
+	tries := 0
+	for {
+		tries += 1
+		if tries > retrycount {
+			return fmt.Errorf("RetryOnCASMismatch: too many tries")
+		}
+
+		err = task()
+		if err != nil {
+			if _, ok := err.(*CfgCASError); ok {
+				log.Printf("misc: retrying due to cas mismatch")
+				continue
+			}
+			return err
+		}
+		break
+	}
+
+	return err
+}
+
 // Calls f() in a loop, sleeping in an exponential backoff if needed.
 // The provided f() function should return < 0 to stop the loop; >= 0
 // to continue the loop, where > 0 means there was progress which
