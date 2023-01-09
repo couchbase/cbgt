@@ -300,8 +300,17 @@ func (m *CtlMgr) PrepareTopologyChange(
 	change service.TopologyChange) error {
 	log.Printf("ctl/manager: PrepareTopologyChange, change: %v", change)
 
+	var err error
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer func() {
+		m.mu.Unlock()
+		if err == nil {
+			// On success, reset previous topology/cluster operation's warnings/errors
+			m.ctl.resetPrevWarningsAndErrors()
+
+		}
+	}()
 
 	// Possible for caller to not care about current topology, but
 	// just wants to impose or force a topology change.
@@ -309,7 +318,8 @@ func (m *CtlMgr) PrepareTopologyChange(
 		string(change.CurrentTopologyRev) != m.ctl.GetTopology().Rev {
 		log.Errorf("ctl/manager: PrepareTopologyChange, rev check, err: %v",
 			service.ErrConflict)
-		return service.ErrConflict
+		err = service.ErrConflict
+		return err
 	}
 
 	for _, taskHandle := range m.tasks.taskHandles {
@@ -320,7 +330,8 @@ func (m *CtlMgr) PrepareTopologyChange(
 			// the caller should cancel them all first.
 			log.Errorf("ctl/manager: PrepareTopologyChange, "+
 				"task type check, err: %v", service.ErrConflict)
-			return service.ErrConflict
+			err = service.ErrConflict
+			return err
 		}
 	}
 
@@ -846,8 +857,17 @@ var HibernationClientHook = func() (objcli.Client, error) {
 func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 	log.Printf("ctl/manager: PreparePause, params: %v", params)
 
+	var err error
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer func() {
+		m.mu.Unlock()
+		if err == nil {
+			// On success, reset previous topology/cluster operation's warnings/errors
+			m.ctl.resetPrevWarningsAndErrors()
+
+		}
+	}()
 
 	for _, taskHandle := range m.tasks.taskHandles {
 		if taskHandle.task.Type == service.TaskTypePrepared ||
@@ -859,7 +879,8 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 			// as a conflict, as the caller should cancel them all first.
 			log.Errorf("ctl/manager: PreparePause, conflicts with task type: %s,"+
 				" err: %v", taskHandle.task.Type, service.ErrConflict)
-			return service.ErrConflict
+			err = service.ErrConflict
+			return err
 		}
 	}
 
@@ -896,7 +917,8 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 	m.ctl.optionsCtl.Manager.SetHibernationContext()
 	objStoreClient, err := HibernationClientHook()
 	if err != nil {
-		return fmt.Errorf("ctl: unable to get object store client: %v", err)
+		err = fmt.Errorf("ctl: unable to get object store client: %v", err)
+		return err
 	}
 	m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
 
@@ -910,8 +932,17 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 	log.Printf("ctl/manager: PrepareResume, params: %v", params)
 
+	var err error
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer func() {
+		m.mu.Unlock()
+		if err == nil {
+			// On success, reset previous topology/cluster operation's warnings/errors
+			m.ctl.resetPrevWarningsAndErrors()
+
+		}
+	}()
 
 	for _, taskHandle := range m.tasks.taskHandles {
 		if taskHandle.task.Type == service.TaskTypePrepared ||
@@ -923,7 +954,8 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 			// as a conflict, as the caller should cancel them all first.
 			log.Errorf("ctl/manager: PrepareResume, conflicts with task type: %s,"+
 				" err: %v", taskHandle.task.Type, service.ErrConflict)
-			return service.ErrConflict
+			err = service.ErrConflict
+			return err
 		}
 	}
 
@@ -959,7 +991,8 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 		m.ctl.optionsCtl.Manager.SetHibernationContext()
 		objStoreClient, err := HibernationClientHook()
 		if err != nil {
-			return fmt.Errorf("ctl: unable to get object store client: %v", err)
+			err = fmt.Errorf("ctl: unable to get object store client: %v", err)
+			return err
 		}
 		m.ctl.optionsCtl.Manager.SetObjStoreClient(objStoreClient)
 	}
