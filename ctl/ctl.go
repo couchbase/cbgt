@@ -190,11 +190,20 @@ func StartCtl(cfg cbgt.Cfg, server string,
 }
 
 // ----------------------------------------------------
+
+// resetPrevWarningsAndErrors is to be called ONLY during
+// the PREPARE phase of the cluster operation.
+func (ctl *Ctl) resetPrevWarningsAndErrors() {
+	ctl.m.Lock()
+	ctl.prevWarnings = nil
+	ctl.prevErrs = nil
+	ctl.m.Unlock()
+}
+
 func (ctl *Ctl) getManagerOptions() map[string]string {
 	return ctl.optionsCtl.Manager.GetOptions()
 }
 
-// ----------------------------------------------------
 func (ctl *Ctl) getMovingPartitionsCount(keepNodeUUIDs, existingNodes []string) (
 	int, error) {
 	numNewNodes := len(cbgt.StringsRemoveStrings(keepNodeUUIDs, existingNodes))
