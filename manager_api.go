@@ -148,24 +148,18 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 			planParams.NumReplicas+1, planParams.NumReplicas)
 	}
 
-	tries := 0
 	version := CfgGetVersion(mgr.cfg)
-	for {
-		tries += 1
-		if tries > 100 {
-			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
-				" too many tries: %d", tries)
-		}
 
+	indexCreateFunc := func() error {
 		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
-			return "", "", fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
+			return fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
 		}
 		if indexDefs == nil {
 			indexDefs = NewIndexDefs(version)
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-			return "", "", fmt.Errorf("manager_api: could not create index,"+
+			return fmt.Errorf("manager_api: could not create index,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)
 		}
@@ -174,7 +168,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		// with the decorated name.
 		if _, exists := indexDefs.IndexDefs[indexName]; exists &&
 			(prevIndexUUID == "" || indexName != prevIndexName) {
-			return "", "", fmt.Errorf("manager_api: cannot create/update index"+
+			return fmt.Errorf("manager_api: cannot create/update index"+
 				" because an index with the same name already exists: %s",
 				indexName)
 		}
@@ -186,7 +180,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				// with the new indexName as long the $keyspace prefixed new
 				// indexName is different from the previous index name.
 				if prevIndex.Name == indexName {
-					return "", "", fmt.Errorf("here manager_api: cannot create index because"+
+					return fmt.Errorf("here manager_api: cannot create index because"+
 						" an index with the same name already exists: %s",
 						indexName)
 				}
@@ -197,11 +191,11 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 			}
 		} else { // Update index definition.
 			if !exists || prevIndex == nil {
-				return "", "", fmt.Errorf("manager_api: index missing for update,"+
+				return fmt.Errorf("manager_api: index missing for update,"+
 					" indexName: %s", indexName)
 			}
 			if prevIndex.UUID != prevIndexUUID {
-				return "", "", fmt.Errorf("manager_api:"+
+				return fmt.Errorf("manager_api:"+
 					" perhaps there was concurrent index definition update,"+
 					" current index UUID: %s, did not match input UUID: %s",
 					prevIndex.UUID, prevIndexUUID)
@@ -212,7 +206,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 					indexDef.PlanParams.MaxPartitionsPerPIndex) ||
 					(prevIndex.PlanParams.NumReplicas !=
 						indexDef.PlanParams.NumReplicas) {
-					return "", "", fmt.Errorf("manager_api: cannot update"+
+					return fmt.Errorf("manager_api: cannot update"+
 						" partition or replica count for a planFrozen index,"+
 						" indexName: %s", indexName)
 				}
@@ -238,16 +232,13 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		// expect a more modern planner to catch it later.
 
 		_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
-		if err != nil {
-			if _, ok := err.(*CfgCASError); ok {
-				continue // Retry on CAS mismatch.
-			}
+		return err
+	}
 
-			return "", "", fmt.Errorf("manager_api: could not save indexDefs,"+
-				" err: %v", err)
-		}
-
-		break // Success.
+	err = RetryOnCASMismatch(indexCreateFunc, 100)
+	if err != nil {
+		return "", "", fmt.Errorf("manager_api: could not save indexDefs,"+
+			" err: %v", err)
 	}
 
 	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
@@ -312,53 +303,52 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 	string, error) {
 	atomic.AddUint64(&mgr.stats.TotDeleteIndex, 1)
 
-	mgr.m.Lock()
-	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
+	var indexDef *IndexDef
+	var exists bool
+
+	indexDeleteFunc := func() error {
+		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
+		if err != nil {
+			return err
+		}
+		if indexDefs == nil {
+			return fmt.Errorf("manager_api: no indexes on deletion"+
+				" of indexName: %s", indexName)
+		}
+		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+			return fmt.Errorf("manager_api: could not delete index,"+
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				indexDefs.ImplVersion, mgr.version)
+		}
+		indexDef, exists = indexDefs.IndexDefs[indexName]
+		if !exists {
+			return fmt.Errorf("manager_api: index to delete missing,"+
+				" indexName: %s", indexName)
+		}
+		if indexUUID != "" && indexDef.UUID != indexUUID {
+			return fmt.Errorf("manager_api: index to delete wrong UUID,"+
+				" indexName: %s", indexName)
+		}
+
+		// Associated couchbase.Bucket instances and gocbcore.Agent/DCPAgent
+		// instances that are used for stats are closed by the ctl routine.
+
+		indexDefs.UUID = NewUUID()
+		delete(indexDefs.IndexDefs, indexName)
+		indexDefs.ImplVersion = CfgGetVersion(mgr.cfg)
+
+		// NOTE: if our ImplVersion is still too old due to a race, we
+		// expect a more modern planner to catch it later.
+
+		_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+		return err
+	}
+
+	err := RetryOnCASMismatch(indexDeleteFunc, 100)
 	if err != nil {
-		mgr.m.Unlock()
-		return "", err
-	}
-	if indexDefs == nil {
-		mgr.m.Unlock()
-		return "", fmt.Errorf("manager_api: no indexes on deletion"+
-			" of indexName: %s", indexName)
-	}
-	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		mgr.m.Unlock()
-		return "", fmt.Errorf("manager_api: could not delete index,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			indexDefs.ImplVersion, mgr.version)
-	}
-	indexDef, exists := indexDefs.IndexDefs[indexName]
-	if !exists {
-		mgr.m.Unlock()
-		return "", fmt.Errorf("manager_api: index to delete missing,"+
-			" indexName: %s", indexName)
-	}
-	if indexUUID != "" && indexDef.UUID != indexUUID {
-		mgr.m.Unlock()
-		return "", fmt.Errorf("manager_api: index to delete wrong UUID,"+
-			" indexName: %s", indexName)
-	}
-
-	// Associated couchbase.Bucket instances and gocbcore.Agent/DCPAgent
-	// instances that are used for stats are closed by the ctl routine.
-
-	indexDefs.UUID = NewUUID()
-	delete(indexDefs.IndexDefs, indexName)
-	indexDefs.ImplVersion = CfgGetVersion(mgr.cfg)
-
-	// NOTE: if our ImplVersion is still too old due to a race, we
-	// expect a more modern planner to catch it later.
-
-	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
-	if err != nil {
-		mgr.m.Unlock()
 		return "", fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
 	}
-
-	mgr.m.Unlock()
 
 	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
 
@@ -392,78 +382,80 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 	planFreezeOp string) error {
 	atomic.AddUint64(&mgr.stats.TotIndexControl, 1)
 
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
+	indexControlFunc := func() error {
+		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
+		if err != nil {
+			return err
+		}
+		if indexDefs == nil {
+			return fmt.Errorf("manager_api: no indexes,"+
+				" index read/write control, indexName: %s", indexName)
+		}
+		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+			return fmt.Errorf("manager_api: index read/write control,"+
+				" indexName: %s,"+
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				indexName, indexDefs.ImplVersion, mgr.version)
+		}
+		indexDef, exists := indexDefs.IndexDefs[indexName]
+		if !exists || indexDef == nil {
+			return fmt.Errorf("manager_api: no index to read/write control,"+
+				" indexName: %s", indexName)
+		}
+		if indexUUID != "" && indexDef.UUID != indexUUID {
+			return fmt.Errorf("manager_api: index.UUID mismatched")
+		}
 
-	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
-	if err != nil {
+		// refresh the UUID as we are updating the indexDef
+		indexUUID = NewUUID()
+		indexDef.UUID = indexUUID
+		indexDefs.UUID = indexUUID
+
+		if indexDef.PlanParams.NodePlanParams == nil {
+			indexDef.PlanParams.NodePlanParams =
+				map[string]map[string]*NodePlanParam{}
+		}
+		if indexDef.PlanParams.NodePlanParams[""] == nil {
+			indexDef.PlanParams.NodePlanParams[""] =
+				map[string]*NodePlanParam{}
+		}
+		if indexDef.PlanParams.NodePlanParams[""][""] == nil {
+			indexDef.PlanParams.NodePlanParams[""][""] = &NodePlanParam{
+				CanRead:  true,
+				CanWrite: true,
+			}
+		}
+
+		// TODO: Allow for node UUID and planPIndex.Name inputs.
+		npp := indexDef.PlanParams.NodePlanParams[""][""]
+		if readOp != "" {
+			if readOp == "allow" || readOp == "resume" {
+				npp.CanRead = true
+			} else {
+				npp.CanRead = false
+			}
+		}
+		if writeOp != "" {
+			if writeOp == "allow" || writeOp == "resume" {
+				npp.CanWrite = true
+			} else {
+				npp.CanWrite = false
+			}
+		}
+
+		if npp.CanRead == true && npp.CanWrite == true {
+			delete(indexDef.PlanParams.NodePlanParams[""], "")
+		}
+
+		if planFreezeOp != "" {
+			indexDef.PlanParams.PlanFrozen = planFreezeOp == "freeze"
+		}
+
+		_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 		return err
 	}
-	if indexDefs == nil {
-		return fmt.Errorf("manager_api: no indexes,"+
-			" index read/write control, indexName: %s", indexName)
-	}
-	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		return fmt.Errorf("manager_api: index read/write control,"+
-			" indexName: %s,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			indexName, indexDefs.ImplVersion, mgr.version)
-	}
-	indexDef, exists := indexDefs.IndexDefs[indexName]
-	if !exists || indexDef == nil {
-		return fmt.Errorf("manager_api: no index to read/write control,"+
-			" indexName: %s", indexName)
-	}
-	if indexUUID != "" && indexDef.UUID != indexUUID {
-		return fmt.Errorf("manager_api: index.UUID mismatched")
-	}
 
-	// refresh the UUID as we are updating the indexDef
-	indexUUID = NewUUID()
-	indexDef.UUID = indexUUID
-	indexDefs.UUID = indexUUID
-
-	if indexDef.PlanParams.NodePlanParams == nil {
-		indexDef.PlanParams.NodePlanParams =
-			map[string]map[string]*NodePlanParam{}
-	}
-	if indexDef.PlanParams.NodePlanParams[""] == nil {
-		indexDef.PlanParams.NodePlanParams[""] =
-			map[string]*NodePlanParam{}
-	}
-	if indexDef.PlanParams.NodePlanParams[""][""] == nil {
-		indexDef.PlanParams.NodePlanParams[""][""] = &NodePlanParam{
-			CanRead:  true,
-			CanWrite: true,
-		}
-	}
-
-	// TODO: Allow for node UUID and planPIndex.Name inputs.
-	npp := indexDef.PlanParams.NodePlanParams[""][""]
-	if readOp != "" {
-		if readOp == "allow" || readOp == "resume" {
-			npp.CanRead = true
-		} else {
-			npp.CanRead = false
-		}
-	}
-	if writeOp != "" {
-		if writeOp == "allow" || writeOp == "resume" {
-			npp.CanWrite = true
-		} else {
-			npp.CanWrite = false
-		}
-	}
-
-	if npp.CanRead == true && npp.CanWrite == true {
-		delete(indexDef.PlanParams.NodePlanParams[""], "")
-	}
-
-	if planFreezeOp != "" {
-		indexDef.PlanParams.PlanFrozen = planFreezeOp == "freeze"
-	}
-
-	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+	err := RetryOnCASMismatch(indexControlFunc, 100)
 	if err != nil {
 		return fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
@@ -476,29 +468,39 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 // BumpIndexDefs bumps the uuid of the index defs, to force planners
 // and other downstream tasks to re-run.
 func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
-	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
-	if err != nil {
+
+	var indexDefs *IndexDefs
+	var err error
+	var cas uint64
+
+	bumpIndexDefsFunc := func() error {
+		indexDefs, cas, err = CfgGetIndexDefs(mgr.cfg)
+		if err != nil {
+			return err
+		}
+		if indexDefs == nil {
+			return fmt.Errorf("manager_api: no indexDefs to bump")
+		}
+		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+			return fmt.Errorf("manager_api: could not bump indexDefs,"+
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				indexDefs.ImplVersion, mgr.version)
+		}
+		if indexDefsUUID != "" && indexDefs.UUID != indexDefsUUID {
+			return fmt.Errorf("manager_api: bump indexDefs wrong UUID")
+		}
+
+		indexDefs.UUID = NewUUID()
+		indexDefs.ImplVersion = mgr.version
+
+		// NOTE: if our ImplVersion is still too old due to a race, we
+		// expect a more modern cbgt to do the work instead.
+
+		_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
 		return err
 	}
-	if indexDefs == nil {
-		return fmt.Errorf("manager_api: no indexDefs to bump")
-	}
-	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		return fmt.Errorf("manager_api: could not bump indexDefs,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			indexDefs.ImplVersion, mgr.version)
-	}
-	if indexDefsUUID != "" && indexDefs.UUID != indexDefsUUID {
-		return fmt.Errorf("manager_api: bump indexDefs wrong UUID")
-	}
 
-	indexDefs.UUID = NewUUID()
-	indexDefs.ImplVersion = mgr.version
-
-	// NOTE: if our ImplVersion is still too old due to a race, we
-	// expect a more modern cbgt to do the work instead.
-
-	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+	err = RetryOnCASMismatch(bumpIndexDefsFunc, 100)
 	if err != nil {
 		return fmt.Errorf("manager_api: could not bump indexDefs,"+
 			" err: %v", err)
@@ -514,60 +516,59 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 // sourceType and sourceName.
 func (mgr *Manager) DeleteAllIndexFromSource(
 	sourceType, sourceName, sourceUUID string) error {
-	mgr.m.Lock()
-
-	indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
-	if err != nil {
-		mgr.m.Unlock()
-		return err
-	}
-	if indexDefs == nil {
-		mgr.m.Unlock()
-		return fmt.Errorf("manager_api: DeleteAllIndexFromSource, no indexDefs")
-	}
-	if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-		mgr.m.Unlock()
-		return fmt.Errorf("manager_api: DeleteAllIndexFromSource,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			indexDefs.ImplVersion, mgr.version)
-	}
-
-	// Close associated couchbase.Bucket instances used for stats
-	statsCBBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
 
 	var deletedCount uint64
-	for indexName, indexDef := range indexDefs.IndexDefs {
-		if indexDef.SourceType == sourceType &&
-			indexDef.SourceName == sourceName {
-			if sourceUUID != "" && indexDef.SourceUUID != "" &&
-				sourceUUID != indexDef.SourceUUID {
-				continue
-			}
-
-			atomic.AddUint64(&mgr.stats.TotDeleteIndexBySource, 1)
-			delete(indexDefs.IndexDefs, indexName)
-
-			log.Printf("manager_api: starting index definition deletion,"+
-				" indexType: %s, indexName: %s, indexUUID: %s",
-				indexDef.Type, indexDef.Name, indexDef.UUID)
-
-			deletedCount++
-
-			// Release associated gocbcore.Agent/DCPAgent instances used for stats
-			statsAgentsMap.releaseAgents(sourceName)
+	indexDeleteFromSourceFunc := func() error {
+		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
+		if err != nil {
+			return err
 		}
-	}
-	// exit early if nothing to delete
-	if deletedCount == 0 {
-		mgr.m.Unlock()
-		return nil
-	}
-	// update the index definitions
-	indexDefs.UUID = NewUUID()
-	indexDefs.ImplVersion = CfgGetVersion(mgr.cfg)
-	_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
-	mgr.m.Unlock()
+		if indexDefs == nil {
+			return fmt.Errorf("manager_api: DeleteAllIndexFromSource, no indexDefs")
+		}
+		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+			return fmt.Errorf("manager_api: DeleteAllIndexFromSource,"+
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				indexDefs.ImplVersion, mgr.version)
+		}
 
+		// Close associated couchbase.Bucket instances used for stats
+		statsCBBktMap.closeCouchbaseBucket(sourceName, sourceUUID)
+
+		var deletedCount uint64
+		for indexName, indexDef := range indexDefs.IndexDefs {
+			if indexDef.SourceType == sourceType &&
+				indexDef.SourceName == sourceName {
+				if sourceUUID != "" && indexDef.SourceUUID != "" &&
+					sourceUUID != indexDef.SourceUUID {
+					continue
+				}
+
+				atomic.AddUint64(&mgr.stats.TotDeleteIndexBySource, 1)
+				delete(indexDefs.IndexDefs, indexName)
+
+				log.Printf("manager_api: starting index definition deletion,"+
+					" indexType: %s, indexName: %s, indexUUID: %s",
+					indexDef.Type, indexDef.Name, indexDef.UUID)
+
+				deletedCount++
+
+				// Release associated gocbcore.Agent/DCPAgent instances used for stats
+				statsAgentsMap.releaseAgents(sourceName)
+			}
+		}
+		// exit early if nothing to delete
+		if deletedCount == 0 {
+			return nil
+		}
+		// update the index definitions
+		indexDefs.UUID = NewUUID()
+		indexDefs.ImplVersion = CfgGetVersion(mgr.cfg)
+		_, err = CfgSetIndexDefs(mgr.cfg, indexDefs, cas)
+		return err
+	}
+
+	err := RetryOnCASMismatch(indexDeleteFromSourceFunc, 100)
 	if err != nil {
 		atomic.AddUint64(&mgr.stats.TotDeleteIndexBySourceErr, deletedCount)
 		return fmt.Errorf("manager_api: could not save indexDefs,"+
