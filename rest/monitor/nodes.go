@@ -10,7 +10,7 @@ package monitor
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 )
@@ -137,7 +137,7 @@ func (m *MonitorNodes) sample(
 		if res.StatusCode == 200 {
 			var dataErr error
 
-			data, dataErr = ioutil.ReadAll(res.Body)
+			data, dataErr = io.ReadAll(res.Body)
 			if err == nil && dataErr != nil {
 				err = dataErr
 			}

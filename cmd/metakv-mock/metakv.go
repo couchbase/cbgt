@@ -12,21 +12,20 @@ licenses/APL2.txt.
 //
 // To use...
 //
-//     cd [cbgt main directory]
-//     go build ./cmd/metakv-mock
-//     ./metakv-mock
+//	cd [cbgt main directory]
+//	go build ./cmd/metakv-mock
+//	./metakv-mock
 //
 // And then...
 //
-//     CBAUTH_REVRPC_URL=http://localhost:9000 go test -tags=metakv_test
-//
+//	CBAUTH_REVRPC_URL=http://localhost:9000 go test -tags=metakv_test
 package main
 
 import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -154,7 +153,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "PUT" {
-		body, _ := ioutil.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
 		fmt.Printf("got body %s", body)
 		b := parseBody(string(body))
 		x, _ := url.Parse(b["value"])

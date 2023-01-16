@@ -11,7 +11,7 @@ package monitor
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -48,7 +48,7 @@ func Test1NodeStartMonitorNodes(t *testing.T) {
 
 		return &http.Response{
 			StatusCode: 200,
-			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+			Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
 
@@ -106,7 +106,7 @@ func Test1NodeStartMonitorNodesAllErrors(t *testing.T) {
 		if url == "url0/api/stats?partitions=true" {
 			return &http.Response{
 				StatusCode: 500,
-				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+				Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 			}, nil
 		}
 
@@ -177,7 +177,7 @@ func Test1NodeStartMonitorNodesFast(t *testing.T) {
 
 		return &http.Response{
 			StatusCode: 200,
-			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+			Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
 

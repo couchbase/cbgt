@@ -10,7 +10,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -24,7 +23,7 @@ import (
 func MainUUID(baseName, dataDir string) (string, error) {
 	uuid := cbgt.NewUUID()
 	uuidPath := dataDir + string(os.PathSeparator) + baseName + ".uuid"
-	uuidBuf, err := ioutil.ReadFile(uuidPath)
+	uuidBuf, err := os.ReadFile(uuidPath)
 	if err == nil {
 		uuid = strings.TrimSpace(string(uuidBuf))
 		if uuid == "" {
@@ -37,7 +36,7 @@ func MainUUID(baseName, dataDir string) (string, error) {
 		log.Printf("main: manager uuid: %s", uuid)
 		log.Printf("main: manager uuid was generated")
 	}
-	err = ioutil.WriteFile(uuidPath, []byte(uuid), 0600)
+	err = os.WriteFile(uuidPath, []byte(uuid), 0600)
 	if err != nil {
 		return "", fmt.Errorf("error: could not write uuidPath: %s\n"+
 			"  Please check that your -data/-dataDir parameter (%q)\n"+

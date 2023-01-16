@@ -14,7 +14,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -51,7 +50,7 @@ func init() {
 //
 // The subdirectory tree lives under the dataDir...
 //
-//    <dataDir>/<sourceName/**
+//	<dataDir>/<sourceName/**
 //
 // FilesFeed supports optional regexp patterns to allow you to filter
 // for only the file paths that you want.
@@ -281,7 +280,7 @@ func (t *FilesFeed) Start() error {
 					seqCur := seqs[partition]
 					seqs[partition] = seqCur + 1
 
-					buf, err := ioutil.ReadFile(path)
+					buf, err := os.ReadFile(path)
 					if err != nil {
 						log.Warnf("feed_files: read file,"+
 							" name: %s, path: %s, err: %v",

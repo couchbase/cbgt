@@ -13,7 +13,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,7 +72,7 @@ func (c *CfgMetaKv) uncompressLocked(val []byte) ([]byte, error) {
 	}
 	defer zr.Close()
 
-	result, err := ioutil.ReadAll(zr)
+	result, err := io.ReadAll(zr)
 	if err != nil {
 		return nil, err
 	}

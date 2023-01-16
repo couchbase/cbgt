@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"strings"
@@ -259,7 +258,7 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 				" Marshal pindex: %s, err: %v", pi.Name, err)
 
 		}
-		err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
+		err = os.WriteFile(pi.Path+string(os.PathSeparator)+
 			PINDEX_META_FILENAME, buf, 0600)
 		if err != nil {
 			cleanDir(pi.Path)
@@ -399,7 +398,7 @@ func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
 				" Marshal pindex: %s, err: %v", pi.Name, err)
 
 		}
-		err = ioutil.WriteFile(pi.Path+string(os.PathSeparator)+
+		err = os.WriteFile(pi.Path+string(os.PathSeparator)+
 			PINDEX_META_FILENAME, buf, 0600)
 		if err != nil {
 			return nil, fmt.Errorf("janitor: hibernateRestart could not save "+

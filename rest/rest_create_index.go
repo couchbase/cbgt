@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -131,7 +131,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		return
 	}
 
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_create_index:"+
 			" could not read request body, indexName: %s, err: %v",
@@ -181,7 +181,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	if ca != "orchestrator-forwarded" &&
 		(indexType == "fulltext-index" || indexType == "fulltext-alias") {
 		// populate the body since we already read it.
-		req.Body = ioutil.NopCloser(bytes.NewReader(requestBody))
+		req.Body = io.NopCloser(bytes.NewReader(requestBody))
 		// if there was successful proxying of the request to the rebalance
 		// orchestrator node, then return early.
 		if proxyOrchestratorNodeOnRebalanceDone(w, req, h.mgr) {
@@ -411,7 +411,7 @@ func getNumSourcePartitionsForBucket(server, bucketName string) (int, error) {
 			if err == nil {
 				defer resp.Body.Close()
 
-				buf, err := ioutil.ReadAll(resp.Body)
+				buf, err := io.ReadAll(resp.Body)
 				if err == nil && len(buf) > 0 {
 					respBuf = buf
 					respErr = nil

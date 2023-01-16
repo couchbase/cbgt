@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 
@@ -40,7 +39,7 @@ func NewBlackHolePIndexImpl(indexType, indexParams,
 		return nil, nil, err
 	}
 
-	err = ioutil.WriteFile(path+string(os.PathSeparator)+"black.hole",
+	err = os.WriteFile(path+string(os.PathSeparator)+"black.hole",
 		EMPTY_BYTES, 0600)
 	if err != nil {
 		return nil, nil, err
@@ -57,7 +56,7 @@ func OpenBlackHolePIndexImpl(indexType, path string, restart func()) (
 
 func OpenBlackHolePIndexImplUsing(indexType, path, indexParams string, restart func()) (
 	PIndexImpl, Dest, error) {
-	buf, err := ioutil.ReadFile(path + string(os.PathSeparator) + "black.hole")
+	buf, err := os.ReadFile(path + string(os.PathSeparator) + "black.hole")
 	if err != nil {
 		return nil, nil, err
 	}

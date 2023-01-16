@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -150,7 +150,7 @@ func processSystemEvent(retryAfter int, evBytes []byte) {
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
-		respBytes, err := ioutil.ReadAll(resp.Body)
+		respBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Errorf("system_event: error while reading "+
 				"the response object err: %v", err)

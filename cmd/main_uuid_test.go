@@ -9,13 +9,12 @@
 package cmd
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
 
 func TestMainUUID(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	uuid, err := MainUUID("cbgt", emptyDir)
@@ -31,7 +30,7 @@ func TestMainUUID(t *testing.T) {
 
 	path := emptyDir + string(os.PathSeparator) + "cbgt.uuid"
 	os.Remove(path)
-	ioutil.WriteFile(path, []byte{}, 0600)
+	os.WriteFile(path, []byte{}, 0600)
 
 	uuid3, err := MainUUID("cbgt", emptyDir)
 	if err == nil || uuid3 != "" {

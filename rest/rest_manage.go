@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sort"
 
@@ -444,7 +443,7 @@ func NewCfgNodeDefsHandler(mgr *cbgt.Manager) *CfgNodeDefsHandler {
 
 func (h *CfgNodeDefsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_manage:"+
 			" could not read request body, err: %v", err), http.StatusBadRequest)
@@ -506,7 +505,7 @@ func NewCfgPlanPIndexesHandler(mgr *cbgt.Manager) *CfgPlanPIndexesHandler {
 
 func (h *CfgPlanPIndexesHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_manage:"+
 			" could not read request body, err: %v", err), http.StatusBadRequest)
@@ -590,7 +589,7 @@ func NewManagerOptions(mgr *cbgt.Manager) *ManagerOptions {
 
 func (h *ManagerOptions) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		msg := fmt.Sprintf("rest_manage:"+
 			" could not read request body err: %v", err)

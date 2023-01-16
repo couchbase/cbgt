@@ -11,7 +11,6 @@ package cbgt
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -210,7 +209,7 @@ func NewPIndex(mgr *Manager, name, uuid,
 				path, err)
 		}
 
-		err = ioutil.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
+		err = os.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
 			buf, 0600)
 		if err != nil {
 			dest.Close()
@@ -229,8 +228,7 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 	pindex = &PIndex{}
 	// load PINDEX_META only if manager's dataDir is set
 	if mgr != nil && len(mgr.dataDir) > 0 {
-		buf, err := ioutil.ReadFile(path +
-			string(os.PathSeparator) + PINDEX_META_FILENAME)
+		buf, err := os.ReadFile(path + string(os.PathSeparator) + PINDEX_META_FILENAME)
 		if err != nil {
 			return nil, fmt.Errorf("pindex: could not load PINDEX_META_FILENAME,"+
 				" path: %s, err: %v", path, err)

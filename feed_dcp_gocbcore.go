@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net/http"
@@ -1212,7 +1211,7 @@ var GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte,
 	}
 	defer resp.Body.Close()
 
-	respBuf, err := ioutil.ReadAll(resp.Body)
+	respBuf, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
 	}

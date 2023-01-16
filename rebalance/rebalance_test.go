@@ -11,7 +11,7 @@ package rebalance
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -20,14 +20,12 @@ import (
 	"testing"
 
 	"github.com/couchbase/blance"
-
-	log "github.com/couchbase/clog"
-
 	"github.com/couchbase/cbgt"
+	log "github.com/couchbase/clog"
 )
 
 func TestRebalance(t *testing.T) {
-	testDir, _ := ioutil.TempDir("./tmp", "test")
+	testDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(testDir)
 
 	nodeDir := func(node string) string {
@@ -46,7 +44,7 @@ func TestRebalance(t *testing.T) {
 
 		return &http.Response{
 			StatusCode: 200,
-			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+			Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
 
@@ -449,7 +447,7 @@ func startNodeManager(testDir string, cfg cbgt.Cfg, node, register string,
 }
 
 func TestRebalanceStatsErrorCase(t *testing.T) {
-	testDir, _ := ioutil.TempDir("./tmp", "test")
+	testDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(testDir)
 
 	nodeDir := func(node string) string {
@@ -473,13 +471,13 @@ func TestRebalanceStatsErrorCase(t *testing.T) {
 		if retErr {
 			return &http.Response{
 				StatusCode: 403,
-				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(""))),
+				Body:       io.NopCloser(bytes.NewBuffer([]byte(""))),
 			}, fmt.Errorf("EOF")
 		}
 
 		return &http.Response{
 			StatusCode: 200,
-			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+			Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 
 	}

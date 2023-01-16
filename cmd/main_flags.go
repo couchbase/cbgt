@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"runtime"
@@ -98,7 +97,7 @@ func ParseOptions(optionKVs string, envName string,
 	if exists {
 		log.Printf("main_flags: loading optionsFile: %q", optionsFile)
 
-		b, err := ioutil.ReadFile(optionsFile)
+		b, err := os.ReadFile(optionsFile)
 		if err != nil {
 			log.Warnf("main_flags: reading options file: %s, err: %v",
 				optionsFile, err)

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -582,7 +581,7 @@ var TempPathPrefix = "temp$$"
 // Walk the data dir and register pindexes for a Manager instance.
 func (mgr *Manager) LoadDataDir() error {
 	log.Printf("manager: loading dataDir...")
-	dirEntries, err := ioutil.ReadDir(mgr.dataDir)
+	dirEntries, err := os.ReadDir(mgr.dataDir)
 	if err != nil {
 		return fmt.Errorf("manager: could not read dataDir: %s, err: %v",
 			mgr.dataDir, err)
@@ -1039,7 +1038,7 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 	mgr.stablePlanPIndexesMutex.RLock()
 	defer mgr.stablePlanPIndexesMutex.RUnlock()
 	// read the files from the planPIndexes directory.
-	files, err := ioutil.ReadDir(dirPath)
+	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		log.Errorf("manager: GetStableLocalPlanPIndexes, readDir err: %v", err)
 		return nil
@@ -1053,7 +1052,7 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 	// on the writer side to end up having multiple files on disk.
 	for i := len(files) - 1; i >= 0; i-- {
 		path := filepath.Join(dirPath, files[i].Name())
-		val, err := ioutil.ReadFile(path)
+		val, err := os.ReadFile(path)
 		if err != nil {
 			log.Errorf("manager: GetStableLocalPlanPIndexes, readFile, err: %v", err)
 			// in case of a file read error, check for any subsequent plan files.
@@ -1171,7 +1170,7 @@ func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) 
 		log.Errorf("manager: persistPlanPIndexes,  MkdirAll failed, err: %v", err)
 		return
 	}
-	err = ioutil.WriteFile(newPath, val, 0600)
+	err = os.WriteFile(newPath, val, 0600)
 	if err != nil {
 		log.Errorf("manager: persistPlanPIndexes writeFile failed, err: %v", err)
 		return
@@ -1182,7 +1181,7 @@ func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) 
 	// The plan right before a failover ought to be a stable, usable
 	// plan for a failover-recovery operation.
 	// ReadDir returns files in the sorted order of their timestamped names.
-	files, err := ioutil.ReadDir(dirPath)
+	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		log.Errorf("manager: persistPlanPIndexes, readDir failed, err: %v", err)
 		return

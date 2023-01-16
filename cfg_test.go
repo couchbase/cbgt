@@ -10,7 +10,6 @@ package cbgt
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
@@ -157,7 +156,7 @@ func TestCfgMem(t *testing.T) {
 }
 
 func TestCfgSimple(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgSimple(emptyDir + string(os.PathSeparator) + "test.cfg")
@@ -272,7 +271,7 @@ func TestCfgCASError(t *testing.T) {
 }
 
 func TestCfgSimpleLoad(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	c := NewCfgSimple(emptyDir + string(os.PathSeparator) + "not-a-file.cfg")
@@ -301,7 +300,7 @@ func TestCfgSimpleLoad(t *testing.T) {
 	}
 
 	badPath := emptyDir + string(os.PathSeparator) + "bad.cfg"
-	ioutil.WriteFile(badPath, []byte("}hey this is bad json :-{"), 0600)
+	os.WriteFile(badPath, []byte("}hey this is bad json :-{"), 0600)
 	c3 := NewCfgSimple(badPath)
 	if err = c3.Load(); err == nil {
 		t.Errorf("expected Load() to fail on bad json file")
@@ -318,7 +317,7 @@ func TestCfgSimpleSave(t *testing.T) {
 }
 
 func TestCfgSimpleSubscribe(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	path := emptyDir + string(os.PathSeparator) + "test.cfg"

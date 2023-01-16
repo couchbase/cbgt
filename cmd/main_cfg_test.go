@@ -9,13 +9,12 @@
 package cmd
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
 
 func TestMainCfg(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	bindHttp := "10.1.1.20:8095"

@@ -11,7 +11,6 @@ package cbgt
 import (
 	"bytes"
 	"hash/crc32"
-	"io/ioutil"
 	"os"
 	"sort"
 	"testing"
@@ -47,7 +46,7 @@ func TestFilesFindMatches(t *testing.T) {
 		t.Errorf("expected err")
 	}
 
-	testDir, _ := ioutil.TempDir("tmp", "test")
+	testDir, _ := os.MkdirTemp("tmp", "test")
 	defer os.RemoveAll(testDir)
 	err = os.MkdirAll(testDir+
 		string(os.PathSeparator)+"files"+
@@ -86,7 +85,7 @@ func TestFilesFindMatches(t *testing.T) {
 		string(os.PathSeparator) + "files" +
 		string(os.PathSeparator) + "foo" +
 		string(os.PathSeparator) + "hi.txt"
-	ioutil.WriteFile(hiPath, []byte("hello world"), 0600)
+	os.WriteFile(hiPath, []byte("hello world"), 0600)
 
 	paths, err = FilesFindMatches(testDir, "foo",
 		regExps, modTimeGTE, maxSize)
@@ -102,7 +101,7 @@ func TestFilesFindMatches(t *testing.T) {
 		string(os.PathSeparator) + "foo" +
 		string(os.PathSeparator) + "bar" +
 		string(os.PathSeparator) + "bye.md"
-	ioutil.WriteFile(byePath, []byte("goodbye world"), 0600)
+	os.WriteFile(byePath, []byte("goodbye world"), 0600)
 
 	paths, err = FilesFindMatches(testDir, "foo",
 		regExps, modTimeGTE, maxSize)
@@ -288,7 +287,7 @@ func TestStartFilesFeed(t *testing.T) {
 	params := ""
 	dests := map[string]Dest{}
 
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -308,8 +307,8 @@ func TestStartFilesFeed(t *testing.T) {
 
 	os.MkdirAll(sourceDir, 0700)
 
-	ioutil.WriteFile(sourceDir+"hi.txt", []byte("hello"), 0600)
-	ioutil.WriteFile(sourceDir+"bye.txt", []byte("goodbye"), 0600)
+	os.WriteFile(sourceDir+"hi.txt", []byte("hello"), 0600)
+	os.WriteFile(sourceDir+"bye.txt", []byte("goodbye"), 0600)
 
 	err = StartFilesFeed(mgr, "feedName", "indexName", "indexUUID",
 		sourceType, "sourceName", "sourceUUID", params, dests)

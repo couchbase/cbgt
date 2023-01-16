@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"sync"
@@ -235,10 +235,10 @@ func httpGetBytes(
 			continue // Try next url.
 		}
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("httpGetBytes,"+
-				" ioutil.ReadAll, url: %s, err: %v", url, err))
+				" io.ReadAll, url: %s, err: %v", url, err))
 			continue // Try next url.
 		}
 

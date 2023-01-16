@@ -11,7 +11,7 @@ package monitor
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -54,7 +54,7 @@ func TestStartMonitorClusterEmptyCfg(t *testing.T) {
 
 		return &http.Response{
 			StatusCode: 200,
-			Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+			Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 		}, nil
 	}
 
@@ -135,7 +135,7 @@ func testStartMonitorCluster(t *testing.T,
 		if url == "url0/api/cfg" {
 			return &http.Response{
 				StatusCode: 200,
-				Body: ioutil.NopCloser(bytes.NewBuffer([]byte(`{
+				Body: io.NopCloser(bytes.NewBuffer([]byte(`{
 "nodeDefsWanted": {
   "nodeDefs": {
     "uuid0": {
@@ -152,7 +152,7 @@ func testStartMonitorCluster(t *testing.T,
 			url == "http://url0/api/diag" {
 			return &http.Response{
 				StatusCode: 200,
-				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte("{}"))),
+				Body:       io.NopCloser(bytes.NewBuffer([]byte("{}"))),
 			}, nil
 		}
 

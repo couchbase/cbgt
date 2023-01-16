@@ -10,7 +10,6 @@ package cbgt
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -99,7 +98,7 @@ func TestManagerStart(t *testing.T) {
 	}
 	m.Stop()
 
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	m = NewManager(VERSION, nil, NewUUID(), nil,
@@ -143,7 +142,7 @@ func TestManagerStart(t *testing.T) {
 }
 
 func TestManagerRestart(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -220,7 +219,7 @@ func TestManagerRestart(t *testing.T) {
 }
 
 func TestManagerCreateDeleteIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -265,7 +264,7 @@ func TestManagerCreateDeleteIndex(t *testing.T) {
 }
 
 func TestManagerDeleteAllIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -307,7 +306,7 @@ func TestManagerDeleteAllIndex(t *testing.T) {
 }
 
 func TestManagerRegisterPIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
 	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "",
@@ -405,7 +404,7 @@ func TestManagerRegisterPIndex(t *testing.T) {
 }
 
 func TestManagerRegisterFeed(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
 	m := NewManager(VERSION, nil, NewUUID(),
@@ -496,7 +495,7 @@ func TestManagerStartDCPFeed(t *testing.T) {
 }
 
 func testManagerStartDCPFeed(t *testing.T, sourceType string) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -539,7 +538,7 @@ func testManagerStartDCPFeed(t *testing.T, sourceType string) {
 }
 
 func TestManagerStartTAPFeed(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -581,7 +580,7 @@ func TestManagerStartTAPFeed(t *testing.T) {
 }
 
 func TestManagerStartNILFeed(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -616,7 +615,7 @@ func TestManagerStartNILFeed(t *testing.T) {
 }
 
 func TestManagerStartSimpleFeed(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -651,7 +650,7 @@ func TestManagerStartSimpleFeed(t *testing.T) {
 }
 
 func TestManagerTags(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -674,7 +673,7 @@ func TestManagerTags(t *testing.T) {
 }
 
 func TestManagerClosePIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
 	m := NewManager(VERSION, nil, NewUUID(),
@@ -719,7 +718,7 @@ func TestManagerClosePIndex(t *testing.T) {
 }
 
 func TestManagerRemovePIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
 	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "", emptyDir, "", meh)
@@ -763,7 +762,7 @@ func TestManagerRemovePIndex(t *testing.T) {
 }
 
 func TestManagerStrangeWorkReqs(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	cfg := NewCfgMem()
 	meh := &TestMEH{}
@@ -789,7 +788,7 @@ func TestManagerStrangeWorkReqs(t *testing.T) {
 }
 
 func TestManagerStartFeedByType(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "",
@@ -803,7 +802,7 @@ func TestManagerStartFeedByType(t *testing.T) {
 }
 
 func TestManagerStartPIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	m := NewManager(VERSION, nil, NewUUID(), nil, "", 1, "", "",
@@ -822,7 +821,7 @@ func TestManagerStartPIndex(t *testing.T) {
 }
 
 func TestManagerReStartPIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	meh := &TestMEH{}
@@ -853,7 +852,7 @@ func TestManagerReStartPIndex(t *testing.T) {
 func testManagerSimpleFeed(t *testing.T,
 	sourceParams string, planParams PlanParams,
 	andThen func(*Manager, *PrimaryFeed, *TestMEH)) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	cfg := NewCfgMem()
 	meh := &TestMEH{}
@@ -905,7 +904,7 @@ func TestManagerCreateSimpleFeed(t *testing.T) {
 }
 
 func TestRemoveNodeDef(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	cfg := NewCfgMem()
@@ -1007,7 +1006,7 @@ func TestRemoveNodeDef(t *testing.T) {
 }
 
 func TestRegisterUnwanted(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	uuid := NewUUID()
@@ -1100,7 +1099,7 @@ func TestRegisterUnwanted(t *testing.T) {
 }
 
 func TestUnregisterNodes(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	uuid := NewUUID()
@@ -1164,7 +1163,7 @@ func TestUnregisterNodes(t *testing.T) {
 }
 
 func TestManagerRestartPIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
 	m := NewManager(VERSION, nil, NewUUID(),
@@ -1213,7 +1212,7 @@ func TestManagerRestartPIndex(t *testing.T) {
 }
 
 func TestManagerMultipleServers(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	meh := &TestMEH{}
 	serverStr := "localhost:1000;localhost:1001;localhost:1002"
@@ -1230,7 +1229,7 @@ func TestManagerMultipleServers(t *testing.T) {
 }
 
 func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	cfg := NewCfgMem()
 	pit, err := PIndexImplTypeForIndex(cfg, "foo")
@@ -1360,7 +1359,7 @@ func registerNode(nodeDef *NodeDef, kind string, m *Manager) error {
 }
 
 func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 	cfg := NewCfgMem()
 	pit, err := PIndexImplTypeForIndex(cfg, "foo")

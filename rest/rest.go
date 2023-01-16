@@ -13,7 +13,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/user"
@@ -53,7 +52,7 @@ func isRetryableError(code int) bool {
 func ShowError(w http.ResponseWriter, req *http.Request, msg string, code int) {
 	var requestBody []byte
 	if req != nil && req.Body != nil {
-		requestBody, _ = ioutil.ReadAll(req.Body)
+		requestBody, _ = io.ReadAll(req.Body)
 	}
 	ShowErrorBody(w, requestBody, msg, code)
 }
@@ -157,7 +156,11 @@ func DocIDLookup(req *http.Request) string {
 
 // IndexNameLookup returns the indexName param from an http.Request.
 func IndexNameLookup(req *http.Request) string {
-	return RequestVariableLookup(req, "indexName")
+	rv := RequestVariableLookup(req, "indexName")
+	if req.Method == "POST" {
+		//
+	}
+	return rv
 }
 
 // PIndexNameLookup returns the pindexName param from an http.Request.
@@ -890,9 +893,12 @@ func RESTPostRuntimeGC(w http.ResponseWriter, r *http.Request) {
 }
 
 // RuntimeTrace starts a program trace
-//		curl -X POST http://127.0.0.1:9200/api/runtime/trace -d secs=5
+//
+//	curl -X POST http://127.0.0.1:9200/api/runtime/trace -d secs=5
+//
 // To analyze a profiling...
-//		go tool trace run-program.trace
+//
+//	go tool trace run-program.trace
 func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
@@ -927,9 +933,12 @@ func RuntimeTrace(w http.ResponseWriter, r *http.Request) {
 }
 
 // To start a cpu profiling...
-//    curl -X POST http://127.0.0.1:9090/api/runtime/profile/cpu -d secs=5
+//
+//	curl -X POST http://127.0.0.1:9090/api/runtime/profile/cpu -d secs=5
+//
 // To analyze a profiling...
-//    go tool pprof [program-binary] run-cpu.pprof
+//
+//	go tool pprof [program-binary] run-cpu.pprof
 func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 	secs, err := strconv.Atoi(r.FormValue("secs"))
 	if err != nil || secs <= 0 {
@@ -964,9 +973,12 @@ func RESTProfileCPU(w http.ResponseWriter, r *http.Request) {
 }
 
 // To grab a memory profiling...
-//    curl -X POST http://127.0.0.1:9090/api/runtime/profile/memory
+//
+//	curl -X POST http://127.0.0.1:9090/api/runtime/profile/memory
+//
 // To analyze a profiling...
-//    go tool pprof [program-binary] run-memory.pprof
+//
+//	go tool pprof [program-binary] run-memory.pprof
 func RESTProfileMemory(w http.ResponseWriter, r *http.Request) {
 	fname := "./run-memory.pprof"
 	os.Remove(fname)

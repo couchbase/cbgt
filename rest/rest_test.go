@@ -10,16 +10,15 @@ package rest
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
-	"github.com/gorilla/mux"
-
 	"github.com/couchbase/cbgt"
+	"github.com/gorilla/mux"
 )
 
 func TestInitStaticRouter(t *testing.T) {
@@ -83,7 +82,7 @@ func (meh *TestMEH) OnRefreshManagerOptions(o map[string]string) {
 }
 
 func TestNewRESTRouter(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	ring, err := cbgt.NewMsgRing(os.Stderr, 1000)
@@ -164,7 +163,7 @@ func testRESTHandlers(t *testing.T,
 				Method: test.Method,
 				URL:    &url.URL{Path: test.Path},
 				Form:   test.Params,
-				Body:   ioutil.NopCloser(bytes.NewBuffer(test.Body)),
+				Body:   io.NopCloser(bytes.NewBuffer(test.Body)),
 			}
 			record := httptest.NewRecorder()
 			router.ServeHTTP(record, req)
@@ -177,7 +176,7 @@ func testRESTHandlers(t *testing.T,
 }
 
 func TestHandlersForRuntimeOps(t *testing.T) {
-	emptyDir, err := ioutil.TempDir("./tmp", "test")
+	emptyDir, err := os.MkdirTemp("./tmp", "test")
 	if err != nil {
 		t.Errorf("tempdir err: %v", err)
 	}
@@ -278,7 +277,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 		return 0, nil
 	}
 
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer func() {
 		GetNumSourcePartitionsForBucket = getNumSourcePartitionsForBucket
 		os.RemoveAll(emptyDir)

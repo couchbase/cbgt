@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -22,7 +21,7 @@ func TestAssetFS(t *testing.T) {
 		t.Errorf("expected an assetFS")
 	}
 
-	d, _ := ioutil.TempDir("./tmp", "test")
+	d, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(d)
 
 	err := RestoreAssets(d, "static")

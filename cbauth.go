@@ -12,7 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -210,7 +210,7 @@ func (c *SecurityContext) refreshConfigAndCert(configs *SecuritySetting) error {
 		return err
 	}
 
-	certInBytes, err := ioutil.ReadFile(TLSCAFile)
+	certInBytes, err := os.ReadFile(TLSCAFile)
 	if err != nil {
 		log.Errorf("cbauth: Certificate read err: %v", err)
 		return err

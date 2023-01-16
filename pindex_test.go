@@ -12,11 +12,9 @@ import (
 	"bytes"
 	"container/list"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"testing"
-
 	"reflect"
+	"testing"
 
 	"github.com/rcrowley/go-metrics"
 )
@@ -29,7 +27,7 @@ func TestOpenPIndex(t *testing.T) {
 }
 
 func TestNewPIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	pindex, err := NewPIndex(nil, "fake", "uuid",
@@ -47,7 +45,7 @@ func TestNewPIndex(t *testing.T) {
 }
 
 func TestClonePIndex(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	pindex, err := NewPIndex(nil, "fake", "uuid",
@@ -73,7 +71,7 @@ func TestClonePIndex(t *testing.T) {
 }
 
 func TestNewPIndexImpl(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	restart := func() {
@@ -97,7 +95,7 @@ func TestNewPIndexImpl(t *testing.T) {
 }
 
 func TestBlackholePIndexImpl(t *testing.T) {
-	emptyDir, _ := ioutil.TempDir("./tmp", "test")
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	restart := func() {

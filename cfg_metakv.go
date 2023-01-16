@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"sort"
@@ -56,9 +56,9 @@ var AdvMetaEncodingFeatureVersion = "5.6.0"
 
 // NodeFeatureAdvMetaEncoding represents the feature flag for the
 // advanced metadata encoding that comprises of two format changes.
-// - compress the data before writing to metakv.
-// - split the plan contents on to multiple keys upon reaching
-//   a per key size threshold of 100KB.
+//   - compress the data before writing to metakv.
+//   - split the plan contents on to multiple keys upon reaching
+//     a per key size threshold of 100KB.
 var NodeFeatureAdvMetaEncoding = "advMetaEncoding"
 
 // CfgAppVersion is a global Cfg variable supposed to be overridden by
@@ -811,7 +811,7 @@ func (c *CfgMetaKv) ClusterVersion() (uint64, error) {
 	}
 	defer resp.Body.Close()
 
-	respBuf, err := ioutil.ReadAll(resp.Body)
+	respBuf, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, fmt.Errorf("cfg_metakv: error reading resp.Body,"+
 			" nsServerURL: %s, resp: %#v, err: %v", c.nsServerUrl, resp, err)

@@ -10,7 +10,7 @@ package cbgt
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"sync"
 )
 
@@ -76,7 +76,7 @@ func (c *CfgSimple) Load() error {
 }
 
 func (c *CfgSimple) unlockedLoad() error {
-	buf, err := ioutil.ReadFile(c.path)
+	buf, err := os.ReadFile(c.path)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (c *CfgSimple) unlockedSave() error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(c.path, []byte(string(buf)+"\n"), 0600)
+	return os.WriteFile(c.path, []byte(string(buf)+"\n"), 0600)
 }
 
 func (c *CfgSimple) Subscribe(key string, ch chan CfgEvent) error {

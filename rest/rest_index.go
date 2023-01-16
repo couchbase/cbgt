@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -307,7 +307,7 @@ func (h *QueryHandler) ServeHTTP(
 
 	indexUUID := req.FormValue("indexUUID")
 
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_index: Query,"+
 			" could not read request body, indexName: %s",
@@ -488,7 +488,7 @@ func (h *TaskRequestHandler) ServeHTTP(
 	}
 
 	indexUUID := req.FormValue("indexUUID")
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_index: TaskRequestHandler,"+
 			" could not read request body, indexName: %s",
@@ -684,7 +684,7 @@ func (h *QueryPIndexHandler) ServeHTTP(
 		return
 	}
 
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_index: QueryPIndex,"+
 			" could not read request body, pindexName: %s",

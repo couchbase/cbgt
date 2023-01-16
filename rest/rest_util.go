@@ -12,7 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -142,7 +142,7 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	}
 	defer resp.Body.Close()
 
-	respBuf, err := ioutil.ReadAll(resp.Body)
+	respBuf, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func CheckRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 200 {
-		respBuf, err := ioutil.ReadAll(resp.Body)
+		respBuf, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return false, fmt.Errorf("rest_util: error reading resp.Body,"+
 				" resp: %#v, err: %v", resp, err)
@@ -325,7 +325,7 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 			defer resp.Body.Close()
 
 			var respBuf []byte
-			respBuf, err = ioutil.ReadAll(resp.Body)
+			respBuf, err = io.ReadAll(resp.Body)
 			if err != nil {
 				return
 			}
