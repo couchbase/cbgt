@@ -156,11 +156,7 @@ func DocIDLookup(req *http.Request) string {
 
 // IndexNameLookup returns the indexName param from an http.Request.
 func IndexNameLookup(req *http.Request) string {
-	rv := RequestVariableLookup(req, "indexName")
-	if req.Method == "POST" {
-		//
-	}
-	return rv
+	return RequestVariableLookup(req, "indexName")
 }
 
 // PIndexNameLookup returns the pindexName param from an http.Request.
