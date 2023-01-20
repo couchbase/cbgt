@@ -136,7 +136,7 @@ func (mgr *Manager) IsBucketBeingHibernated(bucket string) bool {
 	bucketInHibernation := mgr.bucketInHibernation
 	mgr.bucketInHibernationMutex.RUnlock()
 
-	return bucketInHibernation == bucket
+	return (bucketInHibernation == bucket && bucketInHibernation != "")
 }
 
 func (mgr *Manager) RegisterHibernationBucketTracker(bucket string) {
