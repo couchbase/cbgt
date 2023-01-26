@@ -36,6 +36,10 @@ var GocbcoreAgentSetupTimeout = time.Duration(60 * time.Second)
 // the server for a stats request.
 var GocbcoreStatsTimeout = time.Duration(60 * time.Second)
 
+// GocbcoreConnectionBufferSize is the size of the buffer per connection
+// allocated by gocbcore for receiving content from KV.
+var GocbcoreConnectionBufferSize = uint(16 * 1024) // 16KB
+
 var errAgentSetupFailed = fmt.Errorf("agent setup failed")
 
 // ----------------------------------------------------------------
@@ -68,7 +72,8 @@ func setupAgentConfig(name, sourceName string,
 			UseCollections: useCollections,
 		},
 		KVConfig: gocbcore.KVConfig{
-			ConnectTimeout: GocbcoreKVConnectTimeout,
+			ConnectTimeout:       GocbcoreKVConnectTimeout,
+			ConnectionBufferSize: GocbcoreConnectionBufferSize,
 		},
 		HTTPConfig: gocbcore.HTTPConfig{
 			MaxIdleConns:        HttpTransportMaxIdleConns,
@@ -135,7 +140,8 @@ func setupDCPAgentConfig(
 			UseCollections: true,
 		},
 		KVConfig: gocbcore.KVConfig{
-			ConnectTimeout: GocbcoreKVConnectTimeout,
+			ConnectTimeout:       GocbcoreKVConnectTimeout,
+			ConnectionBufferSize: GocbcoreConnectionBufferSize,
 		},
 		HTTPConfig: gocbcore.HTTPConfig{
 			MaxIdleConns:        HttpTransportMaxIdleConns,
