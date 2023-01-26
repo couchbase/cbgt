@@ -264,8 +264,17 @@ func TestManagerCreateDeleteIndex(t *testing.T) {
 }
 
 func TestManagerDeleteAllIndex(t *testing.T) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "123", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
 
 	cfg := NewCfgMem()
 	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
@@ -283,14 +292,14 @@ func TestManagerDeleteAllIndex(t *testing.T) {
 		t.Errorf("expected CreateIndex() to work, err: %v", err)
 	}
 	if err := m.CreateIndex("primary", "default", "1234", sourceParams,
-		"blackhole", "foo3", "", PlanParams{}, ""); err != nil {
-		t.Errorf("expected CreateIndex() to work, err: %v", err)
+		"blackhole", "foo3", "", PlanParams{}, ""); err == nil {
+		t.Errorf("expected CreateIndex() to fail")
 	}
 	m.PlannerNOOP("test")
 	m.JanitorNOOP("test")
 	feeds, pindexes := m.CurrentMaps()
-	if len(feeds) != 3 || len(pindexes) != 3 {
-		t.Errorf("expected to be 3 feeds and 3 pindexs,"+
+	if len(feeds) != 2 || len(pindexes) != 2 {
+		t.Errorf("expected to be 2 feeds and 2 pindexs,"+
 			" got feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}
@@ -298,8 +307,8 @@ func TestManagerDeleteAllIndex(t *testing.T) {
 	m.PlannerNOOP("test")
 	m.JanitorNOOP("test")
 	feeds, pindexes = m.CurrentMaps()
-	if len(feeds) != 1 || len(pindexes) != 1 {
-		t.Errorf("expected to be 1 feed and 1 pindex,"+
+	if len(feeds) != 0 || len(pindexes) != 0 {
+		t.Errorf("expected to be 0 feeds and 0 pindexes,"+
 			" got feeds: %+v, pindexes: %+v",
 			feeds, pindexes)
 	}

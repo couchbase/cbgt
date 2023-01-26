@@ -117,17 +117,23 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	}
 	indexDef.SourceParams = sourceParams
 
+	// Fetch the sourceUUID for the sourceName by setting up a connection.
+	sourceUUID, err = DataSourceUUID(sourceType, sourceName, sourceParams,
+	mgr.server, mgr.Options())
+	if err != nil {
+		return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
+		" for sourceName: %s, sourceType: %s, err: %v",
+		sourceName, sourceType, err)
+	}
+
 	if len(sourceUUID) == 0 {
-		// If sourceUUID isn't available, fetch the sourceUUID for
-		// the sourceName by setting up a connection.
-		sourceUUID, err = DataSourceUUID(sourceType, sourceName, sourceParams,
-			mgr.server, mgr.Options())
-		if err != nil {
-			return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
-				" for sourceName: %s, sourceType: %s, err: %v",
-				sourceName, sourceType, err)
-		}
+		// If sourceUUID is NOT available within the index def, update it.
 		indexDef.SourceUUID = sourceUUID
+	} else if indexDef.SourceUUID != sourceUUID {
+		// The sourceUUID provided within the index definition does NOT match
+		// the sourceUUID for the sourceName in the system.
+		return "", "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
+			" mismatched for sourceName: %s", sourceName)
 	}
 
 	// Validate maxReplicasAllowed here.

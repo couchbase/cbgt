@@ -203,8 +203,8 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 // ------------------------------------------------------------------------
 
 // DataSourceUUID is a helper function that fetches the sourceUUID for
-// the sourceName.
-func DataSourceUUID(sourceType, sourceName, sourceParams, server string,
+// the sourceName. This is overrideable for test-ability.
+var DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
 	options map[string]string) (string, error) {
 	feedType, exists := FeedTypes[sourceType]
 	if !exists || feedType == nil {
