@@ -251,10 +251,17 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	log.Printf("rest_create_index: create index request received for %v", indexName)
 
-	indexName, indexUUID, err := h.mgr.CreateIndexEx(sourceType, sourceName,
-		sourceUUID, sourceParams,
-		indexType, indexName, string(indexParams),
-		planParams, prevIndexUUID)
+	indexName, indexUUID, err := h.mgr.CreateIndexEx(&cbgt.CreateIndexPayload{
+		SourceType:    sourceType,
+		SourceName:    sourceName,
+		SourceUUID:    sourceUUID,
+		SourceParams:  sourceParams,
+		IndexType:     indexType,
+		IndexName:     indexName,
+		IndexParams:   indexParams,
+		PlanParams:    planParams,
+		PrevIndexUUID: prevIndexUUID,
+	})
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",

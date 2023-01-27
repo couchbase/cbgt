@@ -39,51 +39,73 @@ func (mgr *Manager) CreateIndex(sourceType,
 	sourceName, sourceUUID, sourceParams,
 	indexType, indexName, indexParams string, planParams PlanParams,
 	prevIndexUUID string) error {
-	_, _, err := mgr.CreateIndexEx(sourceType, sourceName, sourceUUID,
-		sourceParams, indexType, indexName, indexParams, planParams,
-		prevIndexUUID)
+	_, _, err := mgr.CreateIndexEx(&CreateIndexPayload{
+		SourceType:    sourceType,
+		SourceName:    sourceName,
+		SourceUUID:    sourceUUID,
+		SourceParams:  sourceParams,
+		IndexType:     indexType,
+		IndexName:     indexName,
+		IndexParams:   indexParams,
+		PlanParams:    planParams,
+		PrevIndexUUID: prevIndexUUID,
+	})
 
 	return err
 }
 
-func (mgr *Manager) CreateIndexEx(sourceType,
-	sourceName, sourceUUID, sourceParams,
-	indexType, indexName, indexParams string, planParams PlanParams,
-	prevIndexUUID string) (string, string, error) {
+type CreateIndexPayload struct {
+	SourceType    string
+	SourceName    string
+	SourceUUID    string
+	SourceParams  string
+	IndexType     string
+	IndexName     string
+	IndexParams   string
+	PlanParams    PlanParams
+	PrevIndexUUID string
+}
+
+func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, error) {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
-	if prevIndexUUID == "" {
+	if payload == nil {
+		return "", "", fmt.Errorf("manager_api: CreateIndex," +
+			" payload is nil")
+	}
+
+	if payload.PrevIndexUUID == "" {
 		// index name validations during the fresh index creation.
-		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(indexName))
+		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(payload.IndexName))
 		if err != nil {
 			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
 				" indexName parsing problem,"+
-				" indexName: %s, err: %v", indexName, err)
+				" indexName: %s, err: %v", payload.IndexName, err)
 		}
 		if !matched {
 			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
-				" indexName is invalid, indexName: %q", indexName)
+				" indexName is invalid, indexName: %q", payload.IndexName)
 		}
 	}
 
 	// save the original index name.
-	prevIndexName := indexName
+	prevIndexName := payload.IndexName
 
 	indexDef := &IndexDef{
-		Type:         indexType,
-		Name:         indexName,
-		Params:       indexParams,
-		SourceType:   sourceType,
-		SourceName:   sourceName,
-		SourceUUID:   sourceUUID,
-		SourceParams: sourceParams,
-		PlanParams:   planParams,
+		Type:         payload.IndexType,
+		Name:         payload.IndexName,
+		Params:       payload.IndexParams,
+		SourceType:   payload.SourceType,
+		SourceName:   payload.SourceName,
+		SourceUUID:   payload.SourceUUID,
+		SourceParams: payload.SourceParams,
+		PlanParams:   payload.PlanParams,
 	}
 
-	pindexImplType, exists := PIndexImplTypes[indexType]
+	pindexImplType, exists := PIndexImplTypes[payload.IndexType]
 	if !exists {
 		return "", "", fmt.Errorf("manager_api: CreateIndex,"+
-			" unknown indexType: %s", indexType)
+			" unknown indexType: %s", payload.IndexType)
 	}
 
 	var err error
@@ -94,12 +116,13 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 				" err: %v", err)
 		}
 	}
-	sourceParams = indexDef.SourceParams
-	indexParams = indexDef.Params
-	indexName = indexDef.Name
+	payload.SourceParams = indexDef.SourceParams
+	payload.IndexParams = indexDef.Params
+	payload.IndexName = indexDef.Name
 
 	if pindexImplType.Validate != nil {
-		err = pindexImplType.Validate(indexType, indexName, indexParams)
+		err = pindexImplType.Validate(
+			payload.IndexType, payload.IndexName, payload.IndexParams)
 		if err != nil {
 			return "", "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
 				" err: %v", err)
@@ -107,40 +130,50 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 	}
 
 	// First, check that the source exists.
-	sourceParams, err = DataSourcePrepParams(sourceType,
-		sourceName, sourceUUID, sourceParams, mgr.server, mgr.Options())
+	payload.SourceParams, err = DataSourcePrepParams(
+		payload.SourceType,
+		payload.SourceName,
+		payload.SourceUUID,
+		payload.SourceParams,
+		mgr.server,
+		mgr.Options(),
+	)
 	if err != nil {
 		return "", "", fmt.Errorf("manager_api: failed to connect to"+
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
-			sourceType, sourceName, sourceUUID, err)
+			payload.SourceType, payload.SourceName, payload.SourceUUID, err)
 	}
-	indexDef.SourceParams = sourceParams
+	indexDef.SourceParams = payload.SourceParams
 
-	// Fetch the sourceUUID for the sourceName by setting up a connection.
-	sourceUUID, err = DataSourceUUID(sourceType, sourceName, sourceParams,
-		mgr.server, mgr.Options())
+	payload.SourceUUID, err = DataSourceUUID(
+		payload.SourceType,
+		payload.SourceName,
+		payload.SourceParams,
+		mgr.server, mgr.Options(),
+	)
 	if err != nil {
 		return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
 			" for sourceName: %s, sourceType: %s, err: %v",
-			sourceName, sourceType, err)
+			payload.SourceName, payload.SourceType, err)
 	}
 
 	if len(indexDef.SourceUUID) == 0 {
 		// If sourceUUID is NOT available within the index def, update it.
-		indexDef.SourceUUID = sourceUUID
-	} else if indexDef.SourceUUID != sourceUUID {
+		indexDef.SourceUUID = payload.SourceUUID
+	} else if indexDef.SourceUUID != payload.SourceUUID {
 		// The sourceUUID provided within the index definition does NOT match
 		// the sourceUUID for the sourceName in the system.
 		return "", "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
-			" mismatched for sourceName: %s", sourceName)
+			" mismatched for sourceName: %s", payload.SourceName)
 	}
 
 	// Validate maxReplicasAllowed here.
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
-	if planParams.NumReplicas < 0 || planParams.NumReplicas > maxReplicasAllowed {
+	if payload.PlanParams.NumReplicas < 0 ||
+		payload.PlanParams.NumReplicas > maxReplicasAllowed {
 		return "", "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
-			" '%v', but request for '%v'", maxReplicasAllowed, planParams.NumReplicas)
+			" '%v', but request for '%v'", maxReplicasAllowed, payload.PlanParams.NumReplicas)
 	}
 
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.cfg, NODE_DEFS_KNOWN)
@@ -148,10 +181,10 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		return "", "", fmt.Errorf("manager_api: CreateIndex failed, "+
 			"CfgGetNodeDefs err: %v", err)
 	}
-	if len(nodeDefs.NodeDefs) < planParams.NumReplicas+1 {
+	if len(nodeDefs.NodeDefs) < payload.PlanParams.NumReplicas+1 {
 		return "", "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
 			"search nodes to support the requested replica count of %d",
-			planParams.NumReplicas+1, planParams.NumReplicas)
+			payload.PlanParams.NumReplicas+1, payload.PlanParams.NumReplicas)
 	}
 
 	version := CfgGetVersion(mgr.cfg)
@@ -172,39 +205,39 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 
 		// check whether an index already exists within the keyspace/
 		// with the decorated name.
-		if _, exists := indexDefs.IndexDefs[indexName]; exists &&
-			(prevIndexUUID == "" || indexName != prevIndexName) {
+		if _, exists := indexDefs.IndexDefs[payload.IndexName]; exists &&
+			(payload.PrevIndexUUID == "" || payload.IndexName != prevIndexName) {
 			return fmt.Errorf("manager_api: cannot create/update index"+
 				" because an index with the same name already exists: %s",
-				indexName)
+				payload.IndexName)
 		}
 
 		prevIndex, exists := indexDefs.IndexDefs[prevIndexName]
-		if prevIndexUUID == "" { // New index creation.
+		if payload.PrevIndexUUID == "" { // New index creation.
 			if exists || prevIndex != nil {
 				// there could be a previous undecorated index which can coexist
 				// with the new indexName as long the $keyspace prefixed new
 				// indexName is different from the previous index name.
-				if prevIndex.Name == indexName {
-					return fmt.Errorf("here manager_api: cannot create index because"+
+				if prevIndex.Name == payload.IndexName {
+					return fmt.Errorf("manager_api: cannot create index because"+
 						" an index with the same name already exists: %s",
-						indexName)
+						payload.IndexName)
 				}
 			}
-		} else if prevIndexUUID == "*" {
+		} else if payload.PrevIndexUUID == "*" {
 			if exists && prevIndex != nil {
-				prevIndexUUID = prevIndex.UUID
+				payload.PrevIndexUUID = prevIndex.UUID
 			}
 		} else { // Update index definition.
 			if !exists || prevIndex == nil {
 				return fmt.Errorf("manager_api: index missing for update,"+
-					" indexName: %s", indexName)
+					" indexName: %s", payload.IndexName)
 			}
-			if prevIndex.UUID != prevIndexUUID {
+			if prevIndex.UUID != payload.PrevIndexUUID {
 				return fmt.Errorf("manager_api:"+
 					" perhaps there was concurrent index definition update,"+
 					" current index UUID: %s, did not match input UUID: %s",
-					prevIndex.UUID, prevIndexUUID)
+					prevIndex.UUID, payload.PrevIndexUUID)
 			}
 
 			if prevIndex.PlanParams.PlanFrozen {
@@ -214,24 +247,24 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 						indexDef.PlanParams.NumReplicas) {
 					return fmt.Errorf("manager_api: cannot update"+
 						" partition or replica count for a planFrozen index,"+
-						" indexName: %s", indexName)
+						" indexName: %s", payload.IndexName)
 				}
 			}
 
-			if prevIndexName != indexName {
+			if prevIndexName != payload.IndexName {
 				// delete the original index name prior update since the
 				// index got a decorated new name according to the new
 				// index definition.
 				delete(indexDefs.IndexDefs, prevIndexName)
 				log.Printf("manager_api: Updated from index name: %s"+
-					" to index name: %s", prevIndexName, indexName)
+					" to index name: %s", prevIndexName, payload.IndexName)
 			}
 		}
 
 		indexUUID := NewUUID()
 		indexDef.UUID = indexUUID
 		indexDefs.UUID = indexUUID
-		indexDefs.IndexDefs[indexName] = indexDef
+		indexDefs.IndexDefs[payload.IndexName] = indexDef
 		indexDefs.ImplVersion = version
 
 		// NOTE: If our ImplVersion is still too old due to a race, we
@@ -249,22 +282,22 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 
 	mgr.refreshIndexDefsWithTimeout(cfgRefreshWaitExpiry)
 
-	mgr.PlannerKick("api/CreateIndex, indexName: " + indexName)
+	mgr.PlannerKick("api/CreateIndex, indexName: " + payload.IndexName)
 	atomic.AddUint64(&mgr.stats.TotCreateIndexOk, 1)
 
-	if prevIndexUUID == "" {
+	if payload.PrevIndexUUID == "" {
 		log.Printf("manager_api: index definition created,"+
 			" indexType: %s, indexName: %s, indexUUID: %s",
 			indexDef.Type, indexDef.Name, indexDef.UUID)
 	} else {
 		log.Printf("manager_api: index definition updated,"+
 			" indexType: %s, indexName: %s, indexUUID: %s, prevIndexUUID: %s",
-			indexDef.Type, indexDef.Name, indexDef.UUID, prevIndexUUID)
+			indexDef.Type, indexDef.Name, indexDef.UUID, payload.PrevIndexUUID)
 	}
 
-	if indexType == "fulltext-index" && len(sourceName) > 0 {
-		statsAgentsMap.registerAgents(sourceName, sourceUUID,
-			sourceParams, mgr.Server(), mgr.Options())
+	if payload.IndexType == "fulltext-index" && len(payload.SourceName) > 0 {
+		statsAgentsMap.registerAgents(payload.SourceName, payload.SourceUUID,
+			payload.SourceParams, mgr.Server(), mgr.Options())
 	}
 
 	event := NewSystemEvent(
@@ -278,7 +311,7 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 		})
 
 	if event != nil {
-		if prevIndexUUID != "" {
+		if payload.PrevIndexUUID != "" {
 			event.EventID = IndexUpdateEventID
 			event.Description = "Index updated"
 		}
