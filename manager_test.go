@@ -142,8 +142,17 @@ func TestManagerStart(t *testing.T) {
 }
 
 func TestManagerRestart(t *testing.T) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "123", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
 
 	cfg := NewCfgMem()
 
@@ -219,8 +228,17 @@ func TestManagerRestart(t *testing.T) {
 }
 
 func TestManagerCreateDeleteIndex(t *testing.T) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "123", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
 
 	cfg := NewCfgMem()
 	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
@@ -771,8 +789,18 @@ func TestManagerRemovePIndex(t *testing.T) {
 }
 
 func TestManagerStrangeWorkReqs(t *testing.T) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "sourceUUID", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
+
 	cfg := NewCfgMem()
 	meh := &TestMEH{}
 	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
@@ -861,8 +889,18 @@ func TestManagerReStartPIndex(t *testing.T) {
 func testManagerSimpleFeed(t *testing.T,
 	sourceParams string, planParams PlanParams,
 	andThen func(*Manager, *PrimaryFeed, *TestMEH)) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "sourceUUID", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
+
 	cfg := NewCfgMem()
 	meh := &TestMEH{}
 	m := NewManager(VERSION, cfg, NewUUID(), nil, "", 1, "", ":1000",
@@ -1238,8 +1276,18 @@ func TestManagerMultipleServers(t *testing.T) {
 }
 
 func TestManagerPIndexRestartWithFeedAllotmentOptionChange(t *testing.T) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "123", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
+
 	cfg := NewCfgMem()
 	pit, err := PIndexImplTypeForIndex(cfg, "foo")
 	if err == nil || pit != nil {
@@ -1368,8 +1416,18 @@ func registerNode(nodeDef *NodeDef, kind string, m *Manager) error {
 }
 
 func TestManagerPIndexRestartWithReplicaCountChange(t *testing.T) {
+	prevDataSourceUUID := DataSourceUUID
+	DataSourceUUID = func(sourceType, sourceName, sourceParams, server string,
+		options map[string]string) (string, error) {
+		return "123", nil
+	}
+
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
-	defer os.RemoveAll(emptyDir)
+	defer func() {
+		DataSourceUUID = prevDataSourceUUID
+		os.RemoveAll(emptyDir)
+	}()
+
 	cfg := NewCfgMem()
 	pit, err := PIndexImplTypeForIndex(cfg, "foo")
 	if err == nil || pit != nil {

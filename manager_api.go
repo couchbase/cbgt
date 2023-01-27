@@ -119,14 +119,14 @@ func (mgr *Manager) CreateIndexEx(sourceType,
 
 	// Fetch the sourceUUID for the sourceName by setting up a connection.
 	sourceUUID, err = DataSourceUUID(sourceType, sourceName, sourceParams,
-	mgr.server, mgr.Options())
+		mgr.server, mgr.Options())
 	if err != nil {
 		return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
-		" for sourceName: %s, sourceType: %s, err: %v",
-		sourceName, sourceType, err)
+			" for sourceName: %s, sourceType: %s, err: %v",
+			sourceName, sourceType, err)
 	}
 
-	if len(sourceUUID) == 0 {
+	if len(indexDef.SourceUUID) == 0 {
 		// If sourceUUID is NOT available within the index def, update it.
 		indexDef.SourceUUID = sourceUUID
 	} else if indexDef.SourceUUID != sourceUUID {
