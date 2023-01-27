@@ -65,7 +65,7 @@ var NodeFeatureAdvMetaEncoding = "advMetaEncoding"
 // applications to indicate the current application version.
 // This version information is used to figure out cluster level compatibility
 // issues.
-var CfgAppVersion = "6.5.0"
+var CfgAppVersion = "7.5.0"
 
 type cfgMetaKvAdvancedHandler interface {
 	get(c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error)

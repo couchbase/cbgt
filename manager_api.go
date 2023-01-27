@@ -64,6 +64,7 @@ type CreateIndexPayload struct {
 	IndexParams   string
 	PlanParams    PlanParams
 	PrevIndexUUID string
+	ScopedPrefix  string
 }
 
 func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, error) {
@@ -88,12 +89,9 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		}
 	}
 
-	// save the original index name.
-	prevIndexName := payload.IndexName
-
 	indexDef := &IndexDef{
 		Type:         payload.IndexType,
-		Name:         payload.IndexName,
+		Name:         payload.ScopedPrefix + payload.IndexName,
 		Params:       payload.IndexParams,
 		SourceType:   payload.SourceType,
 		SourceName:   payload.SourceName,
@@ -203,26 +201,12 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 				indexDefs.ImplVersion, mgr.version)
 		}
 
-		// check whether an index already exists within the keyspace/
-		// with the decorated name.
-		if _, exists := indexDefs.IndexDefs[payload.IndexName]; exists &&
-			(payload.PrevIndexUUID == "" || payload.IndexName != prevIndexName) {
-			return fmt.Errorf("manager_api: cannot create/update index"+
-				" because an index with the same name already exists: %s",
-				payload.IndexName)
-		}
-
-		prevIndex, exists := indexDefs.IndexDefs[prevIndexName]
+		prevIndex, exists := indexDefs.IndexDefs[payload.IndexName]
 		if payload.PrevIndexUUID == "" { // New index creation.
 			if exists || prevIndex != nil {
-				// there could be a previous undecorated index which can coexist
-				// with the new indexName as long the $keyspace prefixed new
-				// indexName is different from the previous index name.
-				if prevIndex.Name == payload.IndexName {
-					return fmt.Errorf("manager_api: cannot create index because"+
-						" an index with the same name already exists: %s",
-						payload.IndexName)
-				}
+				return fmt.Errorf("manager_api: cannot create index because"+
+					" an index with the same name already exists: %s",
+					payload.IndexName)
 			}
 		} else if payload.PrevIndexUUID == "*" {
 			if exists && prevIndex != nil {
@@ -251,14 +235,6 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 				}
 			}
 
-			if prevIndexName != payload.IndexName {
-				// delete the original index name prior update since the
-				// index got a decorated new name according to the new
-				// index definition.
-				delete(indexDefs.IndexDefs, prevIndexName)
-				log.Printf("manager_api: Updated from index name: %s"+
-					" to index name: %s", prevIndexName, payload.IndexName)
-			}
 		}
 
 		indexUUID := NewUUID()

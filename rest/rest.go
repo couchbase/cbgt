@@ -169,6 +169,23 @@ func BucketNameLookup(req *http.Request) string {
 	return RequestVariableLookup(req, "bucketName")
 }
 
+// BucketNameLookup returns the bucketName param from an http.Request.
+func ScopeNameLookup(req *http.Request) string {
+	return RequestVariableLookup(req, "scopeName")
+}
+
+// -------------------------------------------------------
+
+func ScopedIndexPrefix(req *http.Request) string {
+	bucketName := BucketNameLookup(req)
+	scopeName := ScopeNameLookup(req)
+	if len(bucketName) > 0 && len(scopeName) > 0 {
+		return bucketName + "." + scopeName + "."
+	}
+
+	return ""
+}
+
 // -------------------------------------------------------
 
 var pathFocusNameRE = regexp.MustCompile(`{([a-zA-Z]+)}`)
@@ -450,11 +467,25 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about":             `Returns all index definitions as JSON.`,
 			"version introduced": "0.0.1",
 		})
-	handle("/api/index/{indexName}", "PUT", NewCreateIndexHandler(mgr),
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index", "GET",
+		NewListIndexHandler(mgr),
+		map[string]string{
+			"_category":          "Indexing|Index definition",
+			"_about":             `Returns all index definitions for bucket.scope as JSON.`,
+			"version introduced": "7.5.0",
+		})
+	handle("/api/index/{indexName}", "PUT", NewCreateIndexHandler(mgr, false),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Creates/updates an index definition.`,
 			"version introduced": "0.0.1",
+		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}", "PUT",
+		NewCreateIndexHandler(mgr, true),
+		map[string]string{
+			"_category":          "Indexing|Index definition",
+			"_about":             `Creates/updates an index definition.`,
+			"version introduced": "7.5.0",
 		})
 	handle("/api/index/{indexName}", "DELETE", NewDeleteIndexHandler(mgr),
 		map[string]string{
@@ -467,6 +498,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Indexing|Index definition",
 			"_about":             `Returns the definition of an index as JSON.`,
 			"version introduced": "0.0.1",
+		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}", "GET",
+		NewGetIndexHandler(mgr),
+		map[string]string{
+			"_category":          "Indexing|Index definition",
+			"_about":             `Returns the definition of an index as JSON.`,
+			"version introduced": "7.5.0",
 		})
 
 	if mgr == nil || mgr.TagsMap() == nil || mgr.TagsMap()["queryer"] {
@@ -484,6 +522,14 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "Indexing|Index querying",
 				"_about":             `Queries an index.`,
 				"version introduced": "0.2.0",
+			})
+		handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/query", "POST",
+			NewQueryHandler(mgr,
+				mapRESTPathStats["/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/query"]),
+			map[string]string{
+				"_category":          "Indexing|Index querying",
+				"_about":             `Queries an index.`,
+				"version introduced": "7.5.0",
 			})
 	}
 

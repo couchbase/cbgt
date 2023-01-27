@@ -26,11 +26,15 @@ import (
 // CreateIndexHandler is a REST handler that processes an index
 // creation request.
 type CreateIndexHandler struct {
-	mgr *cbgt.Manager
+	mgr         *cbgt.Manager
+	scopedIndex bool
 }
 
-func NewCreateIndexHandler(mgr *cbgt.Manager) *CreateIndexHandler {
-	return &CreateIndexHandler{mgr: mgr}
+func NewCreateIndexHandler(mgr *cbgt.Manager, scoped bool) *CreateIndexHandler {
+	return &CreateIndexHandler{
+		mgr:         mgr,
+		scopedIndex: scoped,
+	}
 }
 
 func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
@@ -249,9 +253,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		}
 	}
 
-	log.Printf("rest_create_index: create index request received for %v", indexName)
-
-	indexName, indexUUID, err := h.mgr.CreateIndexEx(&cbgt.CreateIndexPayload{
+	payload := &cbgt.CreateIndexPayload{
 		SourceType:    sourceType,
 		SourceName:    sourceName,
 		SourceUUID:    sourceUUID,
@@ -261,7 +263,21 @@ func (h *CreateIndexHandler) ServeHTTP(
 		IndexParams:   indexParams,
 		PlanParams:    planParams,
 		PrevIndexUUID: prevIndexUUID,
-	})
+	}
+
+	if h.scopedIndex {
+		scopedPrefix := ScopedIndexPrefix(req)
+		if len(scopedPrefix) == 0 {
+			ShowError(w, req, "rest_create_index: bucket & scope names are required",
+				http.StatusBadRequest)
+			return
+		}
+		payload.ScopedPrefix = scopedPrefix
+	}
+
+	log.Printf("rest_create_index: create index request received for %v", indexName)
+
+	indexName, indexUUID, err := h.mgr.CreateIndexEx(payload)
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",

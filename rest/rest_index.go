@@ -42,10 +42,20 @@ func NewListIndexHandler(mgr *cbgt.Manager) *ListIndexHandler {
 
 func (h *ListIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
+	scopedPrefix := ScopedIndexPrefix(req)
 	indexDefs, _, err := h.mgr.GetIndexDefs(false)
 	if err != nil {
 		ShowError(w, req, "could not retrieve index defs", http.StatusInternalServerError)
 		return
+	}
+
+	if len(scopedPrefix) > 0 && indexDefs != nil {
+		// Drop all indexes whose names don't carry the scopedIndexName prefix.
+		for k, _ := range indexDefs.IndexDefs {
+			if !strings.HasPrefix(k, scopedPrefix) {
+				delete(indexDefs.IndexDefs, k)
+			}
+		}
 	}
 
 	rv := struct {
@@ -128,6 +138,8 @@ func (h *GetIndexHandler) ServeHTTP(
 		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
+
+	indexName = ScopedIndexPrefix(req) + indexName
 
 	_, indexDefsByName, err := h.mgr.GetIndexDefs(false)
 	if err != nil {
@@ -304,6 +316,8 @@ func (h *QueryHandler) ServeHTTP(
 		ShowError(w, req, "index name is required", http.StatusBadRequest)
 		return
 	}
+
+	indexName = ScopedIndexPrefix(req) + indexName
 
 	indexUUID := req.FormValue("indexUUID")
 
