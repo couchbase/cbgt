@@ -144,7 +144,8 @@ func RetryOnCASMismatch(task func() error, retrycount int) error {
 	tries := 0
 	for {
 		tries += 1
-		if tries > retrycount {
+		// A negative retry count indicates infinite retries.
+		if retrycount > 0 && tries > retrycount {
 			return fmt.Errorf("RetryOnCASMismatch: too many tries")
 		}
 
