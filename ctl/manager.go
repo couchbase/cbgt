@@ -493,7 +493,7 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 			progressEntries)
 	}
 
-	m.ctl.rebOrchestrator = true
+	m.ctl.setTaskOrchestratorTo(true)
 
 	ctlTopology, err := m.ctl.ChangeTopology(ctlChangeTopology, onProgress)
 	if err != nil {
@@ -818,7 +818,29 @@ func (h *CtlManagerStatusHandler) ServeHTTP(
 		Status       string `json:"status"`
 	}{
 		Status:       "ok",
-		Orchestrator: h.m.ctl.rebalanceOrchestrator(),
+		Orchestrator: h.m.ctl.isTaskOrchestrator(),
+	}
+	rest.MustEncode(w, rv)
+}
+
+// ------------------------------------------------
+
+type CtlHibernationStatusHandler struct {
+	m *CtlMgr
+}
+
+func NewCtlHibernationStatusHandler(mgr *CtlMgr) *CtlHibernationStatusHandler {
+	return &CtlHibernationStatusHandler{m: mgr}
+}
+
+func (h *CtlHibernationStatusHandler) ServeHTTP(
+	w http.ResponseWriter, req *http.Request) {
+	rv := struct {
+		HibernationPlanStatus bool   `json:"hibernationPlanPhase"`
+		HibernationTaskType   string `json:"hibernationTaskType"`
+	}{
+		HibernationPlanStatus: h.m.ctl.checkHibernationPlanStatus(),
+		HibernationTaskType:   h.m.ctl.hibernationTaskType(),
 	}
 	rest.MustEncode(w, rv)
 }
@@ -1057,6 +1079,8 @@ func (m *CtlMgr) pauseTaskHandleLOCKED(
 		m.updateHibernationProgress(taskId, progressEntries, errs)
 	}
 
+	m.ctl.setTaskOrchestratorTo(true)
+
 	params.RemotePath = string(hibernate.OperationType(cbgt.HIBERNATE_TASK)) + ":" +
 		params.RemotePath
 	err := m.ctl.startHibernation(false, params.Bucket, params.RemotePath,
@@ -1163,6 +1187,10 @@ func (m *CtlMgr) resumeTaskHandleLOCKED(
 
 	onProgress := func(progressEntries map[string]float64, errs []error) {
 		m.updateHibernationProgress(taskId, progressEntries, errs)
+	}
+
+	if !params.DryRun {
+		m.ctl.setTaskOrchestratorTo(true)
 	}
 
 	params.RemotePath = string(hibernate.OperationType(cbgt.UNHIBERNATE_TASK)) + ":" +

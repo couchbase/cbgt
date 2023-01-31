@@ -50,7 +50,7 @@ func (h *DeleteIndexHandler) ServeHTTP(
 				indexDef.Type == "fulltext-alias") {
 				// if there was successful proxying of the request to
 				// the rebalance orchestrator node, then return early.
-				if proxyOrchestratorNodeOnRebalanceDone(w, req, h.mgr) {
+				if proxyOrchestratorNodeDone(w, req, h.mgr) {
 					return
 				}
 			}

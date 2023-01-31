@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/couchbase/clog"
@@ -82,7 +83,11 @@ type Ctl struct {
 
 	movingPartitionsCount int
 
-	rebOrchestrator bool
+	orchestrator uint32
+
+	// Indicates whether planning has to be deferred for index related changes
+	// Currently, defered during hibernation.
+	deferPlanning bool
 
 	lastIndexDefs *cbgt.IndexDefs
 
@@ -592,6 +597,12 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 			ctl.prevWarnings = planPIndexes.Warnings
 			ctl.m.Unlock()
 		}
+
+		ctl.m.Lock()
+		if ctl.deferPlanning == true {
+			ctl.deferPlanning = false
+		}
+		ctl.m.Unlock()
 	}()
 
 	return nil
@@ -975,9 +986,9 @@ func (ctl *Ctl) startCtlLOCKED(
 
 			ctl.movingPartitionsCount = 0
 
-			ctl.rebOrchestrator = false
-
 			ctl.m.Unlock()
+
+			ctl.setTaskOrchestratorTo(false)
 
 			close(ctlDoneCh)
 		}()
@@ -1289,8 +1300,16 @@ func (ctl *Ctl) checkAndReregisterSelf(selfUUID string) {
 
 // ----------------------------------------------------
 
-func (ctl *Ctl) rebalanceOrchestrator() bool {
-	return ctl.rebOrchestrator
+func (ctl *Ctl) isTaskOrchestrator() bool {
+	return atomic.LoadUint32(&ctl.orchestrator) == 1
+}
+
+func (ctl *Ctl) setTaskOrchestratorTo(to bool) {
+	if to {
+		atomic.StoreUint32(&ctl.orchestrator, 1)
+	} else {
+		atomic.StoreUint32(&ctl.orchestrator, 0)
+	}
 }
 
 // ----------------------------------------------------
@@ -1298,7 +1317,7 @@ func (ctl *Ctl) rebalanceOrchestrator() bool {
 func (ctl *Ctl) rebalanceInProgress() bool {
 	// check whether the rebalance operation is
 	// already in progress internally.
-	if ctl.rebOrchestrator {
+	if ctl.isTaskOrchestrator() {
 		return true
 	}
 
@@ -1309,6 +1328,26 @@ func (ctl *Ctl) rebalanceInProgress() bool {
 	}
 
 	return false
+}
+
+// ----------------------------------------------------
+
+func (ctl *Ctl) checkHibernationPlanStatus() bool {
+	ctl.m.Lock()
+	defer ctl.m.Unlock()
+	if ctl.deferPlanning {
+		log.Printf("ctl: hibernation plan in progress")
+		return true
+	}
+	return false
+}
+
+func (ctl *Ctl) hibernationTaskType() string {
+	if ctl.hm != nil {
+		return ctl.hm.TaskType()
+	}
+
+	return ""
 }
 
 // ----------------------------------------------------
@@ -1404,12 +1443,20 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 
 			ctl.m.Unlock()
 
+			ctl.setTaskOrchestratorTo(false)
+
 			close(ctlDoneCh)
 		}()
 		version := cbgt.CfgGetVersion(ctl.cfg)
 
+		ctlDeferPlanSetFunc := func() {
+			ctl.m.Lock()
+			ctl.deferPlanning = true
+			ctl.m.Unlock()
+		}
+
 		ctl.hm, err = hibernate.Start(version, ctl.cfg, ctl.server,
-			hibOptions, taskType)
+			hibOptions, taskType, ctlDeferPlanSetFunc)
 		if err != nil {
 			ctlErrs = append(ctlErrs, err)
 			return

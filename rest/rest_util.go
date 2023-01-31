@@ -36,35 +36,36 @@ func (e *proxyRequestErr) Error() string {
 // RequestProxyStubFunc is mainly for testability.
 var RequestProxyStubFunc func() bool
 
-func proxyOrchestratorNodeOnRebalanceDone(w http.ResponseWriter,
+func proxyOrchestratorNodeDone(w http.ResponseWriter,
 	req *http.Request, mgr *cbgt.Manager) bool {
 	if RequestProxyStubFunc != nil {
 		return RequestProxyStubFunc()
 	}
 	var err error
 	var respBuf []byte
-	cbgt.ExponentialBackoffLoop("proxyOrchestratorNodeOnRebalance",
+	var task string
+	cbgt.ExponentialBackoffLoop("proxyOrchestratorNode",
 		func() int {
-			respBuf, err = proxyOrchestratorNodeOnRebalance(req, mgr)
+			respBuf, task, err = proxyOrchestratorNode(req, mgr)
 			if err == nil {
 				if len(respBuf) > 0 {
 					w.Write(respBuf)
 				}
-				// stop the loop in case of no ongoing rebalance or
+				// stop the loop in case of no ongoing task or
 				// upon successfully proxying the request.
 				return -1
 			}
 
 			// skip request proxying when not necessary.
 			if err == errRequestProxyingNotNeeded {
-				log.Printf("rest_create_index: no request forwarding needed as the " +
-					"current node is the rebalance orchestrator")
+				log.Printf("rest_create_index: no request forwarding needed as the "+
+					"current node is the %s orchestrator", task)
 				return -1
 			}
 
 			// exit on no retry errors.
 			if _, ok := err.(*proxyRequestErr); ok {
-				err = fmt.Errorf("proxy request err: %v", err)
+				err = fmt.Errorf("proxy request err: %v,task: %s", err, task)
 				return -1
 			}
 
@@ -75,8 +76,8 @@ func proxyOrchestratorNodeOnRebalanceDone(w http.ResponseWriter,
 
 	if err != nil && err != errRequestProxyingNotNeeded {
 		// fail the index CUD operation here as all the repeated attempts
-		// to check the rebalance status or proxying the request to
-		// the rebalance orchestrator node failed, as this could
+		// to check the task status or proxying the request to
+		// the orchestrator node failed, as this could
 		// hint a heavily loaded/unhealthy cluster.
 		ShowError(w, req,
 			fmt.Sprintf("rest_create_index: failed, err: %v", err),
@@ -93,39 +94,58 @@ func proxyOrchestratorNodeOnRebalanceDone(w http.ResponseWriter,
 	return false
 }
 
-func proxyOrchestratorNodeOnRebalance(req *http.Request,
-	mgr *cbgt.Manager) ([]byte, error) {
+func proxyOrchestratorNode(req *http.Request,
+	mgr *cbgt.Manager) ([]byte, string, error) {
 	// check whether a rebalance operation is in progress
 	// with the local ns-server.
-	running, err := CheckRebalanceStatus(mgr)
+	rebRunning, err := CheckRebalanceStatus(mgr)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	// no ongoing rebalance operations found.
-	if !running {
-		return nil, nil
+	// check whether a hibernation operation is in progress and if so, return the
+	// hibernation orchestrator and task type
+	hibPlanRunning, hibOrchestratorURL, hibernationOp, hibErr :=
+		CheckHibernationStatus(mgr)
+
+	// no ongoing operations found.
+	if !rebRunning && !hibPlanRunning {
+		return nil, "", nil
 	}
 
-	log.Printf("rest_util: ongoing rebalance operation found")
-	hostPortUrl, err := findRebalanceOrchestratorNode(mgr)
-	if err != nil {
-		return nil, err
+	operation := "rebalance"
+	if hibPlanRunning {
+		operation = hibernationOp
 	}
 
-	log.Printf("rest_util: identified the rebalance orchestrator node: %s", hostPortUrl)
+	var hostPortUrl string
+	if rebRunning {
+		log.Printf("rest_util: ongoing rebalance operation found")
+		hostPortUrl, err = findRebalanceOrchestratorNode(mgr)
+		if err != nil {
+			return nil, operation, err
+		}
+	} else {
+		log.Printf("rest_util: ongoing %s plan phase found", hibernationOp)
+		if hibErr != nil {
+			return nil, operation, hibErr
+		}
+		hostPortUrl = hibOrchestratorURL
+	}
+
+	log.Printf("rest_util: identified the %s orchestrator node: %s", operation, hostPortUrl)
 
 	// forward the incoming index create/update/delete request if the
 	// rebalance orchestrator is a different node in the cluster.
 	// create a new url from the raw RequestURI sent by the client
 	url, err := cbgt.CBAuthURL(hostPortUrl + req.RequestURI)
 	if err != nil {
-		return nil, err
+		return nil, operation, err
 	}
 
 	proxyReq, err := http.NewRequest(req.Method, url, req.Body)
 	if err != nil {
-		return nil, err
+		return nil, operation, err
 	}
 	req.Header.Add("Content-Type", "application/json")
 	// custom header to differentiate between fresh vs forwarded requests.
@@ -133,18 +153,18 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 
 	httpClient := cbgt.HttpClient()
 	if httpClient == nil {
-		return nil, fmt.Errorf("rest_util: HttpClient unavailable")
+		return nil, operation, fmt.Errorf("rest_util: HttpClient unavailable")
 	}
 
 	resp, err := httpClient.Do(proxyReq)
 	if err != nil {
-		return nil, err
+		return nil, operation, err
 	}
 	defer resp.Body.Close()
 
 	respBuf, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, operation, err
 	}
 	// propagate any validation failures.
 	rv := struct {
@@ -153,16 +173,139 @@ func proxyOrchestratorNodeOnRebalance(req *http.Request,
 	}{}
 	err = json.Unmarshal(respBuf, &rv)
 	if err != nil {
-		return nil, err
+		return nil, operation, err
 	}
 	if rv.Status != "ok" {
-		return nil, &proxyRequestErr{msg: rv.ErrStr}
+		return nil, operation, &proxyRequestErr{msg: rv.ErrStr}
 	}
 
 	log.Printf("rest_util: index method: %s request successfully forwarded"+
 		" to node: %s, resp body: %s", req.Method, hostPortUrl, respBuf)
 
-	return respBuf, nil
+	return respBuf, operation, nil
+}
+
+// Check if the plan phase is ongoing in any of the nodes and
+// return the orchestrator and hibernation task type in case it is.
+func CheckHibernationStatus(mgr *cbgt.Manager) (bool, string, string, error) {
+	if mgr.Options()[cbgt.HIBERNATE_TASK] != "true" &&
+		mgr.Options()[cbgt.UNHIBERNATE_TASK] != "true" {
+		return false, "", "", nil
+	}
+
+	nodeDefs, err := mgr.GetNodeDefs(cbgt.NODE_DEFS_WANTED, true)
+	if err != nil {
+		return false, "", "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	var planStatus bool
+	var resultUrl, bindHttp, taskType string
+	errCh := make(chan error, len(nodeDefs.NodeDefs))
+
+	for _, nd := range nodeDefs.NodeDefs {
+		go func(nodeDef *cbgt.NodeDef) {
+			var err error
+			defer func() {
+				if err != nil {
+					err = fmt.Errorf("Orchestrator fetch failed for "+
+						"node: %s, err: %v", nodeDef.HostPort, err)
+				}
+				errCh <- err
+			}()
+
+			hostPortUrl := "http://" + nodeDef.HostPort
+			if u, err := nodeDef.HttpsURL(); err == nil {
+				hostPortUrl = u
+			}
+
+			var url string
+			url, err = cbgt.CBAuthURL(hostPortUrl + "/api/hibernationStatus")
+			if err != nil {
+				return
+			}
+
+			var req *http.Request
+			req, err = http.NewRequestWithContext(ctx, "GET", url, nil)
+			if err != nil {
+				return
+			}
+
+			httpClient := cbgt.HttpClient()
+			if httpClient == nil {
+				return
+			}
+
+			var resp *http.Response
+			resp, err = httpClient.Do(req)
+			if err != nil || resp.StatusCode != 200 {
+				// if the statusCode is HTTP:404 (endpoint not found)
+				// then ignore the error as it could happen in a mixed
+				// version cluster during upgrade.
+				if resp != nil && resp.StatusCode == 404 {
+					log.Printf("rest_util: findHibernationStatus "+
+						"failed for node: %s, err: %v", hostPortUrl, err)
+					err = nil
+				}
+				return
+			}
+			defer resp.Body.Close()
+
+			var respBuf []byte
+			respBuf, err = io.ReadAll(resp.Body)
+			if err != nil {
+				return
+			}
+
+			rv := struct {
+				HibernationPlanStatus bool   `json:"hibernationPlanPhase"`
+				HibernationTaskType   string `json:"hibernationTaskType"`
+			}{}
+			err = json.Unmarshal(respBuf, &rv)
+			if err != nil {
+				return
+			}
+
+			if rv.HibernationPlanStatus {
+				resultUrl = hostPortUrl
+				bindHttp = nodeDef.HostPort
+				planStatus = rv.HibernationPlanStatus
+				taskType = rv.HibernationTaskType
+			}
+		}(nd)
+	}
+
+	var s []string
+	var count int
+	for err := range errCh {
+		if err != nil {
+			s = append(s, err.Error()+", ")
+		}
+		count++
+		if count >= len(nodeDefs.NodeDefs) {
+			break
+		}
+	}
+
+	// found a hibernation orchestrator successfully.
+	if resultUrl != "" {
+		if mgr.BindHttp() == bindHttp {
+			// current node is the hibernation orchestrator.
+			return planStatus, "", taskType, errRequestProxyingNotNeeded
+		}
+
+		return planStatus, resultUrl, taskType, nil
+	}
+
+	// propagate the errors.
+	if len(s) > 0 {
+		return false, "", "", fmt.Errorf("rest_util: CheckHibernationStatus, "+
+			"errs: %d, %#v", len(s), s)
+	}
+
+	return false, "", "", nil
 }
 
 type taskProgress struct {

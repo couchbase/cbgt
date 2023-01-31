@@ -117,12 +117,17 @@ type Manager struct {
 	nodesAll             []string
 	indexDefsToHibernate *cbgt.IndexDefs
 
-	m                sync.Mutex
-	transferProgress map[string]float64 // pindex -> pause/resume progress
-	stopCh           chan struct{}
+	m                   sync.Mutex
+	transferProgress    map[string]float64 // pindex -> pause/resume progress
+	stopCh              chan struct{}
+	ctlDeferPlanSetFunc func()
 
 	hibernationComplete bool // status flag to check if hibernation for
 	// the bucket(i.e. all the indexes to hibernate) is complete.
+}
+
+func (hm *Manager) TaskType() string {
+	return string(hm.operationType)
 }
 
 func (hm *Manager) getIndexesForHibernation(begIndexDefs *cbgt.IndexDefs) (*cbgt.IndexDefs, error) {
@@ -197,8 +202,9 @@ func getBucketAndMetadataPaths(remotePath string) (string, string, string, error
 }
 
 // Common start for both pause and resume.
-func Start(version string, cfg cbgt.Cfg, server string, options HibernationOptions,
-	hibernationType OperationType) (*Manager, error) {
+func Start(version string, cfg cbgt.Cfg, server string,
+	options HibernationOptions, hibernationType OperationType,
+	ctlDeferPlanFunc func()) (*Manager, error) {
 
 	begIndexDefs, begNodeDefs, begPlanPIndexes, _, err :=
 		cbgt.PlannerGetPlan(cfg, version, "")
@@ -207,12 +213,13 @@ func Start(version string, cfg cbgt.Cfg, server string, options HibernationOptio
 	}
 
 	hm := &Manager{
-		version:       version,
-		cfg:           cfg,
-		server:        server,
-		options:       options,
-		operationType: hibernationType,
-		progressCh:    make(chan HibernationProgress),
+		version:             version,
+		cfg:                 cfg,
+		server:              server,
+		options:             options,
+		operationType:       hibernationType,
+		progressCh:          make(chan HibernationProgress),
+		ctlDeferPlanSetFunc: ctlDeferPlanFunc,
 	}
 
 	var indexDefsToHibernate *cbgt.IndexDefs
@@ -438,7 +445,7 @@ func (hm *Manager) runHibernateIndexes() {
 		close(hm.progressCh)
 	}()
 
-	err = hm.hibernateIndexes(hm.indexDefsToHibernate)
+	err = hm.hibernateIndexes()
 	if err != nil {
 		hm.Logf("run: err: %#v", err)
 		return
@@ -452,6 +459,8 @@ func (hm *Manager) runHibernateIndexes() {
 // --------------------------------------------------------
 
 func (hm *Manager) pauseIndexes() error {
+	hm.ctlDeferPlanSetFunc()
+
 	// Starting to track bucket state.
 	go hm.startPauseBucketStateTracker()
 
@@ -484,7 +493,13 @@ func (hm *Manager) pauseIndexes() error {
 		return err
 	}
 
-	return cbgt.RetryOnCASMismatch(pauseFunc, 100)
+	err := cbgt.RetryOnCASMismatch(pauseFunc, 100)
+	if err != nil {
+		return err
+	}
+	hm.options.Manager.PlannerKick("api/DeleteIndex, pause for bucket name: " +
+		hm.options.BucketName)
+	return nil
 }
 
 func (hm *Manager) uploadMetadata() error {
@@ -596,8 +611,8 @@ func (hm *Manager) downloadSourcePartitionsMetadata() (*sourceMetadata, error) {
 	return sourcePartitionsMetadata, nil
 }
 
-func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
-	if len(indexesToResume.IndexDefs) == 0 || indexesToResume == nil {
+func (hm *Manager) resumeIndexes() error {
+	if len(hm.indexDefsToHibernate.IndexDefs) == 0 || hm.indexDefsToHibernate == nil {
 		return nil
 	}
 
@@ -614,6 +629,7 @@ func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 		return err
 	}
 	hm.options.Manager.SetOption("hibernationSourcePartitions", sourcePartitionsMetadata.SourcePartitions, true)
+	hm.ctlDeferPlanSetFunc()
 
 	indexResumeFunc := func() error {
 		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
@@ -639,17 +655,24 @@ func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 		return err
 	}
 
-	return cbgt.RetryOnCASMismatch(indexResumeFunc, 100)
+	err = cbgt.RetryOnCASMismatch(indexResumeFunc, 100)
+	if err != nil {
+		return err
+	}
+
+	hm.options.Manager.PlannerKick("api/CreateIndex, resume for bucket name: " +
+		hm.options.BucketName)
+	return nil
 }
 
-func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
+func (hm *Manager) hibernateIndexes() error {
 	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
 		err := hm.pauseIndexes()
 		if err != nil {
 			return err
 		}
 	} else {
-		err := hm.resumeIndexes(indexDefs)
+		err := hm.resumeIndexes()
 		if err != nil {
 			return err
 		}
@@ -657,7 +680,7 @@ func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
 
 	// Dry runs do not involve any file transfers.
 	if !hm.options.DryRun {
-		return hm.waitUntilFileTransferDone(indexDefs)
+		return hm.waitUntilFileTransferDone()
 	}
 
 	return nil
@@ -665,7 +688,7 @@ func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
 
 // This function removes the remote paths from indexes.
 func (hm *Manager) removeHibernationPath(indexesToChange *cbgt.IndexDefs) error {
-	return cbgt.RetryOnCASMismatch(func() error {
+	err := cbgt.RetryOnCASMismatch(func() error {
 		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
 		if err != nil {
 			return err
@@ -690,11 +713,18 @@ func (hm *Manager) removeHibernationPath(indexesToChange *cbgt.IndexDefs) error 
 		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
 		return err
 	}, 100)
+	if err != nil {
+		return err
+	}
+
+	hm.options.Manager.PlannerKick("api/CreateIndex, resume for bucket name: " +
+		hm.options.BucketName)
+	return nil
 }
 
 // --------------------------------------------------------
 
-func (hm *Manager) waitUntilFileTransferDone(indexDefs *cbgt.IndexDefs) error {
+func (hm *Manager) waitUntilFileTransferDone() error {
 	// listen to the stats from the hibernation channels and
 	// wait until the bytes transferred and bytes expected matches.
 
@@ -768,7 +798,7 @@ MONITOR_LOOP:
 						hm.progressCh <- HibernationProgress{TransferProgress: indexProgress}
 					}
 
-					for _, index := range indexDefs.IndexDefs {
+					for _, index := range hm.indexDefsToHibernate.IndexDefs {
 						// If even one index has not completed their transfer, continue monitoring.
 						if indexProgress[index.Name] < 1 {
 							caughtUp = false
@@ -784,7 +814,7 @@ MONITOR_LOOP:
 					} else {
 						log.Printf("hibernate: hibernation complete for indexes:")
 					}
-					for _, index := range indexDefs.IndexDefs {
+					for _, index := range hm.indexDefsToHibernate.IndexDefs {
 						log.Printf("%s\n", index.Name)
 					}
 					return sampleErr

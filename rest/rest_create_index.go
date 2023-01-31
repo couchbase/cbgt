@@ -188,7 +188,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		req.Body = io.NopCloser(bytes.NewReader(requestBody))
 		// if there was successful proxying of the request to the rebalance
 		// orchestrator node, then return early.
-		if proxyOrchestratorNodeOnRebalanceDone(w, req, h.mgr) {
+		if proxyOrchestratorNodeDone(w, req, h.mgr) {
 			return
 		}
 	}
