@@ -180,11 +180,11 @@ func (am *gocbcoreAgentsMap) releaseAgents(sourceName string) {
 	if entry, exists := am.entries[sourceName]; exists {
 		entry.ref--
 		if entry.ref > 0 {
-			log.Printf("gocbcore_utils: releaseAgents (Agent: %p, DCPAgent: %p), ref: %v",
-				entry.agent, entry.dcpAgent, entry.ref)
+			log.Printf("gocbcore_utils: releaseAgents (Agent: %p, DCPAgent: %p), ref: %v,"+
+				" sourceName: %v", entry.agent, entry.dcpAgent, entry.ref, sourceName)
 		} else {
-			log.Printf("gocbcore_utils: releaseAgents, closing (Agent: %p, DCPAgent: %p)",
-				entry.agent, entry.dcpAgent)
+			log.Printf("gocbcore_utils: releaseAgents, closing (Agent: %p, DCPAgent: %p),"+
+				" sourceName: %v", entry.agent, entry.dcpAgent, sourceName)
 			go func() {
 				entry.agent.Close()
 				entry.dcpAgent.Close()

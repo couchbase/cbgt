@@ -63,14 +63,27 @@ var CloseDCPAgent func(bucketName, bucketUUID string, agent *gocbcore.DCPAgent) 
 
 // ----------------------------------------------------------------
 
+type streamDetails struct {
+	Partition   string `json:"pindex"`
+	NumVBuckets uint64 `json:"num_vbuckets"`
+}
+
+type dcpAgentDetails struct {
+	dcpConnName   string
+	Refs          int    `json:"refs"`
+	NumStreamReqs uint64 `json:"num_stream_reqs"`
+	// streamID:streamDetails
+	Streams map[string]*streamDetails `json:"streams"`
+}
+
 // Map to hold a pool of gocbcore.DCPAgents for every bucket, each
 // gocbcore.DCPAgent will be allowed a maximum reference count controlled
 // by maxFeedsPerDCPAgent.
 type gocbcoreDCPAgentMap struct {
 	// mutex to serialize access to entries/refCount
-	m sync.Mutex
+	m sync.RWMutex
 	// map of gocbcore.DCPAgents with ref counts for bucket <name>:<uuid>
-	entries map[string]map[*gocbcore.DCPAgent]int
+	entries map[string]map[*gocbcore.DCPAgent]*dcpAgentDetails
 	// stat to track number of live DCP agents (connections)
 	numDCPAgents uint64
 }
@@ -84,7 +97,7 @@ var dcpAgentMap *gocbcoreDCPAgentMap
 
 func init() {
 	dcpAgentMap = &gocbcoreDCPAgentMap{
-		entries: make(map[string]map[*gocbcore.DCPAgent]int),
+		entries: make(map[string]map[*gocbcore.DCPAgent]*dcpAgentDetails),
 	}
 
 	FetchDCPAgent = dcpAgentMap.fetchAgent
@@ -97,6 +110,61 @@ func NumDCPAgents() uint64 {
 	}
 
 	return 0
+}
+
+func updateDCPAgentsDetails(bucketName, bucketUUID, feedName string,
+	agent *gocbcore.DCPAgent, streamID int16, openStream bool) {
+	dcpAgentMap.m.Lock()
+	defer dcpAgentMap.m.Unlock()
+	dcpAgentDetails := dcpAgentMap.entries[bucketName+":"+bucketUUID][agent]
+
+	sID := fmt.Sprintf("%v", streamID)
+	if openStream {
+		dcpAgentDetails.NumStreamReqs += 1
+		if v, ok := dcpAgentDetails.Streams[sID]; !ok {
+			dcpAgentDetails.Streams[sID] = &streamDetails{
+				NumVBuckets: 1,
+				Partition:   feedName,
+			}
+		} else {
+			v.NumVBuckets++
+		}
+		return
+	}
+
+	// decrement counts appropriately for close stream reqs
+	dcpAgentDetails.NumStreamReqs -= 1
+	dcpAgentDetails.Streams[sID].NumVBuckets -= 1
+	if dcpAgentDetails.Streams[sID].NumVBuckets == 0 {
+		delete(dcpAgentDetails.Streams, sID)
+	}
+	return
+}
+
+func DCPAgentsStatsMap() map[string]interface{} {
+	rv := make(map[string]interface{})
+	if dcpAgentMap != nil {
+		rv["total_gocbcore_agents"] = atomic.LoadUint64(&dcpAgentMap.numDCPAgents)
+		dcpAgentMap.m.RLock()
+		for keySpace, agents := range dcpAgentMap.entries {
+			keySpace := strings.Split(keySpace, ":")
+			if len(keySpace) == 2 {
+				agentsMap := make(map[string]interface{})
+				for _, v := range agents {
+					agentsMap[v.dcpConnName] = v
+				}
+				rv[keySpace[0]] = struct {
+					NumDCPAgents    int                    `json:"num_dcp_agents"`
+					DcpAgentDetails map[string]interface{} `json:"dcp_agents_details"`
+				}{
+					NumDCPAgents:    len(agents),
+					DcpAgentDetails: agentsMap,
+				}
+			}
+		}
+		dcpAgentMap.m.RUnlock()
+	}
+	return rv
 }
 
 // Fetches a gocbcore.DCPAgent instance for the bucket (name:uuid),
@@ -121,17 +189,18 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 
 	key := bucketName + ":" + bucketUUID
 	if _, exists := dm.entries[key]; exists {
-		for agent, refs := range dm.entries[key] {
-			if refs < maxFeedsPerDCPAgent {
-				dm.entries[key][agent]++
+		for agent, agentInfo := range dm.entries[key] {
+			if agentInfo.Refs < maxFeedsPerDCPAgent {
+				dm.entries[key][agent].Refs++
 				log.Printf("feed_dcp_gocbcore: fetchAgent, re-using existing DCP agent"+
-					" (key: %v, agent: %p, ref count: %v, number of agents for key: %v)",
-					key, agent, dm.entries[key][agent], len(dm.entries[key]))
+					" (key: %v, agent: %s, ref count: %v, number of agents for key: %v)",
+					key, dm.entries[key][agent].dcpConnName, dm.entries[key][agent].Refs,
+					len(dm.entries[key]))
 				return agent, nil
 			}
 		}
 	} else {
-		dm.entries[key] = map[*gocbcore.DCPAgent]int{}
+		dm.entries[key] = map[*gocbcore.DCPAgent]*dcpAgentDetails{}
 	}
 
 	auth, err := gocbAuth(paramsStr, options["authType"])
@@ -178,10 +247,14 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, setup err: %w", err)
 	}
 
-	dm.entries[key][agent] = 1
-	log.Printf("feed_dcp_gocbcore: fetchAgent, set up new DCP agent: `%v`"+
-		" (key: %v, agent: %p, number of agents for key: %v)", dcpConnName,
-		key, agent, len(dm.entries[key]))
+	dm.entries[key][agent] = &dcpAgentDetails{
+		dcpConnName: dcpConnName,
+		Refs:        1,
+		Streams:     make(map[string]*streamDetails),
+	}
+	log.Printf("feed_dcp_gocbcore: fetchAgent, set up new DCP agent "+
+		" (key: %v, agent: %s, number of agents for key: %v)",
+		key, dcpConnName, len(dm.entries[key]))
 
 	atomic.AddUint64(&dm.numDCPAgents, 1)
 
@@ -205,23 +278,24 @@ func (dm *gocbcoreDCPAgentMap) releaseAgent(bucketName, bucketUUID string,
 
 	if _, exists := dm.entries[key][agent]; !exists {
 		log.Warnf("feed_dcp_gocbcore: releaseAgent, DCPAgent doesn't exist"+
-			" (key: %v, agent: %p)", key, agent)
+			" (key: %v)", key)
 	} else {
-		dm.entries[key][agent]--
-		if dm.entries[key][agent] > 0 {
+		dm.entries[key][agent].Refs--
+		if dm.entries[key][agent].Refs > 0 {
 			log.Printf("feed_dcp_gocbcore: releaseAgent, ref count decremented for"+
-				" DCPagent (key: %v, agent: %p, ref count: %v, number of agents"+
+				" DCPagent (key: %v, agent: %s, ref count: %v, number of agents"+
 				" for key: %v)",
-				key, agent, dm.entries[key][agent], len(dm.entries[key]))
+				key, dm.entries[key][agent].dcpConnName, dm.entries[key][agent].Refs, len(dm.entries[key]))
 			return nil
 		}
+		connName := dm.entries[key][agent].dcpConnName
 		// ref count of agent down to 0
 		delete(dm.entries[key], agent)
 		atomic.AddUint64(&dm.numDCPAgents, ^uint64(0)) // decrement by 1
 
 		log.Printf("feed_dcp_gocbcore: releaseAgent, closing DCPAgent"+
-			" (key: %v, agent: %p, number of agents for key: %v)",
-			key, agent, len(dm.entries[key]))
+			" (key: %v, agent: %s, number of agents for key: %v)",
+			key, connName, len(dm.entries[key]))
 
 		// close the agent only once
 		go agent.Close()
@@ -760,6 +834,8 @@ func (f *GocbcoreDCPFeed) closeAllStreamsLOCKED() {
 	for _, vbId := range f.vbucketIds {
 		if f.active[vbId] {
 			f.agent.CloseStream(vbId, closeStreamOptions, func(err error) {})
+			updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent,
+				int16(f.streamOptions.StreamOptions.StreamID), false)
 			f.active[vbId] = false
 			f.remaining.Done()
 		}
@@ -884,6 +960,9 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				f.complete(vbId)
 			} else {
 				// er == nil
+				updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent,
+					int16(f.streamOptions.StreamOptions.StreamID), true)
+
 				atomic.AddUint64(&f.dcpStats.TotDCPStreamReqs, 1)
 				failoverLog := make([][]uint64, len(entries))
 				for i := 0; i < len(entries); i++ {
@@ -978,7 +1057,7 @@ func (f *GocbcoreDCPFeed) initiateShutdown(err error) {
 // onError is to be invoked in case of errors encountered while
 // processing DCP messages.
 func (f *GocbcoreDCPFeed) onError(notifyMgr bool, err error) error {
-	log.Debugf("feed_dcp_gocbcore: onError, name: %s,"+
+	log.Warnf("feed_dcp_gocbcore: onError, name: %s,"+
 		" bucketName: %s, bucketUUID: %s, err: %v",
 		f.Name(), f.bucketName, f.bucketUUID, err)
 
