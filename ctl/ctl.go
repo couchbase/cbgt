@@ -1353,13 +1353,24 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 		}
 	}
 
-	client := cbgt.HttpClient()
+	authType := ""
+	if ctl.optionsMgr != nil {
+		authType = ctl.optionsMgr["authType"]
+	}
+
+	httpGetWithAuth := func(urlStr string) (resp *http.Response, err error) {
+		if authType == "cbauth" {
+			return cbgt.CBAuthHttpGet(urlStr)
+		}
+
+		return cbgt.HttpClient().Get(urlStr)
+	}
 
 	hibOptions := hibernate.HibernationOptions{
 		BucketName:      bucketName,
 		SourceType:      sourceType,
 		ArchiveLocation: remotePath,
-		HttpGet:         client.Get,
+		HttpGet:         httpGetWithAuth,
 		Manager:         ctl.optionsCtl.Manager,
 		DryRun:          dryRun,
 	}
@@ -1392,9 +1403,6 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 			}
 
 			ctl.m.Unlock()
-
-			// Unsetting the manager options at the end of hibernation.
-			ctl.optionsCtl.Manager.SetOption(string(taskType), "", false)
 
 			close(ctlDoneCh)
 		}()
@@ -1440,8 +1448,10 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 // operations like a hibernate/unhibernate.
 func (ctl *Ctl) StopHibernationTask() {
 	// Used for stopping upload/download
-	_, cancel := ctl.optionsCtl.Manager.GetHibernationContext()
-	cancel()
+	ctx, cancel := ctl.optionsCtl.Manager.GetHibernationContext()
+	if ctx != nil {
+		cancel()
+	}
 
 	ctl.m.Lock()
 	if ctl.ctlStopCh != nil {

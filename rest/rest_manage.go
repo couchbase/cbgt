@@ -42,8 +42,9 @@ func (h *StatsHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	queryParams := req.URL.Query()
 	params := queryParams.Get("partitions")
+	includeSeqNos := queryParams.Get("seqno")
 	if params == "true" {
-		writePartitionStatsJSON(h.mgr, w, req)
+		writePartitionStatsJSON(h.mgr, w, req, includeSeqNos)
 		return
 	}
 
@@ -243,7 +244,8 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 }
 
 func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
-	req *http.Request) {
+	req *http.Request, includeSeqNos string) {
+	// includeSeqNos: param on whether to include seq nos or not
 	_, pindexes := mgr.CurrentMaps()
 
 	// Map of source name -> partition -> UUIDSeq
@@ -262,7 +264,7 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 		}
 
 		sourceSeqNos, exists := sourcePartitionSeqs[pindex.SourceName]
-		if !exists {
+		if !exists && includeSeqNos == "true" {
 			feedType, _ := cbgt.FeedTypes[cbgt.SOURCE_GOCBCORE]
 			partitionSeqs, err := feedType.PartitionSeqs(
 				pindex.SourceType, pindex.SourceName, pindex.SourceUUID,
@@ -286,11 +288,15 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 		w.Write(statsNameSuffix)
 
 		statsWriter := &statsWriter{
-			w:                   &buf,
-			vbstats:             true,
-			indexDef:            indexDef,
-			sourcePartitionSeqs: sourceSeqNos,
+			w:        &buf,
+			vbstats:  true,
+			indexDef: indexDef,
 		}
+
+		if includeSeqNos == "true" {
+			statsWriter.sourcePartitionSeqs = sourceSeqNos
+		}
+
 		err = pindex.Dest.Stats(statsWriter)
 		if err != nil || len(buf.Bytes()) == 0 || !json.Valid(buf.Bytes()) {
 			log.Warnf("writePartitionStatsJSON: pindex stats invalid for `%s`, err: %v",

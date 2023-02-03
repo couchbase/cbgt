@@ -87,6 +87,8 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 
 	if !m.options.StatsSampleDisable {
 		m.sample(urlUUID, "/api/stats?partitions=true", time.Now())
+	} else {
+		m.sample(urlUUID, "/api/stats?partitions=true&seqno=false", time.Now())
 	}
 
 	if !m.options.DiagSampleDisable {
@@ -105,6 +107,8 @@ func (m *MonitorNodes) runNode(urlUUID UrlUUID) {
 
 			if !m.options.StatsSampleDisable {
 				m.sample(urlUUID, "/api/stats?partitions=true", t)
+			} else {
+				m.sample(urlUUID, "/api/stats?partitions=true&seqno=false", t)
 			}
 
 		case t, ok := <-diagTicker.C:

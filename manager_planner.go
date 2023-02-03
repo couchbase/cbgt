@@ -216,6 +216,14 @@ func Plan(cfg Cfg, version, uuid, server string, options map[string]string,
 		version = eVersion
 	}
 
+	clusterOptions, _, err := CfgGetClusterOptions(cfg)
+	if err != nil {
+		return false, err
+	}
+	if clusterOptions != nil {
+		options["resumeSourcePartitions"] = clusterOptions.HibernationSourcePartitions
+	}
+
 	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
 		planPIndexesPrev, version, server, options, plannerFilter)
 	if err != nil {
@@ -620,13 +628,26 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 	map[string]*PlanPIndex, error) {
 	maxPartitionsPerPIndex := indexDef.PlanParams.MaxPartitionsPerPIndex
 
-	sourcePartitionsArr, err := DataSourcePartitions(indexDef.SourceType,
-		indexDef.SourceName, indexDef.SourceUUID, indexDef.SourceParams,
-		server, options)
-	if err != nil {
-		return nil, fmt.Errorf("planner: could not get partitions,"+
-			" indexDef.Name: %s, server: %s, err: %v",
-			indexDef.Name, server, err)
+	var sourcePartitionsArr []string
+	var err error
+
+	// TODO Check the bucket state instead, if possible?
+
+	// If changing to a resuming index, don't attempt to get source partitions
+	// since bucket might not be ready.
+	if !strings.HasPrefix(indexDef.HibernationPath, UNHIBERNATE_TASK) {
+		sourcePartitionsArr, err = DataSourcePartitions(indexDef.SourceType,
+			indexDef.SourceName, indexDef.SourceUUID, indexDef.SourceParams,
+			server, options)
+		if err != nil {
+			return nil, fmt.Errorf("planner: could not get partitions,"+
+				" indexDef.Name: %s, server: %s, err: %v",
+				indexDef.Name, server, err)
+		}
+	} else {
+		for _, sourcePartition := range strings.Split(options["resumeSourcePartitions"], ",") {
+			sourcePartitionsArr = append(sourcePartitionsArr, sourcePartition)
+		}
 	}
 
 	planPIndexesForIndex := map[string]*PlanPIndex{}

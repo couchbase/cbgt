@@ -879,7 +879,8 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 		}
 	}
 
-	err = m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.HIBERNATE_TASK, params.Bucket)
+	err = m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.HIBERNATE_TASK, params.Bucket,
+		params.BlobStorageRegion, false)
 	if err != nil {
 		return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
 			params.Bucket, err)
@@ -910,9 +911,6 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 				log.Printf("ctl/manager: stop preparePause: %v",
 					params)
 
-				// Unsetting the relevant manager options when pause is stopped/ended.
-				m.ctl.optionsCtl.Manager.SetOption(cbgt.HIBERNATE_TASK, "", false)
-				m.ctl.optionsCtl.Manager.ResetBucketTrackedForHibernation()
 				m.ctl.StopHibernationTask()
 			},
 		})
@@ -980,26 +978,21 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 			log.Printf("ctl/manager: stop prepareResume: %v",
 				params)
 
-			// Unsetting the relevant manager options when resume is stopped/ended.
-			if !params.DryRun {
-				m.ctl.optionsCtl.Manager.ResetBucketTrackedForHibernation()
-				m.ctl.optionsCtl.Manager.SetOption(cbgt.UNHIBERNATE_TASK, "", false)
-			}
-
 			m.ctl.StopHibernationTask()
 		}}
+
+	err = m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.UNHIBERNATE_TASK, params.Bucket,
+		params.BlobStorageRegion, params.DryRun)
+	if err != nil {
+		return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
+			params.Bucket, err)
+	}
 
 	if params.DryRun {
 		// Task marked as failed if the path is invalid.
 		if !hibernate.CheckIfRemotePathIsValidHook(params.RemotePath) {
 			newTaskHandle.task.Status = service.TaskStatusCannotResume
 			newTaskHandle.task.ErrorMessage = "invalid remote path"
-		}
-	} else {
-		err := m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.UNHIBERNATE_TASK, params.Bucket)
-		if err != nil {
-			return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
-				params.Bucket, err)
 		}
 	}
 

@@ -123,20 +123,32 @@ func (mgr *Manager) setObjStoreClient(client objcli.Client) {
 const bucketInHibernationKey = "bucketInHibernation"
 const NoBucketInHibernation = "$"
 
-func (mgr *Manager) markBucketForHibernation(bucket string) error {
-	return mgr.SetOption(bucketInHibernationKey, bucket, true)
+func (mgr *Manager) MarkBucketForHibernation(bucketTaskKey string) error {
+	if mgr.Options()[bucketInHibernationKey] == bucketTaskKey {
+		return nil
+	}
+
+	return mgr.SetOption(bucketInHibernationKey, bucketTaskKey, true)
 }
 
 func (mgr *Manager) ResetBucketTrackedForHibernation() error {
+	if mgr.Options()[bucketInHibernationKey] == NoBucketInHibernation {
+		return nil
+	}
+
 	return mgr.SetOption(bucketInHibernationKey, NoBucketInHibernation, true)
 }
 
 func (mgr *Manager) IsBucketBeingHibernated(bucket string) bool {
+	if bucket == "" {
+		return false
+	}
+
 	mgr.bucketInHibernationMutex.RLock()
 	bucketInHibernation := mgr.bucketInHibernation
 	mgr.bucketInHibernationMutex.RUnlock()
 
-	return (bucketInHibernation == bucket && bucketInHibernation != "")
+	return bucketInHibernation == bucket
 }
 
 func (mgr *Manager) RegisterHibernationBucketTracker(bucket string) {
@@ -315,6 +327,7 @@ type ClusterOptions struct {
 	ResourceUtilizationLowWaterMark    string `json:"resourceUtilizationLowWaterMark"`
 	ResourceUnderUtilizationWaterMark  string `json:"resourceUnderUtilizationWaterMark"`
 	BucketInHibernation                string `json:"bucketInHibernation"`
+	HibernationSourcePartitions        string `json:"hibernationSourcePartitions"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
@@ -1035,20 +1048,25 @@ func (mgr *Manager) GetIndexDef(indexName string, refresh bool) (
 
 var LimitIndexDefHook func(mgr *Manager, indexDef *IndexDef) (*IndexDef, error)
 
-var HibernationClientHook = func() (objcli.Client, error) {
+var HibernationClientHook = func(string) (objcli.Client, error) {
 	return nil, fmt.Errorf("not-implemented")
 }
 
 // This function does the groundwork/preparation for hibernation tasks.
-func (mgr *Manager) HibernationPrepareUtil(task, bucket string) error {
+func (mgr *Manager) HibernationPrepareUtil(task, bucket, remoteStorageRegion string,
+	dryRun bool) error {
 	mgr.setHibernationContext()
-	objStoreClient, err := HibernationClientHook()
+	objStoreClient, err := HibernationClientHook(remoteStorageRegion)
 	if err != nil {
 		return fmt.Errorf("manager: unable to get object store client: %v", err)
 	}
 	mgr.setObjStoreClient(objStoreClient)
-	mgr.SetOption(task, "true", false)
-	mgr.markBucketForHibernation(bucket)
+
+	// Does not require bucket/task to be tracked during dry run
+	if !dryRun {
+		mgr.SetOption(task, "true", false)
+		mgr.MarkBucketForHibernation(task + ":" + bucket)
+	}
 
 	return nil
 }
@@ -1070,7 +1088,7 @@ func (mgr *Manager) GetIndexNameForPIndex(pindexName string) (
 	string, error) {
 	_, indexPlansMap, err := mgr.GetPlanPIndexes(true)
 	if err != nil {
-		return "", fmt.Errorf("hibernate: error getting plan pindexes: %v",
+		return "", fmt.Errorf("manager: error getting plan pindexes: %v",
 			err)
 	}
 	for index, plans := range indexPlansMap {

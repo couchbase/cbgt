@@ -30,6 +30,8 @@ type OperationType string
 var (
 	INDEX_METADATA_PATH = "index-metadata"
 
+	SOURCE_PARTITIONS_PATH = "source-partitions"
+
 	// This hook is used to obtain the bucket and path in remote object
 	// storage, used when checking if a remote path exists.
 	GetRemoteBucketAndPathHook = func(remotePath string) (string, string, error) {
@@ -40,15 +42,16 @@ var (
 		return 0, fmt.Errorf("not-implemented")
 	}
 
-	// This hook is used to download the index metadata(definitions) from the
+	// This hook is used to download the index definitions and source partitions metadata from the
 	// remote object store, to be used when unhibernating.
-	DownloadIndexMetadataHook = func(client objcli.Client, remotePath string) (*cbgt.IndexDefs, error) {
+	DownloadMetadataHook = func(client objcli.Client, bucket, remotePath string) ([]byte, error) {
 		return nil, fmt.Errorf("not-implemented")
 	}
 
-	// This hook is used to upload the index metadata(definitions) to the
+	// This hook is used to upload the index definitions and source partitions metadata to the
 	// remote object store, to be used when hibernating.
-	UploadIndexMetadataHook = func(client objcli.Client, ctx context.Context, data []byte, remotePath string) error {
+	UploadMetadataHook = func(client objcli.Client, ctx context.Context, bucket, remotePath string,
+		data []byte) error {
 		return fmt.Errorf("not-implemented")
 	}
 
@@ -120,8 +123,6 @@ type Manager struct {
 
 	hibernationComplete bool // status flag to check if hibernation for
 	// the bucket(i.e. all the indexes to hibernate) is complete.
-	rollbackRequired bool // status flag to check if the hibernation rollback
-	// is required to avoid triggering multiple/unnecessary rollbacks.
 }
 
 func (hm *Manager) getIndexesForHibernation(begIndexDefs *cbgt.IndexDefs) (*cbgt.IndexDefs, error) {
@@ -157,10 +158,47 @@ func (hm *Manager) checkIfIndexMetadataExists() (bool, error) {
 	return true, nil
 }
 
+func (hm *Manager) downloadIndexMetadata() (*cbgt.IndexDefs, error) {
+	client := hm.options.Manager.GetObjStoreClient()
+	if client == nil {
+		return nil, fmt.Errorf("hibernate: failed to get object store client")
+	}
+
+	bucket, key, _, err := getBucketAndMetadataPaths(hm.options.ArchiveLocation)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := DownloadMetadataHook(client, bucket, key)
+	if err != nil {
+		return nil, err
+	}
+
+	indexDefs := new(cbgt.IndexDefs)
+	err = json.Unmarshal(data, indexDefs)
+	if err != nil {
+		return nil, err
+	}
+	return indexDefs, err
+}
+
+// This function returns the S3 bucket and path for index metadata and
+// source partitions.
+// The remote path is of the form: s3://<s3-bucket-name>/<key>
+func getBucketAndMetadataPaths(remotePath string) (string, string, string, error) {
+	bucket, key, err := GetRemoteBucketAndPathHook(remotePath)
+	if err != nil {
+		return "", "", "", err
+	}
+	indexDefsKey := key + "/" + INDEX_METADATA_PATH
+	sourcePartitionsKey := key + "/" + SOURCE_PARTITIONS_PATH
+
+	return bucket, indexDefsKey, sourcePartitionsKey, nil
+}
+
 // Common start for both pause and resume.
-func Start(version string, cfg cbgt.Cfg, server string,
-	options HibernationOptions, hibernationType OperationType) (
-	*Manager, error) {
+func Start(version string, cfg cbgt.Cfg, server string, options HibernationOptions,
+	hibernationType OperationType) (*Manager, error) {
 
 	begIndexDefs, begNodeDefs, begPlanPIndexes, _, err :=
 		cbgt.PlannerGetPlan(cfg, version, "")
@@ -194,12 +232,7 @@ func Start(version string, cfg cbgt.Cfg, server string,
 			return nil, fmt.Errorf("hibernate: index metadata path does not exist")
 		}
 
-		client := hm.options.Manager.GetObjStoreClient()
-		if client == nil {
-			return nil, fmt.Errorf("hibernate: failed to get object store client")
-		}
-
-		indexDefsToHibernate, err = DownloadIndexMetadataHook(client, hm.options.ArchiveLocation)
+		indexDefsToHibernate, err = hm.downloadIndexMetadata()
 		if err != nil {
 			return nil, err
 		}
@@ -224,8 +257,11 @@ func Start(version string, cfg cbgt.Cfg, server string,
 	monitorSampleCh := make(chan monitor.MonitorSample)
 
 	monitorOptions := monitor.MonitorNodesOptions{
-		DiagSampleDisable: true,
-		HttpGet:           options.HttpGet,
+		// Disabling fetching of sequence number stats since those cannot
+		// be fetched during pause.
+		StatsSampleDisable: true,
+		DiagSampleDisable:  true,
+		HttpGet:            options.HttpGet,
 	}
 
 	monitorInst, err := monitor.StartMonitorNodes(authURLUUIDs,
@@ -245,7 +281,6 @@ func Start(version string, cfg cbgt.Cfg, server string,
 	hm.stopCh = make(chan struct{})
 	hm.progressCh = make(chan HibernationProgress)
 	hm.transferProgress = transferProgress
-	hm.rollbackRequired = true
 
 	go hm.runMonitor()
 
@@ -276,27 +311,9 @@ func (r *Manager) Logf(fmt string, v ...interface{}) {
 
 // --------------------------------------------------------
 
-func (hm *Manager) uploadIndexMetadata() error {
-	client := hm.options.Manager.GetObjStoreClient()
-	if client == nil {
-		return fmt.Errorf("hibernate: unable to get object store client")
-	}
-
-	ctx, _ := hm.options.Manager.GetHibernationContext()
-
-	indexDefs := cbgt.NewIndexDefs(hm.version)
-	indexDefs.UUID = cbgt.NewUUID()
-
-	for _, index := range hm.indexDefsToHibernate.IndexDefs {
-		indexDefs.IndexDefs[index.Name] = index
-	}
-
-	data, err := json.Marshal(indexDefs)
-	if err != nil {
-		return fmt.Errorf("hibernate: error marshalling index defs: %v", err)
-	}
-
-	return UploadIndexMetadataHook(client, ctx, data, hm.options.ArchiveLocation)
+type sourceMetadata struct {
+	SourceName       string `json:"sourceName"`
+	SourcePartitions string `json:"sourcePartitions"`
 }
 
 func DropRemotePaths(mgr *cbgt.Manager, indexDefsToModify *cbgt.IndexDefs) {
@@ -345,6 +362,37 @@ func (hm *Manager) resetHibernationPaths() {
 	DropRemotePaths(hm.options.Manager, hm.indexDefsToHibernate)
 }
 
+func (hm *Manager) startResumeBucketStateTracker() {
+	status, err := BucketStateTrackerHook(hm.options.Manager, cbgt.UNHIBERNATE_TASK,
+		hm.options.BucketName)
+
+	hm.options.Manager.ResetBucketTrackedForHibernation()
+	hm.options.Manager.UnregisterBucketTracker()
+
+	if err != nil {
+		log.Errorf("hibernate: resume: error tracking bucket %s: %v",
+			hm.options.BucketName, err)
+		return
+	}
+
+	hm.options.Manager.SetOption(cbgt.UNHIBERNATE_TASK, "", true)
+
+	if status == -1 {
+		log.Printf("hibernate: unhibernation failed, deleting indexes for "+
+			"bucket %s", hm.options.BucketName)
+
+		hm.options.Manager.DeleteAllIndexFromSource(hm.options.SourceType,
+			hm.options.BucketName, "")
+	} else if status == 1 {
+		hm.options.ArchiveLocation = ""
+		err = hm.removeHibernationPath(hm.indexDefsToHibernate)
+		if err != nil {
+			hm.Logf("hibernate: error removing path: %v", err)
+			return
+		}
+	}
+}
+
 func (hm *Manager) startPauseBucketStateTracker() {
 	status, err := BucketStateTrackerHook(hm.options.Manager, cbgt.HIBERNATE_TASK,
 		hm.options.BucketName)
@@ -357,6 +405,8 @@ func (hm *Manager) startPauseBucketStateTracker() {
 			hm.options.BucketName, err)
 		return
 	}
+
+	hm.options.Manager.SetOption(cbgt.HIBERNATE_TASK, "", true)
 
 	if status == 1 {
 		log.Printf("hibernate: hibernation succeeded, deleting indexes for "+
@@ -374,48 +424,24 @@ func (hm *Manager) startPauseBucketStateTracker() {
 func (hm *Manager) runHibernateIndexes() {
 	var err error
 	defer func() {
-		// Completion of hibernation operation, whether naturally or due
-		// to error/Stop(), needs this cleanup.  Wait for runMonitor()
-		// to finish as it may have more sends to progressCh.
 		hm.Stop()
 
 		hm.monitor.Stop()
+		// Completion of hibernation operation, whether naturally or due
+		// to error/Stop(), needs this cleanup.  Wait for runMonitor()
+		// to finish as it may have more sends to progressCh.
 		<-hm.monitorDoneCh
-		// Closing this channel causes the 'send on closed chan' panic
-		close(hm.monitorSampleCh)
 
 		if err != nil {
 			hm.progressCh <- HibernationProgress{Error: err}
 		}
 		close(hm.progressCh)
-
-		// Unsetting the hibernate/unhibernate manager option for the
-		// orchestrator node before it's removed from the task list.
-		if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
-			hm.options.Manager.SetOption(cbgt.HIBERNATE_TASK, "", false)
-		} else {
-			hm.options.Manager.SetOption(cbgt.UNHIBERNATE_TASK, "", false)
-		}
 	}()
 
 	err = hm.hibernateIndexes(hm.indexDefsToHibernate)
 	if err != nil {
 		hm.Logf("run: err: %#v", err)
 		return
-	}
-
-	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) {
-		// This distinction between dry and non-dry run for Resume is made here
-		// since in a dry run, no index is 'hibernated' per se, it's a checking of remote
-		// paths.
-		if !hm.options.DryRun {
-			hm.options.ArchiveLocation = ""
-			err = hm.removeHibernationPath(hm.indexDefsToHibernate)
-			if err != nil {
-				hm.Logf("hibernate: error removing path: %v", err)
-				return
-			}
-		}
 	}
 
 	// At this point, it indicates that the hibernation has been completed
@@ -428,8 +454,6 @@ func (hm *Manager) runHibernateIndexes() {
 func (hm *Manager) pauseIndexes() error {
 	// Starting to track bucket state.
 	go hm.startPauseBucketStateTracker()
-
-	var uploadedIndexMetadata bool
 
 	pauseFunc := func() error {
 		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
@@ -452,12 +476,8 @@ func (hm *Manager) pauseIndexes() error {
 		indexDefs.UUID = cbgt.NewUUID()
 		indexDefs.ImplVersion = hm.indexDefsToHibernate.ImplVersion
 
-		if !uploadedIndexMetadata {
-			err = hm.uploadIndexMetadata()
-			if err != nil {
-				return err
-			}
-			uploadedIndexMetadata = true
+		if err = hm.uploadMetadata(); err != nil {
+			return err
 		}
 
 		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
@@ -465,6 +485,69 @@ func (hm *Manager) pauseIndexes() error {
 	}
 
 	return cbgt.RetryOnCASMismatch(pauseFunc, 100)
+}
+
+func (hm *Manager) uploadMetadata() error {
+	client := hm.options.Manager.GetObjStoreClient()
+	if client == nil {
+		return fmt.Errorf("hibernate: unable to get object store client")
+	}
+
+	ctx, _ := hm.options.Manager.GetHibernationContext()
+
+	// uploading index defs metadata
+	indexDefs := cbgt.NewIndexDefs(hm.version)
+	indexDefs.UUID = cbgt.NewUUID()
+
+	var index *cbgt.IndexDef
+	for _, hibIndex := range hm.indexDefsToHibernate.IndexDefs {
+		indexDefs.IndexDefs[hibIndex.Name] = hibIndex
+		if index == nil {
+			index = hibIndex
+		}
+	}
+
+	data, err := json.Marshal(indexDefs)
+	if err != nil {
+		return fmt.Errorf("hibernate: error marshalling index defs: %v", err)
+	}
+
+	bucket, indexUploadPath, sourcePartitionsUploadPath, err :=
+		getBucketAndMetadataPaths(hm.options.ArchiveLocation)
+	if err != nil {
+		return err
+	}
+
+	err = UploadMetadataHook(client, ctx, bucket, indexUploadPath, data)
+	if err != nil {
+		return err
+	}
+
+	_, indexPlansMap, err := hm.options.Manager.GetPlanPIndexes(true)
+	if err != nil {
+		return fmt.Errorf("hibernate: error getting plan pindexes: %v",
+			err)
+	}
+
+	sourcePartitions := ""
+	if _, exists := indexPlansMap[index.Name]; exists {
+		for i := 0; i < len(indexPlansMap[index.Name])-1; i++ {
+			sourcePartitions = sourcePartitions + indexPlansMap[index.Name][i].SourcePartitions + ","
+		}
+	}
+	sourcePartitions = sourcePartitions + indexPlansMap[index.Name][len(indexPlansMap[index.Name])-1].SourcePartitions
+
+	var sourcePartitionsMetadata = sourceMetadata{
+		SourceName:       index.SourceName,
+		SourcePartitions: sourcePartitions,
+	}
+
+	data, err = json.Marshal(sourcePartitionsMetadata)
+	if err != nil {
+		return nil
+	}
+
+	return UploadMetadataHook(client, ctx, bucket, sourcePartitionsUploadPath, data)
 }
 
 func (hm *Manager) UpdateIndexParams(indexDef *cbgt.IndexDef, uuid string) {
@@ -488,6 +571,31 @@ func (hm *Manager) AppendHibernatePath(params string) string {
 	return params[:pos] + "\"" + hm.options.ArchiveLocation + "\"" + params[firstComma+pos:]
 }
 
+func (hm *Manager) downloadSourcePartitionsMetadata() (*sourceMetadata, error) {
+	client := hm.options.Manager.GetObjStoreClient()
+	if client == nil {
+		return nil, fmt.Errorf("hibernate: failed to get object store client")
+	}
+
+	bucket, _, key, err := getBucketAndMetadataPaths(hm.options.ArchiveLocation)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := DownloadMetadataHook(client, bucket, key)
+	if err != nil {
+		return nil, err
+	}
+
+	sourcePartitionsMetadata := new(sourceMetadata)
+	err = json.Unmarshal(data, sourcePartitionsMetadata)
+	if err != nil {
+		return nil, err
+	}
+
+	return sourcePartitionsMetadata, nil
+}
+
 func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 	if len(indexesToResume.IndexDefs) == 0 || indexesToResume == nil {
 		return nil
@@ -499,27 +607,39 @@ func (hm *Manager) resumeIndexes(indexesToResume *cbgt.IndexDefs) error {
 		return hm.options.Manager.CheckIfIndexesCanBeAdded(hm.indexDefsToHibernate)
 	}
 
-	indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
+	go hm.startResumeBucketStateTracker()
+
+	sourcePartitionsMetadata, err := hm.downloadSourcePartitionsMetadata()
 	if err != nil {
 		return err
 	}
+	hm.options.Manager.SetOption("hibernationSourcePartitions", sourcePartitionsMetadata.SourcePartitions, true)
 
-	if indexDefs == nil {
-		indexDefs = cbgt.NewIndexDefs(hm.version)
-	}
-
-	for _, indexDef := range indexesToResume.IndexDefs {
-		if _, exists := indexDefs.IndexDefs[indexDef.Name]; !exists {
-			hm.UpdateIndexParams(indexDef, indexDef.UUID)
-			indexDefs.IndexDefs[indexDef.Name] = indexDef
+	indexResumeFunc := func() error {
+		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
+		if err != nil {
+			return err
 		}
+
+		if indexDefs == nil {
+			indexDefs = cbgt.NewIndexDefs(hm.version)
+		}
+
+		for _, indexDef := range hm.indexDefsToHibernate.IndexDefs {
+			if _, exists := indexDefs.IndexDefs[indexDef.Name]; !exists {
+				hm.UpdateIndexParams(indexDef, indexDef.UUID)
+				indexDefs.IndexDefs[indexDef.Name] = indexDef
+			}
+		}
+
+		indexDefs.UUID = cbgt.NewUUID()
+		indexDefs.ImplVersion = hm.indexDefsToHibernate.ImplVersion
+
+		_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
+		return err
 	}
 
-	indexDefs.UUID = cbgt.NewUUID()
-	indexDefs.ImplVersion = indexesToResume.ImplVersion
-
-	_, err = cbgt.CfgSetIndexDefs(hm.cfg, indexDefs, cas)
-	return err
+	return cbgt.RetryOnCASMismatch(indexResumeFunc, 100)
 }
 
 func (hm *Manager) hibernateIndexes(indexDefs *cbgt.IndexDefs) error {
@@ -596,7 +716,7 @@ MONITOR_LOOP:
 					continue
 				}
 
-				if sample.Kind == "/api/stats?partitions=true" {
+				if sample.Kind == "/api/stats?partitions=true&seqno=false" {
 					m := struct {
 						Status map[string]struct {
 							CopyStats struct {
@@ -709,6 +829,15 @@ func (hm *Manager) getPIndexActiveNodeMap() (map[string]string, error) {
 	return pindexActiveNodeMap, nil
 }
 
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
 // runMonitor handles any error from the nodes monitoring subsystem by
 // stopping the hibernation.
 func (hm *Manager) runMonitor() {
@@ -747,7 +876,7 @@ func (hm *Manager) runMonitor() {
 				continue
 			}
 
-			if s.Kind == "/api/stats?partitions=true" {
+			if s.Kind == "/api/stats?partitions=true&seqno=false" {
 				if s.Data == nil {
 					errMap[s.UUID]++
 					if errMap[s.UUID] < errThreshold {
@@ -810,7 +939,7 @@ func (hm *Manager) runMonitor() {
 					if stats.CopyStats.TotalCopyPartitionErrors > 0 {
 						errMap[s.UUID] += uint8(stats.CopyStats.TotalCopyPartitionErrors)
 
-						hm.Logf("hibernate: runMonitor, partition errors.")
+						hm.Logf("hibernate: runMonitor, partition errors on node %s.", s.UUID)
 
 						hm.progressCh <- HibernationProgress{Error: fmt.Errorf("hibernate: runMonitor, partition errors.")}
 						hm.Stop() // Stop the hibernate.
@@ -844,28 +973,9 @@ func (hm *Manager) runMonitor() {
 // the hibernation operation has actually stopped.
 func (hm *Manager) Stop() {
 	hm.m.Lock()
-	if hm.stopCh != nil {
+	if !isClosed(hm.stopCh) {
 		close(hm.stopCh)
-		hm.stopCh = nil
 	}
 
-	hm.m.Unlock()
-
-	if !hm.hibernationComplete && hm.rollbackRequired {
-		hm.rollbackHibernation()
-	}
-}
-
-// This function rolls back the effects of hibernation if
-// cancelled midway/aborted.
-func (hm *Manager) rollbackHibernation() {
-
-	if hm.operationType == OperationType(cbgt.UNHIBERNATE_TASK) &&
-		!hm.options.DryRun {
-		hm.options.Manager.DeleteAllIndexFromSource(hm.options.SourceType, hm.options.BucketName, "")
-	}
-
-	hm.m.Lock()
-	hm.rollbackRequired = false
 	hm.m.Unlock()
 }
