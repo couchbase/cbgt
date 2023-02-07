@@ -1,6 +1,6 @@
 module github.com/couchbase/cbgt
 
-go 1.18
+go 1.19
 
 require (
 	github.com/couchbase/blance v0.1.3
