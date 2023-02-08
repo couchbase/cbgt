@@ -392,6 +392,24 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 			" GetCollectionManifest failed, err: %v", err)
 	}
 
+	configSnapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
+			" ConfigSnapshot err: %v", err)
+	}
+
+	numServers, err := configSnapshot.NumServers()
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
+			" Couldn't determine number of servers in target cluster, err: %v", err)
+	}
+
+	numVBuckets, err := configSnapshot.NumVbuckets()
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
+			" Couldn't determine number of vbuckets in target cluster, err: %v", err)
+	}
+
 	collectionsIDtoName := map[uint32]string{}
 	for _, manifestScope := range manifest.Scopes {
 		for _, coll := range manifestScope.Collections {
@@ -411,31 +429,38 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{},
 	}
 
-	for collID := range collectionsIDtoName {
-		vbucketSeqnoOptions.FilterOptions.CollectionID = collID
-		op, err := dcpAgent.GetVbucketSeqnos(
-			0,                       // serverIdx (leave at 0 for now)
-			memd.VbucketStateActive, // active vbuckets only
-			vbucketSeqnoOptions,     // contains collectionID
-			func(entries []gocbcore.VbSeqNoEntry, er error) {
-				if er == nil {
-					for _, entry := range entries {
-						addSeqnoToRV(entry.VbID, collID, uint64(entry.SeqNo))
+	for serverIdx := 1; serverIdx < numServers+1; serverIdx++ {
+		for collID := range collectionsIDtoName {
+			vbucketSeqnoOptions.FilterOptions.CollectionID = collID
+			op, err := dcpAgent.GetVbucketSeqnos(
+				serverIdx,               // server index (as per KV)
+				memd.VbucketStateActive, // active vbuckets only
+				vbucketSeqnoOptions,     // contains collectionID
+				func(entries []gocbcore.VbSeqNoEntry, er error) {
+					if er == nil {
+						for _, entry := range entries {
+							addSeqnoToRV(entry.VbID, collID, uint64(entry.SeqNo))
+						}
 					}
-				}
 
-				signal <- er
-			})
+					signal <- er
+				})
 
-		if err != nil {
-			return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-				" GetVbucketSeqnos err: %v", err)
+			if err != nil {
+				return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
+					" GetVbucketSeqnos err: %v", err)
+			}
+
+			if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
+				return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
+					" GetVbucketSeqnos callback err: %v", err)
+			}
 		}
+	}
 
-		if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-			return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-				" GetVbucketSeqnos callback err: %v", err)
-		}
+	if len(rv) != len(collectionsIDtoName)*numVBuckets {
+		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs," +
+			" Could not obtain high sequence numbers for all vbuckets")
 	}
 
 	return rv, nil
