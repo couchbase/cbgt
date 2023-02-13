@@ -471,7 +471,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 		NewListIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
-			"_about":             `Returns all index definitions for bucket.scope as JSON.`,
+			"_about":             `Returns all index definitions for bucketName.scopeName as JSON.`,
 			"version introduced": "7.5.0",
 		})
 	handle("/api/index/{indexName}", "PUT", NewCreateIndexHandler(mgr, false),
@@ -484,7 +484,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 		NewCreateIndexHandler(mgr, true),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
-			"_about":             `Creates/updates an index definition.`,
+			"_about":             `Creates/updates an index definition for bucketName.scopeName.indexName.`,
 			"version introduced": "7.5.0",
 		})
 	handle("/api/index/{indexName}", "DELETE", NewDeleteIndexHandler(mgr),
@@ -492,6 +492,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Indexing|Index definition",
 			"_about":             `Deletes an index definition.`,
 			"version introduced": "0.0.1",
+		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}", "DELETE",
+		NewDeleteIndexHandler(mgr),
+		map[string]string{
+			"_category":          "Indexing|Index definition",
+			"_about":             `Deletes index definition for bucketName.scopeName.indexName.`,
+			"version introduced": "7.5.0",
 		})
 	handle("/api/index/{indexName}", "GET", NewGetIndexHandler(mgr),
 		map[string]string{
@@ -503,7 +510,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 		NewGetIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
-			"_about":             `Returns the definition of an index as JSON.`,
+			"_about":             `Returns the definition of index 'bucketName.scopeName.indexName' as JSON.`,
 			"version introduced": "7.5.0",
 		})
 
@@ -528,7 +535,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				mapRESTPathStats["/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/query"]),
 			map[string]string{
 				"_category":          "Indexing|Index querying",
-				"_about":             `Queries an index.`,
+				"_about":             `Queries an index with name bucketName.scopeName.indexName.`,
 				"version introduced": "7.5.0",
 			})
 	}
