@@ -149,34 +149,41 @@ func DocIDFromBody(req *http.Request) string {
 	return in.DocID
 }
 
-// DocIDLookup returns the docID param from an http.Request.
+// DocIDLookup returns the docID param from a http.Request.
 func DocIDLookup(req *http.Request) string {
 	return RequestVariableLookup(req, "docID")
 }
 
-// IndexNameLookup returns the indexName param from an http.Request.
+// IndexNameLookup returns the fully qualified indexName from a http.Request.
 func IndexNameLookup(req *http.Request) string {
-	return RequestVariableLookup(req, "indexName")
+	return scopedIndexPrefix(req) + RequestVariableLookup(req, "indexName")
 }
 
-// PIndexNameLookup returns the pindexName param from an http.Request.
+// PIndexNameLookup returns the pindexName param from a http.Request.
 func PIndexNameLookup(req *http.Request) string {
 	return RequestVariableLookup(req, "pindexName")
 }
 
-// BucketNameLookup returns the bucketName param from an http.Request.
+// BucketNameLookup returns the bucketName param from a http.Request.
 func BucketNameLookup(req *http.Request) string {
 	return RequestVariableLookup(req, "bucketName")
 }
 
-// BucketNameLookup returns the bucketName param from an http.Request.
+// ScopeNameLookup returns the bucketName param from a http.Request.
 func ScopeNameLookup(req *http.Request) string {
 	return RequestVariableLookup(req, "scopeName")
 }
 
 // -------------------------------------------------------
 
-func ScopedIndexPrefix(req *http.Request) string {
+// unscopedIndexNameLookup returns the indexName param from a http.Request.
+func unscopedIndexNameLookup(req *http.Request) string {
+	return RequestVariableLookup(req, "indexName")
+}
+
+// scopedIndexPrefix returns the bucketName.scopeName. prefix with details
+// obtained from a http.Request, if available.
+func scopedIndexPrefix(req *http.Request) string {
 	bucketName := BucketNameLookup(req)
 	scopeName := ScopeNameLookup(req)
 	if len(bucketName) > 0 && len(scopeName) > 0 {

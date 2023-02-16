@@ -40,8 +40,6 @@ func (h *DeleteIndexHandler) ServeHTTP(
 		return
 	}
 
-	indexName = ScopedIndexPrefix(req) + indexName
-
 	ca := req.Header.Get(CLUSTER_ACTION)
 	if ca != "orchestrator-forwarded" {
 		// defer all error handling to the default flow.

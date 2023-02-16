@@ -128,7 +128,7 @@ func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
 func (h *CreateIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
 	// TODO: Need more input validation (check source UUID's, etc).
-	indexName := IndexNameLookup(req)
+	indexName := unscopedIndexNameLookup(req)
 	if indexName == "" {
 		ShowError(w, req, "rest_create_index: index name is required",
 			http.StatusBadRequest)
@@ -266,7 +266,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	}
 
 	if h.scopedIndex {
-		scopedPrefix := ScopedIndexPrefix(req)
+		scopedPrefix := scopedIndexPrefix(req)
 		if len(scopedPrefix) == 0 {
 			ShowError(w, req, "rest_create_index: bucket & scope names are required",
 				http.StatusBadRequest)
