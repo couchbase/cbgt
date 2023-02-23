@@ -74,6 +74,13 @@ type PlannerHookInfo struct {
 	PlanPIndexes     *PlanPIndexes
 
 	PlanPIndexesForIndex map[string]*PlanPIndex
+
+	NumPlanPIndexes    int
+	NodeTotalActives   map[string]int
+	NodeSourceActives  map[string]int
+	NodeSourceReplicas map[string]int
+	NodePartitionCount map[string]int
+	ExistingPlans      *PlanPIndexes
 }
 
 // A NoopPlannerHook is a no-op planner hook that just returns its input.
@@ -386,6 +393,27 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	var nodeHierarchy map[string]string
 	var planPIndexes *PlanPIndexes
 
+	numPlanPIndexes := len(planPIndexesPrev.PlanPIndexes)
+	nodeTotalActives := make(map[string]int)
+	nodeSourceActives := make(map[string]int)
+	nodeSourceReplicas := make(map[string]int)
+	nodePartitionCount := make(map[string]int)
+	existingPlans := new(PlanPIndexes)
+	existingPlans.PlanPIndexes = make(map[string]*PlanPIndex)
+
+	for name, pindex := range planPIndexesPrev.PlanPIndexes {
+		for nodeUUID, planNode := range pindex.Nodes {
+			nodePartitionCount[nodeUUID]++
+			if planNode.Priority == 0 {
+				nodeTotalActives[nodeUUID]++
+				nodeSourceActives[nodeUUID+":"+pindex.SourceName]++
+			} else {
+				nodeSourceReplicas[nodeUUID+":"+pindex.SourceName]++
+			}
+		}
+		existingPlans.PlanPIndexes[name] = pindex
+	}
+
 	plannerHookCall := func(phase string, indexDef *IndexDef,
 		planPIndexesForIndex map[string]*PlanPIndex) (
 		PlannerHookInfo, bool, error) {
@@ -407,6 +435,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			PlanPIndexesPrev:     planPIndexesPrev,
 			PlanPIndexes:         planPIndexes,
 			PlanPIndexesForIndex: planPIndexesForIndex,
+			NumPlanPIndexes:      numPlanPIndexes,
+			NodeTotalActives:     nodeTotalActives,
+			NodeSourceActives:    nodeSourceActives,
+			NodeSourceReplicas:   nodeSourceReplicas,
+			NodePartitionCount:   nodePartitionCount,
+			ExistingPlans:        existingPlans,
 		})
 
 		mode = pho.Mode
@@ -423,6 +457,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		plannerFilter = pho.PlannerFilter
 		planPIndexesPrev = pho.PlanPIndexesPrev
 		planPIndexes = pho.PlanPIndexes
+		numPlanPIndexes = pho.NumPlanPIndexes
+		nodeSourceActives = pho.NodeSourceActives
+		nodeSourceReplicas = pho.NodeSourceReplicas
+		nodeTotalActives = pho.NodeTotalActives
+		nodePartitionCount = pho.NodePartitionCount
+		existingPlans = pho.ExistingPlans
 
 		return pho, skip, err
 	}
@@ -528,7 +568,7 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
 		warnings := BlancePlanPIndexes(mode, indexDef,
-			planPIndexesForIndex, planPIndexesPrev,
+			planPIndexesForIndex, existingPlans,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
 			adjustedWeights, nodeHierarchy, false)
 		planPIndexes.Warnings[indexDef.Name] = warnings
