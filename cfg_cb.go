@@ -72,11 +72,11 @@ func NewCfgCB(urlStr, bucket string) (*CfgCB, error) {
 // options: initialization options
 //
 // Allowed options include:
-// - 'keyPrefix':  an optional string prefix that's prepended to
-//                 to all keys that are written to or read from
-//                 the couchbase bucket.
-// - 'loggerDebug'
-// - 'loggerFunc'
+//   - 'keyPrefix':  an optional string prefix that's prepended to
+//     to all keys that are written to or read from
+//     the couchbase bucket.
+//   - 'loggerDebug'
+//   - 'loggerFunc'
 func NewCfgCBEx(urlStr, bucket string,
 	options map[string]interface{}) (*CfgCB, error) {
 	urls := strings.Split(urlStr, ";")

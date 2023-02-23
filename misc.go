@@ -404,7 +404,8 @@ func WriteTimerJSON(w io.Writer, timer metrics.Timer) {
 // if +/-Inf or NaN values are encountered, that k/v pair is omitted
 // if there are no valid values in the map, the named map is still emitted
 // with no contents, ie:
-//    "name":{}
+//
+//	"name":{}
 func fPrintFloatMap(w io.Writer, name string, vals map[string]float64) {
 	fmt.Fprintf(w, `"%s":{`, name)
 	first := true

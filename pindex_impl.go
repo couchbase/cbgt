@@ -272,11 +272,11 @@ type QueryCtlParams struct {
 //
 // A PartitionSelection value can optionally be specified for performing
 // advanced scatter gather operations, recognized options:
-// - ""              : default behavior - active partitions are selected
-// - local           : local partitions are favored, pseudo random selection from remote
-// - random          : pseudo random selection from available local and remote
-// - random_balanced : random selection from available local and remote nodes by
-//                     distributing the query load across all nodes.
+//   - ""              : default behavior - active partitions are selected
+//   - local           : local partitions are favored, pseudo random selection from remote
+//   - random          : pseudo random selection from available local and remote
+//   - random_balanced : random selection from available local and remote nodes by
+//     distributing the query load across all nodes.
 type QueryCtl struct {
 	Timeout            int64              `json:"timeout"`
 	Consistency        *ConsistencyParams `json:"consistency"`
