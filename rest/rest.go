@@ -1169,3 +1169,10 @@ func (cw *CountResponseWriter) CloseNotify() <-chan bool {
 	}
 	return nil
 }
+
+func (cw *CountResponseWriter) Flush() {
+	flusher, ok := cw.ResponseWriter.(http.Flusher)
+	if ok {
+		flusher.Flush()
+	}
+}
