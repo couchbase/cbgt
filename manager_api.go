@@ -272,8 +272,13 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	}
 
 	if payload.IndexType == "fulltext-index" && len(payload.SourceName) > 0 {
-		statsAgentsMap.registerAgents(payload.SourceName, payload.SourceUUID,
-			payload.SourceParams, mgr.Server(), mgr.Options())
+		// In case of index updates, reusing the existing dcp stats agent from
+		// the previous version of the index, since it doesn't increase the number
+		// of live indexes in the cluster
+		if payload.PrevIndexUUID == "" {
+			statsAgentsMap.registerAgents(payload.SourceName, payload.SourceUUID,
+				payload.SourceParams, mgr.Server(), mgr.Options())
+		}
 	}
 
 	event := NewSystemEvent(
