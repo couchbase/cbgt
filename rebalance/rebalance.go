@@ -642,15 +642,28 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.recoveryPlanPIndexes,
 			r.nodesAll, []string{}, r.nodesToRemove,
-			r.nodeWeights, r.nodeHierarchy, false)
+			r.nodeWeights, r.nodeHierarchy, true)
 	} else {
-		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex)
+		var enablePartitionNodeStickiness bool
+		if r.optionsReb.Manager != nil {
+			options := r.optionsReb.Manager.GetOptions()
+			if enabled, found := options["enablePartitionNodeStickiness"]; found &&
+				enabled == "true" {
+				enablePartitionNodeStickiness = true
+			}
+		}
 
-		// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
+		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex,
+			enablePartitionNodeStickiness)
+
+		// Invoke blance to assign the endPlanPIndexesForIndex to nodes;
+		// Do not account for existing planPIndexes, if
+		// enablePartitionNodeStickiness is enabled, giving full control
+		// to the rebalanceHook to influence node weights.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.begPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
-			nodeWeights, r.nodeHierarchy, false)
+			nodeWeights, r.nodeHierarchy, enablePartitionNodeStickiness)
 	}
 
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
@@ -705,8 +718,10 @@ type RebalanceHookInfo struct {
 // adjustNodeWeights overrides the node weights reflective of the
 // existing partition count on those nodes. It helps in balanced
 // partition assignments across nodes for the single partitioned indexes.
-func (r *Rebalancer) adjustNodeWeights(indexDef *cbgt.IndexDef,
-	planPIndexesForIndex map[string]*cbgt.PlanPIndex) map[string]int {
+func (r *Rebalancer) adjustNodeWeights(
+	indexDef *cbgt.IndexDef,
+	planPIndexesForIndex map[string]*cbgt.PlanPIndex,
+	enablePartitionNodeStickiness bool) map[string]int {
 	nodeWeights := r.nodeWeights
 	if RebalanceHook != nil {
 		rho, err := RebalanceHook(RebalanceHookInfo{
@@ -727,12 +742,8 @@ func (r *Rebalancer) adjustNodeWeights(indexDef *cbgt.IndexDef,
 		}
 	}
 
-	if r.optionsReb.Manager != nil {
-		options := r.optionsReb.Manager.GetOptions()
-		if enabled, found := options["enablePartitionNodeStickiness"]; found &&
-			enabled == "true" {
-			return nodeWeights
-		}
+	if enablePartitionNodeStickiness {
+		return nodeWeights
 	}
 
 	// if the index is a single partitioned, then try to normalise the
