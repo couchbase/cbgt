@@ -87,6 +87,8 @@ type RebalanceOptions struct {
 	Manager *cbgt.Manager
 
 	StatsSampleErrorThreshold *int
+
+	ExistingNodes []string
 }
 
 type RebalanceLogFunc func(format string, v ...interface{})
@@ -116,6 +118,9 @@ type Rebalancer struct {
 	begNodeDefs        *cbgt.NodeDefs
 	begPlanPIndexes    *cbgt.PlanPIndexes
 	begPlanPIndexesCAS uint64
+
+	// The updated plans computed during the rebalance iterations.
+	existingPlanPIndexes *cbgt.PlanPIndexes
 
 	recoveryPlanPIndexes *cbgt.PlanPIndexes
 
@@ -178,9 +183,16 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		return nil, err
 	}
 
-	nodesAll, nodesToAdd, nodesToRemove,
+	existingPlans := cbgt.NewPlanPIndexes(version)
+	for planName, plan := range begPlanPIndexes.PlanPIndexes {
+		existingPlans.PlanPIndexes[planName] = plan
+	}
+
+	nodesAll, _, nodesToRemove,
 		nodeWeights, nodeHierarchy :=
 		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
+
+	nodesToAdd := cbgt.StringsRemoveStrings(nodesAll, optionsReb.ExistingNodes)
 
 	nodesUnknown := cbgt.StringsRemoveStrings(nodesToRemoveParam, nodesAll)
 	if len(nodesUnknown) > 0 {
@@ -216,31 +228,32 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	stopCh := make(chan struct{})
 
 	r := &Rebalancer{
-		version:             version,
-		cfg:                 cfg,
-		server:              server,
-		optionsMgr:          optionsMgr,
-		optionsReb:          optionsReb,
-		progressCh:          make(chan RebalanceProgress),
-		monitor:             monitorInst,
-		monitorDoneCh:       make(chan struct{}),
-		monitorSampleCh:     monitorSampleCh,
-		monitorSampleWantCh: make(chan chan monitor.MonitorSample),
-		nodesAll:            nodesAll,
-		nodesToAdd:          nodesToAdd,
-		nodesToRemove:       nodesToRemove,
-		nodeWeights:         nodeWeights,
-		nodeHierarchy:       nodeHierarchy,
-		begIndexDefs:        begIndexDefs,
-		begNodeDefs:         begNodeDefs,
-		begPlanPIndexes:     begPlanPIndexes,
-		begPlanPIndexesCAS:  begPlanPIndexesCAS,
-		endPlanPIndexes:     cbgt.NewPlanPIndexes(version),
-		currStates:          map[string]map[string]map[string]StateOp{},
-		currSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
-		wantSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
-		stopCh:              stopCh,
-		transferProgress:    map[string]float64{},
+		version:              version,
+		cfg:                  cfg,
+		server:               server,
+		optionsMgr:           optionsMgr,
+		optionsReb:           optionsReb,
+		progressCh:           make(chan RebalanceProgress),
+		monitor:              monitorInst,
+		monitorDoneCh:        make(chan struct{}),
+		monitorSampleCh:      monitorSampleCh,
+		monitorSampleWantCh:  make(chan chan monitor.MonitorSample),
+		nodesAll:             nodesAll,
+		nodesToAdd:           nodesToAdd,
+		nodesToRemove:        nodesToRemove,
+		nodeWeights:          nodeWeights,
+		nodeHierarchy:        nodeHierarchy,
+		begIndexDefs:         begIndexDefs,
+		begNodeDefs:          begNodeDefs,
+		begPlanPIndexes:      begPlanPIndexes,
+		begPlanPIndexesCAS:   begPlanPIndexesCAS,
+		existingPlanPIndexes: existingPlans,
+		endPlanPIndexes:      cbgt.NewPlanPIndexes(version),
+		currStates:           map[string]map[string]map[string]StateOp{},
+		currSeqs:             map[string]map[string]map[string]cbgt.UUIDSeq{},
+		wantSeqs:             map[string]map[string]map[string]cbgt.UUIDSeq{},
+		stopCh:               stopCh,
+		transferProgress:     map[string]float64{},
 	}
 
 	r.Logf("rebalance: nodesAll: %#v", nodesAll)
@@ -656,14 +669,24 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex,
 			enablePartitionNodeStickiness)
 
+		currentPlanPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
+		if err != nil {
+			r.Logf("rebalance: err getting recent plans: %v", err)
+		}
+
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes;
 		// Do not account for existing planPIndexes, if
 		// enablePartitionNodeStickiness is enabled, giving full control
 		// to the rebalanceHook to influence node weights.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
-			endPlanPIndexesForIndex, r.begPlanPIndexes,
+			endPlanPIndexesForIndex, currentPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 			nodeWeights, r.nodeHierarchy, enablePartitionNodeStickiness)
+
+		// Updating this here since plans for index have been assigned to nodes.
+		for k, v := range endPlanPIndexesForIndex {
+			r.existingPlanPIndexes.PlanPIndexes[k] = v
+		}
 	}
 
 	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
@@ -712,6 +735,7 @@ type RebalanceHookInfo struct {
 	NodeHierarchy     map[string]string
 
 	BegPlanPIndexes      *cbgt.PlanPIndexes
+	ExistingPlanPIndexes *cbgt.PlanPIndexes
 	PlanPIndexesForIndex map[string]*cbgt.PlanPIndex
 }
 
@@ -733,6 +757,7 @@ func (r *Rebalancer) adjustNodeWeights(
 			NodeUUIDsToRemove:    r.nodesToRemove,
 			NodeWeights:          r.nodeWeights,
 			NodeHierarchy:        r.nodeHierarchy,
+			ExistingPlanPIndexes: r.existingPlanPIndexes,
 			BegPlanPIndexes:      r.begPlanPIndexes,
 			PlanPIndexesForIndex: planPIndexesForIndex,
 		})
