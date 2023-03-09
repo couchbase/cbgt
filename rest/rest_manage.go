@@ -264,7 +264,7 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 		}
 
 		sourceSeqNos, exists := sourcePartitionSeqs[pindex.SourceName]
-		if !exists && includeSeqNos == "true" {
+		if !exists && includeSeqNos != "false" {
 			feedType, _ := cbgt.FeedTypes[cbgt.SOURCE_GOCBCORE]
 			partitionSeqs, err := feedType.PartitionSeqs(
 				pindex.SourceType, pindex.SourceName, pindex.SourceUUID,
