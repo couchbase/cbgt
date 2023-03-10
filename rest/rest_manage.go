@@ -293,7 +293,7 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 			indexDef: indexDef,
 		}
 
-		if includeSeqNos == "true" {
+		if includeSeqNos != "false" {
 			statsWriter.sourcePartitionSeqs = sourceSeqNos
 		}
 
