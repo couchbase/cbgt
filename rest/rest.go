@@ -529,6 +529,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_about":             `Returns the count of indexed documents.`,
 				"version introduced": "0.0.1",
 			})
+		handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/count", "GET",
+			NewCountHandler(mgr),
+			map[string]string{
+				"_category":          "Indexing|Index querying",
+				"_about":             `Returns the count of indexed documents.`,
+				"version introduced": "7.5.0",
+			})
 		handle("/api/index/{indexName}/query", "POST",
 			NewQueryHandler(mgr,
 				mapRESTPathStats["/api/index/{indexName}/query"]),
