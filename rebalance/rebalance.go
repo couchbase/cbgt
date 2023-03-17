@@ -735,6 +735,7 @@ type RebalanceHookInfo struct {
 	NodeHierarchy     map[string]string
 
 	BegPlanPIndexes      *cbgt.PlanPIndexes
+	EndPlanPIndexes      *cbgt.PlanPIndexes
 	ExistingPlanPIndexes *cbgt.PlanPIndexes
 	PlanPIndexesForIndex map[string]*cbgt.PlanPIndex
 }
@@ -759,6 +760,7 @@ func (r *Rebalancer) adjustNodeWeights(
 			NodeHierarchy:        r.nodeHierarchy,
 			ExistingPlanPIndexes: r.existingPlanPIndexes,
 			BegPlanPIndexes:      r.begPlanPIndexes,
+			EndPlanPIndexes:      r.endPlanPIndexes,
 			PlanPIndexesForIndex: planPIndexesForIndex,
 		})
 
