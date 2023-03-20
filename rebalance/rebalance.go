@@ -184,9 +184,6 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	}
 
 	existingPlans := cbgt.NewPlanPIndexes(version)
-	for planName, plan := range begPlanPIndexes.PlanPIndexes {
-		existingPlans.PlanPIndexes[planName] = plan
-	}
 
 	nodesAll, _, nodesToRemove,
 		nodeWeights, nodeHierarchy :=
@@ -643,6 +640,12 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		return partitionModel, begMap, endMap, err
 	}
 
+	currentPlanPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
+	if err != nil {
+		r.Logf("rebalance: err getting recent plans: %v", err)
+		return nil, nil, nil, err
+	}
+
 	var warnings []string
 	if r.recoveryPlanPIndexes != nil {
 		// During the failover, cbgt ignores the new nextMap from blance
@@ -668,11 +671,6 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex,
 			enablePartitionNodeStickiness)
-
-		currentPlanPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
-		if err != nil {
-			r.Logf("rebalance: err getting recent plans: %v", err)
-		}
 
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes;
 		// Do not account for existing planPIndexes, if
@@ -703,7 +701,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
 
-	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.begPlanPIndexes, true)
+	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, currentPlanPIndexes, true)
 	endMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.endPlanPIndexes, true)
 
 	return partitionModel, begMap, endMap, nil
