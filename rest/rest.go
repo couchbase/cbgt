@@ -561,6 +561,13 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about":             `Creation status of an index.`,
 			"version introduced": "7.1.0",
 		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/status", "GET",
+		NewIndexStatusHandler(mgr),
+		map[string]string{
+			"_category":          "Index create status",
+			"_about":             `Creation status of an index.`,
+			"version introduced": "7.5.0",
+		})
 
 	handle("/api/index/{indexName}/planFreezeControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "planFreeze", map[string]bool{
@@ -574,6 +581,19 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				`Allowed values for op are "freeze" or "unfreeze".`,
 			"version introduced": "0.0.1",
 		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/planFreezeControl/{op}", "POST",
+		NewIndexControlHandler(mgr, "planFreeze", map[string]bool{
+			"freeze":   true,
+			"unfreeze": true,
+		}),
+		map[string]string{
+			"_category": "Indexing|Index management",
+			"_about":    `Freeze the assignment of index partitions to nodes.`,
+			"param: op": "required, string, URL path parameter\n\n" +
+				`Allowed values for op are "freeze" or "unfreeze".`,
+			"version introduced": "7.5.0",
+		})
+
 	handle("/api/index/{indexName}/ingestControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "write", map[string]bool{
 			"pause":  true,
@@ -587,6 +607,20 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				`Allowed values for op are "pause" or "resume".`,
 			"version introduced": "0.0.1",
 		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/ingestControl/{op}", "POST",
+		NewIndexControlHandler(mgr, "write", map[string]bool{
+			"pause":  true,
+			"resume": true,
+		}),
+		map[string]string{
+			"_category": "Indexing|Index management",
+			"_about": `Pause index updates and maintenance (no more
+                          ingesting document mutations).`,
+			"param: op": "required, string, URL path parameter\n\n" +
+				`Allowed values for op are "pause" or "resume".`,
+			"version introduced": "7.5.0",
+		})
+
 	handle("/api/index/{indexName}/queryControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "read", map[string]bool{
 			"allow":    true,
@@ -599,6 +633,19 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				`Allowed values for op are "allow" or "disallow".`,
 			"version introduced": "0.0.1",
 		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/queryControl/{op}", "POST",
+		NewIndexControlHandler(mgr, "read", map[string]bool{
+			"allow":    true,
+			"disallow": true,
+		}),
+		map[string]string{
+			"_category": "Indexing|Index management",
+			"_about":    `Disallow queries on an index.`,
+			"param: op": "required, string, URL path parameter\n\n" +
+				`Allowed values for op are "allow" or "disallow".`,
+			"version introduced": "7.5.0",
+		})
+
 
 	if mgr == nil || mgr.TagsMap() == nil || mgr.TagsMap()["pindex"] {
 		handle("/api/pindex", "GET",
@@ -625,6 +672,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "x/Advanced|x/Index partition querying",
 				"version introduced": "0.2.0",
 			})
+
 		handle("/api/index/{indexName}/tasks", "POST",
 			NewTaskRequestHandler(mgr),
 			map[string]string{
@@ -632,12 +680,27 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_about":             `Index level task requests, eg: Compact an index storage.`,
 				"version introduced": "7.0.0",
 			})
+		handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/tasks", "POST",
+			NewTaskRequestHandler(mgr),
+			map[string]string{
+				"_category":          "Indexing|Index level task requests",
+				"_about":             `Index level task requests, eg: Compact an index storage.`,
+				"version introduced": "7.5.0",
+			})
 	}
+
 	handle("/api/index/{indexName}/pindexLookup", "POST", NewPIndexLookUpHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|PIndex lookup",
 			"_about":             `Returns the PIndex ID.`,
 			"version introduced": "5.0.0",
+		})
+	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/pindexLookup", "POST",
+		NewPIndexLookUpHandler(mgr),
+		map[string]string{
+			"_category":          "Indexing|PIndex lookup",
+			"_about":             `Returns the PIndex ID.`,
+			"version introduced": "7.5.0",
 		})
 
 	handle("/api/managerOptions", "PUT", NewManagerOptions(mgr),
