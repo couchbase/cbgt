@@ -16,6 +16,7 @@ import (
 	"math"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1269,6 +1270,10 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 
 		memberNodes = append(memberNodes, memberNode)
 	}
+	// Sort the memberNodes by UUID, so that the order is consistent across nodes.
+	sort.Slice(memberNodes, func(i, j int) bool {
+		return memberNodes[i].UUID < memberNodes[j].UUID
+	})
 
 	return memberNodes, nil
 }
