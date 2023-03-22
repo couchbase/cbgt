@@ -51,9 +51,12 @@ func (h *ListIndexHandler) ServeHTTP(
 
 	if len(scopedPrefix) > 0 && indexDefs != nil {
 		// Drop all indexes whose names don't carry the scopedIndexName prefix.
-		for k, _ := range indexDefs.IndexDefs {
+		for k, def := range indexDefs.IndexDefs {
 			if !strings.HasPrefix(k, scopedPrefix) {
 				delete(indexDefs.IndexDefs, k)
+			} else {
+				// Drop the scopedIndexName prefix.
+				def.Name = def.Name[len(scopedPrefix):]
 			}
 		}
 	}
@@ -149,6 +152,11 @@ func (h *GetIndexHandler) ServeHTTP(
 	if !exists || indexDef == nil {
 		ShowError(w, req, "index not found", http.StatusBadRequest)
 		return
+	}
+
+	if scopedPrefix := scopedIndexPrefix(req); len(scopedPrefix) > 0 {
+		// Drop the scopedIndexName prefix.
+		indexDef.Name = indexDef.Name[len(scopedPrefix):]
 	}
 
 	indexUUID := req.FormValue("indexUUID")
