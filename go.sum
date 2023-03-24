@@ -5,8 +5,8 @@ github.com/aws/aws-sdk-go v1.44.77 h1:m5rTfdv04/swD+vTuS2zn4NEwKX3yEJPMhiVCFDL/m
 github.com/aws/aws-sdk-go v1.44.77/go.mod h1:y4AeaBuwd2Lk+GepC1E9v0qOiTws0MIWAX4oIKwKHZo=
 github.com/couchbase/blance v0.1.3 h1:CJCirD3+N02Z0w/ybZTqqSJa9XMbsCZO9jHxCEAPQqE=
 github.com/couchbase/blance v0.1.3/go.mod h1:2Sa/nsJSieN/r3T9LsrUYWeQ015qDsuHybhz4F4JcHU=
-github.com/couchbase/cbauth v0.1.8 h1:5sxMEweajFc52sPWtjwvKoRROC07VXl3h4gXX2ecuFg=
-github.com/couchbase/cbauth v0.1.8/go.mod h1:overPK2NvYkkZBWX0eqmuHB82nhhs8rt7A4wi5u7c2g=
+github.com/couchbase/cbauth v0.1.9 h1:eco/KAIyEIeLNcEXFG6BTsCLPTVAI28lu9FH91ehvM4=
+github.com/couchbase/cbauth v0.1.9/go.mod h1:overPK2NvYkkZBWX0eqmuHB82nhhs8rt7A4wi5u7c2g=
 github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=
 github.com/couchbase/clog v0.1.0/go.mod h1:7tzUpEOsE+fgU81yfcjy5N1H6XtbVC8SgOz/3mCjmd4=
 github.com/couchbase/go-couchbase v0.1.1 h1:ClFXELcKj/ojyoTYbsY34QUrrYCBi/1G749sXSCkdhk=

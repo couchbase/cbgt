@@ -174,6 +174,8 @@ func CBAuthURL(urlStr string) (string, error) {
 
 // ----------------------------------------------------------------
 
+// parseParams used by go-couchbase helper: CouchbaseSourceVBucketLookUp
+// to extract server, user, password from request using cbauth.
 func parseParams(src string,
 	req *http.Request) (string, string, string, error) {
 	// Split the provided src on ";" as the user is permitted
@@ -197,7 +199,7 @@ func parseParams(src string,
 		User:   u.User,
 		Host:   u.Host,
 	}
-	uname, pwd, err := cbauth.ExtractCreds(req)
+	uname, pwd, err := cbauth.ExtractCredsGeneric(req.Header)
 	if err != nil {
 		return "", "", "", err
 	}
