@@ -133,10 +133,12 @@ func updateDCPAgentsDetails(bucketName, bucketUUID, feedName string,
 	}
 
 	// decrement counts appropriately for close stream reqs
-	dcpAgentDetails.NumStreamReqs -= 1
-	dcpAgentDetails.Streams[sID].NumVBuckets -= 1
-	if dcpAgentDetails.Streams[sID].NumVBuckets == 0 {
-		delete(dcpAgentDetails.Streams, sID)
+	if _, exists := dcpAgentDetails.Streams[sID]; exists {
+		dcpAgentDetails.NumStreamReqs -= 1
+		dcpAgentDetails.Streams[sID].NumVBuckets -= 1
+		if dcpAgentDetails.Streams[sID].NumVBuckets == 0 {
+			delete(dcpAgentDetails.Streams, sID)
+		}
 	}
 	return
 }
