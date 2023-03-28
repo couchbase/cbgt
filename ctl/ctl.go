@@ -204,18 +204,20 @@ func StartCtl(cfg cbgt.Cfg, server string,
 // onSuccessfulPrepare is to be called ONLY after a successful
 // completion to the PREPARE phase of a cluster operation.
 // - reset previous topology/cluster operation's warnings/errors
-// - update existingNodeUUIDs before the PREPARE operation
-func (ctl *Ctl) onSuccessfulPrepare() {
+// - on topology change, update ctl's prevMemberNodeUUIDs and memberNodeUUIDs
+func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 	ctl.m.Lock()
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
-	if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
-		ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
-		newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
-		for _, memberNode := range memberNodes {
-			newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
+	if affectsTopology {
+		if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
+			ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
+			newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
+			for _, memberNode := range memberNodes {
+				newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
+			}
+			ctl.memberNodeUUIDs = newMemberNodeUUIDs
 		}
-		ctl.memberNodeUUIDs = newMemberNodeUUIDs
 	}
 	ctl.m.Unlock()
 }

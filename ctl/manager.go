@@ -296,17 +296,14 @@ func (m *CtlMgr) GetCurrentTopology(haveTopologyRev service.Revision,
 }
 
 func (m *CtlMgr) PrepareTopologyChange(
-	change service.TopologyChange) error {
+	change service.TopologyChange) (err error) {
 	log.Printf("ctl/manager: PrepareTopologyChange, change: %v", change)
-
-	var err error
 
 	m.mu.Lock()
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			m.ctl.onSuccessfulPrepare()
-
+			m.ctl.onSuccessfulPrepare(true)
 		}
 	}()
 
@@ -870,17 +867,14 @@ func (m *CtlMgr) GetDefragmentedUtilization() (
 
 // PreparePause just updates the task lists with the prepared task
 // type along with some basic validations.
-func (m *CtlMgr) PreparePause(params service.PauseParams) error {
+func (m *CtlMgr) PreparePause(params service.PauseParams) (err error) {
 	log.Printf("ctl/manager: PreparePause, params: %v", params)
-
-	var err error
 
 	m.mu.Lock()
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			m.ctl.onSuccessfulPrepare()
-
+			m.ctl.onSuccessfulPrepare(false)
 		}
 	}()
 
@@ -946,17 +940,14 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 
 // PrepareResume just updates the task lists with the prepared task
 // type along with some basic validations.
-func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
+func (m *CtlMgr) PrepareResume(params service.ResumeParams) (err error) {
 	log.Printf("ctl/manager: PrepareResume, params: %v", params)
-
-	var err error
 
 	m.mu.Lock()
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			m.ctl.onSuccessfulPrepare()
-
+			m.ctl.onSuccessfulPrepare(false)
 		}
 	}()
 
