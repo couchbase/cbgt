@@ -63,8 +63,10 @@ type Ctl struct {
 	revNum       uint64
 	revNumWaitCh chan struct{} // Closed when revNum changes.
 
-	memberNodes         []CtlNode // May be nil before initCh closed.
-	prevMemberNodeUUIDs []string
+	memberNodes []CtlNode // May be nil before initCh closed.
+
+	memberNodeUUIDs     []string // updated after successful PREPARE phase
+	prevMemberNodeUUIDs []string // updated after successful PREPARE phase
 
 	// The following ctlXxxx fields are all nil or non-nil together
 	// depending on whether a change topology is inflight.
@@ -199,12 +201,22 @@ func StartCtl(cfg cbgt.Cfg, server string,
 
 // ----------------------------------------------------
 
-// resetPrevWarningsAndErrors is to be called ONLY during
-// the PREPARE phase of the cluster operation.
-func (ctl *Ctl) resetPrevWarningsAndErrors() {
+// onSuccessfulPrepare is to be called ONLY after a successful
+// completion to the PREPARE phase of a cluster operation.
+// - reset previous topology/cluster operation's warnings/errors
+// - update existingNodeUUIDs before the PREPARE operation
+func (ctl *Ctl) onSuccessfulPrepare() {
 	ctl.m.Lock()
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
+	if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
+		ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
+		newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
+		for _, memberNode := range memberNodes {
+			newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
+		}
+		ctl.memberNodeUUIDs = newMemberNodeUUIDs
+	}
 	ctl.m.Unlock()
 }
 
@@ -392,10 +404,10 @@ func (ctl *Ctl) run() {
 
 	ctl.memberNodes = memberNodes
 	for _, node := range memberNodes {
-		ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
+		ctl.memberNodeUUIDs = append(ctl.memberNodeUUIDs, node.UUID)
 	}
 
-	log.Printf("ctl: cluster member nodes at startup: %+v", ctl.prevMemberNodeUUIDs)
+	log.Printf("ctl: cluster member nodes at startup: %+v", ctl.memberNodeUUIDs)
 
 	if planPIndexes != nil {
 		ctl.prevWarnings = planPIndexes.Warnings
@@ -510,18 +522,18 @@ func (ctl *Ctl) run() {
 						" err: %v", ev.Key, err)
 					continue
 				}
-				// initialize the prevMemberNodeUUIDs only if it is
+				// initialize the memberNodeUUIDs only if it is
 				// unset during the initial boot up of a cluster.
-				var initPrevMemberUUIDs bool
-				if len(ctl.prevMemberNodeUUIDs) == 0 {
-					initPrevMemberUUIDs = true
+				var initMemberUUIDs bool
+				if len(ctl.memberNodeUUIDs) == 0 {
+					initMemberUUIDs = true
 				}
 
 				memberUUIDs := "{"
 				for _, node := range memberNodes {
 					memberUUIDs += node.UUID + ";"
-					if initPrevMemberUUIDs {
-						ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
+					if initMemberUUIDs {
+						ctl.memberNodeUUIDs = append(ctl.memberNodeUUIDs, node.UUID)
 					}
 				}
 				memberUUIDs += "}"
@@ -930,8 +942,6 @@ func (ctl *Ctl) startCtlLOCKED(
 	}
 
 	ctl.movingPartitionsCount = movingPartitionsCount
-	existingNodeUUIDs := ctl.prevMemberNodeUUIDs
-	ctl.prevMemberNodeUUIDs = memberNodeUUIDs
 
 	// The ctl goroutine.
 	//
@@ -1062,7 +1072,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,
 						Manager:                            ctl.optionsCtl.Manager,
-						ExistingNodes:                      existingNodeUUIDs,
+						ExistingNodes:                      ctl.prevMemberNodeUUIDs,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)

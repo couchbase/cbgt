@@ -305,8 +305,7 @@ func (m *CtlMgr) PrepareTopologyChange(
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			// On success, reset previous topology/cluster operation's warnings/errors
-			m.ctl.resetPrevWarningsAndErrors()
+			m.ctl.onSuccessfulPrepare()
 
 		}
 	}()
@@ -880,8 +879,7 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) error {
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			// On success, reset previous topology/cluster operation's warnings/errors
-			m.ctl.resetPrevWarningsAndErrors()
+			m.ctl.onSuccessfulPrepare()
 
 		}
 	}()
@@ -957,8 +955,7 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) error {
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			// On success, reset previous topology/cluster operation's warnings/errors
-			m.ctl.resetPrevWarningsAndErrors()
+			m.ctl.onSuccessfulPrepare()
 
 		}
 	}()
