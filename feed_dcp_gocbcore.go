@@ -116,7 +116,14 @@ func updateDCPAgentsDetails(bucketName, bucketUUID, feedName string,
 	agent *gocbcore.DCPAgent, streamID int16, openStream bool) {
 	dcpAgentMap.m.Lock()
 	defer dcpAgentMap.m.Unlock()
-	dcpAgentDetails := dcpAgentMap.entries[bucketName+":"+bucketUUID][agent]
+	entry, exists := dcpAgentMap.entries[bucketName+":"+bucketUUID]
+	if !exists {
+		return
+	}
+	dcpAgentDetails, _ := entry[agent]
+	if dcpAgentDetails == nil {
+		return
+	}
 
 	sID := fmt.Sprintf("%v", streamID)
 	if openStream {
