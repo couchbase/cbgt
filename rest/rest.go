@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/user"
 	"reflect"
-	"regexp"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
@@ -195,23 +194,6 @@ func scopedIndexPrefix(req *http.Request) string {
 
 // -------------------------------------------------------
 
-var pathFocusNameRE = regexp.MustCompile(`{([a-zA-Z]+)}`)
-
-// PathFocusName return the focus name of path spec.  For example,
-// given a path spec of "/api/index/{indexName}", the focus name
-// result is "indexName".  A focus name of "" is valid.
-func PathFocusName(path string) string {
-	// Example path: "/api/index/{indexName}".
-	// Example path: "/api/index/{indexName}/query".
-	a := pathFocusNameRE.FindStringSubmatch(path)
-	if len(a) <= 1 {
-		return ""
-	}
-	return a[1]
-}
-
-// -------------------------------------------------------
-
 // RESTMeta represents the metadata of a REST API endpoint and is used
 // for auto-generated REST API documentation.
 type RESTMeta struct {
@@ -264,7 +246,12 @@ func (h *HandlerWithRESTMeta) ServeHTTP(
 	if h.pathStats != nil {
 		var focusVal string
 		if h.focusName != "" {
-			focusVal = RequestVariableLookup(req, h.focusName)
+			if h.focusName == "indexName" {
+				// special case for indexName, to account for scoped index endpoints
+				focusVal = IndexNameLookup(req)
+			} else {
+				focusVal = RequestVariableLookup(req, h.focusName)
+			}
 		}
 		focusStats = h.pathStats.FocusStats(focusVal)
 		atomic.AddUint64(&focusStats.TotRequest, 1)
@@ -448,7 +435,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 	meta := map[string]RESTMeta{}
 
 	handle := func(path string, method string, h http.Handler,
-		opts map[string]string) {
+		opts map[string]string, focusName string) {
 		opts["_path"] = path
 		if a, ok := h.(RESTOpts); ok {
 			a.RESTOpts(opts)
@@ -460,7 +447,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			h:         h,
 			RESTMeta:  &restMeta,
 			pathStats: mapRESTPathStats[path],
-			focusName: PathFocusName(path),
+			focusName: focusName,
 		}
 		if authHandler != nil {
 			h = authHandler(h)
@@ -473,53 +460,61 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Indexing|Index definition",
 			"_about":             `Returns all index definitions as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index", "GET",
 		NewListIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Returns all index definitions for bucketName.scopeName as JSON.`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"")
 	handle("/api/index/{indexName}", "PUT", NewCreateIndexHandler(mgr, false),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Creates/updates an index definition.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}", "PUT",
 		NewCreateIndexHandler(mgr, true),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Creates/updates an index definition for bucketName.scopeName.indexName.`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 	handle("/api/index/{indexName}", "DELETE", NewDeleteIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Deletes an index definition.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}", "DELETE",
 		NewDeleteIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Deletes index definition for bucketName.scopeName.indexName.`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 	handle("/api/index/{indexName}", "GET", NewGetIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Returns the definition of an index as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}", "GET",
 		NewGetIndexHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|Index definition",
 			"_about":             `Returns the definition of index 'bucketName.scopeName.indexName' as JSON.`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 
 	if mgr == nil || mgr.TagsMap() == nil || mgr.TagsMap()["queryer"] {
 		handle("/api/index/{indexName}/count", "GET",
@@ -528,14 +523,16 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "Indexing|Index querying",
 				"_about":             `Returns the count of indexed documents.`,
 				"version introduced": "0.0.1",
-			})
+			},
+			"indexName")
 		handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/count", "GET",
 			NewCountHandler(mgr),
 			map[string]string{
 				"_category":          "Indexing|Index querying",
 				"_about":             `Returns the count of indexed documents.`,
 				"version introduced": "7.5.0",
-			})
+			},
+			"indexName")
 		handle("/api/index/{indexName}/query", "POST",
 			NewQueryHandler(mgr,
 				mapRESTPathStats["/api/index/{indexName}/query"]),
@@ -543,7 +540,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "Indexing|Index querying",
 				"_about":             `Queries an index.`,
 				"version introduced": "0.2.0",
-			})
+			},
+			"indexName")
 		handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/query", "POST",
 			NewQueryHandler(mgr,
 				mapRESTPathStats["/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/query"]),
@@ -551,7 +549,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "Indexing|Index querying",
 				"_about":             `Queries an index with name bucketName.scopeName.indexName.`,
 				"version introduced": "7.5.0",
-			})
+			},
+			"indexName")
 	}
 
 	handle("/api/index/{indexName}/status", "GET",
@@ -560,14 +559,16 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Index create status",
 			"_about":             `Creation status of an index.`,
 			"version introduced": "7.1.0",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/status", "GET",
 		NewIndexStatusHandler(mgr),
 		map[string]string{
 			"_category":          "Index create status",
 			"_about":             `Creation status of an index.`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 
 	handle("/api/index/{indexName}/planFreezeControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "planFreeze", map[string]bool{
@@ -580,7 +581,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"param: op": "required, string, URL path parameter\n\n" +
 				`Allowed values for op are "freeze" or "unfreeze".`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/planFreezeControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "planFreeze", map[string]bool{
 			"freeze":   true,
@@ -592,7 +594,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"param: op": "required, string, URL path parameter\n\n" +
 				`Allowed values for op are "freeze" or "unfreeze".`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 
 	handle("/api/index/{indexName}/ingestControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "write", map[string]bool{
@@ -606,7 +609,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"param: op": "required, string, URL path parameter\n\n" +
 				`Allowed values for op are "pause" or "resume".`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/ingestControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "write", map[string]bool{
 			"pause":  true,
@@ -619,7 +623,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"param: op": "required, string, URL path parameter\n\n" +
 				`Allowed values for op are "pause" or "resume".`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 
 	handle("/api/index/{indexName}/queryControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "read", map[string]bool{
@@ -632,7 +637,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"param: op": "required, string, URL path parameter\n\n" +
 				`Allowed values for op are "allow" or "disallow".`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/queryControl/{op}", "POST",
 		NewIndexControlHandler(mgr, "read", map[string]bool{
 			"allow":    true,
@@ -644,8 +650,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"param: op": "required, string, URL path parameter\n\n" +
 				`Allowed values for op are "allow" or "disallow".`,
 			"version introduced": "7.5.0",
-		})
-
+		},
+		"indexName")
 
 	if mgr == nil || mgr.TagsMap() == nil || mgr.TagsMap()["pindex"] {
 		handle("/api/pindex", "GET",
@@ -653,25 +659,29 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			map[string]string{
 				"_category":          "x/Advanced|x/Index partition definition",
 				"version introduced": "0.0.1",
-			})
+			},
+			"")
 		handle("/api/pindex/{pindexName}", "GET",
 			NewGetPIndexHandler(mgr),
 			map[string]string{
 				"_category":          "x/Advanced|x/Index partition definition",
 				"version introduced": "0.0.1",
-			})
+			},
+			"pindexName")
 		handle("/api/pindex/{pindexName}/count", "GET",
 			NewCountPIndexHandler(mgr),
 			map[string]string{
 				"_category":          "x/Advanced|x/Index partition querying",
 				"version introduced": "0.0.1",
-			})
+			},
+			"pindexName")
 		handle("/api/pindex/{pindexName}/query", "POST",
 			NewQueryPIndexHandler(mgr),
 			map[string]string{
 				"_category":          "x/Advanced|x/Index partition querying",
 				"version introduced": "0.2.0",
-			})
+			},
+			"pindexName")
 
 		handle("/api/index/{indexName}/tasks", "POST",
 			NewTaskRequestHandler(mgr),
@@ -679,14 +689,16 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 				"_category":          "Indexing|Index level task requests",
 				"_about":             `Index level task requests, eg: Compact an index storage.`,
 				"version introduced": "7.0.0",
-			})
+			},
+			"indexName")
 		handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/tasks", "POST",
 			NewTaskRequestHandler(mgr),
 			map[string]string{
 				"_category":          "Indexing|Index level task requests",
 				"_about":             `Index level task requests, eg: Compact an index storage.`,
 				"version introduced": "7.5.0",
-			})
+			},
+			"indexName")
 	}
 
 	handle("/api/index/{indexName}/pindexLookup", "POST", NewPIndexLookUpHandler(mgr),
@@ -694,21 +706,24 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Indexing|PIndex lookup",
 			"_about":             `Returns the PIndex ID.`,
 			"version introduced": "5.0.0",
-		})
+		},
+		"indexName")
 	handle("/api/bucket/{bucketName}/scope/{scopeName}/index/{indexName}/pindexLookup", "POST",
 		NewPIndexLookUpHandler(mgr),
 		map[string]string{
 			"_category":          "Indexing|PIndex lookup",
 			"_about":             `Returns the PIndex ID.`,
 			"version introduced": "7.5.0",
-		})
+		},
+		"indexName")
 
 	handle("/api/managerOptions", "PUT", NewManagerOptions(mgr),
 		map[string]string{
 			"_category":          "Node|Node configuration",
 			"_about":             "Set the options for the manager",
 			"version introduced": "4.2.0",
-		})
+		},
+		"")
 
 	handle("/api/cfg", "GET", NewCfgGetHandler(mgr),
 		map[string]string{
@@ -716,7 +731,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns the node's current view
                        of the cluster's configuration as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/cfgRefresh", "POST", NewCfgRefreshHandler(mgr),
 		map[string]string{
@@ -724,7 +740,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Requests the node to refresh its configuration
                        from the configuration provider.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/cfgNodeDefs", "PUT", NewCfgNodeDefsHandler(mgr),
 		map[string]string{
@@ -732,7 +749,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Sets the given nodeDefs configurations
                        to the Cfg.`,
 			"version introduced": "5.0.0",
-		})
+		},
+		"")
 
 	handle("/api/cfgPlanPIndexes", "PUT", NewCfgPlanPIndexesHandler(mgr),
 		map[string]string{
@@ -740,7 +758,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Sets the given planPIndexes configurations
                        to the Cfg.`,
 			"version introduced": "5.5.0",
-		})
+		},
+		"")
 
 	handle("/api/log", "GET", NewLogGetHandler(mgr, mr),
 		map[string]string{
@@ -748,14 +767,16 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns recent log messages
                        and key events for the node as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/manager", "GET", NewManagerHandler(mgr),
 		map[string]string{
 			"_category":          "Node|Node configuration",
 			"_about":             `Returns runtime config information about this node.`,
 			"version introduced": "0.4.0",
-		})
+		},
+		"")
 
 	handle("/api/managerKick", "POST", NewManagerKickHandler(mgr),
 		map[string]string{
@@ -765,7 +786,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
                        its runtime state to reflect the latest plan
                        (by running the janitor, if enabled).`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/managerMeta", "GET", NewManagerMetaHandler(mgr, meta),
 		map[string]string{
@@ -775,7 +797,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
                        and is intended to help management tools and web UI's
                        to be more dynamically metadata driven.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime", "GET",
 		NewRuntimeGetHandler(versionMain, mgr),
@@ -785,7 +808,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
                        such as version strings and slow-changing
                        runtime settings as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime/args", "GET",
 		http.HandlerFunc(RESTGetRuntimeArgs),
@@ -795,7 +819,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
                        parameters, environment variables and
                        O/S process values as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/diag", "GET",
 		NewDiagGetHandler(versionMain, mgr, mr, assetDir, asset),
@@ -808,14 +833,16 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
                         endpoints from the node, and is intended to make
                         production support easier.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/ping", "GET", &NoopHandler{},
 		map[string]string{
 			"_category":          "Node|Node diagnostics",
 			"_about":             `Returns an empty body as a quick aliveness check.`,
 			"version introduced": "5.0.0",
-		})
+		},
+		"")
 
 	handle("/api/runtime/gc", "POST",
 		http.HandlerFunc(RESTPostRuntimeGC),
@@ -823,7 +850,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Node|Node management",
 			"_about":             `Requests the node to perform a GC.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime/profile/cpu", "POST",
 		http.HandlerFunc(RESTProfileCPU),
@@ -832,7 +860,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Requests the node to capture local
                        cpu usage profiling information.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime/profile/memory", "POST",
 		http.HandlerFunc(RESTProfileMemory),
@@ -841,7 +870,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Requests the node to capture lcoal
                        memory usage profiling information.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime/stats", "GET",
 		http.HandlerFunc(RESTGetRuntimeStats),
@@ -850,7 +880,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns information on the node's
                        low-level runtime stats as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime/statsMem", "GET",
 		http.HandlerFunc(RESTGetRuntimeStatsMem),
@@ -859,7 +890,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns information on the node's
                        low-level GC and memory related runtime stats as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/stats", "GET", NewStatsHandler(mgr),
 		map[string]string{
@@ -867,7 +899,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns indexing and data related metrics,
                        timings and counters from the node as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"")
 
 	handle("/api/runtime/trace", "POST",
 		http.HandlerFunc(RuntimeTrace),
@@ -875,7 +908,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Node|Node diagnostics",
 			"_about":             `Requests the node to go trace the program.`,
 			"version introduced": "5.0.0",
-		})
+		},
+		"")
 
 	// TODO: If we ever implement cluster-wide index stats, we should
 	// have it under /api/index/{indexName}/stats GET endpoint.
@@ -886,7 +920,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns metrics, timings and counters
                        for a single index from the node as JSON.`,
 			"version introduced": "0.0.1",
-		})
+		},
+		"indexName")
 
 	handle("/api/stats/sourceStats/{indexName}", "GET",
 		NewSourceStatsHandler(mgr),
@@ -895,7 +930,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns data source specific stats
                        for an index as JSON.`,
 			"version introduced": "4.2.0",
-		})
+		},
+		"indexName")
 
 	handle("/api/stats/sourcePartitionSeqs/{indexName}", "GET",
 		NewSourcePartitionSeqsHandler(mgr),
@@ -904,7 +940,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_about": `Returns data source partiton seqs
                        for an index as JSON.`,
 			"version introduced": "4.2.0",
-		})
+		},
+		"indexName")
 
 	handle("/api/indexes/source/{bucketName}", "GET",
 		NewListIndexesForSourceHandler(mgr),
@@ -912,7 +949,8 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 			"_category":          "Indexing|Index monitoring",
 			"_about":             `Returns all index names for source as JSON.`,
 			"version introduced": "5.6.0",
-		})
+		},
+		"bucketName")
 
 	PIndexTypesInitRouter(r, "manager.after", mgr)
 

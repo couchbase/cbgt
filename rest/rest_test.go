@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/couchbase/cbgt"
@@ -626,6 +627,23 @@ func TestHandlersForEmptyManager(t *testing.T) {
 	testRESTHandlers(t, tests, router)
 }
 
+// -------------------------------------------------------
+
+var pathFocusNameRE = regexp.MustCompile(`{([a-zA-Z]+)}`)
+
+// PathFocusName return the focus name of path spec.  For example,
+// given a path spec of "/api/index/{indexName}", the focus name
+// result is "indexName".  A focus name of "" is valid.
+func pathFocusName(path string) string {
+	// Example path: "/api/index/{indexName}".
+	// Example path: "/api/index/{indexName}/query".
+	a := pathFocusNameRE.FindStringSubmatch(path)
+	if len(a) <= 1 {
+		return ""
+	}
+	return a[1]
+}
+
 func TestPathFocusName(t *testing.T) {
 	tests := []struct {
 		inp string
@@ -638,7 +656,7 @@ func TestPathFocusName(t *testing.T) {
 	}
 
 	for testi, test := range tests {
-		got := PathFocusName(test.inp)
+		got := pathFocusName(test.inp)
 		if got != test.exp {
 			t.Errorf("testi: %d, %s != %s on input %s",
 				testi, got, test.exp, test.inp)
