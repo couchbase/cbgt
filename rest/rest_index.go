@@ -49,15 +49,24 @@ func (h *ListIndexHandler) ServeHTTP(
 		return
 	}
 
-	if len(scopedPrefix) > 0 && indexDefs != nil {
-		// Drop all indexes whose names don't carry the scopedIndexName prefix.
-		for k, def := range indexDefs.IndexDefs {
-			if !strings.HasPrefix(k, scopedPrefix) {
-				delete(indexDefs.IndexDefs, k)
-			} else {
-				// Drop the scopedIndexName prefix.
-				def.Name = def.Name[len(scopedPrefix):]
+	if indexDefs != nil {
+		// Copy fields, but start a separate, filtered IndexDefs map if in case of scoped endpoint.
+		out := *indexDefs
+
+		if len(scopedPrefix) > 0 {
+			out.IndexDefs = map[string]*cbgt.IndexDef{}
+
+			// Drop all indexes whose names don't carry the scopedIndexName prefix.
+			for k, def := range indexDefs.IndexDefs {
+				var indexDefCopy = *def
+				if strings.HasPrefix(k, scopedPrefix) {
+					// Drop the scopedIndexName prefix.
+					indexDefCopy.Name = indexDefCopy.Name[len(scopedPrefix):]
+					out.IndexDefs[k] = &indexDefCopy
+				}
 			}
+
+			indexDefs = &out
 		}
 	}
 
