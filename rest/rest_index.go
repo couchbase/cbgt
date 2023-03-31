@@ -154,13 +154,16 @@ func (h *GetIndexHandler) ServeHTTP(
 		return
 	}
 
+	// Create a copy here, in case we need to drop the scopedIndexName prefix.
+	var indexDefCopy = *indexDef
+
 	if scopedPrefix := scopedIndexPrefix(req); len(scopedPrefix) > 0 {
 		// Drop the scopedIndexName prefix.
-		indexDef.Name = indexDef.Name[len(scopedPrefix):]
+		indexDefCopy.Name = indexDefCopy.Name[len(scopedPrefix):]
 	}
 
 	indexUUID := req.FormValue("indexUUID")
-	if indexUUID != "" && indexUUID != indexDef.UUID {
+	if indexUUID != "" && indexUUID != indexDefCopy.UUID {
 		ShowError(w, req, "wrong index UUID", http.StatusBadRequest)
 		return
 	}
@@ -191,7 +194,7 @@ func (h *GetIndexHandler) ServeHTTP(
 		Warnings     []string           `json:"warnings"`
 	}{
 		Status:       "ok",
-		IndexDef:     indexDef,
+		IndexDef:     &indexDefCopy,
 		PlanPIndexes: planPIndexesForIndex,
 		Warnings:     planPIndexesWarnings,
 	})
