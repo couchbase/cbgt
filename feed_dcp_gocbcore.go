@@ -1311,6 +1311,8 @@ var GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte,
 	return respBuf, nil
 }
 
+const resourceNotFoundStr = "Requested resource not found"
+
 // VerifySourceNotExists returns true if it's sure the bucket
 // does not exist anymore (including if UUID's no longer match).
 // It is however possible that the bucket is around but the index's
@@ -1329,12 +1331,21 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 	}{}
 
 	err = json.Unmarshal(resp, &rv)
-	if err != nil || f.bucketUUID != rv.UUID {
-		// safe to assume that bucket is deleted
-		// - respBuf carries: `Requested resource not found.`
-		// - bucketUUID didn't match, so the bucket being looked up
-		//   must've been deleted
-		return true, "", err
+	if err != nil || len(rv.UUID) == 0 {
+		// in case of a marshalling error, let's quickly check if it's
+		// the situation of ns_server reporting that the "Requested resource not found.";
+		// if so, we can safely assume that the bucket is deleted.
+		if strings.Contains(string(resp), resourceNotFoundStr) {
+			return true, "", nil
+		}
+
+		return false, "", fmt.Errorf("response: %v, err: %v", string(resp), err)
+	}
+
+	if f.bucketUUID != rv.UUID {
+		// safe to assume that bucket is deleted as the bucketUUID
+		// didn't match, so the bucket being looked up must've been deleted
+		return true, "", nil
 	}
 
 	resp, err = GetPoolsDefaultForBucket(f.mgr.Server(), f.bucketName, true)
