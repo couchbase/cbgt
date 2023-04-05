@@ -46,9 +46,6 @@ type SecuritySetting struct {
 	ServerCertificate tls.Certificate
 	CACertInBytes     []byte
 
-	EnforceLimits     bool
-	UserLimitsVersion string
-
 	ClientCertificate tls.Certificate
 }
 
@@ -77,7 +74,6 @@ const (
 	AuthChange_encryption = 1 << iota
 	AuthChange_nonSSLPorts
 	AuthChange_certificates
-	AuthChange_limits
 	AuthChange_clientCertificates
 )
 
@@ -96,7 +92,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 	log.Printf("cbauth: received security change notification, code: %v", code)
 
 	newSetting := SecuritySetting{}
-	var encryptionEnabled, disableNonSSLPorts, enforceLimits bool
+	var encryptionEnabled, disableNonSSLPorts bool
 
 	oldSetting := GetSecuritySetting()
 	if oldSetting != nil {
@@ -104,7 +100,6 @@ func (c *SecurityContext) refresh(code uint64) error {
 		newSetting = temp
 		encryptionEnabled = oldSetting.EncryptionEnabled
 		disableNonSSLPorts = oldSetting.DisableNonSSLPorts
-		enforceLimits = oldSetting.EnforceLimits
 	}
 
 	if code&cbauthimpl.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
@@ -115,12 +110,6 @@ func (c *SecurityContext) refresh(code uint64) error {
 
 	if code&cbauthimpl.CFG_CHANGE_CLUSTER_ENCRYPTION != 0 {
 		if err := c.refreshEncryption(&newSetting); err != nil {
-			return err
-		}
-	}
-
-	if code&cbauthimpl.CFG_CHANGE_USER_LIMITS != 0 {
-		if err := c.refreshLimits(&newSetting); err != nil {
 			return err
 		}
 	}
@@ -155,9 +144,6 @@ func (c *SecurityContext) refresh(code uint64) error {
 	if code&cbauthimpl.CFG_CHANGE_CERTS_TLSCONFIG != 0 {
 		status |= AuthChange_certificates
 	}
-	if enforceLimits != newSetting.EnforceLimits {
-		status |= AuthChange_limits
-	}
 	if code&cbauthimpl.CFG_CHANGE_CLIENT_CERTS_TLSCONFIG != 0 {
 		status |= AuthChange_clientCertificates
 	}
@@ -172,7 +158,7 @@ func (c *SecurityContext) refresh(code uint64) error {
 			}(key, notifier)
 		}
 	} else {
-		log.Printf("cbauth: encryption/limits settings not affected")
+		log.Printf("cbauth: encryption settings not affected")
 	}
 	c.mutex.RUnlock()
 
@@ -231,19 +217,6 @@ func (c *SecurityContext) refreshEncryption(configs *SecuritySetting) error {
 
 	configs.EncryptionEnabled = cfg.EncryptData
 	configs.DisableNonSSLPorts = cfg.DisableNonSSLPorts
-
-	return nil
-}
-
-func (c *SecurityContext) refreshLimits(configs *SecuritySetting) error {
-	limitsConfig, err := cbauth.GetLimitsConfig()
-	if err != nil {
-		log.Warnf("cbauth: GetLimitsConfig err: %v", err)
-		return err
-	}
-
-	configs.EnforceLimits = limitsConfig.EnforceLimits
-	configs.UserLimitsVersion = limitsConfig.UserLimitsVersion
 
 	return nil
 }
