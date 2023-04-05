@@ -1164,16 +1164,15 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 
 // ----------------------------------------------------------------
 
-func (f *GocbcoreDCPFeed) rollback(vbId uint16, seqno uint64) error {
+func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 	var rollbackVbuuid uint64
-	var rollbackSeqno uint64
 
+	// Determine rollbackVbuuid from the failover log.
 	vbMetaData, _, err := f.getMetaData(vbId)
 	if err == nil && len(vbMetaData.FailOverLog) > 0 {
 		for j := 0; j < len(vbMetaData.FailOverLog); j++ {
-			if vbMetaData.FailOverLog[j][1] <= seqno {
+			if vbMetaData.FailOverLog[j][1] <= rollbackSeqno {
 				rollbackVbuuid = vbMetaData.FailOverLog[j][0]
-				rollbackSeqno = vbMetaData.FailOverLog[j][1]
 				break
 			}
 		}
