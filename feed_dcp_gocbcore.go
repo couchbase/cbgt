@@ -948,9 +948,12 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					" for vb: %v, streamOptions: %+v, seqno requested: %v", f.Name(),
 					vbId, f.streamOptions.StreamOptions, seqStart)
 				f.complete(vbId)
-				go f.rollback(vbId, entries)
-				// rollback will handle this feed closure and setting up of a new feed
-				er = nil
+				var dcpRollbackErr *gocbcore.DCPRollbackError
+				if errors.As(er, &dcpRollbackErr) {
+					go f.rollback(vbId, uint64(dcpRollbackErr.SeqNo))
+					// rollback will handle this feed closure and setting up of a new feed
+					er = nil
+				} // else, let the error be handled below (onError)
 			} else if errors.Is(er, gocbcore.ErrRequestCanceled) {
 				// request was canceled by FTS, catch error and re-initiate stream request
 				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, streamOptions: %+v"+
@@ -1161,31 +1164,22 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 
 // ----------------------------------------------------------------
 
-func (f *GocbcoreDCPFeed) rollback(vbId uint16, entries []gocbcore.FailoverEntry) error {
+func (f *GocbcoreDCPFeed) rollback(vbId uint16, seqno uint64) error {
 	var rollbackVbuuid uint64
 	var rollbackSeqno uint64
 
-	if len(entries) != 0 {
-		vbMetaData, _, err := f.getMetaData(vbId)
-		if err == nil && len(vbMetaData.FailOverLog) > 0 {
-			rollbackPointDetermined := false
-			for i := 0; i < len(entries); i++ {
-				for j := 0; j < len(vbMetaData.FailOverLog); j++ {
-					if vbMetaData.FailOverLog[j][1] <= uint64(entries[i].SeqNo) {
-						rollbackVbuuid = vbMetaData.FailOverLog[j][0]
-						rollbackSeqno = vbMetaData.FailOverLog[j][1]
-						rollbackPointDetermined = true
-						break
-					}
-				}
-				if rollbackPointDetermined {
-					break
-				}
+	vbMetaData, _, err := f.getMetaData(vbId)
+	if err == nil && len(vbMetaData.FailOverLog) > 0 {
+		for j := 0; j < len(vbMetaData.FailOverLog); j++ {
+			if vbMetaData.FailOverLog[j][1] <= seqno {
+				rollbackVbuuid = vbMetaData.FailOverLog[j][0]
+				rollbackSeqno = vbMetaData.FailOverLog[j][1]
+				break
 			}
 		}
 	}
 
-	err := Timer(func() error {
+	err = Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
 		if err != nil || f.checkStopAfter(partition) {
