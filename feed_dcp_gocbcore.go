@@ -948,7 +948,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 					" for vb: %v, streamOptions: %+v, seqno requested: %v", f.Name(),
 					vbId, f.streamOptions.StreamOptions, seqStart)
 				f.complete(vbId)
-				var dcpRollbackErr *gocbcore.DCPRollbackError
+				var dcpRollbackErr gocbcore.DCPRollbackError
 				if errors.As(er, &dcpRollbackErr) {
 					go f.rollback(vbId, uint64(dcpRollbackErr.SeqNo))
 					// rollback will handle this feed closure and setting up of a new feed
