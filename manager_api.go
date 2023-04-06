@@ -156,14 +156,17 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 			payload.SourceName, payload.SourceType, err)
 	}
 
-	if len(indexDef.SourceUUID) == 0 {
-		// If sourceUUID is NOT available within the index def, update it.
-		indexDef.SourceUUID = payload.SourceUUID
-	} else if indexDef.SourceUUID != payload.SourceUUID {
-		// The sourceUUID provided within the index definition does NOT match
-		// the sourceUUID for the sourceName in the system.
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
-			" mismatched for sourceName: %s", payload.SourceName)
+	if len(payload.SourceUUID) > 0 {
+		// Feed's SourceUUIDLookUp is optional.
+		if len(indexDef.SourceUUID) == 0 {
+			// If sourceUUID is NOT available within the index def, update it.
+			indexDef.SourceUUID = payload.SourceUUID
+		} else if indexDef.SourceUUID != payload.SourceUUID {
+			// The sourceUUID provided within the index definition does NOT match
+			// the sourceUUID for the sourceName in the system.
+			return "", "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
+				" mismatched for sourceName: %s", payload.SourceName)
+		}
 	}
 
 	// Validate maxReplicasAllowed here.
