@@ -603,7 +603,7 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 		if destColl, ok := dest.(DestCollection); ok {
 			err := destColl.PrepareFeedParams(partition, params)
 			if err != nil {
-				return nil, err
+				return nil, feed.onSetupError(err)
 			}
 		}
 	}
@@ -627,14 +627,15 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 	}
 
 	if err = feed.setupStreamOptions(paramsStr, mgr.Options()); err != nil {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed:"+
-			" error in setting up feed's stream options, err: %w", err)
+		return nil, feed.onSetupError(fmt.Errorf("newGocbcoreDCPFeed:"+
+			" error in setting up feed's stream options, err: %w", err))
 	}
 
 	feed.agent, err = FetchDCPAgent(feed.bucketName, feed.bucketUUID,
 		paramsStr, servers, mgr.Options())
 	if err != nil {
-		return nil, fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %w", err)
+		return nil, feed.onSetupError(
+			fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %w", err))
 	}
 
 	log.Printf("feed_dcp_gocbcore: newGocbcoreDCPFeed, name: %s, indexName: %s,"+
@@ -1050,6 +1051,20 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 }
 
 // ----------------------------------------------------------------
+
+// onSetupError is called when feed fails even before setting up
+// individual streams. This could be due to the memcached or
+// cluster-manager service not being ready or unable to prepare
+// any feed parameters.
+func (f *GocbcoreDCPFeed) onSetupError(err error) error {
+	log.Debugf("feed_dcp_gocbcore: onSetupError, name: %s,"+
+		" bucketName: %s, bucketUUID: %s, err: %v",
+		f.Name(), f.bucketName, f.bucketUUID, err)
+
+	go f.mgr.Kick(fmt.Sprintf("gocbcore-feed-setup, feed: %v", f.Name()))
+
+	return err
+}
 
 // initiateShutdown is to be invoked when the error received on
 // the feed is either ErrShutdown or ErrSocketClosed.
