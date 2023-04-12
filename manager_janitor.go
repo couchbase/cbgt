@@ -32,7 +32,6 @@ const FeedAllotmentOnePerPIndex = "oneFeedPerPIndex"
 
 const JANITOR_CLOSE_PINDEX = "janitor_close_pindex"
 const JANITOR_REMOVE_PINDEX = "janitor_remove_pindex"
-const JANITOR_ROLLBACK_PINDEX = "janitor_rollback_pindex"
 
 // JanitorNOOP sends a synchronous NOOP to the manager's janitor, if any.
 func (mgr *Manager) JanitorNOOP(msg string) {
@@ -50,75 +49,6 @@ func (mgr *Manager) JanitorKick(msg string) {
 	if mgr.tagsMap == nil || (mgr.tagsMap["pindex"] && mgr.tagsMap["janitor"]) {
 		syncWorkReq(mgr.janitorCh, WORK_KICK, msg, nil)
 	}
-}
-
-func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
-	pindex.m.Lock()
-	closed := pindex.closed
-	pindex.m.Unlock()
-
-	if !closed {
-		err := mgr.stopPIndex(pindex, false)
-		if err != nil {
-			return fmt.Errorf("janitor: rollbackPIndex for pindex %s, stopPIndex, err: %v", pindex.Name, err)
-		}
-	}
-
-	_, err := os.Stat(pindex.Path)
-	if err == nil {
-		// Partial rollback if the files are present.
-		err = mgr.partiallyRollbackPIndex(pindex)
-		if err != nil {
-			log.Warnf("janitor: partiallyRollbackPIndex for pindex %s, trying full rollback, err: %v", pindex.Name, err)
-			// Full rollback if the partial rollback failed.
-			return mgr.fullRollbackPIndex(pindex)
-		}
-	} else {
-		// Full rollback if the files are not there
-		return mgr.fullRollbackPIndex(pindex)
-	}
-
-	return nil
-}
-
-func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
-	log.Printf("janitor: fully rolling back pindex %s", pindex.Name)
-	pindex, err := createNewPIndex(mgr, pindex.Name, pindex.UUID,
-		pindex.IndexType, pindex.IndexName, pindex.IndexUUID, pindex.IndexParams,
-		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams,
-		pindex.SourcePartitions, pindex.Path, Rollback)
-	if err != nil {
-		return fmt.Errorf("janitor: error rolling back pindex: %v", err)
-	}
-
-	err = mgr.registerPIndex(pindex)
-	if err != nil {
-		return fmt.Errorf("janitor: error registering pindex: %v", err)
-	}
-	return nil
-}
-
-func (mgr *Manager) partiallyRollbackPIndex(pindex *PIndex) error {
-	log.Printf("janitor: partial rollback, path: %s", pindex.Path)
-	pindex, err := OpenPIndex(mgr, pindex.Path)
-	if err != nil {
-		log.Warnf("janitor: partiallyRollbackPIndex, OpenPIndex error,"+
-			" cleaning up the path, err: %v", err)
-		os.RemoveAll(pindex.Path)
-		return err
-	}
-
-	err = mgr.registerPIndex(pindex)
-	if err != nil {
-		return fmt.Errorf("janitor: error registering pindex %s: %v", pindex.Name, err)
-	}
-
-	// Required to add feeds for partial rollback.
-	err = mgr.JanitorOnce(fmt.Sprintf("adding feeds after partial rollback of pindex %s", pindex.Name))
-	if err != nil {
-		return fmt.Errorf("janitor: JanitorOnce, err: %v", err)
-	}
-	return nil
 }
 
 // JanitorLoop is the main loop for the janitor.
@@ -170,11 +100,6 @@ func (mgr *Manager) JanitorLoop() {
 				err = mgr.stopPIndex(m.obj.(*PIndex), false)
 			} else if m.op == JANITOR_REMOVE_PINDEX {
 				err = mgr.stopPIndex(m.obj.(*PIndex), true)
-			} else if m.op == JANITOR_ROLLBACK_PINDEX {
-				err = mgr.rollbackPIndex(m.obj.(*PIndex))
-				if err != nil {
-					log.Warnf("janitor: rollbackPIndex for pindex %s, err: %v", m.obj.(*PIndex).Name, err)
-				}
 			} else {
 				err = fmt.Errorf("janitor: unknown op: %s, m: %#v", m.op, m)
 				atomic.AddUint64(&mgr.stats.TotJanitorUnknownErr, 1)

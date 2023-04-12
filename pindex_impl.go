@@ -73,9 +73,6 @@ type PIndexImplType struct {
 	// Creates and returns a no-op dest
 	NoOpDest func(path, indexParams string, restart func()) (Dest, error)
 
-	Rollback func(indexType, indexParams, sourceParams, path string, mgr *Manager,
-		restart func()) (PIndexImpl, Dest, error)
-
 	// Invoked by the manager when it wants to query an index.  The
 	// registered Query() function can be nil.
 	Query func(mgr *Manager, indexName, indexUUID string,
@@ -198,17 +195,6 @@ func NoOpDest(indexType, path, indexParams string, restart func()) (Dest, error)
 	}
 
 	return t.NoOpDest(path, indexParams, restart)
-}
-
-func Rollback(indexType, indexParams, sourceParams, path string,
-	mgr *Manager, restart func()) (PIndexImpl, Dest, error) {
-	t, exists := PIndexImplTypes[indexType]
-	if !exists {
-		// Re-create the partition from scratch.
-		return NewPIndexImpl(indexType, indexParams, path, restart)
-	}
-
-	return t.Rollback(indexType, indexParams, sourceParams, path, mgr, restart)
 }
 
 // OpenPIndexImpl loads an index partition of the given, registered
