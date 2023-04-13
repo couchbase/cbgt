@@ -313,6 +313,7 @@ type ClusterOptions struct {
 	SlowQueryLogTimeout                string `json:"slowQueryLogTimeout"`
 	EnableVerboseLogging               string `json:"enableVerboseLogging"`
 	MaxFeedsPerDCPAgent                string `json:"maxFeedsPerDCPAgent"`
+	KVConnectionBufferSize             string `json:"kvConnectionBufferSize"`
 	MaxConcurrentPartitionMovesPerNode string `json:"maxConcurrentPartitionMovesPerNode"`
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`

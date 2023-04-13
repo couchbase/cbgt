@@ -22,24 +22,25 @@ const defaultOSOBackfillMode = false
 const defaultInitialBootstrapNonTLS = true
 
 var (
-    // GocbcoreConnectTimeout and GocbcoreKVConnectTimeout are timeouts used
-    // by gocbcore to connect to the cluster manager and KV
-    GocbcoreConnectTimeout = time.Duration(60 * time.Second)
-    GocbcoreKVConnectTimeout = time.Duration(7 * time.Second)
+	// GocbcoreConnectTimeout and GocbcoreKVConnectTimeout are timeouts used
+	// by gocbcore to connect to the cluster manager and KV
+	GocbcoreConnectTimeout   = time.Duration(60 * time.Second)
+	GocbcoreKVConnectTimeout = time.Duration(7 * time.Second)
 
-    // GocbcoreAgentSetupTimeout is the time alloted for completing setup of
-    // a gocbcore.Agent or a gocbcore.DCPAgent, two factors ..
-    //   - cluster state to be online
-    //   - memcached service to be ready
-    GocbcoreAgentSetupTimeout = time.Duration(60 * time.Second)
+	// GocbcoreAgentSetupTimeout is the time alloted for completing setup of
+	// a gocbcore.Agent or a gocbcore.DCPAgent, two factors ..
+	//   - cluster state to be online
+	//   - memcached service to be ready
+	GocbcoreAgentSetupTimeout = time.Duration(60 * time.Second)
 
-    // GocbcoreStatsTimeout is the time alloted to obtain a response from
-    // the server for a stats request.
-    GocbcoreStatsTimeout = time.Duration(60 * time.Second)
+	// GocbcoreStatsTimeout is the time alloted to obtain a response from
+	// the server for a stats request.
+	GocbcoreStatsTimeout = time.Duration(60 * time.Second)
 
-    // GocbcoreConnectionBufferSize is the size of the buffer per connection
-    // allocated by gocbcore for receiving content from KV.
-    GocbcoreConnectionBufferSize = uint(20 * 1024 * 1024) // 20MB (to match KV)
+	// GocbcoreConnectionBufferSize is the size of the buffer per connection
+	// allocated by gocbcore for receiving content from KV;
+	// overridden by kvConnectionBufferSize option.
+	GocbcoreConnectionBufferSize = uint(20 * 1024 * 1024) // 20MB (to match KV)
 )
 
 var errAgentSetupFailed = fmt.Errorf("agent setup failed")
@@ -62,6 +63,14 @@ func setupAgentConfig(name, sourceName string,
 		useCollections = false
 	}
 
+	connectionBufferSize := GocbcoreConnectionBufferSize
+	if val, exists := options["kvConnectionBufferSize"]; exists {
+		// kvConnectionBufferSize is the buffer size to use for connections.
+		if valInt, err := strconv.Atoi(val); err == nil && valInt > 0 {
+			connectionBufferSize = uint(valInt)
+		}
+	}
+
 	return &gocbcore.AgentConfig{
 		UserAgent:  name,
 		BucketName: sourceName,
@@ -75,7 +84,7 @@ func setupAgentConfig(name, sourceName string,
 		},
 		KVConfig: gocbcore.KVConfig{
 			ConnectTimeout:       GocbcoreKVConnectTimeout,
-			ConnectionBufferSize: GocbcoreConnectionBufferSize,
+			ConnectionBufferSize: connectionBufferSize,
 		},
 		HTTPConfig: gocbcore.HTTPConfig{
 			MaxIdleConns:        HttpTransportMaxIdleConns,
@@ -189,14 +198,14 @@ func setupDCPAgentConfig(
 
 	if val, exists := options["kvConnectionPoolSize"]; exists {
 		// kvConnectionPoolSize is the number of connections to create to each node.
-		if valInt, err := strconv.Atoi(val); err == nil {
+		if valInt, err := strconv.Atoi(val); err == nil && valInt > 0 {
 			config.KVConfig.PoolSize = valInt
 		}
 	}
 
 	if val, exists := options["kvConnectionBufferSize"]; exists {
 		// kvConnectionBufferSize is the buffer size to use for connections.
-		if valInt, err := strconv.Atoi(val); err == nil {
+		if valInt, err := strconv.Atoi(val); err == nil && valInt > 0 {
 			config.KVConfig.ConnectionBufferSize = uint(valInt)
 		}
 	}
