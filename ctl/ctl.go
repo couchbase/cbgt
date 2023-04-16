@@ -1388,26 +1388,13 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 
 	// Early exit paths for hibernate
 	if taskType == hibernate.OperationType(cbgt.HIBERNATE_TASK) {
-		if indexDefs == nil || len(indexDefs.IndexDefs) == 0 {
-			log.Printf("ctl: no indexes to hibernate")
-			return nil
-		}
-
-		var found bool
-		for _, indexDef := range indexDefs.IndexDefs {
-			if indexDef.SourceName == bucketName {
-				found = true
-				sourceType = indexDef.SourceType
-				break
+		if indexDefs != nil && indexDefs.IndexDefs != nil {
+			for _, indexDef := range indexDefs.IndexDefs {
+				if indexDef.SourceName == bucketName {
+					sourceType = indexDef.SourceType
+					break
+				}
 			}
-		}
-
-		// Indexes on a bucket will not exist when a bucket is to be resumed.
-		// They will be created only after the download process.
-		if !found {
-			log.Printf("ctl: startHibernation, no index definitions found for the"+
-				" bucketName: %s", bucketName)
-			return nil
 		}
 	}
 

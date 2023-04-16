@@ -612,10 +612,6 @@ func (hm *Manager) downloadSourcePartitionsMetadata() (*sourceMetadata, error) {
 }
 
 func (hm *Manager) resumeIndexes() error {
-	if len(hm.indexDefsToHibernate.IndexDefs) == 0 || hm.indexDefsToHibernate == nil {
-		return nil
-	}
-
 	if hm.options.DryRun {
 		// In a dry run, checking if the indexes in the remote path can be added to the
 		// cluster based on their metadata.
@@ -666,6 +662,10 @@ func (hm *Manager) resumeIndexes() error {
 }
 
 func (hm *Manager) hibernateIndexes() error {
+	if len(hm.indexDefsToHibernate.IndexDefs) == 0 || hm.indexDefsToHibernate == nil {
+		return nil
+	}
+
 	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
 		err := hm.pauseIndexes()
 		if err != nil {
