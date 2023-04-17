@@ -70,6 +70,9 @@ type PIndexImplType struct {
 	Count func(mgr *Manager, indexName, indexUUID string) (
 		uint64, error)
 
+	Rollback func(indexType, indexParams, sourceParams, path string, mgr *Manager,
+		restart func()) (PIndexImpl, Dest, error)
+
 	// Invoked by the manager when it wants to query an index.  The
 	// registered Query() function can be nil.
 	Query func(mgr *Manager, indexName, indexUUID string,
@@ -182,6 +185,17 @@ func NewPIndexImplEx(indexType, indexParams, sourceParams, path string,
 	}
 
 	return t.NewEx(indexType, indexParams, sourceParams, path, mgr, restart)
+}
+
+func Rollback(indexType, indexParams, sourceParams, path string,
+	mgr *Manager, restart func()) (PIndexImpl, Dest, error) {
+	t, exists := PIndexImplTypes[indexType]
+	if !exists {
+		// Re-create the partition from scratch.
+		return NewPIndexImpl(indexType, indexParams, path, restart)
+	}
+
+	return t.Rollback(indexType, indexParams, sourceParams, path, mgr, restart)
 }
 
 // OpenPIndexImpl loads an index partition of the given, registered

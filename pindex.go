@@ -126,43 +126,34 @@ func (p *PIndex) Clone() *PIndex {
 	return nil
 }
 
-func restartPIndex(mgr *Manager, pindex *PIndex) {
-	log.Printf("pindex: restartPIndex starts for pindex: %s", pindex.Name)
-	pindex.m.Lock()
-	closed := pindex.closed
-	pindex.m.Unlock()
+func rollbackPIndex(mgr *Manager, pindex *PIndex) {
+	log.Printf("pindex: rollbackPIndex starts for pindex: %s", pindex.Name)
 
-	if !closed {
-		err := mgr.ClosePIndex(pindex)
-		if err != nil {
-			log.Printf("pindex: ClosePIndex: %s, err: %v", pindex.Name, err)
-		}
-	}
-
-	mgr.Kick("restart-pindex:" + pindex.Name)
+	syncWorkReq(mgr.janitorCh, JANITOR_ROLLBACK_PINDEX,
+		"rollback:"+pindex.Name, pindex)
 }
 
-// Creates a pindex, including its backend implementation structures,
-// and its files.
-func NewPIndex(mgr *Manager, name, uuid,
-	indexType, indexName, indexUUID, indexParams,
+func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, indexParams,
 	sourceType, sourceName, sourceUUID, sourceParams, sourcePartitions string,
-	path string) (*PIndex, error) {
+	path string, createPIndexFunc func(indexType, indexParams, sourceParams,
+		path string, mgr *Manager, restart func()) (PIndexImpl, Dest, error)) (*PIndex, error) {
+
 	var pindex *PIndex
 
-	restart := func() {
-		go restartPIndex(mgr, pindex)
+	rollback := func() {
+		go rollbackPIndex(mgr, pindex)
 	}
 
 	params := IndexPrepParams{SourceName: sourceName, IndexName: indexName,
 		Params: indexParams}
+
 	pBytes, err := json.Marshal(&params)
 	if err != nil {
-		return nil, fmt.Errorf("pindex: NewPIndex, json marshal err: %v", err)
+		return nil, fmt.Errorf("pindex: RollbackPIndex, json marshal err: %v", err)
 	}
 
-	impl, dest, err := NewPIndexImplEx(indexType, string(pBytes), sourceParams,
-		path, mgr, restart)
+	impl, dest, err := createPIndexFunc(indexType, string(pBytes), sourceParams,
+		path, mgr, rollback)
 	if err != nil {
 		os.RemoveAll(path)
 		return nil, fmt.Errorf("pindex: new indexType: %s, indexParams: %s,"+
@@ -212,6 +203,17 @@ func NewPIndex(mgr *Manager, name, uuid,
 	return pindex, nil
 }
 
+// Creates a pindex, including its backend implementation structures,
+// and its files.
+func NewPIndex(mgr *Manager, name, uuid,
+	indexType, indexName, indexUUID, indexParams,
+	sourceType, sourceName, sourceUUID, sourceParams, sourcePartitions string,
+	path string) (*PIndex, error) {
+
+	return createNewPIndex(mgr, name, uuid, indexType, indexName, indexUUID, indexParams,
+		sourceType, sourceName, sourceUUID, sourceParams, sourcePartitions, path, NewPIndexImplEx)
+}
+
 // OpenPIndex reopens a previously created pindex.  The path argument
 // must be a directory for the pindex.
 func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
@@ -232,8 +234,8 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 		}
 	}
 
-	restart := func() {
-		go restartPIndex(mgr, pindex)
+	rollback := func() {
+		go rollbackPIndex(mgr, pindex)
 	}
 
 	defer func() {
@@ -244,7 +246,7 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 	}()
 
 	impl, dest, err := OpenPIndexImplUsing(pindex.IndexType, path,
-		pindex.IndexParams, restart)
+		pindex.IndexParams, rollback)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: could not open indexType: %s,"+
 			" path: %s, err: %v", pindex.IndexType, path, err)
