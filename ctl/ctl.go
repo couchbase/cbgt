@@ -212,6 +212,7 @@ func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 	if affectsTopology {
 		if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
 			ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
+			ctl.memberNodes = memberNodes
 			newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
 			for _, memberNode := range memberNodes {
 				newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
