@@ -160,7 +160,7 @@ func (hm *Manager) checkIfIndexMetadataExists() (bool, error) {
 	if err != nil && err != stp {
 		return false, err // Purposefully not wrapped
 	}
-	return true, nil
+	return err == stp, nil
 }
 
 func (hm *Manager) downloadIndexMetadata() (*cbgt.IndexDefs, error) {
@@ -235,18 +235,16 @@ func Start(version string, cfg cbgt.Cfg, server string,
 		if err != nil {
 			return nil, err
 		}
-		if !exists {
-			return nil, fmt.Errorf("hibernate: index metadata path does not exist")
-		}
+		if exists {
+			indexDefsToHibernate, err = hm.downloadIndexMetadata()
+			if err != nil {
+				return nil, err
+			}
 
-		indexDefsToHibernate, err = hm.downloadIndexMetadata()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, index := range indexDefsToHibernate.IndexDefs {
-			hm.options.SourceType = index.SourceType
-			break
+			for _, index := range indexDefsToHibernate.IndexDefs {
+				hm.options.SourceType = index.SourceType
+				break
+			}
 		}
 	}
 
@@ -461,9 +459,6 @@ func (hm *Manager) runHibernateIndexes() {
 func (hm *Manager) pauseIndexes() error {
 	hm.ctlDeferPlanSetFunc()
 
-	// Starting to track bucket state.
-	go hm.startPauseBucketStateTracker()
-
 	pauseFunc := func() error {
 		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
 		if err != nil {
@@ -618,8 +613,6 @@ func (hm *Manager) resumeIndexes() error {
 		return hm.options.Manager.CheckIfIndexesCanBeAdded(hm.indexDefsToHibernate)
 	}
 
-	go hm.startResumeBucketStateTracker()
-
 	sourcePartitionsMetadata, err := hm.downloadSourcePartitionsMetadata()
 	if err != nil {
 		return err
@@ -662,7 +655,16 @@ func (hm *Manager) resumeIndexes() error {
 }
 
 func (hm *Manager) hibernateIndexes() error {
-	if len(hm.indexDefsToHibernate.IndexDefs) == 0 || hm.indexDefsToHibernate == nil {
+	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
+		// Starting to track bucket state.
+		go hm.startPauseBucketStateTracker()
+	} else {
+		if !hm.options.DryRun {
+			go hm.startResumeBucketStateTracker()
+		}
+	}
+
+	if hm.indexDefsToHibernate == nil || len(hm.indexDefsToHibernate.IndexDefs) == 0 {
 		return nil
 	}
 
@@ -688,6 +690,10 @@ func (hm *Manager) hibernateIndexes() error {
 
 // This function removes the remote paths from indexes.
 func (hm *Manager) removeHibernationPath(indexesToChange *cbgt.IndexDefs) error {
+	if indexesToChange == nil || len(indexesToChange.IndexDefs) == 0 {
+		return nil
+	}
+
 	err := cbgt.RetryOnCASMismatch(func() error {
 		indexDefs, cas, err := cbgt.CfgGetIndexDefs(hm.cfg)
 		if err != nil {
@@ -880,10 +886,14 @@ func (hm *Manager) runMonitor() {
 		errThreshold = uint8(*hm.options.StatsSampleErrorThreshold)
 	}
 
-	pindexActiveNodeMap, err := hm.getPIndexActiveNodeMap()
-	if err != nil {
-		log.Errorf("hibernate: error getting pindex-node map: %v", err)
-		return
+	var err error
+	pindexActiveNodeMap := make(map[string]string)
+	if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
+		pindexActiveNodeMap, err = hm.getPIndexActiveNodeMap()
+		if err != nil {
+			log.Errorf("hibernate: error getting pindex-node map: %v", err)
+			return
+		}
 	}
 
 	for {
@@ -939,22 +949,6 @@ func (hm *Manager) runMonitor() {
 				}
 
 				for pindex, stats := range m.Status {
-					// Refresh the map in case the pindex doesn't exist due to
-					// pindex name change.
-					if _, exists := pindexActiveNodeMap[pindex]; !exists {
-						pindexActiveNodeMap, _ = hm.getPIndexActiveNodeMap()
-					}
-					// Doesn't exist despite refreshing the map.
-					if _, exists := pindexActiveNodeMap[pindex]; !exists {
-						continue
-					}
-					// Only nodes with active partitions are monitored for hibernation/pause
-					// tasks since only they perform uploads.
-					if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) &&
-						s.UUID != pindexActiveNodeMap[pindex] {
-						continue
-					}
-
 					indexName, err := hm.options.Manager.GetIndexNameForPIndex(pindex)
 					if err != nil {
 						log.Errorf("hibernate: error getting idx: %v", err)
@@ -964,6 +958,23 @@ func (hm *Manager) runMonitor() {
 					// do not count it as part of the progress.
 					if _, exists := hm.indexDefsToHibernate.IndexDefs[indexName]; !exists {
 						continue
+					}
+
+					if hm.operationType == OperationType(cbgt.HIBERNATE_TASK) {
+						// Refresh the map in case the pindex doesn't exist due to
+						// pindex name change.
+						if _, exists := pindexActiveNodeMap[pindex]; !exists {
+							pindexActiveNodeMap, _ = hm.getPIndexActiveNodeMap()
+						}
+						// Doesn't exist despite refreshing the map.
+						if _, exists := pindexActiveNodeMap[pindex]; !exists {
+							continue
+						}
+						// Only nodes with active partitions are monitored for hibernation/pause
+						// tasks since only they perform uploads.
+						if s.UUID != pindexActiveNodeMap[pindex] {
+							continue
+						}
 					}
 
 					if stats.CopyStats.TotalCopyPartitionErrors > 0 {
