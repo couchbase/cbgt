@@ -1337,7 +1337,7 @@ CATCHUP_CUR_SEQ:
 				if time.Now().Sub(start) > timeout {
 					r.Logf("rebalance: waitAssignPIndexDone,"+
 						" skipping seq catch up for pindex %s,"+
-						" partition %s, node %s, upon timeout %d secs",
+						" partition %s, node %s, upon timeout %v secs",
 						pindex, sourcePartition, node, timeout)
 					return true
 				}
@@ -1399,7 +1399,7 @@ CATCHUP_CUR_SEQ:
 						// Skip the seq number catch up wait for the
 						// partition on the new node if there is no
 						// progress made before the specified timeout.
-						if timeout > 0 && err != nil &&
+						if !caughtUp && timeout > 0 &&
 							catchUpTimeout(uuidSeqCurr, uuidSeqPrev) {
 							continue CATCHUP_CUR_SEQ
 						}
