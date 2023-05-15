@@ -44,7 +44,7 @@ var (
 
 	// This hook is used to download the index definitions and source partitions metadata from the
 	// remote object store, to be used when unhibernating.
-	DownloadMetadataHook = func(client objcli.Client, bucket, remotePath string) ([]byte, error) {
+	DownloadMetadataHook = func(client objcli.Client, ctx context.Context, bucket, remotePath string) ([]byte, error) {
 		return nil, fmt.Errorf("not-implemented")
 	}
 
@@ -174,7 +174,9 @@ func (hm *Manager) downloadIndexMetadata() (*cbgt.IndexDefs, error) {
 		return nil, err
 	}
 
-	data, err := DownloadMetadataHook(client, bucket, key)
+	ctx, _ := hm.options.Manager.GetHibernationContext()
+
+	data, err := DownloadMetadataHook(client, ctx, bucket, key)
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +594,9 @@ func (hm *Manager) downloadSourcePartitionsMetadata() (*sourceMetadata, error) {
 		return nil, err
 	}
 
-	data, err := DownloadMetadataHook(client, bucket, key)
+	ctx, _ := hm.options.Manager.GetHibernationContext()
+
+	data, err := DownloadMetadataHook(client, ctx, bucket, key)
 	if err != nil {
 		return nil, err
 	}

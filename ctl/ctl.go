@@ -1450,8 +1450,6 @@ func (ctl *Ctl) startHibernation(dryRun bool, bucketName, remotePath string,
 
 			ctl.m.Unlock()
 
-			ctl.setTaskOrchestratorTo(false)
-
 			close(ctlDoneCh)
 		}()
 		version := cbgt.CfgGetVersion(ctl.cfg)

@@ -894,7 +894,7 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) (err error) {
 	}
 
 	err = m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.HIBERNATE_TASK, params.Bucket,
-		params.BlobStorageRegion, false)
+		params.BlobStorageRegion, params.RateLimit, false)
 	if err != nil {
 		return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
 			params.Bucket, err)
@@ -992,7 +992,7 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) (err error) {
 		}}
 
 	err = m.ctl.optionsCtl.Manager.HibernationPrepareUtil(cbgt.UNHIBERNATE_TASK, params.Bucket,
-		params.BlobStorageRegion, params.DryRun)
+		params.BlobStorageRegion, params.RateLimit, params.DryRun)
 	if err != nil {
 		return fmt.Errorf("ctl/manager: failed in the prepare phase for bucket %s: %v",
 			params.Bucket, err)

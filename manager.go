@@ -103,9 +103,10 @@ func (mgr *Manager) GetHibernationContext() (context.Context, context.CancelFunc
 	return mgr.hibernationCtx, mgr.hibernationCancel
 }
 
-func (mgr *Manager) setHibernationContext() {
+func (mgr *Manager) setHibernationContext(rateLimit uint64) {
 	mgr.hibernationCtx = context.Background()
 	mgr.hibernationCtx, mgr.hibernationCancel = context.WithCancel(mgr.hibernationCtx)
+	mgr.hibernationCtx = context.WithValue(mgr.hibernationCtx, "rateLimit", rateLimit)
 }
 
 func (mgr *Manager) GetObjStoreClient() objcli.Client {
@@ -1055,8 +1056,8 @@ var HibernationClientHook = func(string) (objcli.Client, error) {
 
 // This function does the groundwork/preparation for hibernation tasks.
 func (mgr *Manager) HibernationPrepareUtil(task, bucket, remoteStorageRegion string,
-	dryRun bool) error {
-	mgr.setHibernationContext()
+	rateLimit uint64, dryRun bool) error {
+	mgr.setHibernationContext(rateLimit)
 	objStoreClient, err := HibernationClientHook(remoteStorageRegion)
 	if err != nil {
 		return fmt.Errorf("manager: unable to get object store client: %v", err)
