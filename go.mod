@@ -7,7 +7,7 @@ require (
 	github.com/couchbase/cbauth v0.1.10
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-couchbase v0.1.1
-	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230503173503-70265ee2d48e
+	github.com/couchbase/gocbcore/v10 v10.2.4-0.20230511103754-8dd1a95f5f33
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4
