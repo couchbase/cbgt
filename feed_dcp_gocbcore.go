@@ -952,9 +952,11 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				var dcpRollbackErr gocbcore.DCPRollbackError
 				if errors.As(er, &dcpRollbackErr) {
 					go f.rollback(vbId, uint64(dcpRollbackErr.SeqNo))
-					// rollback will handle this feed closure and setting up of a new feed
-					er = nil
-				} // else, let the error be handled below (onError)
+				} else {
+					go f.rollback(vbId, 0)
+				}
+				// rollback will handle this feed closure and setting up of a new feed
+				er = nil
 			} else if errors.Is(er, gocbcore.ErrRequestCanceled) {
 				// request was canceled by FTS, catch error and re-initiate stream request
 				log.Warnf("feed_dcp_gocbcore: [%s] OpenStream for vb: %v, streamOptions: %+v"+
@@ -1180,9 +1182,8 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 // ----------------------------------------------------------------
 
 func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
-	var rollbackVbuuid uint64
-
 	// Determine rollbackVbuuid from the failover log.
+	var rollbackVbuuid uint64
 	vbMetaData, _, err := f.getMetaData(vbId)
 	if err == nil && len(vbMetaData.FailOverLog) > 0 {
 		for j := 0; j < len(vbMetaData.FailOverLog); j++ {
@@ -1192,6 +1193,10 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 			}
 		}
 	}
+
+	log.Printf("feed_dcp_gocbcore: [%s] Initiate rollback for vb: %v,"+
+		" rollbackSeqno: %v, rollbackVbuuid: %v",
+		f.Name(), vbId, rollbackSeqno, rollbackVbuuid)
 
 	err = Timer(func() error {
 		partition, dest, err :=
@@ -1207,9 +1212,9 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 	}, f.stats.TimerRollback)
 
 	if err != nil {
-		log.Warnf("feed_dcp_gocbcore: [%s] Rollback to seqno: %v, vbuuid: %v for"+
-			" vb: %v, failed with err: %v",
-			f.Name(), rollbackSeqno, rollbackVbuuid, vbId, err)
+		log.Warnf("feed_dcp_gocbcore: [%s] Rollback for vb: %v, to seqno: %v,"+
+			" vbuuid: %v, failed with err: %v",
+			f.Name(), vbId, rollbackSeqno, rollbackVbuuid, err)
 	} else {
 		atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
 	}
