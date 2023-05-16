@@ -153,7 +153,7 @@ func updateDCPAgentsDetails(bucketName, bucketUUID, feedName string,
 func DCPAgentsStatsMap() map[string]interface{} {
 	rv := make(map[string]interface{})
 	if dcpAgentMap != nil {
-		rv["total_gocbcore_agents"] = atomic.LoadUint64(&dcpAgentMap.numDCPAgents)
+		rv["total_gocbcore_dcp_agents"] = atomic.LoadUint64(&dcpAgentMap.numDCPAgents)
 		dcpAgentMap.m.RLock()
 		for keySpace, agents := range dcpAgentMap.entries {
 			keySpace := strings.Split(keySpace, ":")
