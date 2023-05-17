@@ -216,8 +216,8 @@ func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 			" sourceName: %s, err: %v", sourceName, err)
 	}
 
-	config := setupAgentConfig("stats", sourceName, auth, options)
-	dcpConnName := fmt.Sprintf("stats-%s-%x", sourceName, rand.Int31())
+	config := setupAgentConfig(fmt.Sprintf("%sstats", DCPFeedPrefix), sourceName, auth, options)
+	dcpConnName := fmt.Sprintf("%sstats-%s-%x", DCPFeedPrefix, sourceName, rand.Int31())
 	dcpConfig := setupDCPAgentConfig(dcpConnName, sourceName, auth,
 		gocbcore.DcpAgentPriorityLow, options)
 
