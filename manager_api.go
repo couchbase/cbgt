@@ -430,9 +430,9 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 		}
 
 		// refresh the UUID as we are updating the indexDef
-		indexUUID = NewUUID()
-		indexDef.UUID = indexUUID
-		indexDefs.UUID = indexUUID
+		newIndexUUID := NewUUID()
+		indexDef.UUID = newIndexUUID
+		indexDefs.UUID = newIndexUUID
 
 		if indexDef.PlanParams.NodePlanParams == nil {
 			indexDef.PlanParams.NodePlanParams =
