@@ -1291,9 +1291,9 @@ var GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte,
 		return nil, fmt.Errorf("GetPoolsDefaultForBucket: bucket not provided")
 	}
 
-	url := server + "/pools/default/buckets/" + bucket
+	url := server + "/pools/default/b/" + bucket
 	if scopes {
-		url += "/scopes"
+		url = server + "/pools/default/buckets/" + bucket + "/scopes"
 	}
 
 	u, err := CBAuthURL(url)
