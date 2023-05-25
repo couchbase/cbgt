@@ -412,7 +412,7 @@ func (h *IndexStatusHandler) ServeHTTP(
 var GetNumSourcePartitionsForBucket = getNumSourcePartitionsForBucket
 
 func getNumSourcePartitionsForBucket(server, bucketName string) (int, error) {
-	url := server + "/pools/default/buckets/" + url.QueryEscape(bucketName)
+	url := server + "/pools/default/b/" + url.QueryEscape(bucketName)
 
 	u, err := cbgt.CBAuthURL(url)
 	if err != nil {
