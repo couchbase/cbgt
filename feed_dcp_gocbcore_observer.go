@@ -203,8 +203,12 @@ func (f *GocbcoreDCPFeed) Expiration(e gocbcore.DcpExpiration) {
 
 func (f *GocbcoreDCPFeed) End(e gocbcore.DcpStreamEnd, err error) {
 	atomic.AddUint64(&f.dcpStats.TotDCPStreamEnds, 1)
-	updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent,
-		int16(f.streamOptions.StreamOptions.StreamID), false)
+
+	var sid int16
+	if f.streamOptions.StreamOptions != nil {
+		sid = int16(f.streamOptions.StreamOptions.StreamID)
+	}
+	updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent, sid, false)
 
 	lastReceivedSeqno := f.lastReceivedSeqno[e.VbID]
 	if err == nil {
