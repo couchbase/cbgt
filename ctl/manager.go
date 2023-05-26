@@ -1067,8 +1067,6 @@ func (m *CtlMgr) pauseTaskHandleLOCKED(
 		m.updateHibernationProgress(taskId, progressEntries, errs)
 	}
 
-	m.ctl.setTaskOrchestratorTo(true)
-
 	params.RemotePath = string(hibernate.OperationType(cbgt.HIBERNATE_TASK)) + ":" +
 		params.RemotePath
 	err := m.ctl.startHibernation(false, params.Bucket, params.RemotePath,
@@ -1175,10 +1173,6 @@ func (m *CtlMgr) resumeTaskHandleLOCKED(
 
 	onProgress := func(progressEntries map[string]float64, errs []error) {
 		m.updateHibernationProgress(taskId, progressEntries, errs)
-	}
-
-	if !params.DryRun {
-		m.ctl.setTaskOrchestratorTo(true)
 	}
 
 	params.RemotePath = string(hibernate.OperationType(cbgt.UNHIBERNATE_TASK)) + ":" +
