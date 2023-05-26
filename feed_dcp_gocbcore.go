@@ -823,8 +823,9 @@ func (f *GocbcoreDCPFeed) close() bool {
 func (f *GocbcoreDCPFeed) getCloseStreamOptions() gocbcore.CloseStreamOptions {
 	rv := gocbcore.CloseStreamOptions{}
 	if f.agent.HasCollectionsSupport() {
-		rv.StreamOptions = &gocbcore.CloseStreamStreamOptions{
-			StreamID: f.streamOptions.StreamOptions.StreamID,
+		rv.StreamOptions = &gocbcore.CloseStreamStreamOptions{}
+		if f.streamOptions.StreamOptions != nil {
+			rv.StreamOptions.StreamID = f.streamOptions.StreamOptions.StreamID
 		}
 	}
 
@@ -844,8 +845,11 @@ func (f *GocbcoreDCPFeed) closeAllStreamsLOCKED() {
 	for _, vbId := range f.vbucketIds {
 		if f.active[vbId] {
 			f.agent.CloseStream(vbId, closeStreamOptions, func(err error) {})
-			updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent,
-				int16(f.streamOptions.StreamOptions.StreamID), false)
+			var sid int16
+			if f.streamOptions.StreamOptions != nil {
+				sid = int16(f.streamOptions.StreamOptions.StreamID)
+			}
+			updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent, sid, false)
 			f.active[vbId] = false
 			f.remaining.Done()
 		}
@@ -975,8 +979,11 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 				f.complete(vbId)
 			} else {
 				// er == nil
-				updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent,
-					int16(f.streamOptions.StreamOptions.StreamID), true)
+				var sid int16
+				if f.streamOptions.StreamOptions != nil {
+					sid = int16(f.streamOptions.StreamOptions.StreamID)
+				}
+				updateDCPAgentsDetails(f.bucketName, f.bucketUUID, f.name, f.agent, sid, true)
 
 				atomic.AddUint64(&f.dcpStats.TotDCPStreamReqs, 1)
 				failoverLog := make([][]uint64, len(entries))
