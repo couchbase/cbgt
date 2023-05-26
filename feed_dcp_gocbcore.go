@@ -15,7 +15,6 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"net/http"
 	"reflect"
 	"sort"
 	"strconv"
@@ -417,8 +416,13 @@ func StartGocbcoreDCPFeed(mgr *Manager, feedName, indexName, indexUUID,
 		return feed.onError(false, err)
 	}
 
+	// register the bucket with the pools tracker.
+	// optionally create a routine if needed.
+	trackBucket(mgr, bucketName)
+
 	err = feed.Start()
 	if err != nil {
+		untrackBucket(mgr, bucketName)
 		return feed.onError(true,
 			fmt.Errorf("feed_dcp_gocbcore: StartGocbcoreDCPFeed,"+
 				" could not start feed: %s, server: %s, err: %v",
@@ -817,6 +821,8 @@ func (f *GocbcoreDCPFeed) close() bool {
 	close(f.closeCh)
 	f.wait()
 
+	untrackBucket(f.mgr, f.bucketName)
+
 	return true
 }
 
@@ -1023,7 +1029,7 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	if err != nil {
 		if errors.Is(err, gocbcore.ErrTimeout) || errors.Is(err, gocbcore.ErrForcedReconnect) {
 			// Verify source exists before closing and re-initiating stream request(s).
-			if gone, _, _ := f.VerifySourceNotExists(); gone {
+			if gone, _, _ := f.checkIfSourceExists(false, true); gone {
 				f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s], OpenStream,"+
 					" source is gone, vb: %v, err: %v", f.Name(), vbId, err))
 				return
@@ -1087,7 +1093,6 @@ func (f *GocbcoreDCPFeed) initiateShutdown(err error) {
 	}
 	f.shutdownInitiated = true
 	f.m.Unlock()
-
 	if f.mgr.meh != nil {
 		f.mgr.meh.OnFeedError(SOURCE_GOCBCORE, f, err)
 	}
@@ -1294,46 +1299,6 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 
 // ----------------------------------------------------------------
 
-// This implementation of GetPoolsDefaultForBucket works with CBAUTH only;
-// For all other authtypes, the application will have to override this function.
-var GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte, error) {
-	if len(bucket) == 0 {
-		return nil, fmt.Errorf("GetPoolsDefaultForBucket: bucket not provided")
-	}
-
-	url := server + "/pools/default/b/" + bucket
-	if scopes {
-		url = server + "/pools/default/buckets/" + bucket + "/scopes"
-	}
-
-	u, err := CBAuthURL(url)
-	if err != nil {
-		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
-	}
-
-	req, err := http.NewRequest("GET", u, nil)
-	if err != nil {
-		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
-	}
-
-	resp, err := HttpClient().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
-	}
-	defer resp.Body.Close()
-
-	respBuf, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("GetPoolsDefaultForBucket, err: %v", err)
-	}
-
-	if len(respBuf) == 0 {
-		return nil, fmt.Errorf("GetPoolsDefaultForBucket, empty response for url: %v", url)
-	}
-
-	return respBuf, nil
-}
-
 const resourceNotFoundStr = "Requested resource not found"
 
 // VerifySourceNotExists returns true if it's sure the bucket
@@ -1343,72 +1308,123 @@ const resourceNotFoundStr = "Requested resource not found"
 // needs to be dropped, the index UUID is passed on in this
 // scenario.
 func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
-	resp, err := GetPoolsDefaultForBucket(f.mgr.Server(), f.bucketName, false)
-	if err != nil {
-		return false, "", err
+	// todo: check if this path can use the bucket scope info cache by serialising
+	// the calls.
+	return f.checkIfSourceExists(false, false)
+}
+
+func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, string, error) {
+	var callback sourceExistsFunc
+	if !waitForUpdate {
+		callback = f.cacheUpdateCheck
 	}
 
-	rv := struct {
-		Name string `json:"name"`
-		UUID string `json:"uuid"`
-	}{}
-
-	err = json.Unmarshal(resp, &rv)
-	if err != nil || len(rv.UUID) == 0 {
-		// in case of a marshalling error, let's quickly check if it's
-		// the situation of ns_server reporting that the "Requested resource not found.";
-		// if so, we can safely assume that the bucket is deleted.
-		if strings.Contains(string(resp), resourceNotFoundStr) {
-			return true, "", nil
+	signal := make(chan struct{}, 1)
+	var sourceNotFound bool
+	var err error
+	var indexUUID string
+	go func() {
+		var er error
+		defer func() {
+			if er != nil {
+				err = er
+			}
+			signal <- struct{}{}
+		}()
+		deleted, er := isBucketAlive(f.mgr, f.bucketUUID, f.bucketName, force, callback)
+		if deleted || err != nil {
+			sourceNotFound = deleted
+			return
 		}
 
-		return false, "", fmt.Errorf("response: %v, err: %v", string(resp), err)
+		manifestInfo, er := obtainBucketManifest(f.mgr, f.bucketName, force, callback)
+		if err != nil {
+			sourceNotFound = false
+			return
+		}
+		if manifestInfo.UID == f.manifestUID {
+			// no manifest update => safe to assume that no scope/collection
+			// have been added/dropped
+			sourceNotFound = false
+			return
+		}
+
+		for i := range manifestInfo.Scopes {
+			if manifestInfo.Scopes[i].Name == f.scope {
+				sourceNotFound = false
+				// check if any of the source collections got deleted.
+			OUTER:
+				for j := range f.collectionIDs {
+					for _, coll := range manifestInfo.Scopes[i].Collections {
+						if f.collections[j] == coll.Name &&
+							f.collectionIDs[j] == coll.UID {
+							continue OUTER
+						}
+					}
+					sourceNotFound = true
+					indexUUID = f.indexUUID
+					return
+				}
+				break
+			}
+		}
+		indexUUID = f.indexUUID
+	}()
+
+	select {
+	case <-signal:
+	case <-time.After(5 * time.Second):
+		log.Warnf("feed_dcp_gocbcore: [%s] checkIfSourceExists timed out "+
+			"while streaming a response, doing an explicit network call", f.name)
+		return f.checkIfSourceExists(true, true)
 	}
 
-	if f.bucketUUID != rv.UUID {
-		// safe to assume that bucket is deleted as the bucketUUID
-		// didn't match, so the bucket being looked up must've been deleted
-		return true, "", nil
+	return sourceNotFound, indexUUID, err
+}
+
+// cacheUpdateCheck is a conditional check to see if the bucket scope info in the
+// bucketScopeTracker is has been updated, and if so, whether the feed's source
+// exists or not. This is used to exit out the thread waiting in a scenario when
+// the upstream codepath necessitates a network call via the
+// bucket streaming endpoints for the cache to be updated and whether the feed
+// has to be closed (refer the getBucketInfo() method in bucket_scope_tracker.go)
+// this function is used only when we are using the bucket streaming endpoint
+// for verify source not exists check i.e. when we have a valid instance of
+// bucketScopeTracker running.
+func (f *GocbcoreDCPFeed) cacheUpdateCheck(bucketScopeInfoMap map[string]*BucketScopeInfo) bool {
+	bucketScopeInfo, ok := bucketScopeInfoMap[f.bucketName]
+	if !ok {
+		return false
 	}
 
-	resp, err = GetPoolsDefaultForBucket(f.mgr.Server(), f.bucketName, true)
-	if err != nil {
-		return false, "", err
-	}
-
-	var manifest gocbcore.Manifest
-	if err = manifest.UnmarshalJSON(resp); err != nil {
-		return false, "", err
-	}
-
-	if manifest.UID == f.manifestUID {
-		// no manifest update => safe to assume that no scope/collection
-		// have been added/dropped
-		return false, "", nil
+	if len(bucketScopeInfo.UUID) == 0 ||
+		bucketScopeInfo.UUID != f.bucketUUID {
+		return false
 	}
 
 	// as any collection lifecycle events affects the scope UUID, skipping
 	// that for the comparisons here.
 	var scopeFound bool
-	for i := range manifest.Scopes {
-		if manifest.Scopes[i].Name == f.scope {
+	manifestInfo := bucketScopeInfo.scopeManifestInfo
+	for i := range manifestInfo.Scopes {
+		if manifestInfo.Scopes[i].Name == f.scope {
 			scopeFound = true
 			// check if any of the source collections got deleted.
 		OUTER:
 			for j := range f.collectionIDs {
-				for _, coll := range manifest.Scopes[i].Collections {
+				for _, coll := range manifestInfo.Scopes[i].Collections {
 					if f.collections[j] == coll.Name &&
 						f.collectionIDs[j] == coll.UID {
 						continue OUTER
 					}
 				}
-				return true, f.indexUUID, nil
+				return false
 			}
 			break
 		}
 	}
 
-	return !scopeFound, f.indexUUID, nil
+	return scopeFound
 }
 
 func (f *GocbcoreDCPFeed) GetBucketDetails() (string, string) {

@@ -97,6 +97,7 @@ type Manager struct {
 	hibernationCancel        context.CancelFunc
 	bucketInHibernationMutex sync.RWMutex
 	bucketInHibernation      string
+	bucketScopeInfoTracker   *BucketScopeInfoTracker
 }
 
 func (mgr *Manager) GetHibernationContext() (context.Context, context.CancelFunc) {
@@ -367,27 +368,28 @@ func NewManagerEx(version string, cfg Cfg, uuid string, tags []string,
 	}
 
 	return &Manager{
-		startTime:       time.Now(),
-		version:         version,
-		cfg:             cfg,
-		uuid:            uuid,
-		tags:            tags,
-		tagsMap:         StringsToMap(tags),
-		container:       container,
-		weight:          weight,
-		extras:          extras,
-		bindHttp:        bindHttp, // TODO: Need FQDN:port instead of ":8095".
-		dataDir:         dataDir,
-		server:          server,
-		stopCh:          make(chan struct{}),
-		options:         options,
-		feeds:           make(map[string]Feed),
-		pindexes:        make(map[string]*PIndex),
-		bootingPIndexes: make(map[string]bool),
-		plannerCh:       make(chan *workReq),
-		janitorCh:       make(chan *workReq),
-		meh:             meh,
-		events:          list.New(),
+		startTime:              time.Now(),
+		version:                version,
+		cfg:                    cfg,
+		uuid:                   uuid,
+		tags:                   tags,
+		tagsMap:                StringsToMap(tags),
+		container:              container,
+		weight:                 weight,
+		extras:                 extras,
+		bindHttp:               bindHttp, // TODO: Need FQDN:port instead of ":8095".
+		dataDir:                dataDir,
+		server:                 server,
+		stopCh:                 make(chan struct{}),
+		options:                options,
+		feeds:                  make(map[string]Feed),
+		pindexes:               make(map[string]*PIndex),
+		bootingPIndexes:        make(map[string]bool),
+		plannerCh:              make(chan *workReq),
+		janitorCh:              make(chan *workReq),
+		meh:                    meh,
+		events:                 list.New(),
+		bucketScopeInfoTracker: initBucketScopeInfoTracker(server),
 
 		lastNodeDefs: make(map[string]*NodeDefs),
 	}
