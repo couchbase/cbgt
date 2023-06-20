@@ -17,7 +17,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/couchbase/cbauth/metakv"
@@ -49,58 +48,14 @@ func (c *CfgMetaKv) compressLocked(val []byte) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	zw := metakvGzipPool.getWriter(&buf)
-	defer metakvGzipPool.releaseWriter(zw)
+	zw := gzip.NewWriter(&buf)
 	_, err := zw.Write(val)
 	if err != nil {
 		return nil, err
 	}
 
+	zw.Close()
 	return buf.Bytes(), nil
-}
-
-// metakvGzipPool manages a pool of gzip.Writer and gzip.Reader.
-var metakvGzipPool gzipPool
-
-type gzipPool struct {
-	readers sync.Pool
-	writers sync.Pool
-}
-
-func (pool *gzipPool) getReader(src io.Reader) (reader *gzip.Reader) {
-	if r := pool.readers.Get(); r != nil {
-		reader = r.(*gzip.Reader)
-		reader.Reset(src)
-	} else {
-		reader, _ = gzip.NewReader(src)
-	}
-	return reader
-}
-
-// releaseReader closes and returns a gzip.Reader to the pool
-// so that it can be reused via getReader.
-func (pool *gzipPool) releaseReader(reader *gzip.Reader) {
-	reader.Close()
-	pool.readers.Put(reader)
-}
-
-// getWriter returns gzip.Writer from the pool, or creates a new one
-// with gzip.BestCompression if the pool is empty.
-func (pool *gzipPool) getWriter(dst io.Writer) (writer *gzip.Writer) {
-	if w := pool.writers.Get(); w != nil {
-		writer = w.(*gzip.Writer)
-		writer.Reset(dst)
-	} else {
-		writer, _ = gzip.NewWriterLevel(dst, gzip.BestCompression)
-	}
-	return writer
-}
-
-// releaseWriter closes and returns a gzip.Writer to the pool
-// so that it can be reused via getWriter.
-func (pool *gzipPool) releaseWriter(writer *gzip.Writer) {
-	writer.Close()
-	pool.writers.Put(writer)
 }
 
 // uncompressLocked deflate the given value if needed.
@@ -111,8 +66,11 @@ func (c *CfgMetaKv) uncompressLocked(val []byte) ([]byte, error) {
 		return val, nil
 	}
 
-	zr := metakvGzipPool.getReader(bytes.NewBuffer(val))
-	defer metakvGzipPool.releaseReader(zr)
+	zr, err := gzip.NewReader(bytes.NewBuffer(val))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
 
 	result, err := io.ReadAll(zr)
 	if err != nil {
