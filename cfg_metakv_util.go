@@ -48,14 +48,45 @@ func (c *CfgMetaKv) compressLocked(val []byte) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
+	zw := c.getWriter(&buf)
 	_, err := zw.Write(val)
 	if err != nil {
 		return nil, err
 	}
 
+	zw.Flush()
 	zw.Close()
+
+	defer c.releaseWriter(zw)
+
 	return buf.Bytes(), nil
+}
+
+func (c *CfgMetaKv) getReader(src io.Reader) (reader *gzip.Reader) {
+	reader = c.readersPool.Get().(*gzip.Reader)
+	reader.Reset(src)
+	return reader
+}
+
+// releaseReader closes and returns a gzip.Reader to the pool
+// so that it can be reused via getReader.
+func (c *CfgMetaKv) releaseReader(reader *gzip.Reader) {
+	reader.Close()
+	c.readersPool.Put(reader)
+}
+
+// getWriter returns gzip.Writer from the pool, or creates a new one
+// with gzip.BestCompression if the pool is empty.
+func (c *CfgMetaKv) getWriter(dst io.Writer) (writer *gzip.Writer) {
+	writer = c.writersPool.Get().(*gzip.Writer)
+	writer.Reset(dst)
+	return writer
+}
+
+// releaseWriter closes and returns a gzip.Writer to the pool
+// so that it can be reused via getWriter.
+func (c *CfgMetaKv) releaseWriter(writer *gzip.Writer) {
+	c.writersPool.Put(writer)
 }
 
 // uncompressLocked deflate the given value if needed.
@@ -66,11 +97,8 @@ func (c *CfgMetaKv) uncompressLocked(val []byte) ([]byte, error) {
 		return val, nil
 	}
 
-	zr, err := gzip.NewReader(bytes.NewBuffer(val))
-	if err != nil {
-		return nil, err
-	}
-	defer zr.Close()
+	zr := c.getReader(bytes.NewBuffer(val))
+	defer c.releaseReader(zr)
 
 	result, err := io.ReadAll(zr)
 	if err != nil {

@@ -9,6 +9,7 @@
 package cbgt
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
@@ -115,6 +116,9 @@ type CfgMetaKv struct {
 	nsServerUrl  string
 
 	advMetaEncodingSupported int32
+
+	readersPool *sync.Pool
+	writersPool *sync.Pool
 }
 
 type CfgMetaKvEntry struct {
@@ -143,6 +147,9 @@ func NewCfgMetaKv(nodeUUID string, options map[string]string) (*CfgMetaKv, error
 		cfgMem:       NewCfgMem(),
 		cancelCh:     make(chan struct{}),
 		splitEntries: map[string]CfgMetaKvEntry{},
+
+		readersPool: &sync.Pool{New: func() interface{} { return new(gzip.Reader) }},
+		writersPool: &sync.Pool{New: func() interface{} { return new(gzip.Writer) }},
 	}
 
 	backoffStartSleepMS := 200
