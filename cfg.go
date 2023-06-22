@@ -8,6 +8,8 @@
 
 package cbgt
 
+import "time"
+
 // Cfg is the interface that configuration providers must implement.
 type Cfg interface {
 	// Get retrieves an entry from the Cfg.  A zero cas means don't do
@@ -45,6 +47,7 @@ func (e *CfgCASError) Error() string { return "CAS mismatch" }
 
 // See the Cfg.Subscribe() method.
 type CfgEvent struct {
+	Time  time.Time
 	Key   string
 	CAS   uint64
 	Error error

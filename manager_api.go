@@ -509,8 +509,8 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 		prevIndexImplVersion := indexDefs.ImplVersion
 		if VersionGTE(mgr.version, prevIndexImplVersion) == false {
 			return fmt.Errorf("manager_api: could not bump indexDefs,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			prevIndexImplVersion, mgr.version)
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				prevIndexImplVersion, mgr.version)
 		}
 		if indexDefsUUID != "" && indexDefs.UUID != indexDefsUUID {
 			return fmt.Errorf("manager_api: bump indexDefs wrong UUID")

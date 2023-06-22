@@ -14,7 +14,9 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/blance"
 	log "github.com/couchbase/clog"
@@ -111,7 +113,9 @@ func (mgr *Manager) PlannerKick(msg string) {
 	}
 
 	if mgr.peh != nil {
-		ev := &CfgEvent{}
+		// Adding time to the event here indicating that this is the latest
+		// timestamp to be accounted for in the planner.
+		ev := &CfgEvent{Time: time.Now()}
 		if strings.Contains(msg, "CreateIndex") ||
 			strings.Contains(msg, "DeleteIndex") {
 			ev.Key = INDEX_DEFS_KEY
@@ -206,14 +210,38 @@ func (mgr *Manager) PlannerOnce(reason string) (bool, error) {
 type PlannerFilter func(indexDef *IndexDef,
 	planPIndexesPrev, planPIndexes *PlanPIndexes) bool
 
+var lastComputedPlanTime time.Time
+var lcpM sync.RWMutex
+
+func GetLastComputedPlanTime() time.Time {
+	lcpM.RLock()
+	defer lcpM.RUnlock()
+	return lastComputedPlanTime
+}
+
+func SetLastComputedPlanTime(plan time.Time) {
+	lcpM.Lock()
+	defer lcpM.Unlock()
+	lastComputedPlanTime = plan
+}
+
 // Plan runs the planner once.
 func Plan(cfg Cfg, version, uuid, server string, options map[string]string,
 	plannerFilter PlannerFilter) (bool, error) {
+	// Setting the last computed plan time at the beginning of the plan process
+	// so that any index defs changes after this time will be considered for
+	// planning in the next iteration.
+	SetLastComputedPlanTime(time.Now())
+
 	indexDefs, nodeDefs, planPIndexesPrev, cas, err :=
 		PlannerGetPlan(cfg, version, uuid)
 	if err != nil {
 		return false, err
 	}
+
+	// Not setting the last computed plan time here since that leaves a window,
+	// however small, for the index defs to be changed in the time between
+	// fetching and setting the last computed plan time.
 
 	// use the effective version while calculating the new plan
 	eVersion := CfgGetVersion(cfg)

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	log "github.com/couchbase/clog"
 
@@ -87,7 +88,7 @@ func runCtlPrompt(ctlInst *ctl.Ctl) {
 						ctlInst.StopChangeTopology(rev)
 					}
 				} else if op == "indexDefsChanged" || op == "idc" {
-					err = ctlInst.IndexDefsChanged()
+					err = ctlInst.IndexDefsChanged(time.Time{})
 
 					log.Printf("err: %v", err)
 				} else if op == "quit" || op == "q" || op == "exit" {

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -88,7 +89,7 @@ func main() {
 	// ------------------------------------------------
 
 	err = cmd.PlannerSteps(steps, cfg, cbgt.VERSION,
-		flags.Server, options, nodesToRemove, flags.DryRun, nil)
+		flags.Server, options, nodesToRemove, flags.DryRun, nil, time.Time{})
 	if err != nil {
 		log.Fatalf("main: PlannerSteps, err: %v", err)
 	}

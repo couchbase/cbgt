@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	log "github.com/couchbase/clog"
 
@@ -31,7 +32,8 @@ var plannerStepsMutex sync.Mutex
 // meant to be used for cluster cleanup/purging situations.
 func PlannerSteps(steps map[string]bool,
 	cfg cbgt.Cfg, version, server string, options map[string]string,
-	nodesRemove []string, dryRun bool, plannerFilter cbgt.PlannerFilter) error {
+	nodesRemove []string, dryRun bool, plannerFilter cbgt.PlannerFilter,
+	kickTime time.Time) error {
 	// serialise the access to the PlannerSteps to reduce planning conflicts.
 	plannerStepsMutex.Lock()
 	defer plannerStepsMutex.Unlock()
@@ -78,6 +80,18 @@ func PlannerSteps(steps map[string]bool,
 
 	if steps != nil && steps["planner"] {
 		log.Printf("planner: step planner")
+
+		lastComputedPlanTime := cbgt.GetLastComputedPlanTime()
+
+		if !kickTime.IsZero() {
+			// if kick time before the last compute plan time, don't recompute
+			// plans
+			if kickTime.Before(lastComputedPlanTime) {
+				log.Debugf("planner: kick time was before last computed plan " +
+					"time, not planning")
+				return nil
+			}
+		}
 
 		if !dryRun {
 			_, err :=

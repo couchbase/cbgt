@@ -424,7 +424,7 @@ func (ctl *Ctl) run() {
 		return
 	}
 
-	kickIndexDefs := func(kind string) error {
+	kickIndexDefs := func(kind string, kickTime time.Time) error {
 		log.Printf("ctl: kickIndexDefs, kind: %s", kind)
 
 		indexDefs, _, err2 := cbgt.CfgGetIndexDefs(ctl.cfg)
@@ -436,7 +436,7 @@ func (ctl *Ctl) run() {
 
 		if kind == "init" || kind == "force" || kind == "force-indexDefs" ||
 			!reflect.DeepEqual(ctl.lastIndexDefs, indexDefs) {
-			err = ctl.IndexDefsChanged()
+			err = ctl.IndexDefsChanged(kickTime)
 			if err != nil {
 				log.Warnf("ctl: kickIndexDefs, kind: %s, IndexDefsChanged,"+
 					" err: %v", kind, err)
@@ -478,7 +478,7 @@ func (ctl *Ctl) run() {
 		return
 	}
 
-	err = kickIndexDefs("init")
+	err = kickIndexDefs("init", time.Time{})
 	if err != nil {
 		ctl.initCh <- err
 		close(ctl.initCh)
@@ -490,7 +490,7 @@ func (ctl *Ctl) run() {
 			// invoking kickIndexDefs() synchronously as
 			// the internal plan computation happens on
 			// an explicit routine.
-			kickIndexDefs("ctl: mgr event")
+			kickIndexDefs("ctl: mgr event", ev.Time)
 		}
 	}
 
@@ -514,7 +514,7 @@ func (ctl *Ctl) run() {
 				ev = ctl.debounceCfgEvents(ev)
 			}
 
-			kickIndexDefs("cfgEvent")
+			kickIndexDefs("cfgEvent", ev.Time)
 			if ev.Key == nodeDefns {
 				memberNodes, err = CurrentMemberNodes(ctl.cfg)
 				if err != nil {
@@ -584,7 +584,7 @@ func updateNodePlanParams(indexDef *cbgt.IndexDef,
 // When the index definitions have changed, our approach is to run the
 // planner, but only for brand new indexes that don't have any
 // pindexes yet.
-func (ctl *Ctl) IndexDefsChanged() (err error) {
+func (ctl *Ctl) IndexDefsChanged(kickTime time.Time) (err error) {
 	// check whether the rebalance operation is already in progress.
 	if ctl.rebalanceInProgress() {
 		log.Printf("ctl: IndexDefsChanged, skipping the planning as the" +
@@ -609,7 +609,7 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 
 		cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
-			ctl.plannerFilterNewIndexesOnly)
+			ctl.plannerFilterNewIndexesOnly, kickTime)
 
 		planPIndexes, _, err :=
 			cbgt.PlannerGetPlanPIndexes(ctl.cfg, version)
@@ -1186,7 +1186,7 @@ func (ctl *Ctl) startCtlLOCKED(
 
 		err = cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove,
-			ctl.optionsCtl.DryRun, ctl.plannerFilterNewIndexesOnly)
+			ctl.optionsCtl.DryRun, ctl.plannerFilterNewIndexesOnly, time.Time{})
 		if err != nil {
 			log.Warnf("ctl: PlannerSteps, err: %v", err)
 			ctlErrs = append(ctlErrs, err)
