@@ -190,6 +190,14 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 			return nil, err
 		}
 
+		// Creating a directory to store the PINDEX_META file.
+		log.Printf("pindex: creating directory at %s", path)
+		err = os.Mkdir(path, 0700)
+		if err != nil && !os.IsExist(err) {
+			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
+				path, err)
+		}
+
 		err = ioutil.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
 			buf, 0600)
 		if err != nil {

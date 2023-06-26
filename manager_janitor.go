@@ -115,12 +115,16 @@ func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 }
 
 func (mgr *Manager) partiallyRollbackPIndex(pindex *PIndex) error {
-	log.Printf("janitor: partial rollback, path: %s", pindex.Path)
-	pindex, err := OpenPIndex(mgr, pindex.Path)
+	// if there is an error opening pindex, the returned pindex is nil
+	// hence, storing the path before opening pindex
+	pindexPath := pindex.Path
+	log.Printf("janitor: partial rollback, path: %s", pindexPath)
+
+	pindex, err := OpenPIndex(mgr, pindexPath)
 	if err != nil {
 		log.Warnf("janitor: partiallyRollbackPIndex, OpenPIndex error,"+
 			" cleaning up the path, err: %v", err)
-		os.RemoveAll(pindex.Path)
+		os.RemoveAll(pindexPath)
 		return err
 	}
 
