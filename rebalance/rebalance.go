@@ -203,6 +203,26 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
 
+	if RebalanceHook != nil {
+		_, skip, err := RebalanceHook(RebalanceHookInfo{
+			Phase: RebalanceHookPhaseInit,
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("rebalance: rebalanceHook init phase,"+
+				" err: %v", err)
+		}
+
+		if skip {
+			log.Printf("rebalance: skipping rebalance due to rebalance hook")
+			return nil, nil
+		}
+	} else if len(nodesToAdd) == 0 && len(nodesToRemove) == 0 {
+		log.Printf("rebalance: no nodes to add or remove," +
+			" skipping rebalance")
+
+		return nil, nil
+	}
 	// --------------------------------------------------------
 
 	urlUUIDs := monitor.NodeDefsUrlUUIDs(begNodeDefs)
@@ -715,13 +735,24 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // more dynamically in order to achieve a custom layout of pindexes across
 // the cluster. This should be set only during the init()'ialization phase
 // of the process.
-var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo, err error)
+var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo,
+	skip bool, err error)
+
+// Rebalance hook phases.
+const (
+	// Invoked before instantiating the rebalancer, to allow the application to
+	// decide to skip the rebalance operation
+	RebalanceHookPhaseInit = 1 << iota
+	RebalanceHookPhaseAdjustNodeWeights
+)
 
 // RebalanceHookInfo is the in/out information provided to the
 // RebalanceHook. If the RebalanceHook wishes to modify any of these
 // fields to affect the planning outcome, it must copy the field value
 // (e.g, copy-on-write).
 type RebalanceHookInfo struct {
+	Phase int
+
 	IndexDefs *cbgt.IndexDefs
 	IndexDef  *cbgt.IndexDef
 
@@ -747,7 +778,9 @@ func (r *Rebalancer) adjustNodeWeights(
 	enablePartitionNodeStickiness bool) map[string]int {
 	nodeWeights := r.nodeWeights
 	if RebalanceHook != nil {
-		rho, err := RebalanceHook(RebalanceHookInfo{
+		rho, _, err := RebalanceHook(RebalanceHookInfo{
+			Phase: RebalanceHookPhaseAdjustNodeWeights,
+
 			IndexDefs:            r.begIndexDefs,
 			IndexDef:             indexDef,
 			BegNodeDefs:          r.begNodeDefs,

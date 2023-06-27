@@ -1084,6 +1084,14 @@ func (ctl *Ctl) startCtlLOCKED(
 					return
 				}
 
+				// If StartRebalance() returned a nil rebalance.Rebalancer,
+				// with no error, then it means rebalance should be skipped.
+				if ctl.r == nil && err == nil {
+					log.Printf("ctl: StartRebalance returned nil rebalancer, " +
+						"without error, skipping rebalance")
+					return
+				}
+
 				progressDoneCh := make(chan error)
 				go func() {
 					defer close(progressDoneCh)
