@@ -198,6 +198,13 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
 
+	if len(nodesToAdd) == 0 && len(nodesToRemove) == 0 {
+		log.Printf("rebalance: no nodes to add or remove,"+
+			" skipping rebalance")
+
+		return nil, nil
+	}
+
 	// --------------------------------------------------------
 
 	urlUUIDs := monitor.NodeDefsUrlUUIDs(begNodeDefs)
