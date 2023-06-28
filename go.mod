@@ -13,7 +13,7 @@ require (
 	github.com/couchbase/tools-common v0.0.0-20220810163003-4c3c185822d4
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/gorilla/mux v1.8.0
-	github.com/rcrowley/go-metrics v0.0.0-20141108142129-dee209f2455f
+	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	golang.org/x/net v0.8.0
 )
 
