@@ -930,13 +930,16 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 	}
 	f.m.Unlock()
 
+	dcpStreamAddFlags := memd.DcpStreamAddFlagActiveOnly |
+		memd.DcpStreamAddFlagStrictVBUUID
+
 	snapStart := seqStart
 	signal := make(chan error, 1)
 	log.Debugf("feed_dcp_gocbcore: [%s] Initiating DCP stream request for vb: %v,"+
 		" vbUUID: %v, seqStart: %v, seqEnd: %v, manifestUID: %v,"+
 		" streamOptions: {%+v, %+v}", f.Name(), vbId, vbuuid, seqStart, seqEnd,
 		f.manifestUID, f.streamOptions.FilterOptions, f.streamOptions.StreamOptions)
-	op, err := f.agent.OpenStream(vbId, memd.DcpStreamAddFlagStrictVBUUID,
+	op, err := f.agent.OpenStream(vbId, dcpStreamAddFlags,
 		vbuuid, seqStart, seqEnd, snapStart, snapStart, f, f.streamOptions,
 		func(entries []gocbcore.FailoverEntry, er error) {
 			if errors.Is(er, gocbcore.ErrShutdown) ||
