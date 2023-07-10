@@ -87,6 +87,8 @@ type RebalanceOptions struct {
 	Manager *cbgt.Manager
 
 	StatsSampleErrorThreshold *int
+
+	ExistingNodes []string
 }
 
 type RebalanceLogFunc func(format string, v ...interface{})
@@ -178,9 +180,11 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		return nil, err
 	}
 
-	nodesAll, nodesToAdd, nodesToRemove,
-		nodeWeights, nodeHierarchy :=
-		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
+	nodeUUIDs, nodeWeights, nodeHierarchy :=
+		cbgt.GetNodeWeightsAndHierarchy(begNodeDefs)
+
+	nodesAll, nodesToAdd, nodesToRemove := cbgt.CalcNodesToAddRemove(nodeUUIDs,
+		optionsReb.ExistingNodes)
 
 	nodesUnknown := cbgt.StringsRemoveStrings(nodesToRemoveParam, nodesAll)
 	if len(nodesUnknown) > 0 {
