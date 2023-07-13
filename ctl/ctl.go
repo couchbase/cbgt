@@ -954,6 +954,7 @@ func (ctl *Ctl) startCtlLOCKED(
 	}
 
 	ctl.movingPartitionsCount = movingPartitionsCount
+	existingNodeUUIDs := ctl.prevMemberNodeUUIDs
 
 	// The ctl goroutine.
 	//
@@ -1084,7 +1085,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,
 						Manager:                            ctl.optionsCtl.Manager,
-						ExistingNodes:                      ctl.prevMemberNodeUUIDs,
+						ExistingNodes:                      existingNodeUUIDs,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)

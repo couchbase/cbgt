@@ -185,11 +185,11 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	existingPlans := cbgt.NewPlanPIndexes(version)
 
-	nodesAll, _, nodesToRemove,
-		nodeWeights, nodeHierarchy :=
-		cbgt.CalcNodesLayout(begIndexDefs, begNodeDefs, begPlanPIndexes)
+	nodeUUIDs, nodeWeights, nodeHierarchy :=
+		cbgt.GetNodeWeightsAndHierarchy(begNodeDefs)
 
-	nodesToAdd := cbgt.StringsRemoveStrings(nodesAll, optionsReb.ExistingNodes)
+	nodesAll, nodesToAdd, nodesToRemove :=
+		cbgt.CalcNodesToAddRemove(nodeUUIDs, optionsReb.ExistingNodes)
 
 	nodesUnknown := cbgt.StringsRemoveStrings(nodesToRemoveParam, nodesAll)
 	if len(nodesUnknown) > 0 {

@@ -582,18 +582,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	return planPIndexes, err
 }
 
-// CalcNodesLayout computes information about the nodes based on the
-// index definitions, node definitions, and the current plan.
-func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
-	planPIndexesPrev *PlanPIndexes) (
-	nodeUUIDsAll []string,
-	nodeUUIDsToAdd []string,
-	nodeUUIDsToRemove []string,
-	nodeWeights map[string]int,
-	nodeHierarchy map[string]string,
+// Return nodes' UUIDs, weights and hierarchy.
+func GetNodeWeightsAndHierarchy(nodeDefs *NodeDefs) (nodeUUIDs []string,
+	nodeWeights map[string]int, nodeHierarchy map[string]string,
 ) {
 	// Retrieve nodeUUID's, weights, and hierarchy from the current nodeDefs.
-	nodeUUIDs := make([]string, 0)
+	nodeUUIDs = make([]string, 0)
 	nodeWeights = make(map[string]int)
 	nodeHierarchy = make(map[string]string)
 	for _, nodeDef := range nodeDefs.NodeDefs {
@@ -617,6 +611,22 @@ func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		}
 	}
 
+	return nodeUUIDs, nodeWeights, nodeHierarchy
+}
+
+// CalcNodesLayout computes information about the nodes based on the
+// index definitions, node definitions, and the current plan.
+func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
+	planPIndexesPrev *PlanPIndexes) (
+	nodeUUIDsAll []string,
+	nodeUUIDsToAdd []string,
+	nodeUUIDsToRemove []string,
+	nodeWeights map[string]int,
+	nodeHierarchy map[string]string,
+) {
+	// Retrieve nodeUUID's, weights, and hierarchy from the current nodeDefs.
+	nodeUUIDs, nodeWeights, nodeHierarchy := GetNodeWeightsAndHierarchy(nodeDefs)
+
 	// Retrieve nodeUUID's from the previous plan.
 	nodeUUIDsPrev := make([]string, 0)
 	if planPIndexesPrev != nil {
@@ -631,19 +641,31 @@ func CalcNodesLayout(indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	nodeUUIDsPrev = StringsIntersectStrings(nodeUUIDsPrev, nodeUUIDsPrev)
 
 	// Calculate node deltas (nodes added & nodes removed).
+	nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove =
+		CalcNodesToAddRemove(nodeUUIDs, nodeUUIDsPrev)
+
+	return nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
+		nodeWeights, nodeHierarchy
+}
+
+// Calculate node deltas (nodes added & nodes removed).
+func CalcNodesToAddRemove(currentNodeUUIDs, prevNodeUUIDs []string) (nodeUUIDsAll,
+	nodeUUIDsToAdd, nodeUUIDsToRemove []string) {
+
+	// Calculate node deltas (nodes added & nodes removed).
 	nodeUUIDsAll = make([]string, 0)
-	nodeUUIDsAll = append(nodeUUIDsAll, nodeUUIDs...)
-	nodeUUIDsAll = append(nodeUUIDsAll, nodeUUIDsPrev...)
+	nodeUUIDsAll = append(nodeUUIDsAll, currentNodeUUIDs...)
+	nodeUUIDsAll = append(nodeUUIDsAll, prevNodeUUIDs...)
 	nodeUUIDsAll = StringsIntersectStrings(nodeUUIDsAll, nodeUUIDsAll) // Dedupe.
-	nodeUUIDsToAdd = StringsRemoveStrings(nodeUUIDsAll, nodeUUIDsPrev)
-	nodeUUIDsToRemove = StringsRemoveStrings(nodeUUIDsAll, nodeUUIDs)
+	nodeUUIDsToAdd = StringsRemoveStrings(nodeUUIDsAll, prevNodeUUIDs)
+	nodeUUIDsToRemove = StringsRemoveStrings(nodeUUIDsAll, currentNodeUUIDs)
 
 	sort.Strings(nodeUUIDsAll)
 	sort.Strings(nodeUUIDsToAdd)
 	sort.Strings(nodeUUIDsToRemove)
 
-	return nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
-		nodeWeights, nodeHierarchy
+	return nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove
+
 }
 
 // Split an IndexDef into 1 or more PlanPIndex'es, assigning data
