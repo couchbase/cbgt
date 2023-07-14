@@ -22,6 +22,7 @@ import (
 
 	contextOld "golang.org/x/net/context"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
 )
@@ -378,9 +379,18 @@ func (h *QueryHandler) ServeHTTP(
 
 			d := time.Since(startTime)
 			if d > h.slowQueryLogTimeout {
+
+				creds, err := cbauth.AuthWebCreds(req)
+				var username string
+				if err == nil {
+					username = creds.Name()
+				}
+
 				log.Warnf("slow-query: index: %s,"+
-					" query: %s, resultset bytes: %v, duration: %v, err: %v",
-					indexName, log.Tag(log.UserData, string(requestBody)),
+					" username: %s, query: %s, resultset bytes: %v,"+
+					" duration: %v, err: %v",
+					indexName, log.Tag(log.UserData, username),
+					log.Tag(log.UserData, string(requestBody)),
 					resultSetBytes, d, err)
 				if focusStats != nil {
 					atomic.AddUint64(&focusStats.TotRequestSlow, 1)
