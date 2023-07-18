@@ -61,22 +61,27 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 	if !closed {
 		err := mgr.stopPIndex(pindex, false)
 		if err != nil {
-			return fmt.Errorf("janitor: rollbackPIndex for pindex %s, stopPIndex, err: %v", pindex.Name, err)
+			return fmt.Errorf("janitor: rollbackPIndex for pindex %s, stopPIndex, "+
+				"err: %v", pindex.Name, err)
 		}
 	}
 
 	_, err := os.Stat(pindex.Path)
-	if err == nil {
+	if os.IsNotExist(err) {
+		// Full rollback if the files are not there
+		return mgr.fullRollbackPIndex(pindex)
+	} else {
 		// Partial rollback if the files are present.
 		err = mgr.partiallyRollbackPIndex(pindex)
 		if err != nil {
-			log.Warnf("janitor: partiallyRollbackPIndex for pindex %s, trying full rollback, err: %v", pindex.Name, err)
+			log.Warnf("janitor: partiallyRollbackPIndex for pindex %s, cleaning "+
+				"and trying full rollback, err: %v", pindex.Name, err)
+			os.RemoveAll(pindex.Path)
+			// Stopping pindex to unregister it from mgr.
+			mgr.stopPIndex(pindex, false)
 			// Full rollback if the partial rollback failed.
 			return mgr.fullRollbackPIndex(pindex)
 		}
-	} else {
-		// Full rollback if the files are not there
-		return mgr.fullRollbackPIndex(pindex)
 	}
 
 	return nil
@@ -122,9 +127,6 @@ func (mgr *Manager) partiallyRollbackPIndex(pindex *PIndex) error {
 
 	pindex, err := OpenPIndex(mgr, pindexPath)
 	if err != nil {
-		log.Warnf("janitor: partiallyRollbackPIndex, OpenPIndex error,"+
-			" cleaning up the path, err: %v", err)
-		os.RemoveAll(pindexPath)
 		return err
 	}
 
