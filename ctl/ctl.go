@@ -601,6 +601,15 @@ func (ctl *Ctl) IndexDefsChanged() (err error) {
 		var nodesToRemove []string
 		version := cbgt.CfgGetVersion(ctl.cfg)
 
+		clusterOptions, _, err := cbgt.CfgGetClusterOptions(ctl.optionsCtl.Manager.Cfg())
+		if err != nil {
+			return
+		}
+		if clusterOptions != nil {
+			ctl.optionsCtl.Manager.SetOption("resumeSourcePartitions",
+				clusterOptions.HibernationSourcePartitions, false)
+		}
+
 		cmd.PlannerSteps(steps, ctl.cfg, version,
 			ctl.server, ctl.optionsMgr, nodesToRemove, ctl.optionsCtl.DryRun,
 			ctl.plannerFilterNewIndexesOnly)

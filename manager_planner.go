@@ -223,14 +223,6 @@ func Plan(cfg Cfg, version, uuid, server string, options map[string]string,
 		version = eVersion
 	}
 
-	clusterOptions, _, err := CfgGetClusterOptions(cfg)
-	if err != nil {
-		return false, err
-	}
-	if clusterOptions != nil {
-		options["resumeSourcePartitions"] = clusterOptions.HibernationSourcePartitions
-	}
-
 	planPIndexes, err := CalcPlan("", indexDefs, nodeDefs,
 		planPIndexesPrev, version, server, options, plannerFilter)
 	if err != nil {

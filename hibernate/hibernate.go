@@ -21,8 +21,8 @@ import (
 	"github.com/couchbase/cbgt/rebalance"
 	"github.com/couchbase/cbgt/rest/monitor"
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/tools-common/objstore/objcli"
-	"github.com/couchbase/tools-common/objstore/objval"
+	"github.com/couchbase/tools-common/cloud/objstore/objcli"
+	"github.com/couchbase/tools-common/cloud/objstore/objval"
 )
 
 type OperationType string

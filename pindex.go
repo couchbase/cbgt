@@ -18,7 +18,7 @@ import (
 	"sync"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/tools-common/fsutil"
+	fsutil "github.com/couchbase/tools-common/fs/util"
 )
 
 const PINDEX_META_FILENAME string = "PINDEX_META"
