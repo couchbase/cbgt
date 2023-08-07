@@ -120,7 +120,7 @@ func TestBlackholePIndexImpl(t *testing.T) {
 		t.Errorf("expected OpenBlackHolePIndexImpl to work")
 	}
 
-	if dest.Close() != nil ||
+	if dest.Close(false) != nil ||
 		dest.DataUpdate("", nil, 0, nil,
 			0, DEST_EXTRAS_TYPE_NIL, nil) != nil ||
 		dest.DataDelete("", nil, 0,

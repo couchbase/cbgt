@@ -75,7 +75,7 @@ type BlackHole struct {
 	path string
 }
 
-func (t *BlackHole) Close() error {
+func (t *BlackHole) Close(remove bool) error {
 	return nil
 }
 

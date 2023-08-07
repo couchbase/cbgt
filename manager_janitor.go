@@ -97,23 +97,30 @@ func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 		mgr.server,
 		mgr.Options(),
 	)
+	if err != nil {
+		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindex.Name, err)
+	}
 
 	sourcePartitionsArr, err := DataSourcePartitions(pindex.SourceType,
 		pindex.SourceName, pindex.SourceUUID, sourceParams,
-		mgr.server, mgr.options)
+		mgr.server, mgr.Options())
+	if err != nil {
+		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindex.Name, err)
+	}
 	sourcePartitions := strings.Join(sourcePartitionsArr, ",")
 
+	pindexName := pindex.Name
 	pindex, err = createNewPIndex(mgr, pindex.Name, pindex.UUID,
 		pindex.IndexType, pindex.IndexName, pindex.IndexUUID, pindex.IndexParams,
 		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, sourceParams,
 		sourcePartitions, pindex.Path, Rollback)
 	if err != nil {
-		return fmt.Errorf("janitor: error rolling back pindex: %v", err)
+		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindexName, err)
 	}
 
 	err = mgr.registerPIndex(pindex)
 	if err != nil {
-		return fmt.Errorf("janitor: error registering pindex: %v", err)
+		return fmt.Errorf("janitor: error registering pindex: %s, err: %v", pindex.Name, err)
 	}
 	return nil
 }

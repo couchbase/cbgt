@@ -18,7 +18,7 @@ import (
 
 type TestDest struct{}
 
-func (s *TestDest) Close() error {
+func (s *TestDest) Close(remove bool) error {
 	return nil
 }
 
@@ -122,7 +122,7 @@ func (dp *ErrorOnlyDestProvider) Stats(io.Writer) error {
 	return fmt.Errorf("always error for testing")
 }
 
-func (dp *ErrorOnlyDestProvider) Close() error {
+func (dp *ErrorOnlyDestProvider) Close(remove bool) error {
 	return fmt.Errorf("always error for testing")
 }
 
@@ -159,7 +159,7 @@ func TestErrorOnlyDestProviderWithDestForwarder(t *testing.T) {
 	if df.Stats(nil) == nil {
 		t.Errorf("expected err")
 	}
-	if df.Close() == nil {
+	if df.Close(false) == nil {
 		t.Errorf("expected err")
 	}
 }
@@ -186,7 +186,7 @@ func (dp *FanInDestProvider) Stats(io.Writer) error {
 	return fmt.Errorf("always error for testing")
 }
 
-func (dp *FanInDestProvider) Close() error {
+func (dp *FanInDestProvider) Close(remove bool) error {
 	return fmt.Errorf("always error for testing")
 }
 

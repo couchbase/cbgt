@@ -75,15 +75,11 @@ func (p *PIndex) Close(remove bool) error {
 	log.Printf("pindex: %s Close started with remove: %v", p.Name, remove)
 
 	if p.Dest != nil {
-		err := p.Dest.Close()
+		err := p.Dest.Close(remove)
 		if err != nil {
 			log.Errorf("pindex: %s Close failed, err: %v", p.Name, err)
 			return err
 		}
-	}
-
-	if remove {
-		os.RemoveAll(p.Path)
 	}
 
 	log.Printf("pindex: %s Close completed successfully", p.Name)
@@ -188,8 +184,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 	if mgr != nil && len(mgr.dataDir) > 0 {
 		buf, err := json.Marshal(pindex)
 		if err != nil {
-			dest.Close()
-			os.RemoveAll(path)
+			dest.Close(true)
 			return nil, err
 		}
 
@@ -197,6 +192,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		log.Printf("pindex: creating directory at %s", path)
 		err = fsutil.Mkdir(path, 0700, true, true)
 		if err != nil {
+			dest.Close(true)
 			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
 				path, err)
 		}
@@ -204,8 +200,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		err = os.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
 			buf, 0600)
 		if err != nil {
-			dest.Close()
-			os.RemoveAll(path)
+			dest.Close(true)
 			return nil, fmt.Errorf("pindex: could not save PINDEX_META_FILENAME,"+
 				" path: %s, err: %v", path, err)
 		}
