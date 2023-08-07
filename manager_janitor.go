@@ -99,12 +99,12 @@ func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams,
 		pindex.SourcePartitions, pindex.Path, Rollback)
 	if err != nil {
-		return fmt.Errorf("janitor: error rolling back pindex: %v", err)
+		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindex.Name, err)
 	}
 
 	err = mgr.registerPIndex(pindex)
 	if err != nil {
-		return fmt.Errorf("janitor: error registering pindex: %v", err)
+		return fmt.Errorf("janitor: error registering pindex: %s, err: %v", pindex.Name, err)
 	}
 	return nil
 }

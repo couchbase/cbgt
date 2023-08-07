@@ -35,11 +35,11 @@ type DestProvider interface {
 
 	Stats(io.Writer) error
 
-	Close() error
+	Close(bool) error
 }
 
-func (t *DestForwarder) Close() error {
-	return t.DestProvider.Close()
+func (t *DestForwarder) Close(remove bool) error {
+	return t.DestProvider.Close(remove)
 }
 
 func (t *DestForwarder) DataUpdate(partition string,

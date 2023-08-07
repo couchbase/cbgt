@@ -24,7 +24,7 @@ import (
 // instances.
 type Dest interface {
 	// Invoked by PIndex.Close().
-	Close() error
+	Close(remove bool) error
 
 	// Invoked when there's a new mutation from a data source for a
 	// partition.  Dest implementation is responsible for making its
