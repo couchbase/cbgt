@@ -123,13 +123,6 @@ func (p *PIndex) Clone() *PIndex {
 	return nil
 }
 
-func rollbackPIndex(mgr *Manager, pindex *PIndex) {
-	log.Printf("pindex: rollbackPIndex starts for pindex: %s", pindex.Name)
-
-	syncWorkReq(mgr.janitorCh, JANITOR_ROLLBACK_PINDEX,
-		"rollback:"+pindex.Name, pindex)
-}
-
 var ErrTerminatedDownload = fmt.Errorf("pindex: case of abruptly terminated download")
 
 func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, indexParams,
@@ -140,7 +133,8 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 	var pindex *PIndex
 
 	rollback := func() {
-		go rollbackPIndex(mgr, pindex)
+		log.Printf("pindex: rollbackPIndex starts for pindex: %s", pindex.Name)
+		go mgr.JanitorRollbackKick("rollback:"+pindex.Name, pindex)
 	}
 
 	params := IndexPrepParams{SourceName: sourceName, IndexName: indexName,
@@ -149,6 +143,16 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 	pBytes, err := json.Marshal(&params)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: RollbackPIndex, json marshal err: %v", err)
+	}
+
+	if mgr != nil && len(mgr.dataDir) > 0 {
+		// Creating a directory to store the PINDEX_META file.
+		log.Printf("pindex: creating directory at %s", path)
+		err = fsutil.Mkdir(path, 0700, true, true)
+		if err != nil {
+			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
+				path, err)
+		}
 	}
 
 	impl, dest, err := createPIndexFunc(indexType, string(pBytes), sourceParams,
@@ -186,15 +190,6 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		if err != nil {
 			dest.Close(true)
 			return nil, err
-		}
-
-		// Creating a directory to store the PINDEX_META file.
-		log.Printf("pindex: creating directory at %s", path)
-		err = fsutil.Mkdir(path, 0700, true, true)
-		if err != nil {
-			dest.Close(true)
-			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
-				path, err)
 		}
 
 		err = os.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
@@ -240,7 +235,8 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 	}
 
 	rollback := func() {
-		go rollbackPIndex(mgr, pindex)
+		log.Printf("pindex: rollbackPIndex starts for pindex: %s", pindex.Name)
+		go mgr.JanitorRollbackKick("rollback:"+pindex.Name, pindex)
 	}
 
 	defer func() {

@@ -52,20 +52,25 @@ func (mgr *Manager) JanitorKick(msg string) {
 	}
 }
 
-func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
-	pindex.m.Lock()
-	closed := pindex.closed
-	pindex.m.Unlock()
+// JanitorKick synchronously kicks the manager's janitor, if any, to initiate a
+// rollback.
+func (mgr *Manager) JanitorRollbackKick(msg string, pindex *PIndex) {
+	atomic.AddUint64(&mgr.stats.TotJanitorKick, 1)
 
-	if !closed {
-		err := mgr.stopPIndex(pindex, false)
-		if err != nil {
-			return fmt.Errorf("janitor: rollbackPIndex for pindex %s, stopPIndex, "+
-				"err: %v", pindex.Name, err)
-		}
+	if mgr.tagsMap == nil || (mgr.tagsMap["pindex"] && mgr.tagsMap["janitor"]) {
+		syncWorkReq(mgr.janitorCh, JANITOR_ROLLBACK_PINDEX, msg, pindex)
+	}
+}
+
+func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
+
+	err := mgr.stopPIndex(pindex, false)
+	if err != nil {
+		return fmt.Errorf("janitor: rollbackPIndex for pindex %s, stopPIndex, "+
+			"err: %v", pindex.Name, err)
 	}
 
-	_, err := os.Stat(pindex.Path)
+	_, err = os.Stat(pindex.Path)
 	if os.IsNotExist(err) {
 		// Full rollback if the files are not there
 		return mgr.fullRollbackPIndex(pindex)
@@ -88,32 +93,11 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 
 func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 	log.Printf("janitor: fully rolling back pindex %s", pindex.Name)
-
-	sourceParams, err := DataSourcePrepParams(
-		pindex.SourceType,
-		pindex.SourceName,
-		pindex.SourceUUID,
-		pindex.SourceParams,
-		mgr.server,
-		mgr.Options(),
-	)
-	if err != nil {
-		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindex.Name, err)
-	}
-
-	sourcePartitionsArr, err := DataSourcePartitions(pindex.SourceType,
-		pindex.SourceName, pindex.SourceUUID, sourceParams,
-		mgr.server, mgr.Options())
-	if err != nil {
-		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindex.Name, err)
-	}
-	sourcePartitions := strings.Join(sourcePartitionsArr, ",")
-
 	pindexName := pindex.Name
-	pindex, err = createNewPIndex(mgr, pindex.Name, pindex.UUID,
+	pindex, err := createNewPIndex(mgr, pindex.Name, pindex.UUID,
 		pindex.IndexType, pindex.IndexName, pindex.IndexUUID, pindex.IndexParams,
-		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, sourceParams,
-		sourcePartitions, pindex.Path, Rollback)
+		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams,
+		pindex.SourcePartitions, pindex.Path, Rollback)
 	if err != nil {
 		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindexName, err)
 	}
