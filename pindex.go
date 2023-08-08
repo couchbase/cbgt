@@ -152,6 +152,16 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		return nil, fmt.Errorf("pindex: RollbackPIndex, json marshal err: %v", err)
 	}
 
+	if mgr != nil && len(mgr.dataDir) > 0 {
+		// Creating a directory to store the PINDEX_META file.
+		log.Printf("pindex: creating directory at %s", path)
+		err = os.Mkdir(path, 0700)
+		if err != nil && !os.IsExist(err) {
+			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
+				path, err)
+		}
+	}
+
 	impl, dest, err := createPIndexFunc(indexType, string(pBytes), sourceParams,
 		path, mgr, rollback)
 	if err != nil {
@@ -188,14 +198,6 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 			dest.Close()
 			os.RemoveAll(path)
 			return nil, err
-		}
-
-		// Creating a directory to store the PINDEX_META file.
-		log.Printf("pindex: creating directory at %s", path)
-		err = os.Mkdir(path, 0700)
-		if err != nil && !os.IsExist(err) {
-			return nil, fmt.Errorf("pindex: could not create path %s: %#v",
-				path, err)
 		}
 
 		err = ioutil.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
