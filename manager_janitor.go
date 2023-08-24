@@ -93,13 +93,14 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 }
 
 func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
-	log.Printf("janitor: fully rolling back pindex %s", pindex.Name)
-	pindex, err := createNewPIndex(mgr, pindex.Name, pindex.UUID,
+	pindexName := pindex.Name
+	log.Printf("janitor: fully rolling back pindex %s", pindexName)
+	pindex, err := createNewPIndex(mgr, pindexName, pindex.UUID,
 		pindex.IndexType, pindex.IndexName, pindex.IndexUUID, pindex.IndexParams,
 		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams,
 		pindex.SourcePartitions, pindex.Path, Rollback)
 	if err != nil {
-		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindex.Name, err)
+		return fmt.Errorf("janitor: error rolling back pindex: %s, err: %v", pindexName, err)
 	}
 
 	err = mgr.registerPIndex(pindex)
