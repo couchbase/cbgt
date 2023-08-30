@@ -75,23 +75,25 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 			" payload is nil")
 	}
 
+	decoratedIndexName := payload.ScopedPrefix + payload.IndexName
+
 	if payload.PrevIndexUUID == "" {
 		// index name validations during the fresh index creation.
 		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(payload.IndexName))
 		if err != nil {
-			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
+			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex,"+
 				" indexName parsing problem,"+
 				" indexName: %s, err: %v", payload.IndexName, err)
 		}
 		if !matched {
-			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
+			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex,"+
 				" indexName is invalid, indexName: %q", payload.IndexName)
 		}
 	}
 
 	indexDef := &IndexDef{
 		Type:         payload.IndexType,
-		Name:         payload.ScopedPrefix + payload.IndexName,
+		Name:         decoratedIndexName,
 		Params:       payload.IndexParams,
 		SourceType:   payload.SourceType,
 		SourceName:   payload.SourceName,
@@ -102,7 +104,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 
 	pindexImplType, exists := PIndexImplTypes[payload.IndexType]
 	if !exists {
-		return "", "", fmt.Errorf("manager_api: CreateIndex,"+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex,"+
 			" unknown indexType: %s", payload.IndexType)
 	}
 
@@ -110,7 +112,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	if pindexImplType.Prepare != nil {
 		indexDef, err = pindexImplType.Prepare(mgr, indexDef)
 		if err != nil {
-			return "", "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
+			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
 				" err: %v", err)
 		}
 	}
@@ -122,7 +124,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		err = pindexImplType.Validate(
 			payload.IndexType, payload.IndexName, payload.IndexParams)
 		if err != nil {
-			return "", "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
+			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
 				" err: %v", err)
 		}
 	}
@@ -137,7 +139,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		mgr.Options(),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: failed to connect to"+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: failed to connect to"+
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			payload.SourceType, payload.SourceName, payload.SourceUUID, err)
@@ -151,7 +153,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		mgr.server, mgr.Options(),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
 			" for sourceName: %s, sourceType: %s, err: %v",
 			payload.SourceName, payload.SourceType, err)
 	}
@@ -164,7 +166,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		} else if indexDef.SourceUUID != payload.SourceUUID {
 			// The sourceUUID provided within the index definition does NOT match
 			// the sourceUUID for the sourceName in the system.
-			return "", "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
+			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
 				" mismatched for sourceName: %s", payload.SourceName)
 		}
 	}
@@ -173,17 +175,17 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if payload.PlanParams.NumReplicas < 0 ||
 		payload.PlanParams.NumReplicas > maxReplicasAllowed {
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, payload.PlanParams.NumReplicas)
 	}
 
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.cfg, NODE_DEFS_KNOWN)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, "+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex failed, "+
 			"CfgGetNodeDefs err: %v", err)
 	}
 	if len(nodeDefs.NodeDefs) < payload.PlanParams.NumReplicas+1 {
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
 			"search nodes to support the requested replica count of %d",
 			payload.PlanParams.NumReplicas+1, payload.PlanParams.NumReplicas)
 	}
@@ -255,7 +257,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 
 	err = RetryOnCASMismatch(indexCreateFunc, 100)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: could not save indexDefs,"+
+		return decoratedIndexName, "", fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
 	}
 
@@ -289,7 +291,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		"info",
 		"Index created",
 		map[string]interface{}{
-			"indexName":  indexDef.Name,
+			"indexName":  decoratedIndexName,
 			"sourceName": indexDef.SourceName,
 			"indexUUID":  indexDef.UUID,
 		})
