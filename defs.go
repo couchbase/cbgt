@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/blance"
+	log "github.com/couchbase/clog"
 )
 
 // JSON/struct definitions of what the Manager stores in the Cfg.
@@ -366,6 +367,7 @@ func NewNodeDefs(version string) *NodeDefs {
 func CfgGetVersion(cfg Cfg) string {
 	v, _, err := cfg.Get(VERSION_KEY, 0)
 	if err != nil || v == nil {
+		log.Warnf("defs: err: %v, Cfg version: %v, using VERSION", err, v)
 		return VERSION
 	}
 	return string(v)
