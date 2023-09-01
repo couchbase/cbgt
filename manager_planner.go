@@ -293,7 +293,7 @@ func PlannerGetIndexDefs(cfg Cfg, version string) (*IndexDefs, error) {
 		return nil, fmt.Errorf("planner: CfgGetIndexDefs err: %v", err)
 	}
 	if indexDefs == nil {
-		return NewIndexDefs(CfgGetVersion(cfg)), nil
+		indexDefs = NewIndexDefs(CfgGetVersion(cfg))
 	}
 	if VersionGTE(version, indexDefs.ImplVersion) == false {
 		return nil, fmt.Errorf("planner: indexDefs.ImplVersion: %s"+

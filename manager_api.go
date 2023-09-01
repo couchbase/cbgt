@@ -504,17 +504,18 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 		if indexDefs == nil {
 			return fmt.Errorf("manager_api: no indexDefs to bump")
 		}
-		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+		prevIndexImplVersion := indexDefs.ImplVersion
+		if VersionGTE(mgr.version, prevIndexImplVersion) == false {
 			return fmt.Errorf("manager_api: could not bump indexDefs,"+
-				" indexDefs.ImplVersion: %s > mgr.version: %s",
-				indexDefs.ImplVersion, mgr.version)
+			" indexDefs.ImplVersion: %s > mgr.version: %s",
+			prevIndexImplVersion, mgr.version)
 		}
 		if indexDefsUUID != "" && indexDefs.UUID != indexDefsUUID {
 			return fmt.Errorf("manager_api: bump indexDefs wrong UUID")
 		}
 
 		indexDefs.UUID = NewUUID()
-		indexDefs.ImplVersion = mgr.version
+		indexDefs.ImplVersion = prevIndexImplVersion
 
 		// NOTE: if our ImplVersion is still too old due to a race, we
 		// expect a more modern cbgt to do the work instead.
