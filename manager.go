@@ -842,7 +842,7 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (lastIndexDefs *IndexDefs,
 		mgr.m.RUnlock()
 	}
 
-	if lastIndexDefs == nil {
+	if lastIndexDefs == nil || refresh {
 		mgr.m.Lock()
 		lastIndexDefs, _, err = CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
