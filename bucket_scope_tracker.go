@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -117,7 +116,7 @@ func isBucketAlive(mgr *Manager, sourceUUID, bucketName string, force bool,
 			return false, err
 		}
 
-		err = json.Unmarshal(resp, &rv)
+		err = UnmarshalJSON(resp, &rv)
 		if err != nil || len(rv.UUID) == 0 {
 			// in case of a marshalling error, let's quickly check if it's
 			// the situation of ns_server reporting that the "Requested resource not found.";
@@ -177,7 +176,7 @@ func (b *BucketScopeInfoTracker) updateManifestInfoLOCKED(bucket, ManifestUID st
 		scopeManifestInfo = &gocbcore.Manifest{}
 	}
 
-	err = json.Unmarshal(respBytes, scopeManifestInfo)
+	err = UnmarshalJSON(respBytes, scopeManifestInfo)
 	if err != nil {
 		return err
 	}
@@ -221,7 +220,7 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 			return fmt.Errorf(string(data))
 		}
 		var streamResp bucketStreamingResponse
-		err := json.Unmarshal(data, &streamResp)
+		err := UnmarshalJSON(data, &streamResp)
 		if err != nil {
 			// indicates that its a marshal error, however the bucket still exists
 			// since at this point its definitely not a 404

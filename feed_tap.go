@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -98,7 +97,7 @@ func NewTAPFeed(name, indexName, url, poolName, bucketName, bucketUUID,
 	disable bool) (*TAPFeed, error) {
 	params := &TAPFeedParams{}
 	if paramsStr != "" {
-		err := json.Unmarshal([]byte(paramsStr), params)
+		err := UnmarshalJSON([]byte(paramsStr), params)
 		if err != nil {
 			return nil, err
 		}

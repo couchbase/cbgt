@@ -59,7 +59,7 @@ var JsonComma = []byte(",")
 // IndentJSON is a helper func that returns indented JSON for its
 // interface{} x parameter.
 func IndentJSON(x interface{}, prefix, indent string) string {
-	j, err := json.Marshal(x)
+	j, err := MarshalJSON(x)
 	if err != nil {
 		return fmt.Sprintf("misc: IndentJSON marshal, err: %v", err)
 	}

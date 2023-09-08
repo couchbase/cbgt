@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
@@ -116,7 +115,7 @@ type VBucketMetaData struct {
 
 func ParseOpaqueToUUID(b []byte) string {
 	vmd := &VBucketMetaData{}
-	err := json.Unmarshal(b, &vmd)
+	err := UnmarshalJSON(b, &vmd)
 	if err != nil {
 		return ""
 	}

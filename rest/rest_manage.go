@@ -230,7 +230,7 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 		w.Write(statsManagerPrefix)
 		var mgrStats cbgt.ManagerStats
 		mgr.StatsCopyTo(&mgrStats)
-		mgrStatsJSON, err := json.Marshal(&mgrStats)
+		mgrStatsJSON, err := cbgt.MarshalJSON(&mgrStats)
 		if err == nil && len(mgrStatsJSON) > 0 {
 			w.Write(mgrStatsJSON)
 		} else {
@@ -463,7 +463,7 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 	var defs struct {
 		Kind string `json:"kind"`
 	}
-	err = json.Unmarshal(requestBody, &defs)
+	err = cbgt.UnmarshalJSON(requestBody, &defs)
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
@@ -477,7 +477,7 @@ func (h *CfgNodeDefsHandler) ServeHTTP(
 		return
 	}
 	nodeDefs := cbgt.NodeDefs{}
-	err = json.Unmarshal(requestBody, &nodeDefs)
+	err = cbgt.UnmarshalJSON(requestBody, &nodeDefs)
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
@@ -524,7 +524,7 @@ func (h *CfgPlanPIndexesHandler) ServeHTTP(
 	}
 
 	planPIndexes := &cbgt.PlanPIndexes{}
-	err = json.Unmarshal(requestBody, planPIndexes)
+	err = cbgt.UnmarshalJSON(requestBody, planPIndexes)
 	if err != nil {
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_manage:"+
 			" could not unmarshal request json, err: %v", err), http.StatusBadRequest)
@@ -609,7 +609,7 @@ func (h *ManagerOptions) ServeHTTP(
 		newOptions[k] = v
 	}
 
-	err = json.Unmarshal(requestBody, &newOptions)
+	err = cbgt.UnmarshalJSON(requestBody, &newOptions)
 	if err != nil {
 		msg := fmt.Sprintf("rest_manage:"+
 			" error in unmarshalling err: %v", err)

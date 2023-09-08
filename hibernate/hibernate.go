@@ -10,7 +10,6 @@ package hibernate
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -182,7 +181,7 @@ func (hm *Manager) downloadIndexMetadata() (*cbgt.IndexDefs, error) {
 	}
 
 	indexDefs := new(cbgt.IndexDefs)
-	err = json.Unmarshal(data, indexDefs)
+	err = cbgt.UnmarshalJSON(data, indexDefs)
 	if err != nil {
 		return nil, err
 	}
@@ -519,7 +518,7 @@ func (hm *Manager) uploadMetadata() error {
 		}
 	}
 
-	data, err := json.Marshal(indexDefs)
+	data, err := cbgt.MarshalJSON(indexDefs)
 	if err != nil {
 		return fmt.Errorf("hibernate: error marshalling index defs: %v", err)
 	}
@@ -554,7 +553,7 @@ func (hm *Manager) uploadMetadata() error {
 		SourcePartitions: sourcePartitions,
 	}
 
-	data, err = json.Marshal(sourcePartitionsMetadata)
+	data, err = cbgt.MarshalJSON(sourcePartitionsMetadata)
 	if err != nil {
 		return nil
 	}
@@ -602,7 +601,7 @@ func (hm *Manager) downloadSourcePartitionsMetadata() (*sourceMetadata, error) {
 	}
 
 	sourcePartitionsMetadata := new(sourceMetadata)
-	err = json.Unmarshal(data, sourcePartitionsMetadata)
+	err = cbgt.UnmarshalJSON(data, sourcePartitionsMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -765,7 +764,7 @@ MONITOR_LOOP:
 						} `json:"pindexes"`
 					}{}
 
-					err := json.Unmarshal(sample.Data, &m)
+					err := cbgt.UnmarshalJSON(sample.Data, &m)
 					if err != nil {
 						// not counted as sample error since this can be a transient error.
 						continue
@@ -942,7 +941,7 @@ func (hm *Manager) runMonitor() {
 					} `json:"pindexes"`
 				}{}
 
-				err := json.Unmarshal(s.Data, &m)
+				err := cbgt.UnmarshalJSON(s.Data, &m)
 				if err != nil {
 					hm.Logf("hibernate: runMonitor json, s.Data: %s, err: %#v",
 						s.Data, err)

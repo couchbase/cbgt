@@ -29,9 +29,8 @@ import (
 
 	"github.com/gorilla/mux"
 
-	log "github.com/couchbase/clog"
-
 	"github.com/couchbase/cbgt"
+	log "github.com/couchbase/clog"
 )
 
 var StartTime = time.Now()
@@ -73,7 +72,7 @@ func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code 
 
 	if requestBody != nil {
 		requestBodyMap := map[string]interface{}{}
-		err := json.Unmarshal(requestBody, &requestBodyMap)
+		err := cbgt.UnmarshalJSON(requestBody, &requestBodyMap)
 		if err != nil {
 			details["request"] = fmt.Sprintf("%v", string(requestBody))
 		} else {
@@ -81,7 +80,7 @@ func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code 
 		}
 	}
 
-	detailsJSON, err := json.Marshal(details)
+	detailsJSON, err := cbgt.MarshalJSON(details)
 	if err != nil {
 		http.Error(w, msg, code)
 	} else {

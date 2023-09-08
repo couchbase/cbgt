@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/couchbase/cbgt"
@@ -34,7 +33,7 @@ func (h *LogGetHandler) ServeHTTP(
 	w.Write([]byte(`{"messages":[`))
 	if h.mr != nil {
 		for i, message := range h.mr.Messages() {
-			buf, err := json.Marshal(string(message))
+			buf, err := cbgt.MarshalJSON(string(message))
 			if err == nil {
 				if i > 0 {
 					w.Write(cbgt.JsonComma)

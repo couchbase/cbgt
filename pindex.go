@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -140,7 +139,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 	params := IndexPrepParams{SourceName: sourceName, IndexName: indexName,
 		Params: indexParams}
 
-	pBytes, err := json.Marshal(&params)
+	pBytes, err := MarshalJSON(&params)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: RollbackPIndex, json marshal err: %v", err)
 	}
@@ -186,7 +185,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 
 	// persist PINDEX_META only if manager's dataDir is set
 	if mgr != nil && len(mgr.dataDir) > 0 {
-		buf, err := json.Marshal(pindex)
+		buf, err := MarshalJSON(pindex)
 		if err != nil {
 			dest.Close(true)
 			return nil, err
@@ -227,7 +226,7 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 				" path: %s, err: %v", path, err)
 		}
 
-		err = json.Unmarshal(buf, pindex)
+		err = UnmarshalJSON(buf, pindex)
 		if err != nil {
 			return nil, fmt.Errorf("pindex: could not parse pindex json,"+
 				" path: %s, err: %v", path, err)

@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -98,7 +97,7 @@ func setLeanPlan(c *CfgMetaKv,
 	log.Printf("cfg_metakv_lean: setLeanPlan, val: %s", val)
 
 	planPIndexes := &PlanPIndexes{}
-	err = json.Unmarshal(val, planPIndexes)
+	err = UnmarshalJSON(val, planPIndexes)
 	if err != nil {
 		return 0, err
 	}
@@ -122,7 +121,7 @@ func setLeanPlan(c *CfgMetaKv,
 		ImplVersion: planPIndexes.ImplVersion,
 		Path:        newPath,
 	}
-	metaJSON, err := json.Marshal(meta)
+	metaJSON, err := MarshalJSON(meta)
 	if err != nil {
 		metakv.RecursiveDelete(newPath)
 		return 0, err
@@ -196,7 +195,7 @@ func setLeanPlanUtil(c *CfgMetaKv, key string,
 			Warnings:          leanPlanPIndexes.Warnings,
 		}
 		childPlan.IndexPlanPIndexes[name] = ipp
-		val, err := json.Marshal(childPlan)
+		val, err := MarshalJSON(childPlan)
 		if err != nil {
 			// clean up the incomplete plan directories
 			log.Errorf("cfg_metakv_lean: setLeanPlan json marshal, err: %v", err)
@@ -270,7 +269,7 @@ RETRY:
 		if err != nil {
 			return nil, 0, err
 		}
-		data, err = json.Marshal(rv)
+		data, err = MarshalJSON(rv)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -322,7 +321,7 @@ func getLeanPlanUtil(c *CfgMetaKv, planMeta *planMeta,
 			return nil, err
 		}
 
-		err = json.Unmarshal(value, &childPlan)
+		err = UnmarshalJSON(value, &childPlan)
 		if err != nil {
 			return nil, err
 		}
@@ -403,7 +402,7 @@ func delLeanPlan(
 	// set the plan meta Path to empty, to prevent the fallback
 	// to the sharedPlan once upgraded
 	meta.Path = ""
-	metaJSON, err := json.Marshal(meta)
+	metaJSON, err := MarshalJSON(meta)
 	if err != nil {
 		return err
 	}
@@ -488,7 +487,7 @@ func getCurMetaKvPlanMeta(c *CfgMetaKv) (*planMeta, error) {
 	}
 
 	meta := &planMeta{}
-	err = json.Unmarshal(v, meta)
+	err = UnmarshalJSON(v, meta)
 	if err != nil {
 		log.Errorf("cfg_metakv_lean: getCurMetaKvPlanMeta, json err: %v", err)
 		return nil, err

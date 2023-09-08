@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 
 	log "github.com/couchbase/clog"
@@ -155,7 +154,7 @@ NODEDEFS_CHECKS:
 			}
 
 			nodeDefs := &NodeDefs{}
-			err = json.Unmarshal(v, nodeDefs)
+			err = UnmarshalJSON(v, nodeDefs)
 			if err != nil {
 				return false, err
 			}

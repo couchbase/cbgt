@@ -9,7 +9,6 @@
 package rebalance
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,9 +18,8 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/couchbase/clog"
-
 	"github.com/couchbase/blance"
+	log "github.com/couchbase/clog"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/rest/monitor"
 )
@@ -286,7 +284,7 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	r.initPlansForRecoveryRebalance(nodesToAdd)
 
-	// begPlanPIndexesJSON, _ := json.Marshal(begPlanPIndexes)
+	// begPlanPIndexesJSON, _ := cbgt.MarshalJSON(begPlanPIndexes)
 	//
 	// r.Logf("rebalance: begPlanPIndexes: %s, cas: %v",
 	// 	begPlanPIndexesJSON, begPlanPIndexesCAS)
@@ -715,7 +713,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 			indexDef.Name, warning)
 	}
 
-	j, _ := json.Marshal(r.endPlanPIndexes)
+	j, _ := cbgt.MarshalJSON(r.endPlanPIndexes)
 	r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 		" endPlanPIndexes: %s", indexDef.Name, j)
 
@@ -1226,7 +1224,7 @@ func (r *Rebalancer) grabCurrentSample(stopCh, stopCh2 chan struct{},
 					} `json:"pindexes"`
 				}{}
 
-				err := json.Unmarshal(s.Data, &m)
+				err := cbgt.UnmarshalJSON(s.Data, &m)
 				if err != nil {
 					return err
 				}
@@ -1688,7 +1686,7 @@ func (r *Rebalancer) runMonitor(stopCh chan struct{}) {
 					} `json:"pindexes"`
 				}{}
 
-				err := json.Unmarshal(s.Data, &m)
+				err := cbgt.UnmarshalJSON(s.Data, &m)
 				if err != nil {
 					r.Logf("rebalance: runMonitor json, s.Data: %s, err: %#v",
 						s.Data, err)

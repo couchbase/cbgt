@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -97,7 +96,7 @@ func PrimaryFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	server string, options map[string]string) ([]string, error) {
 	dsp := &PrimarySourceParams{}
 	if sourceParams != "" {
-		err := json.Unmarshal([]byte(sourceParams), dsp)
+		err := UnmarshalJSON([]byte(sourceParams), dsp)
 		if err != nil {
 			return nil, fmt.Errorf("feed_primary: PrimaryFeedPartitions"+
 				" could not parse sourceParams: %s, err: %v", sourceParams, err)
