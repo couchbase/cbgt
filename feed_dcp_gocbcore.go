@@ -236,7 +236,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	config.SecurityConfig.TLSRootCAProvider = caProvider
 
 	params := NewDCPFeedParams()
-	err = json.Unmarshal([]byte(paramsStr), params)
+	err = UnmarshalJSON([]byte(paramsStr), params)
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, params err: %v", err)
 	}
@@ -536,13 +536,13 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 	params := NewDCPFeedParams()
 
 	if paramsStr != "" {
-		err := json.Unmarshal([]byte(paramsStr), params)
+		err := UnmarshalJSON([]byte(paramsStr), params)
 		if err != nil {
 			return nil, fmt.Errorf("newGocbcoreDCPFeed params, err: %v", err)
 		}
 
 		stopAfterSourceParams := StopAfterSourceParams{}
-		err = json.Unmarshal([]byte(paramsStr), &stopAfterSourceParams)
+		err = UnmarshalJSON([]byte(paramsStr), &stopAfterSourceParams)
 		if err != nil {
 			return nil, fmt.Errorf("newGocbcoreDCPFeed stopAfterSourceParams,"+
 				" err: %v", err)
@@ -1157,7 +1157,7 @@ func (f *GocbcoreDCPFeed) setMetaData(vbId uint16, m *metaData) error {
 			return err
 		}
 
-		value, err := json.Marshal(m)
+		value, err := MarshalJSON(m)
 		if err != nil {
 			return err
 		}
@@ -1182,7 +1182,7 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 		}
 
 		if len(buf) > 0 {
-			if er = json.Unmarshal(buf, vbMetaData); er != nil {
+			if er = UnmarshalJSON(buf, vbMetaData); er != nil {
 				return er
 			}
 			lastSeq = seq

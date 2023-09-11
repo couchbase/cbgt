@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -165,7 +164,7 @@ func (n *NodeDef) GetFromParsedExtras(key string) (interface{}, error) {
 	} else {
 		extrasParsed := make(map[string]interface{})
 
-		err = json.Unmarshal([]byte(n.Extras), &extrasParsed)
+		err = UnmarshalJSON([]byte(n.Extras), &extrasParsed)
 		if err == nil {
 			n.extrasParsed = extrasParsed
 			ret = n.extrasParsed[key]
@@ -310,7 +309,7 @@ func CfgGetIndexDefs(cfg Cfg) (*IndexDefs, uint64, error) {
 		return nil, cas, nil
 	}
 	rv := &IndexDefs{}
-	err = json.Unmarshal(v, rv)
+	err = UnmarshalJSON(v, rv)
 	if err != nil {
 		return nil, cas, err
 	}
@@ -319,7 +318,7 @@ func CfgGetIndexDefs(cfg Cfg) (*IndexDefs, uint64, error) {
 
 // Updates index definitions on a Cfg provider.
 func CfgSetIndexDefs(cfg Cfg, indexDefs *IndexDefs, cas uint64) (uint64, error) {
-	buf, err := json.Marshal(indexDefs)
+	buf, err := MarshalJSON(indexDefs)
 	if err != nil {
 		return 0, err
 	}
@@ -384,7 +383,7 @@ func CfgGetClusterOptions(cfg Cfg) (*ClusterOptions, uint64, error) {
 		return nil, cas, err
 	}
 	rv := &ClusterOptions{}
-	err = json.Unmarshal(v, rv)
+	err = UnmarshalJSON(v, rv)
 	if err != nil {
 		return nil, cas, err
 	}
@@ -395,7 +394,7 @@ func CfgGetClusterOptions(cfg Cfg) (*ClusterOptions, uint64, error) {
 // CfgSetClusterOptions sets the cluster level options
 func CfgSetClusterOptions(cfg Cfg, options *ClusterOptions,
 	cas uint64) (uint64, error) {
-	buf, err := json.Marshal(options)
+	buf, err := MarshalJSON(options)
 	if err != nil {
 		return 0, err
 	}
@@ -417,7 +416,7 @@ func CfgGetNodeDefs(cfg Cfg, kind string) (*NodeDefs, uint64, error) {
 		return nil, cas, nil
 	}
 	rv := &NodeDefs{}
-	err = json.Unmarshal(v, rv)
+	err = UnmarshalJSON(v, rv)
 	if err != nil {
 		return nil, cas, err
 	}
@@ -427,7 +426,7 @@ func CfgGetNodeDefs(cfg Cfg, kind string) (*NodeDefs, uint64, error) {
 // Updates node definitions on a Cfg provider.
 func CfgSetNodeDefs(cfg Cfg, kind string, nodeDefs *NodeDefs,
 	cas uint64) (uint64, error) {
-	buf, err := json.Marshal(nodeDefs)
+	buf, err := MarshalJSON(nodeDefs)
 	if err != nil {
 		return 0, err
 	}
@@ -532,8 +531,8 @@ func NewPlanPIndexes(version string) *PlanPIndexes {
 func CopyPlanPIndexes(planPIndexes *PlanPIndexes,
 	version string) *PlanPIndexes {
 	r := NewPlanPIndexes(version)
-	j, _ := json.Marshal(planPIndexes)
-	json.Unmarshal(j, r)
+	j, _ := MarshalJSON(planPIndexes)
+	UnmarshalJSON(j, r)
 	r.UUID = NewUUID()
 	r.ImplVersion = version
 	return r
@@ -549,7 +548,7 @@ func CfgGetPlanPIndexes(cfg Cfg) (*PlanPIndexes, uint64, error) {
 		return nil, cas, nil
 	}
 	rv := &PlanPIndexes{}
-	err = json.Unmarshal(v, rv)
+	err = UnmarshalJSON(v, rv)
 	if err != nil {
 		return nil, cas, err
 	}
@@ -559,7 +558,7 @@ func CfgGetPlanPIndexes(cfg Cfg) (*PlanPIndexes, uint64, error) {
 // Updates PlanPIndexes on a Cfg provider.
 func CfgSetPlanPIndexes(cfg Cfg, planPIndexes *PlanPIndexes, cas uint64) (
 	uint64, error) {
-	buf, err := json.Marshal(planPIndexes)
+	buf, err := MarshalJSON(planPIndexes)
 	if err != nil {
 		return 0, err
 	}
@@ -714,7 +713,7 @@ func IsFeatureSupportedByCluster(feature string, nodeDefs *NodeDefs) bool {
 		featureEnabled := false
 		if v1.Extras != "" {
 			extras := map[string]string{}
-			err := json.Unmarshal([]byte(v1.Extras), &extras)
+			err := UnmarshalJSON([]byte(v1.Extras), &extras)
 			if err != nil {
 				return false
 			}

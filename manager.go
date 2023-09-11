@@ -11,7 +11,6 @@ package cbgt
 import (
 	"container/list"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -1200,7 +1199,7 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 			continue
 		}
 
-		err = json.Unmarshal(val, rv)
+		err = UnmarshalJSON(val, rv)
 		if err != nil {
 			// if the file is read successfully and hash digest matched then json
 			// parsing should have passed too. So return here.
@@ -1268,7 +1267,7 @@ func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) 
 	if !mgr.IsStablePlan(planPIndexes) {
 		return
 	}
-	val, err := json.Marshal(planPIndexes)
+	val, err := MarshalJSON(planPIndexes)
 	if err != nil {
 		log.Errorf("manager: persistPlanPIndexes, json err: %v", err)
 		return

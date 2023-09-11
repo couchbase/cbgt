@@ -10,7 +10,6 @@ package cbgt
 
 import (
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -347,7 +346,7 @@ func (c *CfgMetaKv) listChildPaths(key string) ([]string, error) {
 
 func checkSumUUIDs(uuids []string) string {
 	sort.Strings(uuids)
-	d, _ := json.Marshal(uuids)
+	d, _ := MarshalJSON(uuids)
 	return fmt.Sprint(crc32.ChecksumIEEE(d))
 }
 
@@ -376,7 +375,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) get(
 			return nil, 0, err
 		}
 
-		err = json.Unmarshal(value, &childNodeDefs)
+		err = UnmarshalJSON(value, &childNodeDefs)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -404,7 +403,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) get(
 		rv.ImplVersion = version
 	}
 
-	data, err := json.Marshal(rv)
+	data, err := MarshalJSON(rv)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -438,7 +437,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 	var curNodeDefs NodeDefs
 
 	if curEntry.data != nil && len(curEntry.data) > 0 {
-		err := json.Unmarshal(curEntry.data, &curNodeDefs)
+		err := UnmarshalJSON(curEntry.data, &curNodeDefs)
 		if err != nil {
 			return 0, err
 		}
@@ -446,7 +445,7 @@ func (a *cfgMetaKvNodeDefsSplitHandler) set(
 
 	var nd NodeDefs
 
-	err := json.Unmarshal(val, &nd)
+	err := UnmarshalJSON(val, &nd)
 	if err != nil {
 		return 0, err
 	}
@@ -500,7 +499,7 @@ LOOP:
 		}
 		childNodeDefs.NodeDefs[k] = v
 
-		val, err = json.Marshal(childNodeDefs)
+		val, err = MarshalJSON(childNodeDefs)
 		if err != nil {
 			return 0, err
 		}
@@ -687,7 +686,7 @@ func getSharedPlan(c *CfgMetaKv,
 
 	var shared PlanPIndexesShared
 
-	err = json.Unmarshal(buf, &shared)
+	err = UnmarshalJSON(buf, &shared)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -728,7 +727,7 @@ func getSharedPlan(c *CfgMetaKv,
 		}
 	}
 
-	bufResult, err := json.Marshal(planPIndexes)
+	bufResult, err := MarshalJSON(planPIndexes)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -743,7 +742,7 @@ func setSharedPlan(c *CfgMetaKv,
 	key string, val []byte, cas uint64) (uint64, error) {
 	var shared PlanPIndexesShared
 
-	err := json.Unmarshal(val, &shared.PlanPIndexes)
+	err := UnmarshalJSON(val, &shared.PlanPIndexes)
 	if err != nil {
 		return 0, err
 	}
@@ -773,7 +772,7 @@ func setSharedPlan(c *CfgMetaKv,
 		}
 	}
 
-	valShared, err := json.Marshal(&shared)
+	valShared, err := MarshalJSON(&shared)
 	if err != nil {
 		return 0, err
 	}
@@ -825,7 +824,7 @@ func (c *CfgMetaKv) ClusterVersion() (uint64, error) {
 	}
 
 	rv := &NsServerResponse{}
-	err = json.Unmarshal(respBuf, rv)
+	err = UnmarshalJSON(respBuf, rv)
 	if err != nil {
 		return 0, fmt.Errorf("cfg_metakv: error parsing respBuf: %s,"+
 			" nsServerURL: %s, err: %v", respBuf, c.nsServerUrl, err)

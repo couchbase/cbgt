@@ -11,7 +11,6 @@ package cbgt
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -673,7 +672,7 @@ func gocbAuth(sourceParams string, authType string) (
 	params := &AuthParams{}
 
 	if sourceParams != "" {
-		err := json.Unmarshal([]byte(sourceParams), params)
+		err := UnmarshalJSON([]byte(sourceParams), params)
 		if err != nil {
 			return nil, fmt.Errorf("gocbcore_utils: gocbAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")

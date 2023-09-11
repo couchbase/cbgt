@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -435,7 +434,7 @@ func cbAuth(sourceName, sourceParams string, options map[string]string) (
 	params := &CBAuthParams{}
 
 	if sourceParams != "" {
-		err := json.Unmarshal([]byte(sourceParams), params)
+		err := UnmarshalJSON([]byte(sourceParams), params)
 		if err != nil {
 			return nil, fmt.Errorf("gocouchbase_utils: cbAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")

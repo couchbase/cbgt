@@ -10,7 +10,6 @@ package rest
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -767,7 +766,7 @@ func showConsistencyError(err error, methodName, itemName string,
 				" name: %s, err: %v", methodName, itemName, err),
 			StartEndSeqs: errCW.StartEndSeqs,
 		}
-		buf, err := json.Marshal(rv)
+		buf, err := cbgt.MarshalJSON(rv)
 		if err == nil && buf != nil {
 			ShowErrorBody(w, requestBody, string(buf), http.StatusPreconditionFailed)
 			return true

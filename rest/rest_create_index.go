@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -148,7 +147,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 	}
 
 	if len(requestBody) > 0 {
-		err2 := json.Unmarshal(requestBody, &indexDef)
+		err2 := cbgt.UnmarshalJSON(requestBody, &indexDef)
 		if err2 != nil {
 			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 				" could not unmarshal json, indexName: %s, err: %v",
@@ -207,7 +206,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	planParamsStr := req.FormValue("planParams")
 	if planParamsStr != "" {
-		err2 := json.Unmarshal([]byte(planParamsStr), &planParams)
+		err2 := cbgt.UnmarshalJSON([]byte(planParamsStr), &planParams)
 		if err2 != nil {
 			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, indexName: %s, err: %v",
@@ -463,7 +462,7 @@ func getNumSourcePartitionsForBucket(server, bucketName string) (int, error) {
 		NumVBuckets int `json:"numVBuckets"`
 	}{}
 
-	if err := json.Unmarshal(respBuf, &rv); err != nil {
+	if err := cbgt.UnmarshalJSON(respBuf, &rv); err != nil {
 		return 0, err
 	}
 

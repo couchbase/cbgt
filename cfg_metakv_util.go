@@ -11,7 +11,6 @@ package cbgt
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -112,7 +111,7 @@ func (c *CfgMetaKv) uncompressLocked(val []byte) ([]byte, error) {
 // defaultMaxSizePerKey.
 func setSplitPlan(c *CfgMetaKv, key string, planPIndexes *PlanPIndexes,
 	path string) (uint64, error) {
-	val, err := json.Marshal(planPIndexes)
+	val, err := MarshalJSON(planPIndexes)
 	if err != nil {
 		return 0, err
 	}
@@ -247,7 +246,7 @@ func (c *CfgMetaKv) isFeatureSupported(minVersion string,
 			return false
 		}
 		rv := &NodeDefs{}
-		err = json.Unmarshal(v, rv)
+		err = UnmarshalJSON(v, rv)
 		if err != nil {
 			log.Printf("cfg_metakv_util: isFeatureSupported, flag: %s,"+
 				" json unmarshal, err: %v", featureFlag, err)

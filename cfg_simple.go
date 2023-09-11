@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"os"
 	"sync"
 )
@@ -82,7 +81,7 @@ func (c *CfgSimple) unlockedLoad() error {
 	}
 
 	cfgMem := NewCfgMem()
-	err = json.Unmarshal(buf, cfgMem)
+	err = UnmarshalJSON(buf, cfgMem)
 	if err != nil {
 		return err
 	}
@@ -92,7 +91,7 @@ func (c *CfgSimple) unlockedLoad() error {
 }
 
 func (c *CfgSimple) unlockedSave() error {
-	buf, err := json.Marshal(c.cfgMem)
+	buf, err := MarshalJSON(c.cfgMem)
 	if err != nil {
 		return err
 	}

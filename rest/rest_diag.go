@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -141,7 +140,7 @@ func (h *DiagGetHandler) ServeHTTP(
 					m["Contents"] = string(b)
 				}
 			}
-			buf, err := json.Marshal(m)
+			buf, err := cbgt.MarshalJSON(m)
 			if err == nil {
 				if !first {
 					w.Write(cbgt.JsonComma)
@@ -164,7 +163,7 @@ func (h *DiagGetHandler) ServeHTTP(
 				// Ex: "staticx/dist/manifest.txt".
 				a, err := h.asset("staticx/dist/" + name)
 				if err == nil {
-					j, err := json.Marshal(strings.TrimSpace(string(a)))
+					j, err := cbgt.MarshalJSON(strings.TrimSpace(string(a)))
 					if err == nil {
 						w.Write([]byte(`,"`))
 						w.Write([]byte("/staticx/dist/" + name))

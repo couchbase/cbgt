@@ -10,7 +10,6 @@ package monitor
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,10 +17,9 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/couchbase/clog"
-
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/rest"
+	log "github.com/couchbase/clog"
 )
 
 // A MonitorCluster struct holds all the tracking information for the
@@ -121,9 +119,9 @@ func (m *MonitorCluster) run() {
 
 		if !cfgBytesSame {
 			rc := rest.RESTCfg{}
-			err := json.Unmarshal(cfgBytes, &rc)
+			err := cbgt.UnmarshalJSON(cfgBytes, &rc)
 			if err != nil {
-				log.Warnf("run: json.Unmarshal, cfgBytes: %q, err: %v",
+				log.Warnf("run: cbgt.UnmarshalJSON, cfgBytes: %q, err: %v",
 					cfgBytes, err)
 				continue
 			}

@@ -10,7 +10,6 @@ package cbgt
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -164,7 +163,7 @@ func processSystemEvent(retryAfter int, evBytes []byte) {
 
 func PublishCrashEvent(extra_attrs interface{}) {
 	if sysEventMgr != nil {
-		evBytes, err := json.Marshal(NewSystemEvent(
+		evBytes, err := MarshalJSON(NewSystemEvent(
 			CrashEventID,
 			"fatal",
 			"Crash",
@@ -189,7 +188,7 @@ func StartSystemEventListener(server, component, procName string, procID int) er
 		for {
 			sysEv, more := <-sysEventMgr.eventCh
 			if more {
-				evBytes, err := json.Marshal(sysEv)
+				evBytes, err := MarshalJSON(sysEv)
 				if err != nil {
 					log.Errorf("system_event: json marshal error %v", err)
 					continue

@@ -187,13 +187,13 @@ func NewDCPFeed(name, indexName, url, poolName,
 	params := NewDCPFeedParams()
 
 	if paramsStr != "" {
-		err = json.Unmarshal([]byte(paramsStr), params)
+		err = UnmarshalJSON([]byte(paramsStr), params)
 		if err != nil {
 			return nil, err
 		}
 
 		stopAfterSourceParams := StopAfterSourceParams{}
-		err = json.Unmarshal([]byte(paramsStr), &stopAfterSourceParams)
+		err = UnmarshalJSON([]byte(paramsStr), &stopAfterSourceParams)
 		if err != nil {
 			return nil, err
 		}

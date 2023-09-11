@@ -10,7 +10,6 @@ package rest
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -171,7 +170,7 @@ func proxyOrchestratorNode(req *http.Request,
 		Status string `json:"status"`
 		ErrStr string `json:"error"`
 	}{}
-	err = json.Unmarshal(respBuf, &rv)
+	err = cbgt.UnmarshalJSON(respBuf, &rv)
 	if err != nil {
 		return nil, operation, err
 	}
@@ -263,7 +262,7 @@ func CheckHibernationStatus(mgr *cbgt.Manager) (bool, string, string, error) {
 				HibernationPlanStatus bool   `json:"hibernationPlanPhase"`
 				HibernationTaskType   string `json:"hibernationTaskType"`
 			}{}
-			err = json.Unmarshal(respBuf, &rv)
+			err = cbgt.UnmarshalJSON(respBuf, &rv)
 			if err != nil {
 				return
 			}
@@ -349,7 +348,7 @@ func CheckRebalanceStatus(mgr *cbgt.Manager) (bool, error) {
 		}
 
 		var res []taskProgress
-		err = json.Unmarshal(respBuf, &res)
+		err = cbgt.UnmarshalJSON(respBuf, &res)
 		if err != nil {
 			return false, err
 		}
@@ -476,7 +475,7 @@ func findRebalanceOrchestratorNode(mgr *cbgt.Manager) (
 			rv := struct {
 				Orchestrator bool `json:"orchestrator"`
 			}{}
-			err = json.Unmarshal(respBuf, &rv)
+			err = cbgt.UnmarshalJSON(respBuf, &rv)
 			if err != nil {
 				return
 			}

@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -45,12 +44,12 @@ func (pem PartitionErrMap) MarshalJSON() ([]byte, error) {
 	for k, v := range pem {
 		tmp[k] = v.Error()
 	}
-	return json.Marshal(tmp)
+	return MarshalJSON(tmp)
 }
 
 func (pem PartitionErrMap) UnmarshalJSON(data []byte) error {
 	var tmp map[string]string
-	err := json.Unmarshal(data, &tmp)
+	err := UnmarshalJSON(data, &tmp)
 	if err != nil {
 		return err
 	}

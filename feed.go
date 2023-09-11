@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -165,7 +164,7 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 	}
 
 	var sourceParamsMap map[string]interface{}
-	err = json.Unmarshal([]byte(sourceParams), &sourceParamsMap)
+	err = UnmarshalJSON([]byte(sourceParams), &sourceParamsMap)
 	if err != nil {
 		return "", fmt.Errorf("feed: DataSourcePrepParams"+
 			" json parse sourceParams: %s, err: %v",
@@ -187,7 +186,7 @@ func DataSourcePrepParams(sourceType, sourceName, sourceUUID, sourceParams,
 
 				sourceParamsMap["markPartitionSeqs"] = partitionSeqs
 
-				j, err := json.Marshal(sourceParamsMap)
+				j, err := MarshalJSON(sourceParamsMap)
 				if err != nil {
 					return "", err
 				}

@@ -8,10 +8,6 @@
 
 package cbgt
 
-import (
-	"encoding/json"
-)
-
 // An IndexDefNested overrides IndexDef with Params and SourceParams
 // fields that are JSON nested objects instead of strings, for
 // easier-to-use API.
@@ -34,7 +30,7 @@ type IndexDefEnveloped struct {
 
 // -------------------------------------------------------------------
 
-// Implemention of json.Unmarshaler interface, which accepts either
+// Implemention of UnmarshalJSONer interface, which accepts either
 // the new, natural, nested JSON format or the older, enveloped
 // format.
 func (def *IndexDef) UnmarshalJSON(b []byte) error {
@@ -42,7 +38,7 @@ func (def *IndexDef) UnmarshalJSON(b []byte) error {
 	var ide IndexDefEnveloped
 	indexDefToBase(def, &ide.indexDefBase)
 
-	err := json.Unmarshal(b, &ide)
+	err := UnmarshalJSON(b, &ide)
 	if err == nil {
 		indexDefFromBase(&ide.indexDefBase, def)
 
@@ -56,23 +52,23 @@ func (def *IndexDef) UnmarshalJSON(b []byte) error {
 	var idn IndexDefNested
 	indexDefToBase(def, &idn.indexDefBase)
 
-	err = json.Unmarshal(b, &idn)
+	err = UnmarshalJSON(b, &idn)
 	if err != nil {
 		return err
 	}
 
 	indexDefFromBase(&idn.indexDefBase, def)
 
-	jp, _ := json.Marshal(idn.Params)
+	jp, _ := MarshalJSON(idn.Params)
 	def.Params = string(jp)
 
-	js, _ := json.Marshal(idn.SourceParams)
+	js, _ := MarshalJSON(idn.SourceParams)
 	def.SourceParams = string(js)
 
 	return nil
 }
 
-// Implemention of json.Marshaler interface.  The IndexDef JSON output
+// Implemention of MarshalJSONer interface.  The IndexDef JSON output
 // format is now the natural, nested JSON format (as opposed to the
 // previous, enveloped format).
 func (def *IndexDef) MarshalJSON() ([]byte, error) {
@@ -83,7 +79,7 @@ func (def *IndexDef) MarshalJSON() ([]byte, error) {
 	if len(def.Params) > 0 {
 		var mp map[string]interface{}
 
-		err := json.Unmarshal([]byte(def.Params), &mp)
+		err := UnmarshalJSON([]byte(def.Params), &mp)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +90,7 @@ func (def *IndexDef) MarshalJSON() ([]byte, error) {
 	if len(def.SourceParams) > 0 {
 		var ms map[string]interface{}
 
-		err := json.Unmarshal([]byte(def.SourceParams), &ms)
+		err := UnmarshalJSON([]byte(def.SourceParams), &ms)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +98,7 @@ func (def *IndexDef) MarshalJSON() ([]byte, error) {
 		idn.SourceParams = ms
 	}
 
-	return json.Marshal(idn)
+	return MarshalJSON(idn)
 }
 
 // indexDefToBase copies non-envelope'able fields from the indexDef to
@@ -155,13 +151,13 @@ type PlanPIndexEnveloped struct {
 
 // -------------------------------------------------------------------
 
-// Implemention of json.Unmarshaler interface, which accepts either
+// Implemention of UnmarshalJSONer interface, which accepts either
 // the new, nested JSON format or the older, enveloped format.
 func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 	// First, try the old, backwards compatible, enveloped format.
 	var ppie PlanPIndexEnveloped
 
-	err := json.Unmarshal(b, &ppie)
+	err := UnmarshalJSON(b, &ppie)
 	if err == nil {
 		planPIndexFromBase(&ppie.planPIndexBase, ppi)
 
@@ -177,23 +173,23 @@ func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 		SourceParams: map[string]interface{}{},
 	}
 
-	err = json.Unmarshal(b, &ppin)
+	err = UnmarshalJSON(b, &ppin)
 	if err != nil {
 		return err
 	}
 
 	planPIndexFromBase(&ppin.planPIndexBase, ppi)
 
-	ji, _ := json.Marshal(ppin.IndexParams)
+	ji, _ := MarshalJSON(ppin.IndexParams)
 	ppi.IndexParams = string(ji)
 
-	js, _ := json.Marshal(ppin.SourceParams)
+	js, _ := MarshalJSON(ppin.SourceParams)
 	ppi.SourceParams = string(js)
 
 	return nil
 }
 
-// Implemention of json.Marshaler interface.  The PlanPIndex JSON
+// Implemention of MarshalJSONer interface.  The PlanPIndex JSON
 // output format is now the natural, nested JSON format (as opposed to
 // the previous, enveloped format).
 func (ppi *PlanPIndex) MarshalJSON() ([]byte, error) {
@@ -204,7 +200,7 @@ func (ppi *PlanPIndex) MarshalJSON() ([]byte, error) {
 	if len(ppi.IndexParams) > 0 {
 		var mp map[string]interface{}
 
-		err := json.Unmarshal([]byte(ppi.IndexParams), &mp)
+		err := UnmarshalJSON([]byte(ppi.IndexParams), &mp)
 		if err != nil {
 			return nil, err
 		}
@@ -215,7 +211,7 @@ func (ppi *PlanPIndex) MarshalJSON() ([]byte, error) {
 	if len(ppi.SourceParams) > 0 {
 		var ms map[string]interface{}
 
-		err := json.Unmarshal([]byte(ppi.SourceParams), &ms)
+		err := UnmarshalJSON([]byte(ppi.SourceParams), &ms)
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +219,7 @@ func (ppi *PlanPIndex) MarshalJSON() ([]byte, error) {
 		ppin.SourceParams = ms
 	}
 
-	return json.Marshal(ppin)
+	return MarshalJSON(ppin)
 }
 
 // planPIndexToBase copies non-envelope'able fields from the planPIndex to

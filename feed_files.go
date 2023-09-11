@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -137,7 +136,7 @@ func NewFilesFeed(mgr *Manager, name, indexName, sourceName,
 
 	params := &FilesFeedParams{}
 	if paramsStr != "" {
-		err := json.Unmarshal([]byte(paramsStr), params)
+		err := UnmarshalJSON([]byte(paramsStr), params)
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +287,7 @@ func (t *FilesFeed) Start() error {
 						continue
 					}
 
-					jbuf, err := json.Marshal(FileDoc{
+					jbuf, err := MarshalJSON(FileDoc{
 						Name:     filepath.Base(path),
 						Path:     path,
 						Contents: string(buf),
@@ -387,7 +386,7 @@ func FilesFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	server string, options map[string]string) ([]string, error) {
 	ffp := &FilesFeedParams{}
 	if sourceParams != "" {
-		err := json.Unmarshal([]byte(sourceParams), ffp)
+		err := UnmarshalJSON([]byte(sourceParams), ffp)
 		if err != nil {
 			return nil, fmt.Errorf("feed_files:"+
 				" could not parse sourceParams: %s, err: %v",

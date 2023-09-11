@@ -10,7 +10,6 @@
 package ctl
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -22,15 +21,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/couchbase/clog"
-
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/cmd"
 	"github.com/couchbase/cbgt/hibernate"
 	"github.com/couchbase/cbgt/rebalance"
 	"github.com/couchbase/cbgt/rest"
-
-	"github.com/couchbase/cbauth/service"
+	log "github.com/couchbase/clog"
 )
 
 var ErrCtlWrongRev = service.ErrConflict
@@ -1289,7 +1286,7 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 				NsHostPort string `json:"nsHostPort"`
 			}
 
-			err := json.Unmarshal([]byte(nodeDef.Extras), &e)
+			err := cbgt.UnmarshalJSON([]byte(nodeDef.Extras), &e)
 			if err != nil {
 				nsHostPort = e.NsHostPort
 			}

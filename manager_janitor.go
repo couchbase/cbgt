@@ -10,7 +10,6 @@ package cbgt
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -334,7 +333,7 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	// persist PINDEX_META only if manager's dataDir is set
 	if len(mgr.dataDir) > 0 {
 		// update the new indexdef param changes
-		buf, err := json.Marshal(pi)
+		buf, err := MarshalJSON(pi)
 		if err != nil {
 			cleanDir(newPath)
 			return fmt.Errorf("janitor: restartPIndex"+
@@ -456,7 +455,7 @@ func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
 
 	// persist PINDEX_META only if manager's dataDir is set
 	if len(mgr.dataDir) > 0 {
-		buf, err := json.Marshal(pi)
+		buf, err := MarshalJSON(pi)
 		if err != nil {
 			return nil, fmt.Errorf("janitor: hibernateRestart"+
 				" Marshal pindex: %s, err: %v", pi.Name, err)
@@ -1262,7 +1261,7 @@ func CalcFeedsDelta(nodeUUID string, planPIndexes *PlanPIndexes,
 
 func ParseFeedAllotmentOption(sourceParams string) (string, error) {
 	var sourceParamsMap map[string]interface{}
-	err := json.Unmarshal([]byte(sourceParams), &sourceParamsMap)
+	err := UnmarshalJSON([]byte(sourceParams), &sourceParamsMap)
 	if err != nil {
 		return "", fmt.Errorf("manager_janitor: ParseFeedAllotmentOption"+
 			" json parse sourceParams: %s, err: %v",

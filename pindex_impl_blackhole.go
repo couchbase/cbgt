@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -145,7 +144,7 @@ func reloadableIndexDefParamChange(paramPrev, paramCur string) bool {
 	}
 
 	var prevMap map[string]interface{}
-	err := json.Unmarshal([]byte(paramPrev), &prevMap)
+	err := UnmarshalJSON([]byte(paramPrev), &prevMap)
 	if err != nil {
 		log.Printf("pindex_bleve: reloadableSourceParamsChange"+
 			" json parse paramPrev: %s, err: %v",
@@ -159,7 +158,7 @@ func reloadableIndexDefParamChange(paramPrev, paramCur string) bool {
 	}
 
 	var curMap map[string]interface{}
-	err = json.Unmarshal([]byte(paramCur), &curMap)
+	err = UnmarshalJSON([]byte(paramCur), &curMap)
 	if err != nil {
 		log.Printf("pindex_bleve: reloadableSourceParamsChange"+
 			" json parse paramCur: %s, err: %v",
@@ -184,7 +183,7 @@ func reloadableSourceParamsChange(paramPrev, paramCur string) bool {
 	}
 
 	var prevMap map[string]interface{}
-	err := json.Unmarshal([]byte(paramPrev), &prevMap)
+	err := UnmarshalJSON([]byte(paramPrev), &prevMap)
 	if err != nil {
 		log.Printf("pindex_impl_blackhole: reloadableSourceParamsChange"+
 			" json parse paramPrev: %s, err: %v",
@@ -193,7 +192,7 @@ func reloadableSourceParamsChange(paramPrev, paramCur string) bool {
 	}
 
 	var curMap map[string]interface{}
-	err = json.Unmarshal([]byte(paramCur), &curMap)
+	err = UnmarshalJSON([]byte(paramCur), &curMap)
 	if err != nil {
 		log.Printf("pindex_impl_blackhole: reloadableSourceParamsChange"+
 			" json parse paramCur: %s, err: %v",

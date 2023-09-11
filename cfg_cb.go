@@ -9,7 +9,6 @@
 package cbgt
 
 import (
-	"encoding/json"
 	"net/url"
 	"strings"
 	"sync"
@@ -188,7 +187,7 @@ func (c *CfgCB) Get(key string, cas uint64) (
 	if cfgBuf != nil {
 		c.logger("cfg_cb: Get, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
 
-		err = json.Unmarshal(cfgBuf, cfgMem)
+		err = UnmarshalJSON(cfgBuf, cfgMem)
 		if err != nil {
 			c.logger("cfg_cb: Get, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
 
@@ -239,7 +238,7 @@ func (c *CfgCB) Set(key string, val []byte, cas uint64) (
 	if cfgBuf != nil {
 		c.logger("cfg_cb: Set, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
 
-		err = json.Unmarshal(cfgBuf, cfgMem)
+		err = UnmarshalJSON(cfgBuf, cfgMem)
 		if err != nil {
 			c.logger("cfg_cb: Set, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
 
@@ -308,7 +307,7 @@ func (c *CfgCB) Del(key string, cas uint64) error {
 	if cfgBuf != nil {
 		c.logger("cfg_cb: Del, key: %s, cas: %d, len(cfgBuf): %d", key, cas, len(cfgBuf))
 
-		err = json.Unmarshal(cfgBuf, cfgMem)
+		err = UnmarshalJSON(cfgBuf, cfgMem)
 		if err != nil {
 			c.logger("cfg_cb: Del, key: %s, cas: %d, JSONError, err: %v", key, cas, err)
 
