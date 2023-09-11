@@ -198,9 +198,26 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 
 	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
 
-	if len(nodesToAdd) == 0 && len(nodesToRemove) == 0 {
-		log.Printf("rebalance: no nodes to add or remove,"+
-			" skipping rebalance")
+	// ## check if the rebalance is needed
+	// Due to previous failover operations, we may end up with a situation
+	// where the actual number of partitions(active & replica) are less
+	// than the required number of partitions (as per the index definitions).
+	// In such cases, we want to allow the rebalance to proceed, so that it can
+	// create the missing partitions.
+
+	missingActives, missingReplicas, maxReplicaCount :=
+		compareIndexDefsWithPlan(begIndexDefs, begPlanPIndexes)
+	isTopologyChange := len(nodesToAdd) > 0 || len(nodesToRemove) > 0
+	// If there is any missing replica partition and enough nodes available
+	// to support maxReplicaCount
+	canBuildMissingReplicas := missingReplicas != 0 &&
+		maxReplicaCount <= (len(nodesAll)-len(nodesToRemove))
+
+	if !isTopologyChange && missingActives == 0 && !canBuildMissingReplicas {
+		log.Printf("rebalance: skipping rebalance, isTopologyChange: %v, "+
+			"missingActives: %v, missingReplicas: %v, "+
+			"canBuildMissingReplicas: %v", isTopologyChange, missingActives,
+			missingReplicas, canBuildMissingReplicas)
 
 		return nil, nil
 	}
@@ -280,6 +297,60 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	go r.runRebalanceIndexes(stopCh)
 
 	return r, nil
+}
+
+// Calculate and Returns
+//
+// (*) Difference between the number of partitions required as per
+// the index definitions and the actual number of partitions, for both primary
+// and replica partitions, across all the indexes.
+//
+// (*) NumReplicas of the index with the maximum number of required replicas.
+func compareIndexDefsWithPlan(indexDefs *cbgt.IndexDefs,
+	planPIndexes *cbgt.PlanPIndexes) (int, int, int) {
+	if indexDefs == nil || len(indexDefs.IndexDefs) == 0 {
+		return 0, 0, 0
+	}
+
+	// count of active and replica partitions required as per the index
+	// definitions
+	totActivesReq, totReplicasReq := 0, 0
+	// count of active and replica partitions available as per the planPIndexes
+	totActivesAvail, totReplicasAvail := 0, 0
+	// replica count of the index with the maximum number of required replicas
+	maxReplicaCount := 0
+
+	for _, indexDef := range indexDefs.IndexDefs {
+		activesReq := indexDef.PlanParams.IndexPartitions
+		replicasReq := indexDef.PlanParams.IndexPartitions *
+			indexDef.PlanParams.NumReplicas
+
+		totActivesReq += activesReq
+		totReplicasReq += replicasReq
+		if maxReplicaCount < indexDef.PlanParams.NumReplicas {
+			maxReplicaCount = indexDef.PlanParams.NumReplicas
+		}
+	}
+
+	if planPIndexes == nil || len(planPIndexes.PlanPIndexes) == 0 {
+		// return the total partitions count as per the index definitions
+		// as there are no planPIndexes yet.
+
+		return totActivesReq, totReplicasReq, maxReplicaCount
+	}
+
+	for _, planPIndex := range planPIndexes.PlanPIndexes {
+		for _, nodes := range planPIndex.Nodes {
+			if nodes.Priority == 0 {
+				totActivesAvail++
+			} else {
+				totReplicasAvail++
+			}
+		}
+	}
+
+	return totActivesReq - totActivesAvail, totReplicasReq - totReplicasAvail,
+		maxReplicaCount
 }
 
 // Stop asynchronously requests a stop to the rebalance operation.
