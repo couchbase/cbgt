@@ -320,6 +320,7 @@ type ClusterOptions struct {
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
 	EnableReplicaCatchupOnRebalance    string `json:"enableReplicaCatchupOnRebalance"`
+	NumSeqCheckRetriesDuringRebalance  string `json:"numSeqCheckRetriesDuringRebalance"`
 	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
 	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
 	DisableGeoPointSpatialPlugin       string `json:"disableGeoPointSpatialPlugin"`

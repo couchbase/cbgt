@@ -104,6 +104,7 @@ type CtlOptions struct {
 	WaitForMemberNodes                 int // Seconds to wait for wanted member nodes to appear.
 	MaxConcurrentPartitionMovesPerNode int
 	Manager                            *cbgt.Manager
+	SkipSeqChecksCallback              func(pindex string, data []byte) bool
 }
 
 type CtlNode struct {
@@ -1140,6 +1141,8 @@ func (ctl *Ctl) startCtlLOCKED(
 				if !found {
 					enableReplicaCatchup = ctl.optionsCtl.EnableReplicaCatchup
 				}
+				seqChecksRetries, _ := cbgt.ParseOptionsInt(ctl.getManagerOptions(),
+					"numSeqCheckRetriesDuringRebalance")
 
 				// Start rebalance and monitor progress.
 				ctl.r, err = rebalance.StartRebalance(version,
@@ -1155,6 +1158,8 @@ func (ctl *Ctl) startCtlLOCKED(
 						HttpGet:                            httpGetWithAuth,
 						Manager:                            ctl.optionsCtl.Manager,
 						ExistingNodes:                      existingNodeUUIDs,
+						SkipSeqChecksCallback:              ctl.optionsCtl.SkipSeqChecksCallback,
+						Retries:                            seqChecksRetries,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)

@@ -76,6 +76,14 @@ type RebalanceOptions struct {
 
 	SkipSeqChecks bool // For unit-testing.
 
+	// Optional callback which determines whether to skip sequence checks for
+	// this pindex based on how the caller(for eg. cbft) uses this data.
+	SkipSeqChecksCallback func(pindex string, data []byte) bool
+
+	// Optional configurable for the number of retries when the above callback
+	// reccomends skipping the sequence checks.
+	Retries int
+
 	// SeqChecksTimeoutInSec is an optional configurable timeout value,
 	// which when set would timeout to unblock any of the partition catch
 	// related wait loops. It is applicable to both the sequence number
@@ -1428,6 +1436,8 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 	// TODO: Claim success and proceed if we see it's converging.
 CATCHUP_CUR_SEQ:
 	for _, sourcePartition := range sourcePartitions {
+		skipSeqCheckRetries := 0
+
 		samplingRate := ProgressSamplingRate
 		start := time.Now()
 		uuidSeqWant, exists := r.getUUIDSeq(r.wantSeqs, pindex,
@@ -1515,6 +1525,22 @@ CATCHUP_CUR_SEQ:
 								samplingRate = ProgressSamplingRate
 							} else {
 								samplingRate--
+							}
+						}
+
+						// Here, invoke the custom callback to determine if seq
+						// number checks should be skipped.
+						if !caughtUp && sample.UUID == node {
+							if r.optionsReb.SkipSeqChecksCallback != nil &&
+								r.optionsReb.SkipSeqChecksCallback(pindex, sample.Data) &&
+								r.optionsReb.Retries > 0 {
+								// Only if the number of retries is non-zero.
+								skipSeqCheckRetries++
+								if skipSeqCheckRetries > r.optionsReb.Retries {
+									log.Printf("rebalance: skipping seq checks "+
+										"for partition %s", pindex)
+									continue CATCHUP_CUR_SEQ
+								}
 							}
 						}
 
