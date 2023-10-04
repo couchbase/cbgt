@@ -187,10 +187,10 @@ func NewPIndexImplEx(indexType, indexParams, sourceParams, path string,
 	return t.NewEx(indexType, indexParams, sourceParams, path, mgr, restart)
 }
 
-func Rollback(indexType, indexParams, sourceParams, path string,
+func RollbackPIndexImpl(indexType, indexParams, sourceParams, path string,
 	mgr *Manager, restart func()) (PIndexImpl, Dest, error) {
 	t, exists := PIndexImplTypes[indexType]
-	if !exists {
+	if !exists || t == nil || t.Rollback == nil {
 		// Re-create the partition from scratch.
 		return NewPIndexImpl(indexType, indexParams, path, restart)
 	}
