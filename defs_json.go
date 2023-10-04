@@ -30,7 +30,7 @@ type IndexDefEnveloped struct {
 
 // -------------------------------------------------------------------
 
-// Implemention of UnmarshalJSONer interface, which accepts either
+// Implemention of json.Unmarshaler interface, which accepts either
 // the new, natural, nested JSON format or the older, enveloped
 // format.
 func (def *IndexDef) UnmarshalJSON(b []byte) error {
@@ -68,7 +68,7 @@ func (def *IndexDef) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Implemention of MarshalJSONer interface.  The IndexDef JSON output
+// Implemention of json.Marshaler interface.  The IndexDef JSON output
 // format is now the natural, nested JSON format (as opposed to the
 // previous, enveloped format).
 func (def *IndexDef) MarshalJSON() ([]byte, error) {
@@ -151,7 +151,7 @@ type PlanPIndexEnveloped struct {
 
 // -------------------------------------------------------------------
 
-// Implemention of UnmarshalJSONer interface, which accepts either
+// Implemention of json.Unmarshaler interface, which accepts either
 // the new, nested JSON format or the older, enveloped format.
 func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 	// First, try the old, backwards compatible, enveloped format.
@@ -189,7 +189,7 @@ func (ppi *PlanPIndex) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Implemention of MarshalJSONer interface.  The PlanPIndex JSON
+// Implemention of json.Marshaler interface.  The PlanPIndex JSON
 // output format is now the natural, nested JSON format (as opposed to
 // the previous, enveloped format).
 func (ppi *PlanPIndex) MarshalJSON() ([]byte, error) {
