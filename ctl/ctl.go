@@ -1005,10 +1005,34 @@ func (ctl *Ctl) startCtlLOCKED(
 	ctl.movingPartitionsCount = movingPartitionsCount
 	existingNodeUUIDs := ctl.prevMemberNodeUUIDs
 
+	failover := strings.HasPrefix(mode, "failover")
+
+	var ctlErrs []error
+	version := cbgt.CfgGetVersion(ctl.cfg)
+	indexDefsStart, err :=
+		cbgt.PlannerGetIndexDefs(ctl.cfg, version)
+	if err != nil {
+		log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err)
+		return err
+	}
+
+	// 1) Monitor cfg to wait for wanted nodes to appear.
+	ignoreWaitTimeOut := false
+	if indexDefsStart == nil ||
+		len(indexDefsStart.IndexDefs) == 0 {
+		ignoreWaitTimeOut = true
+	}
+	nodesToRemove, err := ctl.waitForWantedNodes(memberNodeUUIDs, ignoreWaitTimeOut, ctlStopCh)
+	if err != nil {
+		log.Warnf("ctl: waitForWantedNodes, err: %v", err)
+		return err
+	}
+	log.Printf("ctl: waitForWantedNodes, nodesToRemove: %+v", nodesToRemove)
+
 	// The ctl goroutine.
 	//
-	go func() {
-		var ctlErrs []error
+	go func(ctlErrs []error) {
+
 		var ctlWarnings map[string][]string
 		version := cbgt.CfgGetVersion(ctl.cfg)
 
@@ -1017,6 +1041,23 @@ func (ctl *Ctl) startCtlLOCKED(
 		// Cleanup ctl goroutine.
 		//
 		defer func() {
+			// 3) Run planner steps, like unregister and failover.
+			//
+			steps := map[string]bool{"unregister": true}
+			if failover {
+				steps["failover_"] = true
+			} else {
+				steps["planner"] = true
+			}
+
+			err := cmd.PlannerSteps(steps, ctl.cfg, version,
+				ctl.server, ctl.optionsMgr, nodesToRemove,
+				ctl.optionsCtl.DryRun, ctl.plannerFilterNewIndexesOnly)
+			if err != nil {
+				log.Warnf("ctl: PlannerSteps, err: %v", err)
+				ctlErrs = append(ctlErrs, err)
+			}
+
 			if ctlWarnings == nil {
 				// If there were no warnings, see if there were any
 				// warnings left in the plan.
@@ -1081,32 +1122,8 @@ func (ctl *Ctl) startCtlLOCKED(
 			close(ctlDoneCh)
 		}()
 
-		indexDefsStart, err :=
-			cbgt.PlannerGetIndexDefs(ctl.cfg, version)
-		if err != nil {
-			log.Warnf("ctl: PlannerGetIndexDefs, err: %v", err)
-
-			ctlErrs = append(ctlErrs, err)
-			return
-		}
-
-		// 1) Monitor cfg to wait for wanted nodes to appear.
-		ignoreWaitTimeOut := false
-		if indexDefsStart == nil ||
-			len(indexDefsStart.IndexDefs) == 0 {
-			ignoreWaitTimeOut = true
-		}
-		nodesToRemove, err := ctl.waitForWantedNodes(memberNodeUUIDs, ignoreWaitTimeOut, ctlStopCh)
-		if err != nil {
-			log.Warnf("ctl: waitForWantedNodes, err: %v", err)
-			ctlErrs = append(ctlErrs, err)
-			return
-		}
-		log.Printf("ctl: waitForWantedNodes, nodesToRemove: %+v", nodesToRemove)
-
 		// 2) Run rebalance in a loop (if not failover).
 		//
-		failover := strings.HasPrefix(mode, "failover")
 		if !failover {
 			// The loop handles the case if the index definitions had
 			// changed during the midst of the rebalance, in which
@@ -1244,24 +1261,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				}
 			}
 		}
-
-		// 3) Run planner steps, like unregister and failover.
-		//
-		steps := map[string]bool{"unregister": true}
-		if failover {
-			steps["failover_"] = true
-		} else {
-			steps["planner"] = true
-		}
-
-		err = cmd.PlannerSteps(steps, ctl.cfg, version,
-			ctl.server, ctl.optionsMgr, nodesToRemove,
-			ctl.optionsCtl.DryRun, ctl.plannerFilterNewIndexesOnly)
-		if err != nil {
-			log.Warnf("ctl: PlannerSteps, err: %v", err)
-			ctlErrs = append(ctlErrs, err)
-		}
-	}()
+	}(ctlErrs)
 
 	return nil
 }
