@@ -194,6 +194,7 @@ func StartCtl(cfg cbgt.Cfg, server string,
 // the PREPARE phase of the cluster operation.
 func (ctl *Ctl) resetPrevWarningsAndErrors() {
 	ctl.m.Lock()
+	ctl.incRevNumLOCKED()
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
 	ctl.m.Unlock()
@@ -665,6 +666,8 @@ func (ctl *Ctl) WaitGetTopology(haveRev service.Revision,
 		}
 
 	OUTER:
+		// If there hasn't been an update in the ctl.revNum since the last call to
+		// GetCurrentTopology(), block till one of the below conditions are met.
 		for haveRevNum == ctl.revNum {
 			if ctl.revNumWaitCh == nil {
 				ctl.revNumWaitCh = make(chan struct{})
@@ -681,6 +684,8 @@ func (ctl *Ctl) WaitGetTopology(haveRev service.Revision,
 				ctl.m.Lock()
 				break OUTER
 
+			// This case will be block till there is an update in the revNum
+			// since we close the revNumWaitCh in incRevNumLOCKED().
 			case <-revNumWaitCh:
 				// FALLTHRU
 			}
@@ -695,6 +700,8 @@ func (ctl *Ctl) WaitGetTopology(haveRev service.Revision,
 	return rv, nil
 }
 
+// Rev num is incremented when there is a change in the topology.
+// eEg. in the Prepare phase, on changing index defs, etc.
 func (ctl *Ctl) incRevNumLOCKED() uint64 {
 	ctl.revNum += 1
 	rv := ctl.revNum

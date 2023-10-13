@@ -712,7 +712,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		return partitionModel, begMap, endMap, err
 	}
 
-	var warnings []string
+	var warnings map[string][]string
 	if r.recoveryPlanPIndexes != nil {
 		// During the failover, cbgt ignores the new nextMap from blance
 		// and just promotes the replica partitions to primary.
@@ -735,9 +735,16 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 			nodeWeights, r.nodeHierarchy, false)
 	}
 
-	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
+	for partitionName, partitionWarning := range warnings {
+		if _, exists := r.endPlanPIndexes.PlanPIndexes[partitionName]; exists {
+			if r.endPlanPIndexes.PlanPIndexes[partitionName].IndexName == indexDef.Name {
+				r.endPlanPIndexes.Warnings[indexDef.Name] =
+					append(r.endPlanPIndexes.Warnings[indexDef.Name], partitionWarning...)
+			}
+		}
+	}
 
-	for _, warning := range warnings {
+	for _, warning := range r.endPlanPIndexes.Warnings[indexDef.Name] {
 		r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q",
 			indexDef.Name, warning)
@@ -1107,6 +1114,14 @@ func (r *Rebalancer) updatePlanPIndexesLOCKED(
 	planPIndex.UUID = cbgt.NewUUID()
 	planPIndexes.UUID = cbgt.NewUUID()
 	planPIndexes.ImplVersion = r.version
+	// Update with end plan warnings so that the persisted plans don't have out
+	// of date warnings
+	// Eg. If a node is removed from the cluster, the end plan will have a warning
+	// However, without this explicit set, the persisted plans will not, leading
+	// to a discrepancy.
+	planPIndexes.Warnings[indexDef.Name] = []string{}
+	planPIndexes.Warnings[indexDef.Name] = append(planPIndexes.Warnings[indexDef.Name],
+		r.endPlanPIndexes.Warnings[indexDef.Name]...)
 
 	return formerPrimaryNode, nil
 }

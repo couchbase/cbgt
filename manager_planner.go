@@ -523,7 +523,17 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			planPIndexesForIndex, planPIndexesPrev,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
 			adjustedWeights, nodeHierarchy, false)
-		planPIndexes.Warnings[indexDef.Name] = warnings
+
+		planPIndexes.Warnings[indexDef.Name] = []string{}
+
+		for partitionName, partitionWarning := range warnings {
+			if _, exists := planPIndexes.PlanPIndexes[partitionName]; exists {
+				if planPIndexes.PlanPIndexes[partitionName].IndexName == indexDef.Name {
+					planPIndexes.Warnings[indexDef.Name] =
+						append(planPIndexes.Warnings[indexDef.Name], partitionWarning...)
+				}
+			}
+		}
 
 		for _, warning := range warnings {
 			log.Printf("planner: indexDef.Name: %s,"+
@@ -704,7 +714,7 @@ func BlancePlanPIndexes(mode string,
 	nodeUUIDsToRemove []string,
 	nodeWeights map[string]int,
 	nodeHierarchy map[string]string,
-	skipExistingPartitions bool) []string {
+	skipExistingPartitions bool) map[string][]string {
 	model, modelConstraints := BlancePartitionModel(indexDef)
 
 	// First, reconstruct previous blance map from planPIndexesPrev.
