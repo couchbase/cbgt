@@ -13,7 +13,7 @@ require (
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/gorilla/mux v1.8.0
 	github.com/rcrowley/go-metrics v0.0.0-20141108142129-dee209f2455f
-	golang.org/x/net v0.8.0
+	golang.org/x/net v0.17.0
 )
 
 require (
@@ -21,6 +21,6 @@ require (
 	github.com/google/uuid v1.1.1 // indirect
 	github.com/pkg/errors v0.8.1-0.20180127015812-30136e27e2ac // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
-	golang.org/x/crypto v0.0.0-20171031160130-bd6f299fb381 // indirect
-	golang.org/x/text v0.8.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 )
