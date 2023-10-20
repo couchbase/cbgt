@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/couchbase/blance"
-	log "github.com/couchbase/clog"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/cbgt/rest/monitor"
+	log "github.com/couchbase/clog"
 )
 
 var ErrorNotPausable = errors.New("not pausable")
@@ -737,7 +737,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		return nil, nil, nil, err
 	}
 
-	var warnings []string
+	var warnings map[string][]string
 	if r.recoveryPlanPIndexes != nil {
 		// During the failover, cbgt ignores the new nextMap from blance
 		// and just promotes the replica partitions to primary.
@@ -778,9 +778,16 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		}
 	}
 
-	r.endPlanPIndexes.Warnings[indexDef.Name] = warnings
+	for partitionName, partitionWarning := range warnings {
+		if _, exists := r.endPlanPIndexes.PlanPIndexes[partitionName]; exists {
+			if r.endPlanPIndexes.PlanPIndexes[partitionName].IndexName == indexDef.Name {
+				r.endPlanPIndexes.Warnings[indexDef.Name] =
+					append(r.endPlanPIndexes.Warnings[indexDef.Name], partitionWarning...)
+			}
+		}
+	}
 
-	for _, warning := range warnings {
+	for _, warning := range r.endPlanPIndexes.Warnings[indexDef.Name] {
 		r.Logf("  calcBegEndMaps: indexDef.Name: %s,"+
 			" BlancePlanPIndexes warning: %q",
 			indexDef.Name, warning)

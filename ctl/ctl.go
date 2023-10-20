@@ -206,6 +206,7 @@ func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 	ctl.m.Lock()
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
+	ctl.incRevNumLOCKED()
 	if affectsTopology {
 		if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
 			ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
