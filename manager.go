@@ -433,59 +433,40 @@ func (mgr *Manager) Start(register string) error {
 
 // StartCfg will start Cfg subscriptions.
 func (mgr *Manager) StartCfg() error {
-	if mgr.cfg != nil { // TODO: Need err handling for Cfg subscriptions.
-
-		// refresh the cluster options.
-		mgr.RefreshOptions()
-
-		go func() {
-			ei := make(chan CfgEvent)
-			mgr.cfg.Subscribe(INDEX_DEFS_KEY, ei)
-			mgr.cfg.Subscribe(MANAGER_CLUSTER_OPTIONS_KEY, ei)
-			for {
-				select {
-				case <-mgr.stopCh:
-					return
-				case e := <-ei:
-					if e.Key == INDEX_DEFS_KEY {
-						mgr.GetIndexDefs(true)
-						continue
-					}
-
-					mgr.RefreshOptions()
-				}
-			}
-		}()
-
-		go func() {
-			ep := make(chan CfgEvent)
-			mgr.cfg.Subscribe(PLAN_PINDEXES_DIRECTORY_STAMP, ep)
-			for {
-				select {
-				case <-mgr.stopCh:
-					return
-				case <-ep:
-					mgr.GetPlanPIndexes(true)
-				}
-			}
-		}()
-
-		kinds := []string{NODE_DEFS_KNOWN, NODE_DEFS_WANTED}
-		for _, kind := range kinds {
-			go func(kind string) {
-				ep := make(chan CfgEvent)
-				mgr.cfg.Subscribe(CfgNodeDefsKey(kind), ep)
-				for {
-					select {
-					case <-mgr.stopCh:
-						return
-					case <-ep:
-						mgr.GetNodeDefs(kind, true)
-					}
-				}
-			}(kind)
-		}
+	if mgr.cfg == nil { // TODO: Need err handling for Cfg subscriptions.
+		return nil
 	}
+
+	// refresh the cluster options.
+	mgr.RefreshOptions()
+
+	// Routine to update index definitions and manager options cache.
+	mgr.cfgObserver(componentIndexDefsCache, func(e *CfgEvent) {
+		if e.Key == INDEX_DEFS_KEY {
+			mgr.GetIndexDefs(true)
+			return
+		}
+
+		mgr.RefreshOptions()
+	})
+
+	// Routine to update planPIndexes cache.
+	mgr.cfgObserver(componentPlanPIndexesCache, func(e *CfgEvent) {
+		mgr.GetPlanPIndexes(true)
+	})
+
+	// Routine to update nodeDefs cache.
+	mgr.cfgObserver(componentNodeDefsCache, func(e *CfgEvent) {
+		if e.Key == CfgNodeDefsKey(NODE_DEFS_KNOWN) {
+			mgr.GetNodeDefs(NODE_DEFS_KNOWN, true)
+			return
+		}
+
+		if e.Key == CfgNodeDefsKey(NODE_DEFS_WANTED) {
+			mgr.GetNodeDefs(NODE_DEFS_WANTED, true)
+			return
+		}
+	})
 
 	return nil
 }
@@ -1411,6 +1392,43 @@ func (mgr *Manager) Server() string {
 // Same as GetOptions(), for backwards compatibility.
 func (mgr *Manager) Options() map[string]string {
 	return mgr.GetOptions()
+}
+
+// Method for components (like planner/janitor) to spawn a routine to listen
+// for cfg changes and invoke the callback function with the cfg event.
+//
+// Subscription keys are determined based on the component name and the cfg
+// impl chosen by the application.
+func (mgr *Manager) cfgObserver(component int,
+	callback func(cfgEvent *CfgEvent)) {
+	if mgr.cfg == nil { // Might be nil with unit testing
+		return
+	}
+
+	go func() {
+		cfgName := mgr.GetOptions()["cfg"]
+		cfgKeys := getCfgSubscriptionKeys(cfgName, component)
+		if len(cfgKeys) == 0 {
+			log.Printf("cfg_observer ['%s']: %d, no cfg subscription keys",
+				cfgName, component)
+			return
+		}
+		log.Printf("cfg_observer ['%s']: %v, subscription keys: %v",
+			cfgName, component, cfgKeys)
+
+		ec := make(chan CfgEvent)
+		for _, key := range cfgKeys {
+			mgr.cfg.Subscribe(key, ec)
+		}
+		for {
+			select {
+			case <-mgr.stopCh:
+				return
+			case e := <-ec:
+				callback(&e)
+			}
+		}
+	}()
 }
 
 // GetOptions returns the (read-only) options of a Manager.  Callers

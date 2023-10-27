@@ -73,6 +73,8 @@ type cfgMetaKvAdvancedHandler interface {
 	del(c *CfgMetaKv, key string, cas uint64) error
 }
 
+const CFG_METAKV = "metakv"
+
 // PLAN_PINDEXES_KEY refers to the PlanPIndex handler which basically
 // invokes the different optimised representations of the PlanPIndex
 // (shared/lean) depending on the feature availability in the cluster.

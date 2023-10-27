@@ -130,22 +130,10 @@ func (mgr *Manager) partiallyRollbackPIndex(pindex *PIndex) error {
 
 // JanitorLoop is the main loop for the janitor.
 func (mgr *Manager) JanitorLoop() {
-	if mgr.cfg != nil { // Might be nil for testing.
-		go func() {
-			ec := make(chan CfgEvent)
-			mgr.cfg.Subscribe(PLAN_PINDEXES_DIRECTORY_STAMP, ec)
-			mgr.cfg.Subscribe(CfgNodeDefsKey(NODE_DEFS_WANTED), ec)
-			for {
-				select {
-				case <-mgr.stopCh:
-					return
-				case e := <-ec:
-					atomic.AddUint64(&mgr.stats.TotJanitorSubscriptionEvent, 1)
-					mgr.JanitorKick("cfg changed, key: " + e.Key)
-				}
-			}
-		}()
-	}
+	mgr.cfgObserver(componentJanitor, func(cfgEvent *CfgEvent) {
+		atomic.AddUint64(&mgr.stats.TotJanitorSubscriptionEvent, 1)
+		mgr.JanitorKick("cfg changed, key: " + cfgEvent.Key)
+	})
 
 	for {
 		select {
