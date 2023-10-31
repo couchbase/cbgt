@@ -1313,6 +1313,8 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 	return f.checkIfSourceExists(false, false)
 }
 
+var errColdCache = fmt.Errorf("the cache is yet to be initialized with valid data")
+
 func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, string, error) {
 	var callback sourceExistsFunc
 	if !waitForUpdate {
@@ -1332,14 +1334,19 @@ func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, 
 			signal <- struct{}{}
 		}()
 		deleted, er := isBucketAlive(f.mgr, f.bucketUUID, f.bucketName, force, callback)
-		if deleted || err != nil {
+		if deleted || er != nil {
 			sourceNotFound = deleted
 			return
 		}
 
 		manifestInfo, er := obtainBucketManifest(f.mgr, f.bucketName, force, callback)
-		if err != nil {
+		if er != nil {
 			sourceNotFound = false
+			return
+		}
+
+		if manifestInfo == nil {
+			er = errColdCache
 			return
 		}
 		if manifestInfo.UID == f.manifestUID {
@@ -1373,6 +1380,9 @@ func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, 
 
 	select {
 	case <-signal:
+		if err == errColdCache {
+			return f.checkIfSourceExists(true, true)
+		}
 	case <-time.After(5 * time.Second):
 		log.Warnf("feed_dcp_gocbcore: [%s] checkIfSourceExists timed out "+
 			"while streaming a response, doing an explicit network call", f.name)

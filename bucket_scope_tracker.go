@@ -250,7 +250,7 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 
 	// stop channel must get incorporated with the cleanup process,
 	// if no bucket is there on this node, clean it up.
-	StreamingEndpointListener("bucket_scopes_pools_listener", urlPath,
+	StreamingEndpointListener("bucket_scopes_pools_listener_"+bucket, urlPath,
 		decodeAndNotifyResponse, stopCh)
 }
 
