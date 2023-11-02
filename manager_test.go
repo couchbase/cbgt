@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -1635,5 +1636,82 @@ func verifyMgrCurrentMap(m *Manager, feedsCount,
 				feedsCount, pindexesCount, feeds, pindexes)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestGroupSourcePartitionsIntoPlanPIndexes(t *testing.T) {
+	// MB-59409
+	numVBuckets := 1024
+	sourcePartitionsArr := make([]string, numVBuckets)
+	for i := 0; i < numVBuckets; i++ {
+		sourcePartitionsArr[i] = strconv.Itoa(i)
+	}
+
+	testPIndexesCount := 0 // reset after every test
+	testCallback := func([]string) int {
+		testPIndexesCount++
+		return testPIndexesCount
+	}
+
+	tests := []struct {
+		indexPartitions        int
+		maxPartitionsPerPIndex int
+		expectedPlanPIndexes   int
+	}{
+		{
+			indexPartitions:        6,
+			maxPartitionsPerPIndex: 171,
+			expectedPlanPIndexes:   6,
+		},
+		{
+			maxPartitionsPerPIndex: 114,
+			indexPartitions:        9,
+			expectedPlanPIndexes:   9,
+		},
+		{
+			// no maxPartitionsPerPIndex
+			indexPartitions:      1,
+			expectedPlanPIndexes: 1,
+		},
+		{
+			indexPartitions:        1,
+			maxPartitionsPerPIndex: 1024,
+			expectedPlanPIndexes:   1,
+		},
+		{
+			indexPartitions:        60,
+			maxPartitionsPerPIndex: 18,
+			expectedPlanPIndexes:   60,
+		},
+		{
+			// no indexPartitions
+			maxPartitionsPerPIndex: 17,
+			expectedPlanPIndexes:   61,
+		},
+		{
+			// bad maxPartitionsPerPIndex
+			indexPartitions:        10,
+			maxPartitionsPerPIndex: 1000,
+			expectedPlanPIndexes:   10,
+		},
+		{
+			indexPartitions:      8,
+			expectedPlanPIndexes: 8,
+		},
+	}
+
+	for i := range tests {
+		testPIndexesCount = 0
+		groupSourcePartitionsIntoPlanPIndexes(
+			tests[i].indexPartitions,
+			tests[i].maxPartitionsPerPIndex,
+			sourcePartitionsArr,
+			testCallback,
+		)
+
+		if testPIndexesCount != tests[i].expectedPlanPIndexes {
+			t.Fatalf("[%d] expected %d plan pindexes, got %d",
+				i, tests[i].expectedPlanPIndexes, testPIndexesCount)
+		}
 	}
 }
