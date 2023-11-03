@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -706,8 +707,6 @@ func CalcNodesToAddRemove(currentNodeUUIDs, prevNodeUUIDs []string) (nodeUUIDsAl
 func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 	options map[string]string, planPIndexesOut *PlanPIndexes) (
 	map[string]*PlanPIndex, error) {
-	maxPartitionsPerPIndex := indexDef.PlanParams.MaxPartitionsPerPIndex
-
 	var sourcePartitionsArr []string
 	var err error
 
@@ -732,7 +731,7 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 
 	planPIndexesForIndex := map[string]*PlanPIndex{}
 
-	addPlanPIndex := func(sourcePartitionsCurr []string) {
+	addPlanPIndex := func(sourcePartitionsCurr []string) int {
 		sourcePartitions := strings.Join(sourcePartitionsCurr, ",")
 
 		planPIndex := &PlanPIndex{
@@ -756,24 +755,65 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 		}
 
 		planPIndexesForIndex[planPIndex.Name] = planPIndex
+		return len(planPIndexesForIndex)
 	}
 
-	sourcePartitionsCurr := []string{}
-	for _, sourcePartition := range sourcePartitionsArr {
-		sourcePartitionsCurr = append(sourcePartitionsCurr, sourcePartition)
-		if maxPartitionsPerPIndex > 0 &&
-			len(sourcePartitionsCurr) >= maxPartitionsPerPIndex {
-			addPlanPIndex(sourcePartitionsCurr)
-			sourcePartitionsCurr = []string{}
-		}
-	}
-
-	if len(sourcePartitionsCurr) > 0 || // Assign any leftover partitions.
-		len(planPIndexesForIndex) <= 0 { // Assign at least 1 PlanPIndex.
-		addPlanPIndex(sourcePartitionsCurr)
-	}
+	groupSourcePartitionsIntoPlanPIndexes(
+		indexDef.PlanParams.IndexPartitions,
+		indexDef.PlanParams.MaxPartitionsPerPIndex,
+		sourcePartitionsArr,
+		addPlanPIndex,
+	)
 
 	return planPIndexesForIndex, nil
+}
+
+func groupSourcePartitionsIntoPlanPIndexes(indexPartitions, maxPartitionsPerPIndex int,
+	sourcePartitionsArr []string, callback func([]string) int) {
+	var currPlanPIndexes int
+	if indexPartitions > 0 {
+		// IndexPartitions has been defined/determined, which takes precedence;
+		// So make certain the plan pindexes count matches this value.
+		minPartitionsPerPIndex := int(math.Floor(float64(len(sourcePartitionsArr)) / float64(indexPartitions)))
+		sourcePartitionsGroups := make([]int, indexPartitions)
+		for i := 0; i < indexPartitions; i++ {
+			sourcePartitionsGroups[i] = minPartitionsPerPIndex
+		}
+		// deficit will always be positive or zero
+		deficit := len(sourcePartitionsArr) - (indexPartitions * minPartitionsPerPIndex)
+		cursor := 0
+		for deficit > 0 {
+			sourcePartitionsGroups[cursor]++
+			deficit--
+			cursor = (cursor + 1) % len(sourcePartitionsGroups)
+		}
+
+		sourcePartitionsCurr := []string{}
+		cursor = 0
+		for _, sourcePartition := range sourcePartitionsArr {
+			sourcePartitionsCurr = append(sourcePartitionsCurr, sourcePartition)
+			if len(sourcePartitionsCurr) == sourcePartitionsGroups[cursor] {
+				_ = callback(sourcePartitionsCurr)
+				sourcePartitionsCurr = []string{}
+				cursor++
+			}
+		}
+	} else {
+		sourcePartitionsCurr := []string{}
+		for _, sourcePartition := range sourcePartitionsArr {
+			sourcePartitionsCurr = append(sourcePartitionsCurr, sourcePartition)
+			if maxPartitionsPerPIndex > 0 &&
+				len(sourcePartitionsCurr) >= maxPartitionsPerPIndex {
+				currPlanPIndexes = callback(sourcePartitionsCurr)
+				sourcePartitionsCurr = []string{}
+			}
+		}
+
+		if len(sourcePartitionsCurr) > 0 || // Assign any leftover partitions.
+			currPlanPIndexes <= 0 { // Assign at least 1 PlanPIndex.
+			callback(sourcePartitionsCurr)
+		}
+	}
 }
 
 // --------------------------------------------------------
