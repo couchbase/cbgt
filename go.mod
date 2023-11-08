@@ -1,13 +1,13 @@
 module github.com/couchbase/cbgt
 
-go 1.19
+go 1.21
 
 require (
 	github.com/couchbase/blance v0.1.5
 	github.com/couchbase/cbauth v0.1.10
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-couchbase v0.1.1
-	github.com/couchbase/gocbcore/v10 v10.2.6-0.20230821173641-a343c19faafa
+	github.com/couchbase/gocbcore/v10 v10.2.9
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/tools-common/cloud v1.0.0
