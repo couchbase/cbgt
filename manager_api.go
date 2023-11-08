@@ -18,6 +18,34 @@ import (
 	log "github.com/couchbase/clog"
 )
 
+type BadRequestError struct {
+	errMsg string
+}
+
+func (e *BadRequestError) Error() string {
+	return e.errMsg
+}
+
+func NewBadRequestError(format string, args ...interface{}) error {
+	return fmt.Errorf("%w", &BadRequestError{
+		errMsg: fmt.Sprintf(format, args...),
+	})
+}
+
+type InternalServerError struct {
+	errMsg string
+}
+
+func (e *InternalServerError) Error() string {
+	return e.errMsg
+}
+
+func NewInternalServerError(format string, args ...interface{}) error {
+	return fmt.Errorf("%w", &InternalServerError{
+		errMsg: fmt.Sprintf(format, args...),
+	})
+}
+
 // cfgRefreshWaitExpiry represents the manager's config
 // refresh timeout for metakv api access.
 var cfgRefreshWaitExpiry = time.Second * 10
@@ -71,7 +99,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
 	if payload == nil {
-		return "", "", fmt.Errorf("manager_api: CreateIndex," +
+		return "", "", NewBadRequestError("manager_api: CreateIndex," +
 			" payload is nil")
 	}
 
@@ -79,12 +107,12 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		// index name validations during the fresh index creation.
 		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(payload.IndexName))
 		if err != nil {
-			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
+			return "", "", NewBadRequestError("manager_api: CreateIndex,"+
 				" indexName parsing problem,"+
 				" indexName: %s, err: %v", payload.IndexName, err)
 		}
 		if !matched {
-			return "", "", fmt.Errorf("manager_api: CreateIndex,"+
+			return "", "", NewBadRequestError("manager_api: CreateIndex,"+
 				" indexName is invalid, indexName: %q", payload.IndexName)
 		}
 	}
@@ -102,7 +130,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 
 	pindexImplType, exists := PIndexImplTypes[payload.IndexType]
 	if !exists {
-		return "", "", fmt.Errorf("manager_api: CreateIndex,"+
+		return "", "", NewBadRequestError("manager_api: CreateIndex,"+
 			" unknown indexType: %s", payload.IndexType)
 	}
 
@@ -137,7 +165,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		mgr.Options(),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: failed to connect to"+
+		return "", "", NewInternalServerError("manager_api: failed to connect to"+
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			payload.SourceType, payload.SourceName, payload.SourceUUID, err)
@@ -151,7 +179,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		mgr.server, mgr.Options(),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: failed to fetch sourceUUID"+
+		return "", "", NewInternalServerError("manager_api: failed to fetch sourceUUID"+
 			" for sourceName: %s, sourceType: %s, err: %v",
 			payload.SourceName, payload.SourceType, err)
 	}
@@ -164,7 +192,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		} else if indexDef.SourceUUID != payload.SourceUUID {
 			// The sourceUUID provided within the index definition does NOT match
 			// the sourceUUID for the sourceName in the system.
-			return "", "", fmt.Errorf("manager_api: CreateIndex failed, sourceUUID"+
+			return "", "", NewBadRequestError("manager_api: CreateIndex failed, sourceUUID"+
 				" mismatched for sourceName: %s", payload.SourceName)
 		}
 	}
@@ -173,17 +201,17 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if payload.PlanParams.NumReplicas < 0 ||
 		payload.PlanParams.NumReplicas > maxReplicasAllowed {
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, maxReplicasAllowed:"+
+		return "", "", NewBadRequestError("manager_api: CreateIndex failed, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, payload.PlanParams.NumReplicas)
 	}
 
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.cfg, NODE_DEFS_KNOWN)
 	if err != nil {
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, "+
+		return "", "", NewInternalServerError("manager_api: CreateIndex failed, "+
 			"CfgGetNodeDefs err: %v", err)
 	}
 	if len(nodeDefs.NodeDefs) < payload.PlanParams.NumReplicas+1 {
-		return "", "", fmt.Errorf("manager_api: CreateIndex failed, cluster needs %d "+
+		return "", "", NewBadRequestError("manager_api: CreateIndex failed, cluster needs %d "+
 			"search nodes to support the requested replica count of %d",
 			payload.PlanParams.NumReplicas+1, payload.PlanParams.NumReplicas)
 	}
@@ -193,13 +221,13 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	indexCreateFunc := func() error {
 		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
 		if err != nil {
-			return fmt.Errorf("manager_api: CfgGetIndexDefs err: %v", err)
+			return NewInternalServerError("manager_api: CfgGetIndexDefs err: %v", err)
 		}
 		if indexDefs == nil {
 			indexDefs = NewIndexDefs(version)
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-			return fmt.Errorf("manager_api: could not create index,"+
+			return NewInternalServerError("manager_api: could not create index,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)
 		}
@@ -207,7 +235,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		prevIndex, exists := indexDefs.IndexDefs[payload.IndexName]
 		if payload.PrevIndexUUID == "" { // New index creation.
 			if exists || prevIndex != nil {
-				return fmt.Errorf("manager_api: cannot create index because"+
+				return NewBadRequestError("manager_api: cannot create index because"+
 					" an index with the same name already exists: %s",
 					payload.IndexName)
 			}
@@ -217,11 +245,11 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 			}
 		} else { // Update index definition.
 			if !exists || prevIndex == nil {
-				return fmt.Errorf("manager_api: index missing for update,"+
+				return NewBadRequestError("manager_api: index missing for update,"+
 					" indexName: %s", payload.IndexName)
 			}
 			if prevIndex.UUID != payload.PrevIndexUUID {
-				return fmt.Errorf("manager_api:"+
+				return NewBadRequestError("manager_api:"+
 					" perhaps there was concurrent index definition update,"+
 					" current index UUID: %s, did not match input UUID: %s",
 					prevIndex.UUID, payload.PrevIndexUUID)
@@ -232,7 +260,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 					indexDef.PlanParams.MaxPartitionsPerPIndex) ||
 					(prevIndex.PlanParams.NumReplicas !=
 						indexDef.PlanParams.NumReplicas) {
-					return fmt.Errorf("manager_api: cannot update"+
+					return NewBadRequestError("manager_api: cannot update"+
 						" partition or replica count for a planFrozen index,"+
 						" indexName: %s", payload.IndexName)
 				}
@@ -335,21 +363,21 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 			return err
 		}
 		if indexDefs == nil {
-			return fmt.Errorf("manager_api: no indexes on deletion"+
+			return NewBadRequestError("manager_api: no indexes on deletion"+
 				" of indexName: %s", indexName)
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-			return fmt.Errorf("manager_api: could not delete index,"+
+			return NewInternalServerError("manager_api: could not delete index,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)
 		}
 		indexDef, exists = indexDefs.IndexDefs[indexName]
 		if !exists {
-			return fmt.Errorf("manager_api: index to delete missing,"+
+			return NewBadRequestError("manager_api: index to delete missing,"+
 				" indexName: %s", indexName)
 		}
 		if indexUUID != "" && indexDef.UUID != indexUUID {
-			return fmt.Errorf("manager_api: index to delete wrong UUID,"+
+			return NewBadRequestError("manager_api: index to delete wrong UUID,"+
 				" indexName: %s", indexName)
 		}
 
@@ -506,9 +534,9 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 		}
 		prevIndexImplVersion := indexDefs.ImplVersion
 		if VersionGTE(mgr.version, prevIndexImplVersion) == false {
-			return fmt.Errorf("manager_api: could not bump indexDefs,"+
-			" indexDefs.ImplVersion: %s > mgr.version: %s",
-			prevIndexImplVersion, mgr.version)
+			return NewInternalServerError("manager_api: could not bump indexDefs,"+
+				" indexDefs.ImplVersion: %s > mgr.version: %s",
+				prevIndexImplVersion, mgr.version)
 		}
 		if indexDefsUUID != "" && indexDefs.UUID != indexDefsUUID {
 			return fmt.Errorf("manager_api: bump indexDefs wrong UUID")
@@ -551,7 +579,7 @@ func (mgr *Manager) DeleteAllIndexFromSource(
 			return fmt.Errorf("manager_api: DeleteAllIndexFromSource, no indexDefs")
 		}
 		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
-			return fmt.Errorf("manager_api: DeleteAllIndexFromSource,"+
+			return NewInternalServerError("manager_api: DeleteAllIndexFromSource,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)
 		}

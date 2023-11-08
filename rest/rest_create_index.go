@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -17,10 +18,32 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
 )
+
+var (
+	totalCreateIndexReq       uint64
+	totalCreateIndexBadReqErr uint64
+	totalCreateIndexIntSerErr uint64
+	totalCreateIndexReqOk     uint64
+)
+
+func GatherCreateIndexStats() map[string]interface{} {
+	rv := make(map[string]interface{})
+	rv["total_create_index_request"] =
+		atomic.LoadUint64(&totalCreateIndexReq)
+	rv["total_create_index_bad_request_error"] =
+		atomic.LoadUint64(&totalCreateIndexBadReqErr)
+	rv["total_create_index_internal_server_error"] =
+		atomic.LoadUint64(&totalCreateIndexIntSerErr)
+	rv["total_create_index_request_ok"] =
+		atomic.LoadUint64(&totalCreateIndexReqOk)
+
+	return rv
+}
 
 // CreateIndexHandler is a REST handler that processes an index
 // creation request.
@@ -126,11 +149,18 @@ func (h *CreateIndexHandler) RESTOpts(opts map[string]string) {
 
 func (h *CreateIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
+
+	ca := req.Header.Get(CLUSTER_ACTION)
+	if ca != "orchestrator-forwarded" {
+		atomic.AddUint64(&totalCreateIndexReq, 1)
+	}
+
 	// TODO: Need more input validation (check source UUID's, etc).
 	indexName := unscopedIndexNameLookup(req)
 	if indexName == "" {
 		ShowError(w, req, "rest_create_index: index name is required",
 			http.StatusBadRequest)
+		atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 		return
 	}
 
@@ -139,6 +169,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		ShowErrorBody(w, nil, fmt.Sprintf("rest_create_index:"+
 			" could not read request body, indexName: %s, err: %v",
 			indexName, err), http.StatusBadRequest)
+		atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 		return
 	}
 
@@ -152,6 +183,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 				" could not unmarshal json, indexName: %s, err: %v",
 				indexName, err2), http.StatusBadRequest)
+			atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 			return
 		}
 	}
@@ -164,6 +196,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		ShowErrorBody(w, requestBody,
 			fmt.Sprintf("rest_create_index: index type is required, indexName: %s",
 				indexName), http.StatusBadRequest)
+		atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 		return
 	}
 
@@ -177,10 +210,10 @@ func (h *CreateIndexHandler) ServeHTTP(
 		ShowErrorBody(w, requestBody,
 			fmt.Sprintf("rest_create_index: sourceType is required, indexName: %s",
 				indexName), http.StatusBadRequest)
+		atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 		return
 	}
 
-	ca := req.Header.Get(CLUSTER_ACTION)
 	if ca != "orchestrator-forwarded" &&
 		(indexType == "fulltext-index" || indexType == "fulltext-alias") {
 		// populate the body since we already read it.
@@ -211,6 +244,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 			ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 				" error parsing planParams: %s, indexName: %s, err: %v",
 				planParamsStr, indexName, err2), http.StatusBadRequest)
+			atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 			return
 		}
 	} else {
@@ -224,6 +258,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 					" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
 					http.StatusInternalServerError)
+				atomic.AddUint64(&totalCreateIndexIntSerErr, 1)
 				return
 			}
 
@@ -236,6 +271,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 					" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
 					http.StatusInternalServerError)
+				atomic.AddUint64(&totalCreateIndexIntSerErr, 1)
 				return
 			}
 
@@ -269,6 +305,7 @@ func (h *CreateIndexHandler) ServeHTTP(
 		if len(scopedPrefix) == 0 {
 			ShowError(w, req, "rest_create_index: bucket & scope names are required",
 				http.StatusBadRequest)
+			atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 			return
 		}
 		payload.ScopedPrefix = scopedPrefix
@@ -278,11 +315,22 @@ func (h *CreateIndexHandler) ServeHTTP(
 
 	indexName, indexUUID, err := h.mgr.CreateIndexEx(payload)
 	if err != nil {
+		var internalServerError *cbgt.InternalServerError
+		var status int
+		if errors.As(err, &internalServerError) {
+			status = http.StatusInternalServerError
+			atomic.AddUint64(&totalCreateIndexIntSerErr, 1)
+		} else {
+			status = http.StatusBadRequest
+			atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
+		}
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",
-			indexName, err), http.StatusBadRequest)
+			indexName, err), status)
 		return
 	}
+
+	atomic.AddUint64(&totalCreateIndexReqOk, 1)
 
 	MustEncode(w, struct {
 		// TODO: Should return created vs 200 HTTP code?

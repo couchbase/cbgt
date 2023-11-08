@@ -9,12 +9,35 @@
 package rest
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
 )
+
+var (
+	totalDeleteIndexReq       uint64
+	totalDeleteIndexBadReqErr uint64
+	totalDeleteIndexIntSerErr uint64
+	totalDeleteIndexReqOk     uint64
+)
+
+func GatherDeleteIndexStats() map[string]interface{} {
+	rv := make(map[string]interface{})
+	rv["total_delete_index_request"] =
+		atomic.LoadUint64(&totalDeleteIndexReq)
+	rv["total_delete_index_bad_request_error"] =
+		atomic.LoadUint64(&totalDeleteIndexBadReqErr)
+	rv["total_delete_index_internal_server_error"] =
+		atomic.LoadUint64(&totalDeleteIndexIntSerErr)
+	rv["total_delete_index_request_ok"] =
+		atomic.LoadUint64(&totalDeleteIndexReqOk)
+
+	return rv
+}
 
 // DeleteIndexHandler is a REST handler that processes an index
 // deletion request.
@@ -33,14 +56,20 @@ func (h *DeleteIndexHandler) RESTOpts(opts map[string]string) {
 
 func (h *DeleteIndexHandler) ServeHTTP(
 	w http.ResponseWriter, req *http.Request) {
+
+	ca := req.Header.Get(CLUSTER_ACTION)
+	if ca != "orchestrator-forwarded" {
+		atomic.AddUint64(&totalDeleteIndexReq, 1)
+	}
+
 	indexName := IndexNameLookup(req)
 	if indexName == "" {
 		ShowError(w, req, "rest_delete_index: index name is required",
 			http.StatusBadRequest)
+		atomic.AddUint64(&totalDeleteIndexBadReqErr, 1)
 		return
 	}
 
-	ca := req.Header.Get(CLUSTER_ACTION)
 	if ca != "orchestrator-forwarded" {
 		// defer all error handling to the default flow.
 		indexDefs, _, _ := cbgt.CfgGetIndexDefs(h.mgr.Cfg())
@@ -60,10 +89,20 @@ func (h *DeleteIndexHandler) ServeHTTP(
 	log.Printf("rest_delete_index: delete index request received for %v", indexName)
 	indexUUID, err := h.mgr.DeleteIndexEx(indexName, "")
 	if err != nil {
-		ShowError(w, req, fmt.Sprintf("rest_delete_index:"+
-			" error deleting index, err: %v", err), http.StatusBadRequest)
+		var internalServerError *cbgt.InternalServerError
+		if errors.As(err, &internalServerError) {
+			ShowError(w, req, fmt.Sprintf("rest_delete_index:"+
+				" error deleting index, err: %v", err), http.StatusInternalServerError)
+			atomic.AddUint64(&totalDeleteIndexIntSerErr, 1)
+		} else {
+			ShowError(w, req, fmt.Sprintf("rest_delete_index:"+
+				" error deleting index, err: %v", err), http.StatusBadRequest)
+			atomic.AddUint64(&totalDeleteIndexBadReqErr, 1)
+		}
 		return
 	}
+
+	atomic.AddUint64(&totalDeleteIndexReqOk, 1)
 
 	MustEncode(w, struct {
 		Status string `json:"status"`
