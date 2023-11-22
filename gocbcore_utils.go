@@ -88,7 +88,7 @@ var RootCAsProvider func(bucketName, bucketUUID string) func() *x509.CertPool
 //   - TLSRootCAProvider
 func setupConfigParams(bucketName, bucketUUID, server string, options map[string]string) (
 	connStr string, useTLS bool, caProvider certProvider) {
-	if options["authType"] == "cbauth" {
+	if options != nil && options["authType"] == "cbauth" {
 		caProvider = FetchRootCAs
 	} else {
 		if RootCAsProvider != nil {
@@ -499,9 +499,30 @@ func CBStats(sourceType, sourceName, sourceUUID,
 // document ID and index.
 func CBVBucketLookUp(docID, serverIn string,
 	sourceDetails *IndexDef, req *http.Request) (string, error) {
-	var config gocbcore.AgentConfig
-	config.UserAgent = "CBVBucketLookUp"
-	agent, err := setupGocbcoreAgent(&config)
+
+	auth, err := gocbAuth("", "cbauth")
+	if err != nil {
+		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, gocbAuth,"+
+			" sourceName: %s, err: %v", sourceDetails.SourceName, err)
+	}
+
+	config := setupAgentConfig("CBVBucketLookUp", sourceDetails.SourceName, auth, nil)
+	svrs := strings.Split(serverIn, ";")
+	if len(svrs) == 0 {
+		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, no servers provided")
+	}
+
+	connStr, useTLS, caProvider := setupConfigParams(sourceDetails.SourceName, sourceDetails.SourceUUID, svrs[0], nil)
+	err = config.FromConnStr(connStr)
+	if err != nil {
+		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, unable to build"+
+			" agent config from connStr: %s, err: %v", connStr, err)
+	}
+
+	config.SecurityConfig.UseTLS = useTLS
+	config.SecurityConfig.TLSRootCAProvider = caProvider
+
+	agent, err := setupGocbcoreAgent(config)
 	if err != nil {
 		return "", err
 	}

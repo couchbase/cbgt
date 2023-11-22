@@ -52,22 +52,27 @@ var errAgentSetupFailed = fmt.Errorf("agent setup failed")
 func setupAgentConfig(name, sourceName string,
 	auth gocbcore.AuthProvider, options map[string]string) *gocbcore.AgentConfig {
 	initialBootstrapNonTLS := defaultInitialBootstrapNonTLS
-	if options["feedInitialBootstrapNonTLS"] == "true" {
-		initialBootstrapNonTLS = true
-	} else if options["feedInitialBootstrapNonTLS"] == "false" {
-		initialBootstrapNonTLS = false
-	}
 
 	useCollections := true
-	if options["disableCollectionsSupport"] == "true" {
-		useCollections = false
-	}
 
 	connectionBufferSize := GocbcoreConnectionBufferSize
-	if val, exists := options["kvConnectionBufferSize"]; exists {
-		// kvConnectionBufferSize is the buffer size to use for connections.
-		if valInt, err := strconv.Atoi(val); err == nil && valInt > 0 {
-			connectionBufferSize = uint(valInt)
+
+	if options != nil {
+		if options["feedInitialBootstrapNonTLS"] == "true" {
+			initialBootstrapNonTLS = true
+		} else if options["feedInitialBootstrapNonTLS"] == "false" {
+			initialBootstrapNonTLS = false
+		}
+
+		if options["disableCollectionsSupport"] == "true" {
+			useCollections = false
+		}
+
+		if val, exists := options["kvConnectionBufferSize"]; exists {
+			// kvConnectionBufferSize is the buffer size to use for connections.
+			if valInt, err := strconv.Atoi(val); err == nil && valInt > 0 {
+				connectionBufferSize = uint(valInt)
+			}
 		}
 	}
 
