@@ -73,6 +73,8 @@ type dcpAgentDetails struct {
 	NumStreamReqs uint64 `json:"num_stream_reqs"`
 	// streamID:streamDetails
 	Streams map[string]*streamDetails `json:"streams"`
+	// extended attributes flag
+	xattrs bool
 }
 
 // Map to hold a pool of gocbcore.DCPAgents for every bucket, each
@@ -183,6 +185,13 @@ func DCPAgentsStatsMap() map[string]interface{} {
 func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	servers string, options map[string]string) (*gocbcore.DCPAgent, error) {
 	var maxFeedsPerDCPAgent int
+
+	params := NewDCPFeedParams()
+	err := UnmarshalJSON([]byte(paramsStr), params)
+	if err != nil {
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, params err: %v", err)
+	}
+
 	if v, exists := options["maxFeedsPerDCPAgent"]; exists {
 		if i, err := strconv.Atoi(v); err == nil {
 			maxFeedsPerDCPAgent = i
@@ -198,7 +207,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	key := bucketName + ":" + bucketUUID
 	if _, exists := dm.entries[key]; exists {
 		for agent, agentInfo := range dm.entries[key] {
-			if agentInfo.Refs < maxFeedsPerDCPAgent {
+			if agentInfo.Refs < maxFeedsPerDCPAgent &&
+				agentInfo.xattrs == params.IncludeXAttrs {
 				dm.entries[key][agent].Refs++
 				log.Printf("feed_dcp_gocbcore: fetchAgent, re-using existing DCP agent"+
 					" (key: %v, agent: %s, ref count: %v, number of agents for key: %v)",
@@ -235,12 +245,6 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 	config.SecurityConfig.UseTLS = useTLS
 	config.SecurityConfig.TLSRootCAProvider = caProvider
 
-	params := NewDCPFeedParams()
-	err = UnmarshalJSON([]byte(paramsStr), params)
-	if err != nil {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, params err: %v", err)
-	}
-
 	flags := memd.DcpOpenFlagProducer
 	if params.IncludeXAttrs {
 		flags |= memd.DcpOpenFlagIncludeXattrs
@@ -259,6 +263,7 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		dcpConnName: dcpConnName,
 		Refs:        1,
 		Streams:     make(map[string]*streamDetails),
+		xattrs:      params.IncludeXAttrs,
 	}
 	log.Printf("feed_dcp_gocbcore: fetchAgent, set up new DCP agent "+
 		" (key: %v, agent: %s, number of agents for key: %v)",
