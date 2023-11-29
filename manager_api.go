@@ -95,6 +95,23 @@ type CreateIndexPayload struct {
 	ScopedPrefix  string
 }
 
+// Enforcing a maximum index name length of 222;
+//
+// See: MB-59858
+// Linux, Windows and OSX enforce a maximum file name length of 255 bytes.
+// The index partitions directories created for these indexes have a
+// hash suffix and here's a sample of how that'd look:
+// -> <indexName>_1234567890123456_abcdefgh.pindex
+// .. which can be separated into:
+// - indexName (variable length)
+// - '_' + hash(len=16) + '_' + hash(len=8) + '.pindex' (fixed length=33)
+//
+// So the max length that we can support for an index name is (255-33) = 222
+const (
+	maxFileNameLength  = 255
+	maxIndexNameLength = maxFileNameLength - (26 + len(pindexPathSuffix))
+)
+
 func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, error) {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
@@ -117,9 +134,16 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		}
 	}
 
+	adjustedIndexName := payload.ScopedPrefix + payload.IndexName
+	if len(adjustedIndexName) > maxIndexNameLength {
+		return "", "", NewBadRequestError("manager_api: CreateIndex,"+
+			" chosen index name is too long, consider one that is less"+
+			" than %v characters", maxIndexNameLength)
+	}
+
 	indexDef := &IndexDef{
 		Type:         payload.IndexType,
-		Name:         payload.ScopedPrefix + payload.IndexName,
+		Name:         adjustedIndexName,
 		Params:       payload.IndexParams,
 		SourceType:   payload.SourceType,
 		SourceName:   payload.SourceName,
