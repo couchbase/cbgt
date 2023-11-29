@@ -95,6 +95,23 @@ type CreateIndexPayload struct {
 	ScopedPrefix  string
 }
 
+// Enforcing a maximum index name length of 222;
+//
+// See: MB-59858
+// Linux, Windows and OSX enforce a maximum file name length of 255 bytes.
+// The index partitions directories created for these indexes have a
+// hash suffix and here's a sample of how that'd look:
+// -> <indexName>_1234567890123456_abcdefgh.pindex
+// .. which can be separated into:
+// - indexName (variable length)
+// - '_' + hash(len=16) + '_' + hash(len=8) + '.pindex' (fixed length=33)
+//
+// So the max length that we can support for an index name is (255-33) = 222
+const (
+	maxFileNameLength  = 255
+	maxIndexNameLength = maxFileNameLength - (26 + len(pindexPathSuffix))
+)
+
 func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, error) {
 	atomic.AddUint64(&mgr.stats.TotCreateIndex, 1)
 
@@ -103,25 +120,31 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 			" payload is nil")
 	}
 
-	decoratedIndexName := payload.ScopedPrefix + payload.IndexName
+	adjustedIndexName := payload.ScopedPrefix + payload.IndexName
 
 	if payload.PrevIndexUUID == "" {
 		// index name validations during the fresh index creation.
 		matched, err := regexp.Match(INDEX_NAME_REGEXP, []byte(payload.IndexName))
 		if err != nil {
-			return decoratedIndexName, "", NewBadRequestError("manager_api: CreateIndex,"+
+			return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex,"+
 				" indexName parsing problem,"+
 				" indexName: %s, err: %v", payload.IndexName, err)
 		}
 		if !matched {
-			return decoratedIndexName, "", NewBadRequestError("manager_api: CreateIndex,"+
+			return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex,"+
 				" indexName is invalid, indexName: %q", payload.IndexName)
 		}
 	}
 
+	if len(adjustedIndexName) > maxIndexNameLength {
+		return "", "", NewBadRequestError("manager_api: CreateIndex,"+
+			" chosen index name is too long, consider one that is less"+
+			" than %v characters", maxIndexNameLength)
+	}
+
 	indexDef := &IndexDef{
 		Type:         payload.IndexType,
-		Name:         decoratedIndexName,
+		Name:         adjustedIndexName,
 		Params:       payload.IndexParams,
 		SourceType:   payload.SourceType,
 		SourceName:   payload.SourceName,
@@ -132,7 +155,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 
 	pindexImplType, exists := PIndexImplTypes[payload.IndexType]
 	if !exists {
-		return decoratedIndexName, "", NewBadRequestError("manager_api: CreateIndex,"+
+		return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex,"+
 			" unknown indexType: %s", payload.IndexType)
 	}
 
@@ -140,7 +163,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	if pindexImplType.Prepare != nil {
 		indexDef, err = pindexImplType.Prepare(mgr, indexDef)
 		if err != nil {
-			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
+			return adjustedIndexName, "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
 				" err: %v", err)
 		}
 	}
@@ -152,7 +175,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		err = pindexImplType.Validate(
 			payload.IndexType, payload.IndexName, payload.IndexParams)
 		if err != nil {
-			return decoratedIndexName, "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
+			return adjustedIndexName, "", fmt.Errorf("manager_api: CreateIndex, invalid,"+
 				" err: %v", err)
 		}
 	}
@@ -167,7 +190,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		mgr.Options(),
 	)
 	if err != nil {
-		return decoratedIndexName, "", NewInternalServerError("manager_api: failed to connect to"+
+		return adjustedIndexName, "", NewInternalServerError("manager_api: failed to connect to"+
 			" or retrieve information from source,"+
 			" sourceType: %s, sourceName: %s, sourceUUID: %s, err: %v",
 			payload.SourceType, payload.SourceName, payload.SourceUUID, err)
@@ -181,7 +204,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		mgr.server, mgr.Options(),
 	)
 	if err != nil {
-		return decoratedIndexName, "", NewInternalServerError("manager_api: failed to fetch sourceUUID"+
+		return adjustedIndexName, "", NewInternalServerError("manager_api: failed to fetch sourceUUID"+
 			" for sourceName: %s, sourceType: %s, err: %v",
 			payload.SourceName, payload.SourceType, err)
 	}
@@ -194,7 +217,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		} else if indexDef.SourceUUID != payload.SourceUUID {
 			// The sourceUUID provided within the index definition does NOT match
 			// the sourceUUID for the sourceName in the system.
-			return decoratedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, sourceUUID"+
+			return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, sourceUUID"+
 				" mismatched for sourceName: %s", payload.SourceName)
 		}
 	}
@@ -203,17 +226,17 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
 	if payload.PlanParams.NumReplicas < 0 ||
 		payload.PlanParams.NumReplicas > maxReplicasAllowed {
-		return decoratedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, maxReplicasAllowed:"+
+		return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, maxReplicasAllowed:"+
 			" '%v', but request for '%v'", maxReplicasAllowed, payload.PlanParams.NumReplicas)
 	}
 
 	nodeDefs, _, err := CfgGetNodeDefs(mgr.cfg, NODE_DEFS_KNOWN)
 	if err != nil {
-		return decoratedIndexName, "", NewInternalServerError("manager_api: CreateIndex failed, "+
+		return adjustedIndexName, "", NewInternalServerError("manager_api: CreateIndex failed, "+
 			"CfgGetNodeDefs err: %v", err)
 	}
 	if len(nodeDefs.NodeDefs) < payload.PlanParams.NumReplicas+1 {
-		return decoratedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, cluster needs %d "+
+		return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, cluster needs %d "+
 			"search nodes to support the requested replica count of %d",
 			payload.PlanParams.NumReplicas+1, payload.PlanParams.NumReplicas)
 	}
@@ -285,7 +308,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 
 	err = RetryOnCASMismatch(indexCreateFunc, 100)
 	if err != nil {
-		return decoratedIndexName, "", fmt.Errorf("manager_api: could not save indexDefs,"+
+		return adjustedIndexName, "", fmt.Errorf("manager_api: could not save indexDefs,"+
 			" err: %v", err)
 	}
 
@@ -319,7 +342,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		"info",
 		"Index created",
 		map[string]interface{}{
-			"indexName":  decoratedIndexName,
+			"indexName":  adjustedIndexName,
 			"sourceName": indexDef.SourceName,
 			"indexUUID":  indexDef.UUID,
 		})
