@@ -95,10 +95,10 @@ type CreateIndexPayload struct {
 	ScopedPrefix  string
 }
 
-// Enforcing a maximum index name length of 222;
+// Enforcing a maximum index name length of 209;
 //
 // See: MB-59858
-// Linux, Windows and OSX enforce a maximum file name length of 255 bytes.
+// Linux, Windows and OSX enforce a maximum file/dir name length of 255.
 // The index partitions directories created for these indexes have a
 // hash suffix and here's a sample of how that'd look:
 // -> <indexName>_1234567890123456_abcdefgh.pindex
@@ -107,9 +107,14 @@ type CreateIndexPayload struct {
 // - '_' + hash(len=16) + '_' + hash(len=8) + '.pindex' (fixed length=33)
 //
 // So the max length that we can support for an index name is (255-33) = 222
-const (
-	maxFileNameLength  = 255
-	maxIndexNameLength = maxFileNameLength - (26 + len(pindexPathSuffix))
+// Also accommodating additional space (13) for any transient directory
+// extensions - like during rebalance when a ".temp" can be suffixed and
+// tar/gzip extensions.
+const maxDirNameLen = 255
+var (
+	// Additional space reserved for transient extensions (13)
+	miscExtLen         = len(TempPathPrefix) + len(".tar.gz")
+	MaxIndexNameLength = maxDirNameLen - (26 + len(pindexPathSuffix) + miscExtLen)
 )
 
 func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, error) {
@@ -136,10 +141,10 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		}
 	}
 
-	if len(adjustedIndexName) > maxIndexNameLength {
+	if len(adjustedIndexName) > MaxIndexNameLength {
 		return "", "", NewBadRequestError("manager_api: CreateIndex,"+
 			" chosen index name is too long, consider one that is less"+
-			" than %v characters", maxIndexNameLength)
+			" than %v characters", MaxIndexNameLength)
 	}
 
 	indexDef := &IndexDef{
