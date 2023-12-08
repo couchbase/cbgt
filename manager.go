@@ -1104,7 +1104,8 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 			return nil, nil, err
 		}
 		// skip disk writes on repeated Cfg callbacks.
-		if !reflect.DeepEqual(mgr.lastPlanPIndexes, lastPlanPIndexes) {
+		if mgr.dataDir != "" &&
+			!reflect.DeepEqual(mgr.lastPlanPIndexes, lastPlanPIndexes) {
 			// make a local copy of the updated plan,
 			mgr.checkAndStoreStablePlanPIndexes(lastPlanPIndexes)
 		}
@@ -1138,6 +1139,10 @@ func (mgr *Manager) GetPlanPIndexes(refresh bool) (
 // GetStableLocalPlanPIndexes retrieves the recovery plan for
 // a failover-recovery.
 func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
+	if mgr.dataDir == "" {
+		return nil
+	}
+
 	dirPath := filepath.Join(mgr.dataDir, "planPIndexes")
 	mgr.stablePlanPIndexesMutex.RLock()
 	defer mgr.stablePlanPIndexesMutex.RUnlock()
@@ -1245,6 +1250,10 @@ func (mgr *Manager) IsStablePlan(planPIndexes *PlanPIndexes) bool {
 }
 
 func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) {
+	if mgr.dataDir == "" {
+		return
+	}
+
 	if !mgr.IsStablePlan(planPIndexes) {
 		return
 	}
