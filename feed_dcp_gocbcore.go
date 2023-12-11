@@ -1408,7 +1408,8 @@ func (f *GocbcoreDCPFeed) cacheUpdateCheck(bucketScopeInfoMap map[string]*Bucket
 	}
 
 	if len(bucketScopeInfo.UUID) == 0 ||
-		bucketScopeInfo.UUID != f.bucketUUID {
+		bucketScopeInfo.UUID != f.bucketUUID ||
+		bucketScopeInfo.scopeManifestInfo == nil {
 		return false
 	}
 
