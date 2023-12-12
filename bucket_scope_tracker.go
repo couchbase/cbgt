@@ -356,7 +356,7 @@ type manifest struct {
 	scopes []manifestScope
 }
 
-func (item *manifest) UnmarshalJSON(data []byte) error {
+func (m *manifest) UnmarshalJSON(data []byte) error {
 	decData := struct {
 		UID    string          `json:"uid"`
 		Scopes []manifestScope `json:"scopes"`
@@ -370,8 +370,8 @@ func (item *manifest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	item.uid = decUID
-	item.scopes = decData.Scopes
+	m.uid = decUID
+	m.scopes = decData.Scopes
 	return nil
 }
 
@@ -381,7 +381,7 @@ type manifestScope struct {
 	collections []manifestCollection
 }
 
-func (item *manifestScope) UnmarshalJSON(data []byte) error {
+func (m *manifestScope) UnmarshalJSON(data []byte) error {
 	decData := struct {
 		UID         string               `json:"uid"`
 		Name        string               `json:"name"`
@@ -396,9 +396,9 @@ func (item *manifestScope) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	item.uid = uint32(decUID)
-	item.name = decData.Name
-	item.collections = decData.Collections
+	m.uid = uint32(decUID)
+	m.name = decData.Name
+	m.collections = decData.Collections
 	return nil
 }
 
