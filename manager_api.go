@@ -111,6 +111,7 @@ type CreateIndexPayload struct {
 // extensions - like during rebalance when a ".temp" can be suffixed and
 // tar/gzip extensions.
 const maxDirNameLen = 255
+
 var (
 	// Additional space reserved for transient extensions (13)
 	miscExtLen         = len(TempPathPrefix) + len(".tar.gz")
