@@ -1299,8 +1299,6 @@ func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
 
 // ----------------------------------------------------------------
 
-const resourceNotFoundStr = "Requested resource not found"
-
 // VerifySourceNotExists returns true if it's sure the bucket
 // does not exist anymore (including if UUID's no longer match).
 // It is however possible that the bucket is around but the index's
@@ -1349,22 +1347,23 @@ func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, 
 			er = errColdCache
 			return
 		}
-		if manifestInfo.UID == f.manifestUID {
+
+		if manifestInfo.uid == f.manifestUID {
 			// no manifest update => safe to assume that no scope/collection
 			// have been added/dropped
 			sourceNotFound = false
 			return
 		}
 
-		for i := range manifestInfo.Scopes {
-			if manifestInfo.Scopes[i].Name == f.scope {
+		for i := range manifestInfo.scopes {
+			if manifestInfo.scopes[i].name == f.scope {
 				sourceNotFound = false
 				// check if any of the source collections got deleted.
 			OUTER:
 				for j := range f.collectionIDs {
-					for _, coll := range manifestInfo.Scopes[i].Collections {
-						if f.collections[j] == coll.Name &&
-							f.collectionIDs[j] == coll.UID {
+					for _, coll := range manifestInfo.scopes[i].collections {
+						if f.collections[j] == coll.name &&
+							f.collectionIDs[j] == coll.uid {
 							continue OUTER
 						}
 					}
@@ -1393,7 +1392,7 @@ func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, 
 }
 
 // cacheUpdateCheck is a conditional check to see if the bucket scope info in the
-// bucketScopeTracker is has been updated, and if so, whether the feed's source
+// bucketScopeTracker has been updated, and if so, whether the feed's source
 // exists or not. This is used to exit out the thread waiting in a scenario when
 // the upstream codepath necessitates a network call via the
 // bucket streaming endpoints for the cache to be updated and whether the feed
@@ -1417,15 +1416,15 @@ func (f *GocbcoreDCPFeed) cacheUpdateCheck(bucketScopeInfoMap map[string]*Bucket
 	// that for the comparisons here.
 	var scopeFound bool
 	manifestInfo := bucketScopeInfo.scopeManifestInfo
-	for i := range manifestInfo.Scopes {
-		if manifestInfo.Scopes[i].Name == f.scope {
+	for i := range manifestInfo.scopes {
+		if manifestInfo.scopes[i].name == f.scope {
 			scopeFound = true
 			// check if any of the source collections got deleted.
 		OUTER:
 			for j := range f.collectionIDs {
-				for _, coll := range manifestInfo.Scopes[i].Collections {
-					if f.collections[j] == coll.Name &&
-						f.collectionIDs[j] == coll.UID {
+				for _, coll := range manifestInfo.scopes[i].collections {
+					if f.collections[j] == coll.name &&
+						f.collectionIDs[j] == coll.uid {
 						continue OUTER
 					}
 				}

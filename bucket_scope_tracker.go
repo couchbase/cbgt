@@ -12,12 +12,27 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/gocbcore/v10"
 )
+
+var resourceNotFoundStrs = []string{
+	"Requested resource not found",
+	"Attempt to access non existent bucket",
+}
+
+func isResponseEquivalentToResourceNotFound(resp string) bool {
+	for _, str := range resourceNotFoundStrs {
+		if strings.Contains(string(resp), str) {
+			return true
+		}
+	}
+
+	return false
+}
 
 // This implementation of GetPoolsDefaultForBucket works with CBAUTH only;
 // For all other authtypes, the application will have to override this function.
@@ -70,7 +85,7 @@ type BucketScopeInfo struct {
 	UUID              string
 	Name              string
 	NumVBuckets       int
-	scopeManifestInfo *gocbcore.Manifest
+	scopeManifestInfo *manifest
 }
 
 type BucketScopeInfoTracker struct {
@@ -121,7 +136,7 @@ func isBucketAlive(mgr *Manager, sourceUUID, bucketName string, force bool,
 			// in case of a marshalling error, let's quickly check if it's
 			// the situation of ns_server reporting that the "Requested resource not found.";
 			// if so, we can safely assume that the bucket is deleted.
-			if strings.Contains(string(resp), resourceNotFoundStr) {
+			if isResponseEquivalentToResourceNotFound(string(resp)) {
 				return true, nil
 			}
 			return false, fmt.Errorf("response: %v, err: %v", string(resp), err)
@@ -146,22 +161,22 @@ func isBucketAlive(mgr *Manager, sourceUUID, bucketName string, force bool,
 }
 
 func obtainBucketManifest(mgr *Manager, bucketName string, force bool,
-	cacheUpdateCheck sourceExistsFunc) (rv *gocbcore.Manifest, err error) {
+	cacheUpdateCheck sourceExistsFunc) (*manifest, error) {
 	if mgr.bucketScopeInfoTracker == nil || force {
 		// fallback non-streaming way of fetching bucket/scope info
 		resp, err := GetPoolsDefaultForBucket(mgr.Server(), bucketName, true)
 		if err != nil {
 			return nil, err
 		}
-		rv = &gocbcore.Manifest{}
+		var rv manifest
 		if err = rv.UnmarshalJSON(resp); err != nil {
 			return nil, err
 		}
-		return rv, nil
+		return &rv, nil
 	}
 
 	bucketInfo := mgr.bucketScopeInfoTracker.getBucketInfo(bucketName, cacheUpdateCheck)
-	rv = bucketInfo.scopeManifestInfo
+	rv := bucketInfo.scopeManifestInfo
 	return rv, nil
 }
 
@@ -173,10 +188,10 @@ func (b *BucketScopeInfoTracker) updateManifestInfoLOCKED(bucket, ManifestUID st
 
 	scopeManifestInfo := b.bucketScopeInfo[bucket].scopeManifestInfo
 	if b.bucketScopeInfo[bucket].scopeManifestInfo == nil {
-		scopeManifestInfo = &gocbcore.Manifest{}
+		scopeManifestInfo = &manifest{}
 	}
 
-	err = UnmarshalJSON(respBytes, scopeManifestInfo)
+	err = scopeManifestInfo.UnmarshalJSON(respBytes)
 	if err != nil {
 		return err
 	}
@@ -209,7 +224,7 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 	decodeAndNotifyResponse := func(data []byte) error {
 		b.m.Lock()
 		defer b.m.Unlock()
-		if strings.Contains(string(data), resourceNotFoundStr) {
+		if isResponseEquivalentToResourceNotFound(string(data)) {
 			if !isClosed(b.bucketScopeInfo[bucket].stopCh) {
 				close(b.bucketScopeInfo[bucket].stopCh)
 			}
@@ -219,7 +234,7 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 			broadcastCacheUpdate(bucketScopeInfo)
 			return fmt.Errorf(string(data))
 		}
-		var streamResp bucketStreamingResponse
+		var streamResp *bucketStreamingResponse
 		err := UnmarshalJSON(data, &streamResp)
 		if err != nil {
 			// indicates that its a marshal error, however the bucket still exists
@@ -332,4 +347,81 @@ func isClosed(ch chan struct{}) bool {
 	default:
 		return false
 	}
+}
+
+// -----------------------------------------------------------------------------
+
+type manifest struct {
+	uid    uint64
+	scopes []manifestScope
+}
+
+func (item *manifest) UnmarshalJSON(data []byte) error {
+	decData := struct {
+		UID    string          `json:"uid"`
+		Scopes []manifestScope `json:"scopes"`
+	}{}
+	if err := UnmarshalJSON(data, &decData); err != nil {
+		return err
+	}
+
+	decUID, err := strconv.ParseUint(decData.UID, 16, 64)
+	if err != nil {
+		return err
+	}
+
+	item.uid = decUID
+	item.scopes = decData.Scopes
+	return nil
+}
+
+type manifestScope struct {
+	uid         uint32
+	name        string
+	collections []manifestCollection
+}
+
+func (item *manifestScope) UnmarshalJSON(data []byte) error {
+	decData := struct {
+		UID         string               `json:"uid"`
+		Name        string               `json:"name"`
+		Collections []manifestCollection `json:"collections"`
+	}{}
+	if err := UnmarshalJSON(data, &decData); err != nil {
+		return err
+	}
+
+	decUID, err := strconv.ParseUint(decData.UID, 16, 32)
+	if err != nil {
+		return err
+	}
+
+	item.uid = uint32(decUID)
+	item.name = decData.Name
+	item.collections = decData.Collections
+	return nil
+}
+
+type manifestCollection struct {
+	uid  uint32
+	name string
+}
+
+func (m *manifestCollection) UnmarshalJSON(data []byte) error {
+	decData := struct {
+		UID  string `json:"uid"`
+		Name string `json:"name"`
+	}{}
+	if err := UnmarshalJSON(data, &decData); err != nil {
+		return err
+	}
+
+	decUID, err := strconv.ParseUint(decData.UID, 16, 32)
+	if err != nil {
+		return err
+	}
+
+	m.uid = uint32(decUID)
+	m.name = decData.Name
+	return nil
 }
