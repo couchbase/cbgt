@@ -317,11 +317,19 @@ func (dm *gocbcoreDCPAgentMap) releaseAgent(bucketName, bucketUUID string,
 	return nil
 }
 
-func (dm *gocbcoreDCPAgentMap) forceReconnectAgents() {
+// Gocbcore supports ReconfigureSecurity _only_ when the ns_server scheme is used ;
+// where the seed poller is in use. This method is ONLY called in cbauth node.
+// See: https://github.com/couchbase/gocbcore/blob/v10.2.10/agent.go#L591-L615
+func (dm *gocbcoreDCPAgentMap) reconfigureSecurityForAgents(
+	useTLS bool, caProvider certProvider) {
+	reconfigureSecurityOptions := gocbcore.ReconfigureSecurityOptions{
+		UseTLS:            useTLS,
+		TLSRootCAProvider: caProvider,
+	}
 	dm.m.Lock()
 	for _, agents := range dm.entries {
 		for agent := range agents {
-			go agent.ForceReconnect()
+			go agent.ReconfigureSecurity(reconfigureSecurityOptions)
 		}
 	}
 	dm.m.Unlock()
