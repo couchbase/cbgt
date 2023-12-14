@@ -107,7 +107,7 @@ func setupConfigParams(bucketName, bucketUUID, server string, options map[string
 		}
 	}
 
-	if caProvider != nil {
+	if caProvider != nil && caProvider() != nil {
 		useTLS = true
 	}
 
@@ -195,11 +195,19 @@ func (am *gocbcoreAgentsMap) releaseAgents(sourceName string) {
 	am.m.Unlock()
 }
 
-func (am *gocbcoreAgentsMap) forceReconnectAgents() {
+// Gocbcore supports ReconfigureSecurity _only_ when the ns_server scheme is used ;
+// where the seed poller is in use. This method is ONLY called in cbauth node.
+// See: https://github.com/couchbase/gocbcore/blob/v10.2.10/agent.go#L591-L615
+func (am *gocbcoreAgentsMap) reconfigureSecurityForAgents(
+	useTLS bool, caProvider certProvider) {
+	reconfigureSecurityOptions := gocbcore.ReconfigureSecurityOptions{
+		UseTLS:            useTLS,
+		TLSRootCAProvider: caProvider,
+	}
 	am.m.Lock()
 	for _, entry := range am.entries {
-		go entry.agent.ForceReconnect()
-		go entry.dcpAgent.ForceReconnect()
+		go entry.agent.ReconfigureSecurity(reconfigureSecurityOptions)
+		go entry.dcpAgent.ReconfigureSecurity(reconfigureSecurityOptions)
 	}
 	am.m.Unlock()
 }

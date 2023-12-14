@@ -298,8 +298,8 @@ func updateSecurityConfig(encryptData bool, caCertInBytes []byte) error {
 	}
 
 	// force reconnect cached gocbcore.Agents and DCPAgents
-	statsAgentsMap.forceReconnectAgents()
-	dcpAgentMap.forceReconnectAgents()
+	statsAgentsMap.reconfigureSecurityForAgents(encryptData, FetchRootCAs)
+	dcpAgentMap.reconfigureSecurityForAgents(encryptData, FetchRootCAs)
 
 	return nil
 }

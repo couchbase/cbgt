@@ -379,9 +379,9 @@ func (h *QueryHandler) ServeHTTP(
 			d := time.Since(startTime)
 			if d > h.slowQueryLogTimeout {
 
-				creds, err := cbauth.AuthWebCreds(req)
+				creds, err2 := cbauth.AuthWebCreds(req)
 				var username string
-				if err == nil {
+				if err2 == nil {
 					username = creds.Name()
 				}
 
@@ -390,7 +390,7 @@ func (h *QueryHandler) ServeHTTP(
 					" duration: %v, err: %v",
 					indexName, log.Tag(log.UserData, username),
 					log.Tag(log.UserData, string(requestBody)),
-					resultSetBytes, d, err)
+					resultSetBytes, d, err2)
 				if focusStats != nil {
 					atomic.AddUint64(&focusStats.TotRequestSlow, 1)
 				}
