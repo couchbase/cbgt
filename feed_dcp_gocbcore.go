@@ -1662,6 +1662,8 @@ func doHTTPGetFromURL(url string) ([]byte, error) {
 
 const resourceNotFoundStr = "Requested resource not found"
 
+const nonExistentBucketError = "Attempt to access non existent bucket"
+
 // VerifySourceNotExists returns true if it's sure the bucket
 // does not exist anymore (including if UUID's no longer match).
 // It is however possible that the bucket is around but the index's
@@ -1685,7 +1687,8 @@ func (f *GocbcoreDCPFeed) VerifySourceNotExists() (bool, string, error) {
 		// in case of a marshalling error, let's quickly check if it's
 		// the situation of ns_server reporting that the "Requested resource not found.";
 		// if so, we can safely assume that the bucket is deleted.
-		if strings.Contains(string(resp), resourceNotFoundStr) {
+		if strings.Contains(string(resp), resourceNotFoundStr) ||
+			strings.Contains(string(resp), nonExistentBucketError) {
 			return true, "", nil
 		}
 
