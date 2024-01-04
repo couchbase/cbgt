@@ -44,7 +44,7 @@ func InitStaticRouterEx(r *mux.Router, staticDir, staticETag string,
 	mgr *cbgt.Manager) *mux.Router {
 	prefix := ""
 	if mgr != nil {
-		prefix = mgr.Options()["urlPrefix"]
+		prefix = mgr.GetOption("urlPrefix")
 	}
 
 	PIndexTypesInitRouter(r, "static.before", mgr)

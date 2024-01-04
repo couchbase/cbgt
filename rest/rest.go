@@ -368,7 +368,7 @@ func NewRESTRouter(versionMain string, mgr *cbgt.Manager,
 	assetDir func(name string) ([]string, error),
 	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
-	prefix := mgr.Options()["urlPrefix"]
+	prefix := mgr.GetOption("urlPrefix")
 
 	r := mux.NewRouter()
 	r.StrictSlash(true)
@@ -427,7 +427,7 @@ func InitRESTRouterEx(r *mux.Router, versionMain string,
 		}
 	}
 
-	prefix := mgr.Options()["urlPrefix"]
+	prefix := mgr.GetOption("urlPrefix")
 
 	PIndexTypesInitRouter(r, "manager.before", mgr)
 

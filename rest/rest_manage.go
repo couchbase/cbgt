@@ -139,7 +139,7 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 	var vbstats bool
 	if _, ok := w.(http.ResponseWriter); ok {
 		vbstats = true
-	} else if v, ok := mgr.Options()["enableVerboseLogging"]; ok && v == "true" {
+	} else if v := mgr.GetOption("enableVerboseLogging"); v == "true" {
 		vbstats = true
 	}
 

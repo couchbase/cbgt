@@ -187,8 +187,8 @@ func proxyOrchestratorNode(req *http.Request,
 // Check if the plan phase is ongoing in any of the nodes and
 // return the orchestrator and hibernation task type in case it is.
 func CheckHibernationStatus(mgr *cbgt.Manager) (bool, string, string, error) {
-	if mgr.Options()[cbgt.HIBERNATE_TASK] != "true" &&
-		mgr.Options()[cbgt.UNHIBERNATE_TASK] != "true" {
+	if mgr.GetOption(cbgt.HIBERNATE_TASK) != "true" &&
+		mgr.GetOption(cbgt.UNHIBERNATE_TASK) != "true" {
 		return false, "", "", nil
 	}
 
