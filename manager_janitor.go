@@ -519,7 +519,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 		return fmt.Errorf("janitor: skipped due to nil cfg")
 	}
 
-	feedAllotment := mgr.GetOptions()[FeedAllotmentOption]
+	feedAllotment := mgr.GetOption(FeedAllotmentOption)
 
 	// NOTE: The janitor doesn't reconfirm that we're a wanted node
 	// because instead some planner will see that & update the plan;
@@ -701,8 +701,7 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 
 	// avoid pindex rebuild on replica updates on index defn
 	// unless overridden
-	if v, ok := mgr.Options()["rebuildOnReplicaUpdate"]; !ok ||
-		v != "true" {
+	if v := mgr.GetOption("rebuildOnReplicaUpdate"); v != "true" {
 		return advPIndexClassifier(mgr, indexPIndexMap, indexPlanPIndexMap)
 	}
 
@@ -1138,7 +1137,7 @@ func CalcPIndexesDelta(mgrUUID string,
 func (mgr *Manager) GetHibernationBucketAndTask() (string, string) {
 	// Assuming that only one bucket can be tracked at a time, since only 1 bucket
 	// can be paused/resumed at a time.
-	bucketTaskInHibernation := mgr.Options()[bucketInHibernationKey]
+	bucketTaskInHibernation := mgr.GetOption(bucketInHibernationKey)
 	if bucketTaskInHibernation == NoBucketInHibernation {
 		log.Printf("janitor: no hibernation bucket to track right now")
 		// Removing any remaining trackers
@@ -1412,7 +1411,7 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 		return nil
 	}
 
-	feedAllotment := mgr.GetOptions()[FeedAllotmentOption]
+	feedAllotment := mgr.GetOption(FeedAllotmentOption)
 
 	pindexFirst := pindexes[0]
 	feedName := FeedNameForPIndex(pindexFirst, feedAllotment)

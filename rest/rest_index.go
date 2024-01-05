@@ -279,7 +279,7 @@ type QueryHandler struct {
 
 func NewQueryHandler(mgr *cbgt.Manager, pathStats *RESTPathStats) *QueryHandler {
 	slowQueryLogTimeout := time.Duration(SLOW_QUERY_LOG_TIMEOUT_SECS)
-	slowQueryLogTimeoutV := mgr.Options()["slowQueryLogTimeout"]
+	slowQueryLogTimeoutV := mgr.GetOption("slowQueryLogTimeout")
 	if slowQueryLogTimeoutV != "" {
 		d, err := time.ParseDuration(slowQueryLogTimeoutV)
 		if err == nil {

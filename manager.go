@@ -125,7 +125,7 @@ const bucketInHibernationKey = "bucketInHibernation"
 const NoBucketInHibernation = "$"
 
 func (mgr *Manager) MarkBucketForHibernation(bucketTaskKey string) error {
-	if mgr.Options()[bucketInHibernationKey] == bucketTaskKey {
+	if mgr.GetOption(bucketInHibernationKey) == bucketTaskKey {
 		return nil
 	}
 
@@ -133,7 +133,7 @@ func (mgr *Manager) MarkBucketForHibernation(bucketTaskKey string) error {
 }
 
 func (mgr *Manager) ResetBucketTrackedForHibernation() error {
-	if mgr.Options()[bucketInHibernationKey] == NoBucketInHibernation {
+	if mgr.GetOption(bucketInHibernationKey) == NoBucketInHibernation {
 		return nil
 	}
 
@@ -1447,6 +1447,13 @@ func (mgr *Manager) GetOptions() map[string]string {
 	options := mgr.options
 	mgr.optionsMutex.RUnlock()
 	return options
+}
+
+func (mgr *Manager) GetOption(key string) string {
+	mgr.optionsMutex.RLock()
+	val := mgr.options[key]
+	mgr.optionsMutex.RUnlock()
+	return val
 }
 
 // RefreshOptions updates the local managerOptions cache

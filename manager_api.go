@@ -229,7 +229,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	}
 
 	// Validate maxReplicasAllowed here.
-	maxReplicasAllowed, _ := strconv.Atoi(mgr.Options()["maxReplicasAllowed"])
+	maxReplicasAllowed, _ := strconv.Atoi(mgr.GetOption("maxReplicasAllowed"))
 	if payload.PlanParams.NumReplicas < 0 ||
 		payload.PlanParams.NumReplicas > maxReplicasAllowed {
 		return adjustedIndexName, "", NewBadRequestError("manager_api: CreateIndex failed, maxReplicasAllowed:"+
