@@ -155,6 +155,11 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 						ppnPro.Priority = 0
 						planPIndex.Nodes[nodePro] = ppnPro
 						promoted = nodePro
+						// this index will need a warning because it doesn't have
+						// at least 1 replica.
+						planPIndexesNext.Warnings[planPIndex.IndexName] =
+							append(planPIndexesNext.Warnings[planPIndex.IndexName],
+								planPIndexesCalc.Warnings[planPIndex.IndexName]...)
 						break PROMOTE_REPLICA
 					}
 				}
@@ -168,7 +173,10 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 					"failoverAssignAllPrimaries", planPIndex.IndexName, true) {
 					planPIndexCalc, exists :=
 						planPIndexesCalc.PlanPIndexes[planPIndexName]
-					if exists && planPIndexCalc != nil {
+					if exists {
+						// assigning the computed warnings here
+						planPIndexesNext.Warnings[planPIndex.IndexName] =
+							planPIndexesCalc.Warnings[planPIndex.IndexName]
 					ASSIGN_PRIMARY:
 						for nodeCalc, ppnCalc := range planPIndexCalc.Nodes {
 							if ppnCalc.Priority <= 0 &&
@@ -179,13 +187,17 @@ func Failover(cfg cbgt.Cfg, version string, server string,
 						}
 					}
 				}
+			} else {
+				// appending under-replication warnings, if any.
+				if warnings, exists := planPIndexesCalc.Warnings[planPIndex.IndexName]; exists {
+					planPIndexesNext.Warnings[planPIndex.IndexName] =
+						append(planPIndexesNext.Warnings[planPIndex.IndexName], warnings...)
+				}
 			}
 
 			delete(planPIndex.Nodes, node)
 		}
 	}
-
-	// TODO: Missing under-replication constraint warnings.
 
 	if cbgt.SamePlanPIndexes(planPIndexesNext, planPIndexesPrev) {
 		return false, nil
