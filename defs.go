@@ -516,6 +516,46 @@ const PLAN_PINDEXES_KEY = "planPIndexes"
 
 const PLAN_PINDEXES_DIRECTORY_STAMP = "curMetaKvPlanKey"
 
+// Check pointing of the rebalance status
+// To be updated by rebalance orchestrator
+// To be consumed by all nodes to cache the status of last rebalance operation
+//
+// This is helpful in case of nodes dieing during rebalance (orchestrator
+// and non-orchestrator). In such a case, ns_server sends the CancelTask request
+// to the nodes that are still alive. After which it will periodically send
+// GetCurrentTopology request to all nodes to check if there is a need of rebalance.
+// To answer which, the nodes can use the cached status of last rebalance operation.
+const LAST_REBALANCE_STATUS_KEY = "lastRebalanceStatusKey"
+
+// Values for LAST_REBALANCE_STATUS_KEY
+type LastRebalanceStatus uint
+
+const (
+	RebNoRecord LastRebalanceStatus = iota
+
+	RebStarted
+	RebCompleted // Rebalance completed successfully (without any errors)
+)
+
+func CfgGetLastRebalanceStatus(cfg Cfg) (LastRebalanceStatus, uint64, error) {
+	v, cas, err := cfg.Get(LAST_REBALANCE_STATUS_KEY, 0)
+	if err != nil || v == nil {
+		return RebNoRecord, cas, err
+	}
+	var rv LastRebalanceStatus
+	err = UnmarshalJSON(v, &rv)
+	return rv, cas, err
+}
+
+func CfgSetLastRebalanceStatus(cfg Cfg, status LastRebalanceStatus,
+	cas uint64) (uint64, error) {
+	buf, err := MarshalJSON(status)
+	if err != nil {
+		return 0, err
+	}
+	return cfg.Set(LAST_REBALANCE_STATUS_KEY, buf, cas)
+}
+
 // Returns an initialized PlanPIndexes.
 func NewPlanPIndexes(version string) *PlanPIndexes {
 	return &PlanPIndexes{

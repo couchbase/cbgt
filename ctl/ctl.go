@@ -960,6 +960,9 @@ func (ctl *Ctl) startCtlLOCKED(
 		var ctlErrs []error
 		var ctlWarnings map[string][]string
 		version := cbgt.CfgGetVersion(ctl.cfg)
+
+		wasCtlStopped := false
+
 		// Cleanup ctl goroutine.
 		//
 		defer func() {
@@ -1014,6 +1017,14 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctl.setTaskOrchestratorTo(false)
 
 			close(ctlDoneCh)
+
+			if mode != "rebalance" && mode != "failover-hard" {
+				return
+			}
+
+			if !wasCtlStopped && len(ctlWarnings) == 0 && len(ctlErrs) == 0 {
+				rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
+			}
 		}()
 
 		indexDefsStart, err :=
@@ -1144,6 +1155,7 @@ func (ctl *Ctl) startCtlLOCKED(
 
 				select {
 				case <-ctlStopCh:
+					wasCtlStopped = true
 					return // Exit ctl goroutine.
 
 				case err = <-progressDoneCh:
