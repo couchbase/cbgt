@@ -1221,6 +1221,8 @@ func (r *Rebalancer) updatePlanPIndexesLOCKED(
 	planPIndex.UUID = cbgt.NewUUID()
 	planPIndexes.UUID = cbgt.NewUUID()
 	planPIndexes.ImplVersion = r.version
+	// Updating the plans with the computed warnings.
+	planPIndexes.Warnings[planPIndex.IndexName] = r.endPlanPIndexes.Warnings[planPIndex.IndexName]
 
 	return formerPrimaryNode, nil
 }
