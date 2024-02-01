@@ -15,6 +15,7 @@ const (
 	componentIndexDefsCache
 	componentPlanPIndexesCache
 	componentNodeDefsCache
+	componentRebalanceStatus
 )
 
 type cfgSubscription struct {
@@ -47,6 +48,9 @@ var cfgSubscriptions = map[string]*cfgSubscription{
 			componentNodeDefsCache: []string{
 				CfgNodeDefsKey(NODE_DEFS_KNOWN),
 				CfgNodeDefsKey(NODE_DEFS_WANTED),
+			},
+			componentRebalanceStatus: []string{
+				LAST_REBALANCE_STATUS_KEY,
 			},
 		},
 	},

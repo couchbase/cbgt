@@ -385,11 +385,16 @@ func (h *QueryHandler) ServeHTTP(
 					username = creds.Name()
 				}
 
+				reqStr := string(requestBody)
+				if len(reqStr) > 200 {
+					reqStr = reqStr[:200] + "..."
+				}
+
 				log.Warnf("slow-query: index: %s,"+
 					" username: %s, query: %s, resultset bytes: %v,"+
 					" duration: %v, err: %v",
 					indexName, log.Tag(log.UserData, username),
-					log.Tag(log.UserData, string(requestBody)),
+					log.Tag(log.UserData, reqStr),
 					resultSetBytes, d, err2)
 				if focusStats != nil {
 					atomic.AddUint64(&focusStats.TotRequestSlow, 1)

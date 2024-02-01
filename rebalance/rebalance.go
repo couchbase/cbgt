@@ -161,6 +161,25 @@ type WantSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 
 // --------------------------------------------------------
 
+// checkpoints the rebalance status in the cfg
+func CheckPointRebalanceStatus(cfg cbgt.Cfg, status cbgt.LastRebalanceStatus) error {
+	_, cas, err := cbgt.CfgGetLastRebalanceStatus(cfg)
+	if err != nil {
+		log.Errorf("rebalance_checkpoint: GetLastRebalanceStatus, err: %v",
+			err)
+		return err
+	}
+
+	_, err = cbgt.CfgSetLastRebalanceStatus(cfg, status, cas)
+	if err != nil {
+		log.Errorf("rebalance_checkpoint: SetLastRebalanceStatus:%v, "+
+			"err:%v", status, err)
+		return err
+	}
+
+	return nil
+}
+
 // StartRebalance begins a concurrent, cluster-wide rebalancing of all
 // the indexes (and their index partitions) on a cluster of cbgt
 // nodes.  StartRebalance utilizes the blance library for calculating
@@ -171,6 +190,11 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesToRemoveParam []string,
 	optionsReb RebalanceOptions) (
 	*Rebalancer, error) {
+	err := CheckPointRebalanceStatus(cfg, cbgt.RebStarted)
+	if err != nil {
+		return nil, err
+	}
+
 	// TODO: Need timeouts on moves.
 	//
 	uuid := "" // We don't have a uuid, as we're not a node.
