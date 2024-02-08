@@ -235,7 +235,7 @@ func isBalanced(ctl *Ctl, ctlTopology *CtlTopology) bool {
 	}
 
 	lastRebStatus, err := ctl.optionsCtl.Manager.GetLastRebalanceStatus(false)
-	if err != nil || lastRebStatus == cbgt.RebStarted {
+	if err != nil || lastRebStatus != cbgt.RebCompleted {
 		return false
 	}
 
