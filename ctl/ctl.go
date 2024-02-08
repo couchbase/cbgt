@@ -219,6 +219,10 @@ func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 		}
 	}
 	ctl.m.Unlock()
+
+	// Resetting the rebalance status cfg key to the nil equivalent, in keeping
+	// in line with the other related fields.
+	rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebNoRecord)
 }
 
 func (ctl *Ctl) getManagerOptions() map[string]string {
@@ -1006,6 +1010,12 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctl.prevWarnings = ctlWarnings
 			ctl.prevErrs = ctlErrs
 
+			if mode == "rebalance" || mode == "failover-hard" {
+				if !wasCtlStopped && len(ctlWarnings) == 0 && len(ctlErrs) == 0 {
+					rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
+				}
+			}
+
 			if ctlOnProgress != nil {
 				ctlOnProgress(0, 0, nil, nil, nil, nil, nil, ctlErrs)
 			}
@@ -1017,14 +1027,6 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctl.setTaskOrchestratorTo(false)
 
 			close(ctlDoneCh)
-
-			if mode != "rebalance" && mode != "failover-hard" {
-				return
-			}
-
-			if !wasCtlStopped && len(ctlWarnings) == 0 && len(ctlErrs) == 0 {
-				rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
-			}
 		}()
 
 		indexDefsStart, err :=

@@ -1333,7 +1333,7 @@ func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, 
 	}
 
 	signal := make(chan struct{}, 1)
-	var sourceNotFound bool
+	sourceNotFound := true
 	var err error
 	var indexUUID string
 	go func() {
