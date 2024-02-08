@@ -1110,6 +1110,7 @@ func (ctl *Ctl) startCtlLOCKED(
 				if ctl.r == nil && err == nil {
 					log.Printf("ctl: StartRebalance returned nil rebalancer, " +
 						"without error, skipping rebalance")
+					rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
 					return
 				}
 
