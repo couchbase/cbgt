@@ -218,11 +218,10 @@ func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 			ctl.memberNodeUUIDs = newMemberNodeUUIDs
 		}
 	}
-	ctl.m.Unlock()
-
 	// Resetting the rebalance status cfg key to the nil equivalent, in keeping
 	// in line with the other related fields.
-	rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebNoRecord)
+	rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebStarted)
+	ctl.m.Unlock()
 }
 
 func (ctl *Ctl) getManagerOptions() map[string]string {
@@ -1110,7 +1109,6 @@ func (ctl *Ctl) startCtlLOCKED(
 				if ctl.r == nil && err == nil {
 					log.Printf("ctl: StartRebalance returned nil rebalancer, " +
 						"without error, skipping rebalance")
-					rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
 					return
 				}
 

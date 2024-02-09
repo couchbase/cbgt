@@ -190,10 +190,6 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesToRemoveParam []string,
 	optionsReb RebalanceOptions) (
 	*Rebalancer, error) {
-	err := CheckPointRebalanceStatus(cfg, cbgt.RebStarted)
-	if err != nil {
-		return nil, err
-	}
 
 	// TODO: Need timeouts on moves.
 	//
