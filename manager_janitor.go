@@ -61,7 +61,39 @@ func (mgr *Manager) JanitorRollbackKick(msg string, pindex *PIndex) {
 	}
 }
 
+// A way for applications to hook into the janitor's rollback phases.
+// Must be set at init time, before the manager is started.
+var RollbackHook func(phase RollbackPhase, pindex *PIndex) (err error)
+
+type RollbackPhase int
+
+const (
+	RollbackInit RollbackPhase = iota
+	RollbackCompleted
+)
+
 func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
+	defer func() {
+		if RollbackHook != nil {
+			err := RollbackHook(RollbackCompleted, pindex)
+			if err != nil {
+				log.Warnf("janitor: rollbackPIndex for pindex %s, "+
+					"RollbackHook, err: %v", pindex.Name, err)
+			}
+		}
+	}()
+
+	if pindex == nil {
+		return nil
+	}
+
+	if RollbackHook != nil {
+		err := RollbackHook(RollbackInit, pindex)
+		if err != nil {
+			return fmt.Errorf("janitor: rollbackPIndex for pindex %s, "+
+				"RollbackHook, err: %v", pindex.Name, err)
+		}
+	}
 
 	err := mgr.stopPIndex(pindex, false)
 	if err != nil {
@@ -79,9 +111,12 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 		if err != nil {
 			log.Warnf("janitor: partiallyRollbackPIndex for pindex %s, cleaning "+
 				"and trying full rollback, err: %v", pindex.Name, err)
+
 			os.RemoveAll(pindex.Path)
+
 			// Stopping pindex to unregister it from mgr.
 			mgr.stopPIndex(pindex, false)
+
 			// Full rollback if the partial rollback failed.
 			return mgr.fullRollbackPIndex(pindex)
 		}
