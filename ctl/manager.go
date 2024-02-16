@@ -216,6 +216,11 @@ func (m *CtlMgr) CancelTask(
 		s.taskHandles = taskHandlesNext
 	})
 
+	m.ctl.m.Lock()
+	m.ctl.incRevNumLOCKED()
+	m.ctl.isRebRunning = false
+	m.ctl.m.Unlock()
+
 	log.Printf("ctl/manager: CancelTask, taskId: %s, taskRev: %v, done",
 		taskId, taskRev)
 
@@ -234,10 +239,13 @@ func isBalanced(ctl *Ctl, ctlTopology *CtlTopology) bool {
 		return false
 	}
 
-	// RebStarted is set in Prepare()
+	ctl.m.Lock()
+	isRebalanceInProgress := ctl.isRebRunning
+	ctl.m.Unlock()
 
+	// RebStarted is set in Prepare();
 	// if rebalance is in progress, don't consider the reb status key
-	if !ctl.rebalanceInProgress() {
+	if !isRebalanceInProgress {
 		lastRebStatus, err := ctl.optionsCtl.Manager.GetLastRebalanceStatus(false)
 		if err != nil || lastRebStatus == cbgt.RebStarted {
 			return false
