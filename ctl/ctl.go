@@ -59,6 +59,7 @@ type Ctl struct {
 
 	revNum       uint64
 	revNumWaitCh chan struct{} // Closed when revNum changes.
+	isRebRunning bool
 
 	memberNodes []CtlNode // May be nil before initCh closed.
 
@@ -207,6 +208,7 @@ func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
 	ctl.incRevNumLOCKED()
+	ctl.isRebRunning = true
 	if affectsTopology {
 		if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
 			ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
@@ -1020,6 +1022,8 @@ func (ctl *Ctl) startCtlLOCKED(
 			}
 
 			ctl.movingPartitionsCount = 0
+
+			ctl.isRebRunning = false
 
 			ctl.m.Unlock()
 
