@@ -57,9 +57,10 @@ type Ctl struct {
 	// The m protects the fields below.
 	m sync.RWMutex
 
-	revNum       uint64
-	revNumWaitCh chan struct{} // Closed when revNum changes.
-	isRebRunning bool
+	revNum        uint64
+	revNumWaitCh  chan struct{} // Closed when revNum changes.
+	isRebRunning  bool
+	lastRebStatus cbgt.LastRebalanceStatus
 
 	memberNodes []CtlNode // May be nil before initCh closed.
 
@@ -220,9 +221,7 @@ func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
 			ctl.memberNodeUUIDs = newMemberNodeUUIDs
 		}
 	}
-	// Resetting the rebalance status cfg key to the nil equivalent, in keeping
-	// in line with the other related fields.
-	rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebStarted)
+
 	ctl.m.Unlock()
 }
 
@@ -404,6 +403,14 @@ func (ctl *Ctl) run() {
 		return
 	}
 
+	rebStatus, _, err := cbgt.CfgGetLastRebalanceStatus(ctl.cfg)
+	if err != nil {
+		log.Errorf("ctl: run, CfgGetLastRebalanceStatus err: %v", err)
+		ctl.initCh <- err
+		close(ctl.initCh)
+		return
+	}
+
 	ctl.m.Lock()
 
 	ctl.incRevNumLOCKED()
@@ -419,11 +426,18 @@ func (ctl *Ctl) run() {
 		ctl.prevWarnings = planPIndexes.Warnings
 	}
 
+	ctl.lastRebStatus = rebStatus
+
 	ctl.m.Unlock()
 
 	// -----------------------------------------------------------
 
 	err = ctl.cfg.Subscribe(cbgt.INDEX_DEFS_KEY, ctl.cfgEventCh)
+	err2 := ctl.cfg.Subscribe(cbgt.LAST_REBALANCE_STATUS_KEY, ctl.cfgEventCh)
+	if err == nil && err2 != nil {
+		err = err2
+	}
+
 	if err != nil {
 		ctl.initCh <- err
 		close(ctl.initCh)
@@ -514,6 +528,20 @@ func (ctl *Ctl) run() {
 
 		case ev := <-ctl.cfgEventCh:
 			log.Printf("ctl: cfgEvent, kind: %s", ev.Key)
+
+			if ev.Key == cbgt.LAST_REBALANCE_STATUS_KEY {
+				rebStatus, _, err := cbgt.CfgGetLastRebalanceStatus(ctl.cfg)
+				if err != nil {
+					log.Warnf("ctl: run, kind: %s, CfgGetLastRebalanceStatus,"+
+						" err: %v", ev.Key, err)
+				}
+
+				ctl.m.Lock()
+				ctl.incRevNumLOCKED()
+				ctl.lastRebStatus = rebStatus
+				ctl.m.Unlock()
+				continue
+			}
 
 			if ev.Key == cbgt.INDEX_DEFS_KEY {
 				// debounce the indexDef related cfg events.
@@ -1011,10 +1039,13 @@ func (ctl *Ctl) startCtlLOCKED(
 			ctl.prevWarnings = ctlWarnings
 			ctl.prevErrs = ctlErrs
 
-			if mode == "rebalance" || mode == "failover-hard" {
-				if !wasCtlStopped && len(ctlWarnings) == 0 && len(ctlErrs) == 0 {
-					rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
-				}
+			if !wasCtlStopped && !areWarningsOrErrorsInEffect(ctlWarnings, ctlErrs) {
+				rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebCompleted)
+
+				// Force update orchestrator's cached lastRebalanceStatus.
+				// This is to prevent race with isRebRunning and
+				// lastRebalanceStatus.
+				ctl.lastRebStatus = cbgt.RebCompleted
 			}
 
 			if ctlOnProgress != nil {

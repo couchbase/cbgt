@@ -218,6 +218,19 @@ func (m *CtlMgr) CancelTask(
 
 	m.ctl.m.Lock()
 	m.ctl.incRevNumLOCKED()
+
+	// This check is to avoid reaching out to cfg in case lastRebStatus update
+	// already happened.
+	if m.ctl.lastRebStatus != cbgt.RebCompleted {
+		// make sure to update the cached lastRebStatus before updating isRebRunning
+		rebStatus, _, err := cbgt.CfgGetLastRebalanceStatus(m.ctl.cfg)
+		if err != nil {
+			log.Warnf("ctl/manager: CancelTask, CfgGetLastRebalanceStatus,"+
+				" err: %v", err)
+		}
+
+		m.ctl.lastRebStatus = rebStatus
+	}
 	m.ctl.isRebRunning = false
 	m.ctl.m.Unlock()
 
@@ -227,29 +240,26 @@ func (m *CtlMgr) CancelTask(
 	return nil
 }
 
-func isBalanced(ctl *Ctl, ctlTopology *CtlTopology) bool {
-	if len(ctlTopology.PrevWarnings) > 0 {
-		for _, w := range ctlTopology.PrevWarnings {
-			if len(w) > 0 {
-				return false
-			}
+func areWarningsOrErrorsInEffect(warnings map[string][]string, errors []error) bool {
+	for _, w := range warnings {
+		if len(w) > 0 {
+			return true
 		}
 	}
-	if len(ctlTopology.PrevErrs) != 0 {
+
+	return len(errors) > 0
+}
+
+func isBalanced(ctl *Ctl, ctlTopology *CtlTopology) bool {
+	if areWarningsOrErrorsInEffect(ctlTopology.PrevWarnings, ctlTopology.PrevErrs) {
 		return false
 	}
 
 	ctl.m.Lock()
-	isRebalanceInProgress := ctl.isRebRunning
-	ctl.m.Unlock()
+	defer ctl.m.Unlock()
 
-	// RebStarted is set in Prepare();
-	// if rebalance is in progress, don't consider the reb status key
-	if !isRebalanceInProgress {
-		lastRebStatus, err := ctl.optionsCtl.Manager.GetLastRebalanceStatus(false)
-		if err != nil || lastRebStatus == cbgt.RebStarted {
-			return false
-		}
+	if !ctl.isRebRunning && ctl.lastRebStatus == cbgt.RebStarted {
+		return false
 	}
 
 	return true
