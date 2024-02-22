@@ -67,8 +67,7 @@ type Manager struct {
 
 	stats ManagerStats
 
-	m                      sync.RWMutex // Protects the fields that follow.
-	lastRebalanceStatus    LastRebalanceStatus
+	m                      sync.RWMutex       // Protects the fields that follow.
 	pindexes               map[string]*PIndex // Key is PIndex.Name().
 	bootingPIndexes        map[string]bool    // booting flag
 	lastNodeDefs           map[string]*NodeDefs
@@ -467,11 +466,6 @@ func (mgr *Manager) StartCfg() error {
 			mgr.GetNodeDefs(NODE_DEFS_WANTED, true)
 			return
 		}
-	})
-
-	// Routine to update last rebalance status.
-	mgr.cfgObserver(componentRebalanceStatus, func(e *CfgEvent) {
-		mgr.GetLastRebalanceStatus(true)
 	})
 
 	return nil
@@ -1089,28 +1083,6 @@ func (mgr *Manager) GetIndexNameForPIndex(pindexName string) (
 		}
 	}
 	return "", nil
-}
-
-func (mgr *Manager) GetLastRebalanceStatus(refresh bool) (LastRebalanceStatus,
-	error) {
-	mgr.m.RLock()
-	rebStatus := mgr.lastRebalanceStatus
-	mgr.m.RUnlock()
-
-	if !refresh {
-		return rebStatus, nil
-	}
-
-	mgr.m.Lock()
-	defer mgr.m.Unlock()
-
-	rebStatus, _, err := CfgGetLastRebalanceStatus(mgr.cfg)
-	if err != nil {
-		return 0, err
-	}
-
-	mgr.lastRebalanceStatus = rebStatus
-	return rebStatus, nil
 }
 
 // Returns read-only snapshot of the PlanPIndexes, also with PlanPIndex's

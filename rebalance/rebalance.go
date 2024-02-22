@@ -191,6 +191,8 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	optionsReb RebalanceOptions) (
 	*Rebalancer, error) {
 
+	CheckPointRebalanceStatus(cfg, cbgt.RebStarted)
+
 	// TODO: Need timeouts on moves.
 	//
 	uuid := "" // We don't have a uuid, as we're not a node.
