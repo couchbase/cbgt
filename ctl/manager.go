@@ -335,7 +335,7 @@ func (m *CtlMgr) PrepareTopologyChange(
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			m.ctl.onSuccessfulPrepare(true)
+			m.ctl.onSuccessfulPrepareTopologyChange(change)
 		}
 	}()
 
@@ -906,7 +906,7 @@ func (m *CtlMgr) PreparePause(params service.PauseParams) (err error) {
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			m.ctl.onSuccessfulPrepare(false)
+			m.ctl.onSuccessfulPrepareHibernation()
 		}
 	}()
 
@@ -979,7 +979,7 @@ func (m *CtlMgr) PrepareResume(params service.ResumeParams) (err error) {
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			m.ctl.onSuccessfulPrepare(false)
+			m.ctl.onSuccessfulPrepareHibernation()
 		}
 	}()
 
