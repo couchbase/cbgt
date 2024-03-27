@@ -6,8 +6,8 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.0.0 h1:u/LLAOFgsMv7HmNL4
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.0.0/go.mod h1:2e8rMJtl2+2j+HXbTBwnyGpm5Nou7KhvSfxOq8JpTag=
 github.com/aws/aws-sdk-go v1.44.299 h1:HVD9lU4CAFHGxleMJp95FV/sRhtg7P4miHD1v88JAQk=
 github.com/aws/aws-sdk-go v1.44.299/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
-github.com/couchbase/blance v0.1.5 h1:kNSAwhb8FXSJpicJ8R8Kk7+0V1+MyTcY1MOHIDbU79w=
-github.com/couchbase/blance v0.1.5/go.mod h1:2Sa/nsJSieN/r3T9LsrUYWeQ015qDsuHybhz4F4JcHU=
+github.com/couchbase/blance v0.1.6 h1:zyNew/SN2AheIoJxQ2LqqA1u3bMp03eGCer6hSDMUDs=
+github.com/couchbase/blance v0.1.6/go.mod h1:2Sa/nsJSieN/r3T9LsrUYWeQ015qDsuHybhz4F4JcHU=
 github.com/couchbase/cbauth v0.1.10 h1:ixJGG9mAgL1HnWKt2eKmJ8gJa0rkaUURtDPDak7Dcts=
 github.com/couchbase/cbauth v0.1.10/go.mod h1:YHG+5rUI6GoLLlIViT9IfD0nwqEebBcl66TQ4pDFDw4=
 github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=

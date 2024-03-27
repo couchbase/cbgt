@@ -757,12 +757,6 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		return partitionModel, begMap, endMap, err
 	}
 
-	currentPlanPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
-	if err != nil {
-		r.Logf("rebalance: err getting recent plans: %v", err)
-		return nil, nil, nil, err
-	}
-
 	var warnings map[string][]string
 	if r.recoveryPlanPIndexes != nil {
 		// During the failover, cbgt ignores the new nextMap from blance
@@ -775,7 +769,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.recoveryPlanPIndexes,
 			r.nodesAll, []string{}, r.nodesToRemove,
-			r.nodeWeights, r.nodeHierarchy, true)
+			r.nodeWeights, r.nodeHierarchy, false)
 	} else {
 		var enablePartitionNodeStickiness bool
 		if r.optionsReb.Manager != nil {
@@ -789,16 +783,26 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex,
 			enablePartitionNodeStickiness)
 
+		// Updating this here since plans for index have been assigned to nodes.
+		// PlanPIndexes for Index should include existing partitions placements
+		// Using the beginning plans since they haven't changed for this index yet.
+		for planName, plan := range r.begPlanPIndexes.PlanPIndexes {
+			if plan.IndexUUID == indexDef.UUID {
+				r.existingPlanPIndexes.PlanPIndexes[planName] = plan
+			}
+		}
+
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes;
 		// Do not account for existing planPIndexes, if
 		// enablePartitionNodeStickiness is enabled, giving full control
 		// to the rebalanceHook to influence node weights.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
-			endPlanPIndexesForIndex, currentPlanPIndexes,
+			endPlanPIndexesForIndex, r.existingPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 			nodeWeights, r.nodeHierarchy, enablePartitionNodeStickiness)
 
 		// Updating this here since plans for index have been assigned to nodes.
+		// Will use this to pass context to blance.
 		for k, v := range endPlanPIndexesForIndex {
 			r.existingPlanPIndexes.PlanPIndexes[k] = v
 		}
@@ -825,7 +829,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
 
-	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, currentPlanPIndexes, true)
+	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.begPlanPIndexes, true)
 	endMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.endPlanPIndexes, true)
 
 	return partitionModel, begMap, endMap, nil
