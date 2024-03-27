@@ -719,6 +719,7 @@ func BlancePlanPIndexes(mode string,
 
 	// First, reconstruct previous blance map from planPIndexesPrev.
 	blancePrevMap := BlanceMap(planPIndexesForIndex, planPIndexesPrev, skipExistingPartitions)
+	blanceMapToAssign := BlanceMap(planPIndexesForIndex, planPIndexesPrev, true)
 
 	partitionWeights := indexDef.PlanParams.PIndexWeights
 
@@ -765,7 +766,7 @@ func BlancePlanPIndexes(mode string,
 				ExcludeLevel: 1}}}
 	}
 
-	blanceNextMap, warnings := blance.PlanNextMap(blancePrevMap,
+	blanceNextMap, warnings := blance.PlanNextMap(blancePrevMap, blanceMapToAssign,
 		nodeUUIDsAllForIndex, nodeUUIDsToRemove, nodeUUIDsToAdd,
 		model, modelConstraints,
 		partitionWeights,

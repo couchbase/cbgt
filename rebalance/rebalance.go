@@ -125,6 +125,9 @@ type Rebalancer struct {
 
 	recoveryPlanPIndexes *cbgt.PlanPIndexes
 
+	// The updated plans computed during the rebalance iterations.
+	existingPlanPIndexes *cbgt.PlanPIndexes
+
 	m sync.Mutex // Protects the mutable fields that follow.
 
 	endPlanPIndexes *cbgt.PlanPIndexes
@@ -183,6 +186,8 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	if err != nil {
 		return nil, err
 	}
+
+	existingPlans := cbgt.NewPlanPIndexes(version)
 
 	nodeUUIDs, nodeWeights, nodeHierarchy :=
 		cbgt.GetNodeWeightsAndHierarchy(begNodeDefs)
@@ -248,31 +253,32 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	stopCh := make(chan struct{})
 
 	r := &Rebalancer{
-		version:             version,
-		cfg:                 cfg,
-		server:              server,
-		optionsMgr:          optionsMgr,
-		optionsReb:          optionsReb,
-		progressCh:          make(chan RebalanceProgress),
-		monitor:             monitorInst,
-		monitorDoneCh:       make(chan struct{}),
-		monitorSampleCh:     monitorSampleCh,
-		monitorSampleWantCh: make(chan chan monitor.MonitorSample),
-		nodesAll:            nodesAll,
-		nodesToAdd:          nodesToAdd,
-		nodesToRemove:       nodesToRemove,
-		nodeWeights:         nodeWeights,
-		nodeHierarchy:       nodeHierarchy,
-		begIndexDefs:        begIndexDefs,
-		begNodeDefs:         begNodeDefs,
-		begPlanPIndexes:     begPlanPIndexes,
-		begPlanPIndexesCAS:  begPlanPIndexesCAS,
-		endPlanPIndexes:     cbgt.NewPlanPIndexes(version),
-		currStates:          map[string]map[string]map[string]StateOp{},
-		currSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
-		wantSeqs:            map[string]map[string]map[string]cbgt.UUIDSeq{},
-		stopCh:              stopCh,
-		transferProgress:    map[string]float64{},
+		version:              version,
+		cfg:                  cfg,
+		server:               server,
+		optionsMgr:           optionsMgr,
+		optionsReb:           optionsReb,
+		progressCh:           make(chan RebalanceProgress),
+		monitor:              monitorInst,
+		monitorDoneCh:        make(chan struct{}),
+		monitorSampleCh:      monitorSampleCh,
+		monitorSampleWantCh:  make(chan chan monitor.MonitorSample),
+		nodesAll:             nodesAll,
+		nodesToAdd:           nodesToAdd,
+		nodesToRemove:        nodesToRemove,
+		nodeWeights:          nodeWeights,
+		nodeHierarchy:        nodeHierarchy,
+		begIndexDefs:         begIndexDefs,
+		begNodeDefs:          begNodeDefs,
+		begPlanPIndexes:      begPlanPIndexes,
+		begPlanPIndexesCAS:   begPlanPIndexesCAS,
+		existingPlanPIndexes: existingPlans,
+		endPlanPIndexes:      cbgt.NewPlanPIndexes(version),
+		currStates:           map[string]map[string]map[string]StateOp{},
+		currSeqs:             map[string]map[string]map[string]cbgt.UUIDSeq{},
+		wantSeqs:             map[string]map[string]map[string]cbgt.UUIDSeq{},
+		stopCh:               stopCh,
+		transferProgress:     map[string]float64{},
 	}
 
 	r.Logf("rebalance: nodesAll: %#v", nodesAll)
@@ -732,11 +738,25 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	} else {
 		nodeWeights := r.adjustNodeWeights(endPlanPIndexesForIndex)
 
+		// PlanPIndexes for Index should include existing partitions placements
+		// Using the beginning plans since they haven't changed for this index yet.
+		for planName, plan := range r.begPlanPIndexes.PlanPIndexes {
+			if plan.IndexUUID == indexDef.UUID {
+				r.existingPlanPIndexes.PlanPIndexes[planName] = plan
+			}
+		}
+
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
-			endPlanPIndexesForIndex, r.begPlanPIndexes,
+			endPlanPIndexesForIndex, r.existingPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 			nodeWeights, r.nodeHierarchy, false)
+
+		// Updating this here since plans for index have been assigned to nodes.
+		// Will use this to pass context to blance.
+		for k, v := range endPlanPIndexesForIndex {
+			r.existingPlanPIndexes.PlanPIndexes[k] = v
+		}
 	}
 
 	for partitionName, partitionWarning := range warnings {

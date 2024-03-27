@@ -17,6 +17,194 @@ import (
 	"time"
 )
 
+type blanceTestInputs struct {
+	mode                   string
+	indexDefToBeRebalanced *IndexDef
+	indexDefs              []*IndexDef
+	planPIndexesForIndex   map[string]*PlanPIndex
+	planPIndexesPrev       *PlanPIndexes
+	skipExistingPartitions bool
+	nodeUUIDsAll           []string
+	nodesUUIDsToAdd        []string
+	nodeUUIDsToRemove      []string
+	nodeHierarchy          map[string]string
+	expectedWarningsCount  int
+	// map of planName -> node assignment
+	expectedNodeAssignment map[string]map[string]*PlanPIndexNode
+}
+
+func TestNodePartitionAssignment(t *testing.T) {
+	indexDef2 := &IndexDef{
+		UUID:       NewUUID(),
+		Name:       "bkt1._default.test5",
+		SourceName: "bkt1",
+		PlanParams: PlanParams{
+			IndexPartitions: 6,
+		},
+	}
+
+	indexDef1 := &IndexDef{
+		UUID:       NewUUID(),
+		Name:       "bkt1._default.test4",
+		SourceName: "bkt1",
+		PlanParams: PlanParams{
+			IndexPartitions: 2,
+		},
+	}
+
+	testCases := []blanceTestInputs{
+		// 3 nodes, add 1
+		// Assigning test4 only here - hence, move only test4 partitions to
+		// the new node.
+		{
+			mode:                   "rebalance",
+			indexDefToBeRebalanced: indexDef1,
+			skipExistingPartitions: false,
+			nodeUUIDsAll:           []string{"a", "b", "c", "d"},
+			nodesUUIDsToAdd:        []string{"d"},
+			nodeUUIDsToRemove:      []string{},
+			nodeHierarchy:          make(map[string]string),
+			planPIndexesForIndex: map[string]*PlanPIndex{
+				"bkt1._default.test4_1": &PlanPIndex{
+					Name:       "bkt1._default.test4_1",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef1.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"a": &PlanPIndexNode{Priority: 0},
+					},
+				},
+				"bkt1._default.test4_2": &PlanPIndex{
+					Name:       "bkt1._default.test4_2",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef1.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"c": &PlanPIndexNode{Priority: 0},
+					},
+				},
+			},
+			planPIndexesPrev: &PlanPIndexes{
+				UUID:        NewUUID(),
+				ImplVersion: "7.6",
+				Warnings:    make(map[string][]string),
+				PlanPIndexes: map[string]*PlanPIndex{
+					"bkt1._default.test5_1": &PlanPIndex{
+						Name:       "bkt1._default.test5_1",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_2": &PlanPIndex{
+						Name:       "bkt1._default.test5_2",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_3": &PlanPIndex{
+						Name:       "bkt1._default.test5_3",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"b": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_4": &PlanPIndex{
+						Name:       "bkt1._default.test5_4",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"b": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_5": &PlanPIndex{
+						Name:       "bkt1._default.test5_5",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_6": &PlanPIndex{
+						Name:       "bkt1._default.test5_6",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_1": &PlanPIndex{
+						Name:       "bkt1._default.test4_1",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef1.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_2": &PlanPIndex{
+						Name:       "bkt1._default.test4_2",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef1.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+				},
+			},
+			expectedWarningsCount: 0,
+			expectedNodeAssignment: map[string]map[string]*PlanPIndexNode{
+				"bkt1._default.test4_1": map[string]*PlanPIndexNode{
+					"d": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+				"bkt1._default.test4_2": map[string]*PlanPIndexNode{
+					"d": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		warnings := BlancePlanPIndexes(testCase.mode, testCase.indexDefToBeRebalanced,
+			testCase.planPIndexesForIndex, testCase.planPIndexesPrev,
+			testCase.nodeUUIDsAll, testCase.nodesUUIDsToAdd, testCase.nodeUUIDsToRemove,
+			nil, testCase.nodeHierarchy, testCase.skipExistingPartitions)
+
+		for k, v := range testCase.planPIndexesForIndex {
+			if !reflect.DeepEqual(testCase.expectedNodeAssignment[k], v.Nodes) {
+				t.Errorf("unexpected node assignment for %s; expected: %+v, got: %+v \n",
+					k, testCase.expectedNodeAssignment[k], v.Nodes)
+			}
+		}
+
+		if len(warnings) != testCase.expectedWarningsCount {
+			t.Errorf("unexpected warnings count; expected: %d, got: %d \n",
+				testCase.expectedWarningsCount, len(warnings))
+		}
+	}
+}
+
 // Implements ManagerEventHandlers interface.
 type TestMEH struct {
 	lastPIndex *PIndex
