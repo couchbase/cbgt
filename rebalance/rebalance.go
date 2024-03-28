@@ -84,6 +84,10 @@ type RebalanceOptions struct {
 	// as the new partition node.
 	SeqChecksTimeoutInSec int
 
+	// a flag to decide whether we allow the replica to catchup till a certain
+	// sequence number or not
+	EnableReplicaCatchup bool
+
 	Manager *cbgt.Manager
 
 	StatsSampleErrorThreshold *int
@@ -1233,8 +1237,9 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		return nil // TODO: Handle op del better.
 	}
 
-	if state == "replica" && !forceWaitForCatchup {
-		// No need to wait for a replica pindex to be "caught up".
+	if (state == "replica" && !r.optionsReb.EnableReplicaCatchup) && !forceWaitForCatchup {
+		// No need to wait for a replica pindex to be "caught up" when we've
+		// disabled the EnableReplicaCatchup option.
 		return nil
 	}
 

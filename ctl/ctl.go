@@ -90,6 +90,7 @@ type CtlOptions struct {
 	DryRun                             bool
 	Verbose                            int
 	FavorMinNodes                      bool
+	EnableReplicaCatchup               bool
 	WaitForMemberNodes                 int // Seconds to wait for wanted member nodes to appear.
 	MaxConcurrentPartitionMovesPerNode int
 	Manager                            *cbgt.Manager
@@ -1046,6 +1047,12 @@ func (ctl *Ctl) startCtlLOCKED(
 				seqChecksTimeoutInSec, _ := cbgt.ParseOptionsInt(ctl.getManagerOptions(),
 					"seqChecksTimeoutInSec")
 
+				enableReplicaCatchup, found := cbgt.ParseOptionsBool(ctl.getManagerOptions(),
+					"enableReplicaCatchupOnRebalance")
+				if !found {
+					enableReplicaCatchup = ctl.optionsCtl.EnableReplicaCatchup
+				}
+
 				// Start rebalance and monitor progress.
 				ctl.r, err = rebalance.StartRebalance(version,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
@@ -1054,6 +1061,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						FavorMinNodes:                      ctl.optionsCtl.FavorMinNodes,
 						MaxConcurrentPartitionMovesPerNode: concurrentPartitionsMovesPerNode,
 						SeqChecksTimeoutInSec:              seqChecksTimeoutInSec,
+						EnableReplicaCatchup:               enableReplicaCatchup,
 						DryRun:                             ctl.optionsCtl.DryRun,
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,

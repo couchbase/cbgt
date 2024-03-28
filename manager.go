@@ -198,6 +198,7 @@ type ClusterOptions struct {
 	MaxConcurrentPartitionMovesPerNode string `json:"maxConcurrentPartitionMovesPerNode"`
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
+	EnableReplicaCatchupOnRebalance    string `json:"enableReplicaCatchupOnRebalance"`
 	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
 	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
 	DisableGeoPointSpatialPlugin       string `json:"disableGeoPointSpatialPlugin"`
