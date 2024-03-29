@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -206,30 +207,6 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesToRemove = cbgt.StringsIntersectStrings(nodesToRemove, nodesToRemove)
 
 	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
-
-	// ## check if the rebalance is needed
-	// Due to previous failover operations, we may end up with a situation
-	// where the actual number of partitions(active & replica) are less
-	// than the required number of partitions (as per the index definitions).
-	// In such cases, we want to allow the rebalance to proceed, so that it can
-	// create the missing partitions.
-
-	missingActives, missingReplicas, maxReplicaCount :=
-		compareIndexDefsWithPlan(begIndexDefs, begPlanPIndexes)
-	isTopologyChange := len(nodesToAdd) > 0 || len(nodesToRemove) > 0
-	// If there is any missing replica partition and enough nodes available
-	// to support maxReplicaCount
-	canBuildMissingReplicas := missingReplicas != 0 &&
-		maxReplicaCount <= (len(nodesAll)-len(nodesToRemove))
-
-	if !isTopologyChange && missingActives == 0 && !canBuildMissingReplicas {
-		log.Printf("rebalance: skipping rebalance, isTopologyChange: %v, "+
-			"missingActives: %v, missingReplicas: %v, "+
-			"canBuildMissingReplicas: %v", isTopologyChange, missingActives,
-			missingReplicas, canBuildMissingReplicas)
-
-		return nil, nil
-	}
 
 	// --------------------------------------------------------
 
@@ -486,7 +463,17 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
 	n := len(r.begIndexDefs.IndexDefs)
 
+	// Sorting the index defs' names to check if passing index defs in the same
+	// order results in the same plans generated
+	// if yes, then no need to add early exit check -> if there's no change, the
+	// plans generated will be the same -> and plan computation isn't expensive
+	var indexDefNames []string
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
+		indexDefNames = append(indexDefNames, indexDef.Name)
+	}
+	slices.Sort(indexDefNames)
+
+	for _, indexName := range indexDefNames {
 		select {
 		case <-stopCh:
 			return
@@ -497,6 +484,8 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 
 		r.Logf("=====================================")
 		r.Logf("runRebalanceIndexes: %d of %d", i, n)
+
+		indexDef := r.begIndexDefs.IndexDefs[indexName]
 
 		_, err := r.rebalanceIndex(stopCh, indexDef)
 		if err != nil {
