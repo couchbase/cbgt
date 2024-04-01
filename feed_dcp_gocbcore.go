@@ -1212,12 +1212,14 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 	// Determine rollbackVbuuid from the failover log.
 	var rollbackVbuuid uint64
-	vbMetaData, _, err := f.getMetaData(vbId)
-	if err == nil && len(vbMetaData.FailOverLog) > 0 {
-		for j := 0; j < len(vbMetaData.FailOverLog); j++ {
-			if vbMetaData.FailOverLog[j][1] <= rollbackSeqno {
-				rollbackVbuuid = vbMetaData.FailOverLog[j][0]
-				break
+	if rollbackSeqno > 0 {
+		vbMetaData, _, err := f.getMetaData(vbId)
+		if err == nil && len(vbMetaData.FailOverLog) > 0 {
+			for j := 0; j < len(vbMetaData.FailOverLog); j++ {
+				if vbMetaData.FailOverLog[j][1] <= rollbackSeqno {
+					rollbackVbuuid = vbMetaData.FailOverLog[j][0]
+					break
+				}
 			}
 		}
 	}
@@ -1226,7 +1228,7 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 		" rollbackSeqno: %v, rollbackVbuuid: %v",
 		f.Name(), vbId, rollbackSeqno, rollbackVbuuid)
 
-	err = Timer(func() error {
+	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
 		if err != nil || f.checkStopAfter(partition) {
