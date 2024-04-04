@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -228,42 +229,13 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
 
 	if RebalanceHook != nil {
-		_, skip, err := RebalanceHook(RebalanceHookInfo{
+		_, err := RebalanceHook(RebalanceHookInfo{
 			Phase: RebalanceHookPhaseInit,
 		})
 
 		if err != nil {
 			return nil, fmt.Errorf("rebalance: rebalanceHook init phase,"+
 				" err: %v", err)
-		}
-
-		if skip {
-			log.Printf("rebalance: skipping rebalance due to rebalance hook")
-			return nil, nil
-		}
-	} else {
-		// ## check if the rebalance is needed
-		// Due to previous failover operations, we may end up with a situation
-		// where the actual number of partitions(active & replica) are less
-		// than the required number of partitions (as per the index definitions).
-		// In such cases, we want to allow the rebalance to proceed, so that it
-		// can create the missing partitions.
-
-		missingActives, missingReplicas, maxReplicaCount :=
-			compareIndexDefsWithPlan(begIndexDefs, begPlanPIndexes)
-		isTopologyChange := len(nodesToAdd) > 0 || len(nodesToRemove) > 0
-		// If there is any missing replica partition and enough nodes available
-		// to support maxReplicaCount
-		canBuildMissingReplicas := missingReplicas != 0 &&
-			maxReplicaCount <= (len(nodesAll)-len(nodesToRemove))
-
-		if !isTopologyChange && missingActives == 0 && !canBuildMissingReplicas {
-			log.Printf("rebalance: skipping rebalance, isTopologyChange: %v, "+
-				"missingActives: %v, missingReplicas: %v, "+
-				"canBuildMissingReplicas: %v", isTopologyChange, missingActives,
-				missingReplicas, canBuildMissingReplicas)
-
-			return nil, nil
 		}
 	}
 	// --------------------------------------------------------
@@ -521,7 +493,13 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
 	n := len(r.begIndexDefs.IndexDefs)
 
+	var indexDefNames []string
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
+		indexDefNames = append(indexDefNames, indexDef.Name)
+	}
+	slices.Sort(indexDefNames)
+
+	for _, indexName := range indexDefNames {
 		select {
 		case <-stopCh:
 			return
@@ -532,6 +510,8 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 
 		r.Logf("=====================================")
 		r.Logf("runRebalanceIndexes: %d of %d", i, n)
+
+		indexDef := r.begIndexDefs.IndexDefs[indexName]
 
 		_, err := r.rebalanceIndex(stopCh, indexDef)
 		if err != nil {
@@ -843,8 +823,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // more dynamically in order to achieve a custom layout of pindexes across
 // the cluster. This should be set only during the init()'ialization phase
 // of the process.
-var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo,
-	skip bool, err error)
+var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo, err error)
 
 // Rebalance hook phases.
 const (
@@ -886,7 +865,7 @@ func (r *Rebalancer) adjustNodeWeights(
 	enablePartitionNodeStickiness bool) map[string]int {
 	nodeWeights := r.nodeWeights
 	if RebalanceHook != nil {
-		rho, _, err := RebalanceHook(RebalanceHookInfo{
+		rho, err := RebalanceHook(RebalanceHookInfo{
 			Phase: RebalanceHookPhaseAdjustNodeWeights,
 
 			IndexDefs:            r.begIndexDefs,
