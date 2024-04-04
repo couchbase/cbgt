@@ -394,7 +394,18 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 	existingPlans := new(PlanPIndexes)
 	existingPlans.PlanPIndexes = make(map[string]*PlanPIndex)
 
+	indexUUIDMap := make(map[string]struct{})
+	for _, index := range indexDefs.IndexDefs {
+		indexUUIDMap[index.UUID] = struct{}{}
+	}
+
 	for name, pindex := range planPIndexesPrev.PlanPIndexes {
+		// If the index UUID isn't present, the index is either deleted
+		// or updated - neither of which should influence the location of the new
+		// partitions
+		if _, exists := indexUUIDMap[pindex.IndexUUID]; !exists {
+			continue
+		}
 		for nodeUUID, planNode := range pindex.Nodes {
 			nodePartitionCount[nodeUUID]++
 			if planNode.Priority == 0 {
@@ -547,16 +558,6 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		planPIndexesForIndex = pho.PlanPIndexesForIndex
 
 		adjustedWeights := nodeWeights
-		// override the node weights for single partitioned index to
-		// favour balanced partition assignments.
-		if len(planPIndexesForIndex) == 1 {
-			// ensure that the node stickiness option is not enabled.
-			if enabled, found := options["enablePartitionNodeStickiness"]; !found ||
-				enabled == "false" {
-				adjustedWeights = NormaliseNodeWeights(nodeWeights,
-					planPIndexesPrev, len(planPIndexesPrev.PlanPIndexes))
-			}
-		}
 
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
@@ -579,6 +580,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		for _, warning := range warnings {
 			log.Printf("planner: indexDef.Name: %s,"+
 				" PlanNextMap warning: %s", indexDef.Name, warning)
+		}
+
+		// existingPlans should account for previous plans from all prior
+		// iterations, not just from before the rebalance.
+		for planName, plan := range planPIndexesForIndex {
+			existingPlans.PlanPIndexes[planName] = plan
 		}
 
 		_, _, err = plannerHookCall("indexDef.balanced",

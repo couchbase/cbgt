@@ -887,17 +887,6 @@ func (r *Rebalancer) adjustNodeWeights(
 		}
 	}
 
-	if enablePartitionNodeStickiness {
-		return nodeWeights
-	}
-
-	// if the index is a single partitioned, then try to normalise the
-	// node weights, only if enablePartitionNodeStickiness^ weren't true.
-	if len(planPIndexesForIndex) == 1 {
-		nodeWeights = cbgt.NormaliseNodeWeights(r.nodeWeights,
-			r.endPlanPIndexes, len(r.begPlanPIndexes.PlanPIndexes))
-	}
-
 	return nodeWeights
 }
 
