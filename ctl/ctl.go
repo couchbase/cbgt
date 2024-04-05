@@ -100,6 +100,7 @@ type CtlOptions struct {
 	DryRun                             bool
 	Verbose                            int
 	FavorMinNodes                      bool
+	EnableReplicaCatchup               bool
 	WaitForMemberNodes                 int // Seconds to wait for wanted member nodes to appear.
 	MaxConcurrentPartitionMovesPerNode int
 	Manager                            *cbgt.Manager
@@ -200,28 +201,44 @@ func StartCtl(cfg cbgt.Cfg, server string,
 
 // ----------------------------------------------------
 
-// onSuccessfulPrepare is to be called ONLY after a successful
-// completion to the PREPARE phase of a cluster operation.
-// - reset previous topology/cluster operation's warnings/errors
-// - on topology change, update ctl's prevMemberNodeUUIDs and memberNodeUUIDs
-func (ctl *Ctl) onSuccessfulPrepare(affectsTopology bool) {
-	ctl.m.Lock()
+// Resets the previous warnings and errors to nil
+// It's the caller's responsibility to acquire the lock.
+func (ctl *Ctl) clearWarningsAndErrorsLOCKED() {
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
+}
+
+// onSuccessfulPrepareTopologyChange is to be called ONLY after a successful
+// completion of the PREPARE phase of a rebalance.
+// - reset previous topology/cluster operation's warnings/errors
+// - on topology change, update ctl's prevMemberNodeUUIDs and memberNodeUUIDs
+func (ctl *Ctl) onSuccessfulPrepareTopologyChange(topologyChangeReq service.TopologyChange) {
+	ctl.m.Lock()
+	ctl.clearWarningsAndErrorsLOCKED()
 	ctl.incRevNumLOCKED()
 	ctl.isRebRunning = true
-	if affectsTopology {
-		if memberNodes, err := CurrentMemberNodes(ctl.cfg); err == nil {
-			ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
-			ctl.memberNodes = memberNodes
-			newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
-			for _, memberNode := range memberNodes {
-				newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
-			}
-			ctl.memberNodeUUIDs = newMemberNodeUUIDs
+	if memberNodes, err := nodesAfterTopologyChange(ctl.cfg, topologyChangeReq); err == nil {
+		ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
+		ctl.memberNodes = memberNodes
+		newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
+		for _, memberNode := range memberNodes {
+			newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
 		}
+		ctl.memberNodeUUIDs = newMemberNodeUUIDs
 	}
 
+	// Resetting the rebalance status cfg key to the nil equivalent, in keeping
+	// in line with the other related fields.
+	rebalance.CheckPointRebalanceStatus(ctl.cfg, cbgt.RebStarted)
+	ctl.m.Unlock()
+}
+
+// onSuccessfulPrepareHibernation is to be called ONLY after a successful
+// completion of the PREPARE phase of a pause/resume.
+func (ctl *Ctl) onSuccessfulPrepareHibernation() {
+	ctl.m.Lock()
+	ctl.clearWarningsAndErrorsLOCKED()
+	ctl.incRevNumLOCKED()
 	ctl.m.Unlock()
 }
 
@@ -1118,6 +1135,12 @@ func (ctl *Ctl) startCtlLOCKED(
 				seqChecksTimeoutInSec, _ := cbgt.ParseOptionsInt(ctl.getManagerOptions(),
 					"seqChecksTimeoutInSec")
 
+				enableReplicaCatchup, found := cbgt.ParseOptionsBool(ctl.getManagerOptions(),
+					"enableReplicaCatchupOnRebalance")
+				if !found {
+					enableReplicaCatchup = ctl.optionsCtl.EnableReplicaCatchup
+				}
+
 				// Start rebalance and monitor progress.
 				ctl.r, err = rebalance.StartRebalance(version,
 					ctl.cfg, ctl.server, ctl.optionsMgr,
@@ -1126,6 +1149,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						FavorMinNodes:                      ctl.optionsCtl.FavorMinNodes,
 						MaxConcurrentPartitionMovesPerNode: concurrentPartitionsMovesPerNode,
 						SeqChecksTimeoutInSec:              seqChecksTimeoutInSec,
+						EnableReplicaCatchup:               enableReplicaCatchup,
 						DryRun:                             ctl.optionsCtl.DryRun,
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,
@@ -1136,14 +1160,6 @@ func (ctl *Ctl) startCtlLOCKED(
 					log.Warnf("ctl: StartRebalance, err: %v", err)
 
 					ctlErrs = append(ctlErrs, err)
-					return
-				}
-
-				// If StartRebalance() returned a nil rebalance.Rebalancer,
-				// with no error, then it means rebalance should be skipped.
-				if ctl.r == nil && err == nil {
-					log.Printf("ctl: StartRebalance returned nil rebalancer, " +
-						"without error, skipping rebalance")
 					return
 				}
 
@@ -1306,6 +1322,79 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
 
 // ----------------------------------------------------
 
+// Creates a ctlNode given a cbgt.NodeDef
+func createCtlMemberNode(nodeDef *cbgt.NodeDef) CtlNode {
+	hostPortUrl := "http://" + nodeDef.HostPort
+	if u, err := nodeDef.HttpsURL(); err == nil {
+		hostPortUrl = u
+	}
+
+	memberNode := CtlNode{
+		UUID:       nodeDef.UUID,
+		ServiceURL: hostPortUrl,
+	}
+
+	if nodeDef.Extras != "" {
+		// Early versions of ns_server integration had a simple,
+		// non-JSON "host:port" format for nodeDef.Extras, which
+		// we use as default.
+		nsHostPort := nodeDef.Extras
+
+		var e struct {
+			NsHostPort string `json:"nsHostPort"`
+		}
+
+		err := cbgt.UnmarshalJSON([]byte(nodeDef.Extras), &e)
+		if err != nil {
+			nsHostPort = e.NsHostPort
+		}
+
+		// non-ssl nsHostPort always available for communication
+		// from service via localhost
+		memberNode.ManagerURL = "http://" + nsHostPort
+	}
+
+	return memberNode
+}
+
+// Returns the expected list of nodes after the successful completion of the
+// topology change.
+func nodesAfterTopologyChange(cfg cbgt.Cfg, topologyChangeReq service.TopologyChange) (
+	[]CtlNode, error) {
+	nodeDefsWanted, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of node UUIDs of nodes being removed.
+	ejectedNodesMap := make(map[string]struct{})
+	for _, node := range topologyChangeReq.EjectNodes {
+		ejectedNodesMap[string(node.NodeID)] = struct{}{}
+	}
+
+	var memberNodes []CtlNode
+
+	for _, nodeDef := range nodeDefsWanted.NodeDefs {
+		// from these nodes, retain only the ones that aren't going to be
+		// ejected, based on the change request sent by ns_server.
+		// Nodes wanted from cfg may include nodes that are being rebalanced out/
+		// failed over from the cluster.
+		if _, exists := ejectedNodesMap[nodeDef.UUID]; exists {
+			continue
+		}
+
+		memberNode := createCtlMemberNode(nodeDef)
+
+		memberNodes = append(memberNodes, memberNode)
+	}
+	// Sort the memberNodes by UUID, so that the order is consistent across nodes.
+	sort.Slice(memberNodes, func(i, j int) bool {
+		return memberNodes[i].UUID < memberNodes[j].UUID
+	})
+
+	return memberNodes, nil
+}
+
 func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 	nodeDefsWanted, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
 	if err != nil {
@@ -1315,35 +1404,7 @@ func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 	var memberNodes []CtlNode
 
 	for _, nodeDef := range nodeDefsWanted.NodeDefs {
-		hostPortUrl := "http://" + nodeDef.HostPort
-		if u, err := nodeDef.HttpsURL(); err == nil {
-			hostPortUrl = u
-		}
-
-		memberNode := CtlNode{
-			UUID:       nodeDef.UUID,
-			ServiceURL: hostPortUrl,
-		}
-
-		if nodeDef.Extras != "" {
-			// Early versions of ns_server integration had a simple,
-			// non-JSON "host:port" format for nodeDef.Extras, which
-			// we use as default.
-			nsHostPort := nodeDef.Extras
-
-			var e struct {
-				NsHostPort string `json:"nsHostPort"`
-			}
-
-			err := cbgt.UnmarshalJSON([]byte(nodeDef.Extras), &e)
-			if err != nil {
-				nsHostPort = e.NsHostPort
-			}
-
-			// non-ssl nsHostPort always available for communication
-			// from service via localhost
-			memberNode.ManagerURL = "http://" + nsHostPort
-		}
+		memberNode := createCtlMemberNode(nodeDef)
 
 		memberNodes = append(memberNodes, memberNode)
 	}

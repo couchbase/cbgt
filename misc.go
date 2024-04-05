@@ -497,6 +497,18 @@ func ParseOptionsInt(options map[string]string, configKey string) (int, bool) {
 	return 0, false
 }
 
+func ParseOptionsBool(options map[string]string, configKey string) (bool, bool) {
+	if val, exists := options[configKey]; exists && val != "" {
+		v, err := strconv.ParseBool(val)
+		if err == nil {
+			log.Printf("parseOptionsBool: %s set to %t", configKey, v)
+			return v, exists
+		}
+		log.Warnf("parseOptionsBool: %s parse, err: %v", configKey, err)
+	}
+	return false, false
+}
+
 // GetDirectorySize computes the size of given directory
 // recursively
 func GetDirectorySize(path string) (int64, error) {

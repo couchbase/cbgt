@@ -55,6 +55,23 @@ func (t *DestForwarder) DataUpdate(partition string,
 		cas, extrasType, extras)
 }
 
+func (t *DestForwarder) DataUpdateEx(partition string,
+	key []byte, seq uint64, val []byte, cas uint64,
+	extrasType DestExtrasType, req interface{}) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+
+	if destEx, ok := dest.(DestEx); ok {
+		return destEx.DataUpdateEx(partition, key, seq, val,
+			cas, extrasType, req)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestEx"+
+		" implementation found for partition %s", partition)
+}
+
 func (t *DestForwarder) DataDelete(partition string,
 	key []byte, seq uint64,
 	cas uint64,
@@ -66,6 +83,23 @@ func (t *DestForwarder) DataDelete(partition string,
 
 	return dest.DataDelete(partition, key, seq,
 		cas, extrasType, extras)
+}
+
+func (t *DestForwarder) DataDeleteEx(partition string,
+	key []byte, seq uint64, cas uint64,
+	extrasType DestExtrasType, req interface{}) error {
+	dest, err := t.DestProvider.Dest(partition)
+	if err != nil {
+		return err
+	}
+
+	if destEx, ok := dest.(DestEx); ok {
+		return destEx.DataDeleteEx(partition, key, seq,
+			cas, extrasType, req)
+	}
+
+	return fmt.Errorf("dest_forwarder: no DestEx "+
+		"implementation found for partition %s", partition)
 }
 
 func (t *DestForwarder) SnapshotStart(partition string,

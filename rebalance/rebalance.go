@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -81,6 +82,10 @@ type RebalanceOptions struct {
 	// initialization and catch up wait loops for the formerPrimary as well
 	// as the new partition node.
 	SeqChecksTimeoutInSec int
+
+	// a flag to decide whether we allow the replica to catchup till a certain
+	// sequence number or not
+	EnableReplicaCatchup bool
 
 	Manager *cbgt.Manager
 
@@ -224,42 +229,13 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 	nodesToAdd = cbgt.StringsRemoveStrings(nodesToAdd, nodesToRemove)
 
 	if RebalanceHook != nil {
-		_, skip, err := RebalanceHook(RebalanceHookInfo{
+		_, err := RebalanceHook(RebalanceHookInfo{
 			Phase: RebalanceHookPhaseInit,
 		})
 
 		if err != nil {
 			return nil, fmt.Errorf("rebalance: rebalanceHook init phase,"+
 				" err: %v", err)
-		}
-
-		if skip {
-			log.Printf("rebalance: skipping rebalance due to rebalance hook")
-			return nil, nil
-		}
-	} else {
-		// ## check if the rebalance is needed
-		// Due to previous failover operations, we may end up with a situation
-		// where the actual number of partitions(active & replica) are less
-		// than the required number of partitions (as per the index definitions).
-		// In such cases, we want to allow the rebalance to proceed, so that it
-		// can create the missing partitions.
-
-		missingActives, missingReplicas, maxReplicaCount :=
-			compareIndexDefsWithPlan(begIndexDefs, begPlanPIndexes)
-		isTopologyChange := len(nodesToAdd) > 0 || len(nodesToRemove) > 0
-		// If there is any missing replica partition and enough nodes available
-		// to support maxReplicaCount
-		canBuildMissingReplicas := missingReplicas != 0 &&
-			maxReplicaCount <= (len(nodesAll)-len(nodesToRemove))
-
-		if !isTopologyChange && missingActives == 0 && !canBuildMissingReplicas {
-			log.Printf("rebalance: skipping rebalance, isTopologyChange: %v, "+
-				"missingActives: %v, missingReplicas: %v, "+
-				"canBuildMissingReplicas: %v", isTopologyChange, missingActives,
-				missingReplicas, canBuildMissingReplicas)
-
-			return nil, nil
 		}
 	}
 	// --------------------------------------------------------
@@ -517,7 +493,13 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 	i := 1
 	n := len(r.begIndexDefs.IndexDefs)
 
+	var indexDefNames []string
 	for _, indexDef := range r.begIndexDefs.IndexDefs {
+		indexDefNames = append(indexDefNames, indexDef.Name)
+	}
+	slices.Sort(indexDefNames)
+
+	for _, indexName := range indexDefNames {
 		select {
 		case <-stopCh:
 			return
@@ -528,6 +510,8 @@ func (r *Rebalancer) runRebalanceIndexes(stopCh chan struct{}) {
 
 		r.Logf("=====================================")
 		r.Logf("runRebalanceIndexes: %d of %d", i, n)
+
+		indexDef := r.begIndexDefs.IndexDefs[indexName]
 
 		_, err := r.rebalanceIndex(stopCh, indexDef)
 		if err != nil {
@@ -753,12 +737,6 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		return partitionModel, begMap, endMap, err
 	}
 
-	currentPlanPIndexes, _, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
-	if err != nil {
-		r.Logf("rebalance: err getting recent plans: %v", err)
-		return nil, nil, nil, err
-	}
-
 	var warnings map[string][]string
 	if r.recoveryPlanPIndexes != nil {
 		// During the failover, cbgt ignores the new nextMap from blance
@@ -771,7 +749,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
 			endPlanPIndexesForIndex, r.recoveryPlanPIndexes,
 			r.nodesAll, []string{}, r.nodesToRemove,
-			r.nodeWeights, r.nodeHierarchy, true)
+			r.nodeWeights, r.nodeHierarchy, false)
 	} else {
 		var enablePartitionNodeStickiness bool
 		if r.optionsReb.Manager != nil {
@@ -785,16 +763,26 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex,
 			enablePartitionNodeStickiness)
 
+		// Updating this here since plans for index have been assigned to nodes.
+		// PlanPIndexes for Index should include existing partitions placements
+		// Using the beginning plans since they haven't changed for this index yet.
+		for planName, plan := range r.begPlanPIndexes.PlanPIndexes {
+			if plan.IndexUUID == indexDef.UUID {
+				r.existingPlanPIndexes.PlanPIndexes[planName] = plan
+			}
+		}
+
 		// Invoke blance to assign the endPlanPIndexesForIndex to nodes;
 		// Do not account for existing planPIndexes, if
 		// enablePartitionNodeStickiness is enabled, giving full control
 		// to the rebalanceHook to influence node weights.
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
-			endPlanPIndexesForIndex, currentPlanPIndexes,
+			endPlanPIndexesForIndex, r.existingPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 			nodeWeights, r.nodeHierarchy, enablePartitionNodeStickiness)
 
 		// Updating this here since plans for index have been assigned to nodes.
+		// Will use this to pass context to blance.
 		for k, v := range endPlanPIndexesForIndex {
 			r.existingPlanPIndexes.PlanPIndexes[k] = v
 		}
@@ -821,7 +809,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 	partitionModel, _ = cbgt.BlancePartitionModel(indexDef)
 
-	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, currentPlanPIndexes, true)
+	begMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.begPlanPIndexes, true)
 	endMap = cbgt.BlanceMap(endPlanPIndexesForIndex, r.endPlanPIndexes, true)
 
 	return partitionModel, begMap, endMap, nil
@@ -835,8 +823,7 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 // more dynamically in order to achieve a custom layout of pindexes across
 // the cluster. This should be set only during the init()'ialization phase
 // of the process.
-var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo,
-	skip bool, err error)
+var RebalanceHook func(in RebalanceHookInfo) (out RebalanceHookInfo, err error)
 
 // Rebalance hook phases.
 const (
@@ -878,7 +865,7 @@ func (r *Rebalancer) adjustNodeWeights(
 	enablePartitionNodeStickiness bool) map[string]int {
 	nodeWeights := r.nodeWeights
 	if RebalanceHook != nil {
-		rho, _, err := RebalanceHook(RebalanceHookInfo{
+		rho, err := RebalanceHook(RebalanceHookInfo{
 			Phase: RebalanceHookPhaseAdjustNodeWeights,
 
 			IndexDefs:            r.begIndexDefs,
@@ -898,17 +885,6 @@ func (r *Rebalancer) adjustNodeWeights(
 		if err == nil {
 			nodeWeights = rho.NodeWeights
 		}
-	}
-
-	if enablePartitionNodeStickiness {
-		return nodeWeights
-	}
-
-	// if the index is a single partitioned, then try to normalise the
-	// node weights, only if enablePartitionNodeStickiness^ weren't true.
-	if len(planPIndexesForIndex) == 1 {
-		nodeWeights = cbgt.NormaliseNodeWeights(r.nodeWeights,
-			r.endPlanPIndexes, len(r.begPlanPIndexes.PlanPIndexes))
 	}
 
 	return nodeWeights
@@ -1356,8 +1332,9 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		return nil // TODO: Handle op del better.
 	}
 
-	if state == "replica" && !forceWaitForCatchup {
-		// No need to wait for a replica pindex to be "caught up".
+	if (state == "replica" && !r.optionsReb.EnableReplicaCatchup) && !forceWaitForCatchup {
+		// No need to wait for a replica pindex to be "caught up" when we've
+		// disabled the EnableReplicaCatchup option.
 		return nil
 	}
 
