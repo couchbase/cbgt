@@ -310,6 +310,7 @@ type ClusterOptions struct {
 	BleveMaxClauseCount                string `json:"bleveMaxClauseCount"`
 	FeedAllotment                      string `json:"feedAllotment"`
 	FtsMemoryQuota                     string `json:"ftsMemoryQuota"`
+	ConcurrentMergeLimit               string `json:"concurrentMergeLimit"`
 	MaxReplicasAllowed                 string `json:"maxReplicasAllowed"`
 	SlowQueryLogTimeout                string `json:"slowQueryLogTimeout"`
 	EnableVerboseLogging               string `json:"enableVerboseLogging"`
