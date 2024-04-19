@@ -333,6 +333,7 @@ type ClusterOptions struct {
 	ResourceUnderUtilizationWaterMark  string `json:"resourceUnderUtilizationWaterMark"`
 	BucketInHibernation                string `json:"bucketInHibernation"`
 	HibernationSourcePartitions        string `json:"hibernationSourcePartitions"`
+	KNNSearchRequestConcurrencyLimit   string `json:"KNNSearchRequestConcurrencyLimit"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
