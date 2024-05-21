@@ -48,6 +48,15 @@ func TestNodePartitionAssignment(t *testing.T) {
 		Name:       "bkt1._default.test4",
 		SourceName: "bkt1",
 		PlanParams: PlanParams{
+			IndexPartitions: 6,
+		},
+	}
+
+	indexDef3 := &IndexDef{
+		UUID:       NewUUID(),
+		Name:       "bkt1._default.test4",
+		SourceName: "bkt1",
+		PlanParams: PlanParams{
 			IndexPartitions: 2,
 		},
 	}
@@ -58,10 +67,137 @@ func TestNodePartitionAssignment(t *testing.T) {
 		// the new node.
 		{
 			mode:                   "rebalance",
-			indexDefToBeRebalanced: indexDef1,
+			indexDefToBeRebalanced: indexDef3,
 			skipExistingPartitions: false,
 			nodeUUIDsAll:           []string{"a", "b", "c", "d"},
 			nodesUUIDsToAdd:        []string{"d"},
+			nodeUUIDsToRemove:      []string{},
+			nodeHierarchy:          make(map[string]string),
+			planPIndexesForIndex: map[string]*PlanPIndex{
+				"bkt1._default.test4_1": &PlanPIndex{
+					Name:       "bkt1._default.test4_1",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef3.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"a": &PlanPIndexNode{Priority: 0},
+					},
+				},
+				"bkt1._default.test4_2": &PlanPIndex{
+					Name:       "bkt1._default.test4_2",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef3.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"c": &PlanPIndexNode{Priority: 0},
+					},
+				},
+			},
+			planPIndexesPrev: &PlanPIndexes{
+				UUID:        NewUUID(),
+				ImplVersion: "7.6",
+				Warnings:    make(map[string][]string),
+				PlanPIndexes: map[string]*PlanPIndex{
+					"bkt1._default.test5_1": &PlanPIndex{
+						Name:       "bkt1._default.test5_1",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_2": &PlanPIndex{
+						Name:       "bkt1._default.test5_2",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_3": &PlanPIndex{
+						Name:       "bkt1._default.test5_3",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"b": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_4": &PlanPIndex{
+						Name:       "bkt1._default.test5_4",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"b": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_5": &PlanPIndex{
+						Name:       "bkt1._default.test5_5",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test5_6": &PlanPIndex{
+						Name:       "bkt1._default.test5_6",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test5",
+						IndexUUID:  indexDef2.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_1": &PlanPIndex{
+						Name:       "bkt1._default.test4_1",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef3.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_2": &PlanPIndex{
+						Name:       "bkt1._default.test4_2",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef3.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+				},
+			},
+			expectedWarningsCount: 0,
+			expectedNodeAssignment: map[string]map[string]*PlanPIndexNode{
+				"bkt1._default.test4_1": map[string]*PlanPIndexNode{
+					"d": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+				"bkt1._default.test4_2": map[string]*PlanPIndexNode{
+					"d": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+			},
+		},
+		{
+			mode:                   "rebalance",
+			indexDefToBeRebalanced: indexDef1,
+			skipExistingPartitions: false,
+			nodeUUIDsAll:           []string{"a", "b", "c"},
+			nodesUUIDsToAdd:        []string{},
 			nodeUUIDsToRemove:      []string{},
 			nodeHierarchy:          make(map[string]string),
 			planPIndexesForIndex: map[string]*PlanPIndex{
@@ -77,6 +213,46 @@ func TestNodePartitionAssignment(t *testing.T) {
 				},
 				"bkt1._default.test4_2": &PlanPIndex{
 					Name:       "bkt1._default.test4_2",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef1.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"a": &PlanPIndexNode{Priority: 0},
+					},
+				},
+				"bkt1._default.test4_3": &PlanPIndex{
+					Name:       "bkt1._default.test4_3",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef1.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"b": &PlanPIndexNode{Priority: 0},
+					},
+				},
+				"bkt1._default.test4_4": &PlanPIndex{
+					Name:       "bkt1._default.test4_4",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef1.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"b": &PlanPIndexNode{Priority: 0},
+					},
+				},
+				"bkt1._default.test4_5": &PlanPIndex{
+					Name:       "bkt1._default.test4_5",
+					UUID:       NewUUID(),
+					IndexName:  "bkt1._default.test4",
+					IndexUUID:  indexDef1.UUID,
+					SourceName: "bkt1",
+					Nodes: map[string]*PlanPIndexNode{
+						"c": &PlanPIndexNode{Priority: 0},
+					},
+				},
+				"bkt1._default.test4_6": &PlanPIndex{
+					Name:       "bkt1._default.test4_6",
 					UUID:       NewUUID(),
 					IndexName:  "bkt1._default.test4",
 					IndexUUID:  indexDef1.UUID,
@@ -168,18 +344,71 @@ func TestNodePartitionAssignment(t *testing.T) {
 						IndexUUID:  indexDef1.UUID,
 						SourceName: "bkt1",
 						Nodes: map[string]*PlanPIndexNode{
+							"a": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_3": &PlanPIndex{
+						Name:       "bkt1._default.test4_3",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef1.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"b": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_4": &PlanPIndex{
+						Name:       "bkt1._default.test4_4",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef1.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"b": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_5": &PlanPIndex{
+						Name:       "bkt1._default.test4_5",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef1.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
+							"c": &PlanPIndexNode{Priority: 0},
+						},
+					},
+					"bkt1._default.test4_6": &PlanPIndex{
+						Name:       "bkt1._default.test4_6",
+						UUID:       NewUUID(),
+						IndexName:  "bkt1._default.test4",
+						IndexUUID:  indexDef1.UUID,
+						SourceName: "bkt1",
+						Nodes: map[string]*PlanPIndexNode{
 							"c": &PlanPIndexNode{Priority: 0},
 						},
 					},
 				},
 			},
 			expectedWarningsCount: 0,
+			// evenly distributed - minimal moves
 			expectedNodeAssignment: map[string]map[string]*PlanPIndexNode{
 				"bkt1._default.test4_1": map[string]*PlanPIndexNode{
-					"d": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+					"a": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
 				},
 				"bkt1._default.test4_2": map[string]*PlanPIndexNode{
-					"d": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+					"a": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+				"bkt1._default.test4_3": map[string]*PlanPIndexNode{
+					"b": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+				"bkt1._default.test4_4": map[string]*PlanPIndexNode{
+					"b": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+				"bkt1._default.test4_5": map[string]*PlanPIndexNode{
+					"c": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
+				},
+				"bkt1._default.test4_6": map[string]*PlanPIndexNode{
+					"c": &PlanPIndexNode{CanWrite: true, CanRead: true, Priority: 0},
 				},
 			},
 		},
@@ -193,8 +422,11 @@ func TestNodePartitionAssignment(t *testing.T) {
 
 		for k, v := range testCase.planPIndexesForIndex {
 			if !reflect.DeepEqual(testCase.expectedNodeAssignment[k], v.Nodes) {
-				t.Errorf("unexpected node assignment for %s; expected: %+v, got: %+v \n",
-					k, testCase.expectedNodeAssignment[k], v.Nodes)
+				t.Errorf("unexpected node assignment for %s; expected: %+v, got: \n",
+					k, testCase.expectedNodeAssignment[k])
+				for k1, v1 := range v.Nodes {
+					t.Logf("%+v: %+v \n", k1, v1)
+				}
 			}
 		}
 
