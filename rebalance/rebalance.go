@@ -739,6 +739,15 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 
 	var warnings map[string][]string
 	if r.recoveryPlanPIndexes != nil {
+		// PlanPIndexes for Index should include existing partitions placements.
+		// Use the recovery plans to initially populate the existing plans to
+		// provide context to blance.
+		for planName, plan := range r.recoveryPlanPIndexes.PlanPIndexes {
+			if plan.IndexUUID == indexDef.UUID {
+				r.existingPlanPIndexes.PlanPIndexes[planName] = plan
+			}
+		}
+
 		// During the failover, cbgt ignores the new nextMap from blance
 		// and just promotes the replica partitions to primary.
 		// Hence during the failover-recovery rebalance operation,
@@ -747,9 +756,10 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		// same set of nodes and the original planPIndexes.
 		r.Logf("  calcBegEndMaps: recovery rebalance for index: %s", indexDef.Name)
 		warnings = cbgt.BlancePlanPIndexes("", indexDef,
-			endPlanPIndexesForIndex, r.recoveryPlanPIndexes,
-			r.nodesAll, []string{}, r.nodesToRemove,
+			endPlanPIndexesForIndex, r.existingPlanPIndexes,
+			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 			r.nodeWeights, r.nodeHierarchy, false)
+
 	} else {
 		var enablePartitionNodeStickiness bool
 		if r.optionsReb.Manager != nil {
@@ -780,12 +790,12 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 			endPlanPIndexesForIndex, r.existingPlanPIndexes,
 			r.nodesAll, r.nodesToAdd, r.nodesToRemove,
 			nodeWeights, r.nodeHierarchy, enablePartitionNodeStickiness)
+	}
 
-		// Updating this here since plans for index have been assigned to nodes.
-		// Will use this to pass context to blance.
-		for k, v := range endPlanPIndexesForIndex {
-			r.existingPlanPIndexes.PlanPIndexes[k] = v
-		}
+	// Updating this here since plans for index have been assigned to nodes.
+	// Will use this to pass context to blance.
+	for k, v := range endPlanPIndexesForIndex {
+		r.existingPlanPIndexes.PlanPIndexes[k] = v
 	}
 
 	for partitionName, partitionWarning := range warnings {
