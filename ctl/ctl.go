@@ -16,6 +16,7 @@ import (
 	"math"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -60,8 +61,10 @@ type Ctl struct {
 	revNum       uint64
 	revNumWaitCh chan struct{} // Closed when revNum changes.
 
-	memberNodes         []CtlNode // May be nil before initCh closed.
-	prevMemberNodeUUIDs []string
+	memberNodes []CtlNode // May be nil before initCh closed.
+
+	memberNodeUUIDs     []string // updated after successful PREPARE phase
+	prevMemberNodeUUIDs []string // updated after successful PREPARE phase
 
 	// The following ctlXxxx fields are all nil or non-nil together
 	// depending on whether a change topology is inflight.
@@ -193,11 +196,29 @@ func StartCtl(cfg cbgt.Cfg, server string,
 
 // resetPrevWarningsAndErrors is to be called ONLY during
 // the PREPARE phase of the cluster operation.
-func (ctl *Ctl) resetPrevWarningsAndErrors() {
-	ctl.m.Lock()
-	ctl.incRevNumLOCKED()
+func (ctl *Ctl) resetPrevWarningsAndErrorsLOCKED() {
 	ctl.prevWarnings = nil
 	ctl.prevErrs = nil
+}
+
+// onSuccessfulPrepareTopologyChange is to be called ONLY after a successful
+// completion of the PREPARE phase of a rebalance.
+// - reset previous topology/cluster operation's warnings/errors
+// - on topology change, update ctl's prevMemberNodeUUIDs and memberNodeUUIDs
+func (ctl *Ctl) onSuccessfulPrepareTopologyChange(topologyChangeReq service.TopologyChange) {
+	ctl.m.Lock()
+	ctl.resetPrevWarningsAndErrorsLOCKED()
+	ctl.incRevNumLOCKED()
+	if memberNodes, err := nodesAfterTopologyChange(ctl.cfg, topologyChangeReq); err == nil {
+		ctl.prevMemberNodeUUIDs = ctl.memberNodeUUIDs
+		ctl.memberNodes = memberNodes
+		newMemberNodeUUIDs := make([]string, 0, len(memberNodes))
+		for _, memberNode := range memberNodes {
+			newMemberNodeUUIDs = append(newMemberNodeUUIDs, memberNode.UUID)
+		}
+		ctl.memberNodeUUIDs = newMemberNodeUUIDs
+	}
+
 	ctl.m.Unlock()
 }
 
@@ -385,10 +406,10 @@ func (ctl *Ctl) run() {
 
 	ctl.memberNodes = memberNodes
 	for _, node := range memberNodes {
-		ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
+		ctl.memberNodeUUIDs = append(ctl.memberNodeUUIDs, node.UUID)
 	}
 
-	log.Printf("ctl: cluster member nodes at startup: %+v", ctl.prevMemberNodeUUIDs)
+	log.Printf("ctl: cluster member nodes at startup: %+v", ctl.memberNodeUUIDs)
 
 	if planPIndexes != nil {
 		ctl.prevWarnings = planPIndexes.Warnings
@@ -503,18 +524,18 @@ func (ctl *Ctl) run() {
 						" err: %v", ev.Key, err)
 					continue
 				}
-				// initialize the prevMemberNodeUUIDs only if it is
+				// initialize the memberNodeUUIDs only if it is
 				// unset during the initial boot up of a cluster.
-				var initPrevMemberUUIDs bool
-				if len(ctl.prevMemberNodeUUIDs) == 0 {
-					initPrevMemberUUIDs = true
+				var initMemberUUIDs bool
+				if len(ctl.memberNodeUUIDs) == 0 {
+					initMemberUUIDs = true
 				}
 
 				memberUUIDs := "{"
 				for _, node := range memberNodes {
 					memberUUIDs += node.UUID + ";"
-					if initPrevMemberUUIDs {
-						ctl.prevMemberNodeUUIDs = append(ctl.prevMemberNodeUUIDs, node.UUID)
+					if initMemberUUIDs {
+						ctl.memberNodeUUIDs = append(ctl.memberNodeUUIDs, node.UUID)
 					}
 				}
 				memberUUIDs += "}"
@@ -927,8 +948,6 @@ func (ctl *Ctl) startCtlLOCKED(
 	}
 
 	ctl.movingPartitionsCount = movingPartitionsCount
-	existingNodeUUIDs := ctl.prevMemberNodeUUIDs
-	ctl.prevMemberNodeUUIDs = memberNodeUUIDs
 
 	// The ctl goroutine.
 	//
@@ -1066,7 +1085,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						Verbose:                            ctl.optionsCtl.Verbose,
 						HttpGet:                            httpGetWithAuth,
 						Manager:                            ctl.optionsCtl.Manager,
-						ExistingNodes:                      existingNodeUUIDs,
+						ExistingNodes:                      ctl.prevMemberNodeUUIDs,
 					})
 				if err != nil {
 					log.Warnf("ctl: StartRebalance, err: %v", err)
@@ -1232,6 +1251,79 @@ func WaitForWantedNodes(cfg cbgt.Cfg, wantedNodes []string,
 }
 
 // ----------------------------------------------------
+
+// Creates a ctlNode given a cbgt.NodeDef
+func createCtlMemberNode(nodeDef *cbgt.NodeDef) CtlNode {
+	hostPortUrl := "http://" + nodeDef.HostPort
+	if u, err := nodeDef.HttpsURL(); err == nil {
+		hostPortUrl = u
+	}
+
+	memberNode := CtlNode{
+		UUID:       nodeDef.UUID,
+		ServiceURL: hostPortUrl,
+	}
+
+	if nodeDef.Extras != "" {
+		// Early versions of ns_server integration had a simple,
+		// non-JSON "host:port" format for nodeDef.Extras, which
+		// we use as default.
+		nsHostPort := nodeDef.Extras
+
+		var e struct {
+			NsHostPort string `json:"nsHostPort"`
+		}
+
+		err := json.Unmarshal([]byte(nodeDef.Extras), &e)
+		if err != nil {
+			nsHostPort = e.NsHostPort
+		}
+
+		// non-ssl nsHostPort always available for communication
+		// from service via localhost
+		memberNode.ManagerURL = "http://" + nsHostPort
+	}
+
+	return memberNode
+}
+
+// Returns the expected list of nodes after the successful completion of the
+// topology change.
+func nodesAfterTopologyChange(cfg cbgt.Cfg, topologyChangeReq service.TopologyChange) (
+	[]CtlNode, error) {
+	nodeDefsWanted, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of node UUIDs of nodes being removed.
+	ejectedNodesMap := make(map[string]struct{})
+	for _, node := range topologyChangeReq.EjectNodes {
+		ejectedNodesMap[string(node.NodeID)] = struct{}{}
+	}
+
+	var memberNodes []CtlNode
+
+	for _, nodeDef := range nodeDefsWanted.NodeDefs {
+		// from these nodes, retain only the ones that aren't going to be
+		// ejected, based on the change request sent by ns_server.
+		// Nodes wanted from cfg may include nodes that are being rebalanced out/
+		// failed over from the cluster.
+		if _, exists := ejectedNodesMap[nodeDef.UUID]; exists {
+			continue
+		}
+
+		memberNode := createCtlMemberNode(nodeDef)
+
+		memberNodes = append(memberNodes, memberNode)
+	}
+	// Sort the memberNodes by UUID, so that the order is consistent across nodes.
+	sort.Slice(memberNodes, func(i, j int) bool {
+		return memberNodes[i].UUID < memberNodes[j].UUID
+	})
+
+	return memberNodes, nil
+}
 
 func CurrentMemberNodes(cfg cbgt.Cfg) ([]CtlNode, error) {
 	nodeDefsWanted, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_WANTED)

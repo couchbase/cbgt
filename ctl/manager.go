@@ -305,8 +305,7 @@ func (m *CtlMgr) PrepareTopologyChange(
 	defer func() {
 		m.mu.Unlock()
 		if err == nil {
-			// On success, reset previous topology/cluster operation's warnings/errors
-			m.ctl.resetPrevWarningsAndErrors()
+			m.ctl.onSuccessfulPrepareTopologyChange(change)
 		}
 	}()
 
