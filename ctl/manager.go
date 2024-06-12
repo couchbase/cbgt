@@ -560,31 +560,39 @@ func (m *CtlMgr) startTopologyChangeTaskHandleLOCKED(
 func (m *CtlMgr) computeProgPercent(pe *rebalance.ProgressEntry,
 	sourcePartitions map[string]map[string]*rebalance.ProgressEntry) float64 {
 	totPct, avgPct := 0.0, -1.1
-	numPct := 0
-	if pe != nil {
-		if sourcePartitions != nil {
-			for _, nodes := range sourcePartitions {
-				pex := nodes[pe.Node]
-				if pex == nil || pex.WantUUIDSeq.UUID == "" {
-					continue
-				}
 
-				if pex.WantUUIDSeq.Seq <= pex.CurrUUIDSeq.Seq {
-					totPct = totPct + 1.0
-					numPct = numPct + 1
-					continue
-				}
-
-				n := pex.CurrUUIDSeq.Seq - pex.InitUUIDSeq.Seq
-				d := pex.WantUUIDSeq.Seq - pex.InitUUIDSeq.Seq
-				if d > 0 {
-					pct := float64(n) / float64(d)
-					totPct = totPct + pct
-					numPct = numPct + 1
-				}
-			}
-		}
+	if pe == nil {
+		return avgPct
 	}
+
+	numPct := 0
+	for _, nodes := range sourcePartitions {
+		pex := nodes[pe.Node]
+		if pex == nil || pex.WantUUIDSeq.UUID == "" {
+			continue
+		}
+
+		if pex.WantUUIDSeq.Seq <= pex.CurrUUIDSeq.Seq {
+			totPct = totPct + 1.0
+			numPct = numPct + 1
+			continue
+		}
+
+		// At this point, CurrSeq< WantSeq
+		if pex.InitUUIDSeq.Seq <= pex.CurrUUIDSeq.Seq {
+			n := pex.CurrUUIDSeq.Seq - pex.InitUUIDSeq.Seq
+			d := pex.WantUUIDSeq.Seq - pex.InitUUIDSeq.Seq
+			pct := float64(n) / float64(d)
+			totPct = totPct + pct
+			numPct = numPct + 1
+
+			continue
+		}
+
+		log.Errorf("ctl/manager: computeProgPercent,"+
+			" unexpected seqs, pex: %+v", pex)
+	}
+
 	if numPct > 0 {
 		avgPct = totPct / float64(numPct)
 	}
@@ -643,7 +651,7 @@ func (m *CtlMgr) updateProgress(
 
 					// skip the progress recomputations.
 					if nodeProgMap, exists := pindexNodeProgressCache[pex.PIndex]; exists {
-						if prog, ok := nodeProgMap[pex.Node]; ok && prog >= 1.0 {
+						if prog, ok := nodeProgMap[pex.Node]; ok && prog == 1.0 {
 							continue
 						}
 					}
@@ -654,6 +662,11 @@ func (m *CtlMgr) updateProgress(
 						// file transfer progress is made to contribute to 80% of the rebalance
 						// progress of a given partition and the rest by the seq number catchup.
 						if pex.TransferProgress > 0 {
+							if pex.TransferProgress > 1.0 {
+								log.Errorf("ctl/manager: updateProgress, "+
+									"out of bound transfer progress: %+v", pex)
+								pex.TransferProgress = 1.0
+							}
 							t = .8 * pex.TransferProgress
 							if curProg > 0 {
 								t += .2 * curProg
