@@ -379,7 +379,8 @@ func WriteTimerJSON(w io.Writer, timer metrics.Timer) {
 // if +/-Inf or NaN values are encountered, that k/v pair is omitted
 // if there are no valid values in the map, the named map is still emitted
 // with no contents, ie:
-//    "name":{}
+//
+//	"name":{}
 func fPrintFloatMap(w io.Writer, name string, vals map[string]float64) {
 	fmt.Fprintf(w, `"%s":{`, name)
 	first := true
@@ -475,7 +476,7 @@ func ParseOptionsBool(options map[string]string, configKey string) (bool, bool) 
 	if val, exists := options[configKey]; exists && val != "" {
 		v, err := strconv.ParseBool(val)
 		if err == nil {
-			log.Printf("parseOptionsBool: %s set to %b", configKey, v)
+			log.Printf("parseOptionsBool: %s set to %v", configKey, v)
 			return v, exists
 		}
 		log.Warnf("parseOptionsBool: %s parse, err: %v", configKey, err)
