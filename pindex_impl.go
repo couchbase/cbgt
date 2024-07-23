@@ -271,7 +271,10 @@ type QueryCtlParams struct {
 // QueryCtl defines the JSON parameters that control query execution
 // and which are independent of any specific pindex type.
 //
-// A PartitionSelection value can optionally be specified for performing
+// [1] Timeout is the time alloted for query to complete execution before being canceled
+// [2] Validate is an optional setting to validate query against the index definition
+// [3] Consistency parameters for RYOW
+// [4] PartitionSelection value can optionally be specified for performing ..
 // advanced scatter gather operations, recognized options:
 //   - ""              : default behavior - active partitions are selected
 //   - local           : local partitions are favored, pseudo random selection from remote
@@ -280,6 +283,7 @@ type QueryCtlParams struct {
 //     distributing the query load across all nodes.
 type QueryCtl struct {
 	Timeout            int64              `json:"timeout"`
+	Validate           bool               `json:"validate,omitempty"`
 	Consistency        *ConsistencyParams `json:"consistency"`
 	PartitionSelection string             `json:"partition_selection,omitempty"`
 }
