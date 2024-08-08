@@ -29,6 +29,7 @@ const DEST_EXTRAS_TYPE_GOCBCORE_SCOPE_COLLECTION = DestExtrasType(0x0005)
 // GocbcoreDCPExtras packages additional DCP mutation metadata for use by
 // DataUpdateEx, DataDeleteEx.
 type GocbcoreDCPExtras struct {
+	RevNo        uint64
 	ScopeId      uint32
 	CollectionId uint32
 	Expiry       uint32
@@ -95,6 +96,7 @@ func (f *GocbcoreDCPFeed) Mutation(m gocbcore.DcpMutation) {
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbcoreDCPExtras{
+				RevNo:    m.RevNo,
 				Expiry:   m.Expiry,
 				Flags:    m.Flags,
 				Datatype: m.Datatype,
@@ -150,6 +152,7 @@ func (f *GocbcoreDCPFeed) Deletion(d gocbcore.DcpDeletion) {
 
 		if destEx, ok := dest.(DestEx); ok {
 			extras := GocbcoreDCPExtras{
+				RevNo:    d.RevNo,
 				Datatype: d.Datatype,
 				Value:    d.Value,
 			}
