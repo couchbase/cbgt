@@ -21,6 +21,10 @@ import (
 	log "github.com/couchbase/clog"
 )
 
+// Versioning the planner algorithm - updated each time the planner algo is changed.
+// Refer to GetPlannerVersion() in defs.go to access it outside cbgt.
+var plannerVersion string
+
 func init() {
 	// custom score booster override for single partioned indexes
 	// to result in better balanced assignments.
@@ -31,6 +35,8 @@ func init() {
 		}
 		return score
 	}
+
+	plannerVersion = "1"
 }
 
 // PlannerHooks allows advanced applications to register callbacks
@@ -287,7 +293,7 @@ func PlannerCheckVersion(cfg Cfg, version string) error {
 	return nil
 }
 
-// PlannerGetIndexDefs retrives index definitions from a Cfg.
+// PlannerGetIndexDefs retrieves index definitions from a Cfg.
 func PlannerGetIndexDefs(cfg Cfg, version string) (*IndexDefs, error) {
 	indexDefs, _, err := CfgGetIndexDefs(cfg)
 	if err != nil {
@@ -415,7 +421,11 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 				nodeSourceReplicas[nodeUUID+":"+pindex.SourceName]++
 			}
 		}
-		existingPlans.PlanPIndexes[name] = pindex
+		if pindex.PlannerVersion == plannerVersion {
+			// Only if the prev plans have been computed by a planner with the same
+			// planning algorithm, should they influence the new plans.
+			existingPlans.PlanPIndexes[name] = pindex
+		}
 	}
 
 	plannerHookCall := func(phase string, indexDef *IndexDef,
@@ -739,6 +749,7 @@ func SplitIndexDefIntoPlanPIndexes(indexDef *IndexDef, server string,
 			SourcePartitions: sourcePartitions,
 			Nodes:            make(map[string]*PlanPIndexNode),
 			HibernationPath:  indexDef.HibernationPath,
+			PlannerVersion:   plannerVersion,
 		}
 
 		if planPIndexesOut != nil {
