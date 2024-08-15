@@ -23,7 +23,7 @@ import (
 	"time"
 
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/tools-common/cloud/objstore/objcli"
+	"github.com/couchbase/tools-common/cloud/v5/objstore/objcli"
 )
 
 // A Manager represents a runtime node in a cluster.
