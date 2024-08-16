@@ -20,8 +20,8 @@ import (
 	"github.com/couchbase/cbgt/rebalance"
 	"github.com/couchbase/cbgt/rest/monitor"
 	log "github.com/couchbase/clog"
-	"github.com/couchbase/tools-common/cloud/objstore/objcli"
-	"github.com/couchbase/tools-common/cloud/objstore/objval"
+	"github.com/couchbase/tools-common/cloud/v5/objstore/objcli"
+	"github.com/couchbase/tools-common/cloud/v5/objstore/objval"
 )
 
 type OperationType string
@@ -153,9 +153,15 @@ func (hm *Manager) checkIfIndexMetadataExists() (bool, error) {
 	}
 
 	stp := errors.New("stop")
-	err = client.IterateObjects(context.Background(), bkt, prefix+"/"+INDEX_METADATA_PATH, "/",
-		nil, nil,
-		func(attrs *objval.ObjectAttrs) error { return stp })
+	err = client.IterateObjects(context.Background(), objcli.IterateObjectsOptions{
+		Bucket:    bkt,
+		Prefix:    prefix + "/" + INDEX_METADATA_PATH,
+		Delimiter: "/",
+		Versions:  false,
+		Include:   nil,
+		Exclude:   nil,
+		Func:      func(attrs *objval.ObjectAttrs) error { return stp },
+	})
 	if err != nil && err != stp {
 		return false, err // Purposefully not wrapped
 	}
