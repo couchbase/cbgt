@@ -458,6 +458,20 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 	return indexDef.UUID, nil
 }
 
+// Index Control Default Values
+//
+// Applications interested in updating these defaults must do so
+// at init() time.
+//
+// These defaults primarily serve the purpose of allowing all
+// IndexDef consumers to get the value of CanRead and CanWrite
+// for an index, even if the NodePlanParams are not present in
+// the IndexDef (which is common for indexes that allow all nodes)
+var (
+	DefaultIndexCanRead  = true
+	DefaultIndexCanWrite = true
+)
+
 // IndexControl is used to change runtime properties of an index
 // definition.
 func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
@@ -525,8 +539,14 @@ func (mgr *Manager) IndexControl(indexName, indexUUID, readOp, writeOp,
 			}
 		}
 
-		if npp.CanRead == true && npp.CanWrite == true {
+		// Remove NodePlanParams from indexDef if all nodes are allowed to read/write.
+		// This is to avoid unnecessary data in the indexDef
+		//
+		// Readers of IndexDefs should assume that if NodePlanParams is empty,
+		// all nodes are allowed to read/write
+		if npp.CanRead && npp.CanWrite {
 			delete(indexDef.PlanParams.NodePlanParams[""], "")
+			delete(indexDef.PlanParams.NodePlanParams, "")
 		}
 
 		if planFreezeOp != "" {

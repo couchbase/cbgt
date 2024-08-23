@@ -911,8 +911,7 @@ func BlancePlanPIndexes(mode string,
 				break
 			}
 
-			canRead := true
-			canWrite := true
+			canRead, canWrite := DefaultIndexCanRead, DefaultIndexCanWrite
 			nodePlanParam :=
 				GetNodePlanParam(indexDef.PlanParams.NodePlanParams,
 					nodeUUID, indexDef.Name, planPIndexName)
@@ -933,8 +932,7 @@ func BlancePlanPIndexes(mode string,
 				break
 			}
 
-			canRead := true
-			canWrite := true
+			canRead, canWrite := DefaultIndexCanRead, DefaultIndexCanWrite
 			nodePlanParam :=
 				GetNodePlanParam(indexDef.PlanParams.NodePlanParams,
 					nodeUUID, indexDef.Name, planPIndexName)
@@ -1116,7 +1114,8 @@ func sameIndexDefsExceptUUID(def1, def2 *IndexDef) bool {
 
 // CasePlanFrozen returns true if the plan for the indexDef is frozen,
 // in which case it also populates endPlanPIndexes with a clone of the
-// indexDef's plans from begPlanPIndexes.
+// indexDef's plans from begPlanPIndexes, except for the updated
+// Index Control Status (CanRead and CanWrite) from the latest index.
 func CasePlanFrozen(indexDef *IndexDef,
 	begPlanPIndexes, endPlanPIndexes *PlanPIndexes) bool {
 	if !indexDef.PlanParams.PlanFrozen {
@@ -1133,7 +1132,49 @@ func CasePlanFrozen(indexDef *IndexDef,
 				(p.IndexUUID == indexDef.UUID ||
 					sameIndexDefsExceptUUID(indexDef,
 						getIndexDefFromPlanPIndexes([]*PlanPIndex{p}))) {
-				endPlanPIndexes.PlanPIndexes[n] = p
+
+				// # Deep copy PlanPIndex
+				endPlanPIndexes.PlanPIndexes[n] = &PlanPIndex{
+					Name:             p.Name,
+					UUID:             p.UUID,
+					IndexType:        p.IndexType,
+					IndexName:        p.IndexName,
+					IndexUUID:        p.IndexUUID,
+					IndexParams:      p.IndexParams,
+					SourceType:       p.SourceType,
+					SourceName:       p.SourceName,
+					SourceUUID:       p.SourceUUID,
+					SourceParams:     p.SourceParams,
+					SourcePartitions: p.SourcePartitions,
+					HibernationPath:  p.HibernationPath,
+
+					Nodes: map[string]*PlanPIndexNode{},
+				}
+
+				// Deep copy PlanPIndexNode(s) properties,
+				// except for Index Control Status (CanRead and CanWrite)
+				//
+				// Index Control Status must be updated in the new plan as per
+				// the latest index definition.
+				// This is to make sure user is able to change Index Control Status
+				// even for planFrozen indexes.
+				for nodeID, planPIndexNode := range p.Nodes {
+					// default Index Control Status
+					canRead, canWrite := DefaultIndexCanRead, DefaultIndexCanWrite
+
+					// Use the latest Index Control (Read and Write Status)
+					// from index definition
+					if npp := indexDef.PlanParams.NodePlanParams[""][""]; npp != nil {
+						canRead = indexDef.PlanParams.NodePlanParams[""][""].CanRead
+						canWrite = indexDef.PlanParams.NodePlanParams[""][""].CanWrite
+					}
+
+					endPlanPIndexes.PlanPIndexes[n].Nodes[nodeID] = &PlanPIndexNode{
+						CanRead:  canRead,
+						CanWrite: canWrite,
+						Priority: planPIndexNode.Priority,
+					}
+				}
 			}
 		}
 	}

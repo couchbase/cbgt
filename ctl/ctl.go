@@ -605,9 +605,9 @@ func updateNodePlanParams(indexDef *cbgt.IndexDef,
 	planPIndexes.PlanPIndexes[pName] = &cbgt.PlanPIndex{}
 	*planPIndexes.PlanPIndexes[pName] = *prevPIndex
 
+	canRead, canWrite := cbgt.DefaultIndexCanRead, cbgt.DefaultIndexCanWrite
+
 	npp := indexDef.PlanParams.NodePlanParams[""][""]
-	canRead := true
-	canWrite := true
 	// npp could be nil after we reset it back
 	if npp != nil {
 		for _, v := range planPIndexesPrev.PlanPIndexes[pName].Nodes {
