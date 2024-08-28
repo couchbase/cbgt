@@ -1348,6 +1348,12 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 		return nil
 	}
 
+	npp := indexDef.PlanParams.NodePlanParams[""][""]
+	if npp != nil && !npp.CanWrite {
+		// No need to wait for a pindex to be "caught up" when its ingest is disabled.
+		return nil
+	}
+
 	if formerPrimaryNode == "" {
 		// There was no previous primary pindex on some node to be
 		// "caught up" against.
