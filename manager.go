@@ -320,6 +320,7 @@ type ClusterOptions struct {
 	UseOSOBackfill                     string `json:"useOSOBackfill"`
 	SeqChecksTimeoutInSec              string `json:"seqChecksTimeoutInSec"`
 	EnableReplicaCatchupOnRebalance    string `json:"enableReplicaCatchupOnRebalance"`
+	NumSeqCheckRetriesDuringRebalance  string `json:"numSeqCheckRetriesDuringRebalance"`
 	DisableFileTransferRebalance       string `json:"disableFileTransferRebalance"`
 	EnablePartitionNodeStickiness      string `json:"enablePartitionNodeStickiness"`
 	DisableGeoPointSpatialPlugin       string `json:"disableGeoPointSpatialPlugin"`
@@ -332,6 +333,7 @@ type ClusterOptions struct {
 	ResourceUnderUtilizationWaterMark  string `json:"resourceUnderUtilizationWaterMark"`
 	BucketInHibernation                string `json:"bucketInHibernation"`
 	HibernationSourcePartitions        string `json:"hibernationSourcePartitions"`
+	KNNSearchRequestConcurrencyLimit   string `json:"KNNSearchRequestConcurrencyLimit"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
