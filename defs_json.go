@@ -236,6 +236,7 @@ func planPIndexToBase(planPIndex *PlanPIndex, base *planPIndexBase) {
 	base.SourcePartitions = planPIndex.SourcePartitions
 	base.Nodes = planPIndex.Nodes
 	base.HibernationPath = planPIndex.HibernationPath
+	base.PlannerVersion = planPIndex.PlannerVersion
 }
 
 // planPIndexFromBase copies non-envelope'able fields from the
@@ -252,4 +253,5 @@ func planPIndexFromBase(base *planPIndexBase, planPIndex *PlanPIndex) {
 	planPIndex.SourcePartitions = base.SourcePartitions
 	planPIndex.Nodes = base.Nodes
 	planPIndex.HibernationPath = base.HibernationPath
+	planPIndex.PlannerVersion = base.PlannerVersion
 }

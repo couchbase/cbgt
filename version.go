@@ -23,9 +23,8 @@ import (
 // unchanged, then the cbgt.VERSION number should remain unchanged.
 //
 // NOTE: You *must* update cbgt.VERSION if you change what's stored in
-// the Cfg (such as the JSON/struct definitions or the planning
-// algorithms).
-const VERSION = "5.7.0"
+// the Cfg (such as the JSON/struct definitions).
+const VERSION = "5.8.0"
 const VERSION_KEY = "version"
 
 // Returns true if a given version is modern enough to modify the Cfg.

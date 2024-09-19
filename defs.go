@@ -234,6 +234,7 @@ type PlanPIndex struct {
 	SourceParams     string `json:"sourceParams,omitempty"` // Optional connection info.
 	SourcePartitions string `json:"sourcePartitions"`
 	HibernationPath  string `json:"hibernationPath,omitempty"`
+	PlannerVersion   string `json:"plannerVersion,omitempty"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
 }
@@ -255,6 +256,7 @@ type planPIndexBase struct {
 	SourceUUID       string `json:"sourceUUID,omitempty"`
 	SourcePartitions string `json:"sourcePartitions"`
 	HibernationPath  string `json:"hibernationPath,omitempty"`
+	PlannerVersion   string `json:"plannerVersion,omitempty"`
 
 	Nodes map[string]*PlanPIndexNode `json:"nodes"` // Keyed by NodeDef.UUID.
 }
@@ -556,6 +558,11 @@ func CfgSetLastRebalanceStatus(cfg Cfg, status LastRebalanceStatus,
 	return cfg.Set(LAST_REBALANCE_STATUS_KEY, buf, cas)
 }
 
+// Returns the current(i.e. the most recent) planner version.
+func GetPlannerVersion() string {
+	return plannerVersion
+}
+
 // Returns an initialized PlanPIndexes.
 func NewPlanPIndexes(version string) *PlanPIndexes {
 	return &PlanPIndexes{
@@ -575,6 +582,21 @@ func CopyPlanPIndexes(planPIndexes *PlanPIndexes,
 	UnmarshalJSON(j, r)
 	r.UUID = NewUUID()
 	r.ImplVersion = version
+	return r
+}
+
+// Copy plans iff their planner version is the current.
+func CopyPlanPIndexesWithSameVersion(planPIndexes *PlanPIndexes,
+	version, plannerVersion string) *PlanPIndexes {
+	r := NewPlanPIndexes(version)
+	for name, plan := range planPIndexes.PlanPIndexes {
+		if plan.PlannerVersion == plannerVersion {
+			r.PlanPIndexes[name] = plan
+		}
+	}
+	r.UUID = planPIndexes.UUID
+	r.ImplVersion = planPIndexes.ImplVersion
+	r.Warnings = planPIndexes.Warnings
 	return r
 }
 
@@ -606,7 +628,7 @@ func CfgSetPlanPIndexes(cfg Cfg, planPIndexes *PlanPIndexes, cas uint64) (
 }
 
 // Returns true if both PlanPIndexes are the same, where we ignore any
-// differences in UUID or ImplVersion.
+// differences in UUID, ImplVersion or PlannerVersion.
 func SamePlanPIndexes(a, b *PlanPIndexes) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil

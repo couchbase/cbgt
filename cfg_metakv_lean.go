@@ -65,6 +65,7 @@ type LeanPlanPIndex struct {
 	UUID             string                     `json:"uuid"`
 	SourcePartitions string                     `json:"sourcePartitions"`
 	Nodes            map[string]*PlanPIndexNode `json:"nodes"`
+	PlannerVersion   string                     `json:"plannerVersion"`
 }
 
 // planMeta represents the json contents of curMetaKvPlanKey
@@ -183,6 +184,7 @@ func setLeanPlanUtil(c *CfgMetaKv, key string,
 				UUID:             ppi.UUID,
 				SourcePartitions: ppi.SourcePartitions,
 				Nodes:            ppi.Nodes,
+				PlannerVersion:   ppi.PlannerVersion,
 			}
 		}
 	}
@@ -341,6 +343,7 @@ func getLeanPlanUtil(c *CfgMetaKv, planMeta *planMeta,
 					SourceParams:     ipp.IndexDef.SourceParams,
 					SourcePartitions: lpp.SourcePartitions,
 					Nodes:            lpp.Nodes,
+					PlannerVersion:   lpp.PlannerVersion,
 				}
 				rv.PlanPIndexes[lpp.Name] = planPIndex
 			}

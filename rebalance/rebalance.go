@@ -285,8 +285,6 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		nodeHierarchy:        nodeHierarchy,
 		begIndexDefs:         begIndexDefs,
 		begNodeDefs:          begNodeDefs,
-		begPlanPIndexes:      begPlanPIndexes,
-		begPlanPIndexesCAS:   begPlanPIndexesCAS,
 		existingPlanPIndexes: existingPlans,
 		endPlanPIndexes:      cbgt.NewPlanPIndexes(version),
 		currStates:           map[string]map[string]map[string]StateOp{},
@@ -295,6 +293,10 @@ func StartRebalance(version string, cfg cbgt.Cfg, server string,
 		stopCh:               stopCh,
 		transferProgress:     map[string]float64{},
 	}
+
+	r.begPlanPIndexes = cbgt.CopyPlanPIndexesWithSameVersion(begPlanPIndexes,
+		r.version, cbgt.GetPlannerVersion())
+	r.begPlanPIndexesCAS = begPlanPIndexesCAS
 
 	r.Logf("rebalance: nodesAll: %#v", nodesAll)
 	r.Logf("rebalance: nodesToAdd: %#v", nodesToAdd)
@@ -751,7 +753,10 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		// Use the recovery plans to initially populate the existing plans to
 		// provide context to blance.
 		for planName, plan := range r.recoveryPlanPIndexes.PlanPIndexes {
-			if plan.IndexUUID == indexDef.UUID {
+			if plan.IndexUUID == indexDef.UUID &&
+				// check if the recovery plans were created using a different
+				// planning algorithm if so, then do not consider them.
+				plan.PlannerVersion == cbgt.GetPlannerVersion() {
 				r.existingPlanPIndexes.PlanPIndexes[planName] = plan
 			}
 		}
@@ -781,12 +786,15 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		nodeWeights := r.adjustNodeWeights(indexDef, endPlanPIndexesForIndex,
 			enablePartitionNodeStickiness)
 
-		// Updating this here since plans for index have been assigned to nodes.
-		// PlanPIndexes for Index should include existing partitions placements
-		// Using the beginning plans since they haven't changed for this index yet.
-		for planName, plan := range r.begPlanPIndexes.PlanPIndexes {
-			if plan.IndexUUID == indexDef.UUID {
-				r.existingPlanPIndexes.PlanPIndexes[planName] = plan
+		if r.begPlanPIndexes != nil {
+			// Updating this here since plans for index have been assigned to nodes.
+			// PlanPIndexes for Index should include existing partitions placements
+			// Using the beginning plans since they haven't changed for this index yet.
+			for planName, plan := range r.begPlanPIndexes.PlanPIndexes {
+				if plan.IndexUUID == indexDef.UUID &&
+					plan.PlannerVersion == cbgt.GetPlannerVersion() {
+					r.existingPlanPIndexes.PlanPIndexes[planName] = plan
+				}
 			}
 		}
 
@@ -805,6 +813,8 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 	for k, v := range endPlanPIndexesForIndex {
 		r.existingPlanPIndexes.PlanPIndexes[k] = v
 	}
+
+	r.endPlanPIndexes.Warnings[indexDef.Name] = []string{}
 
 	for partitionName, partitionWarning := range warnings {
 		if _, exists := r.endPlanPIndexes.PlanPIndexes[partitionName]; exists {
@@ -1053,6 +1063,18 @@ func removeShortMoves(pms []*pindexMoves, length int) []*pindexMoves {
 
 // --------------------------------------------------------
 
+// Returns plan pindexes after deleting plans for an index that were computed by
+// a different version.
+func (r *Rebalancer) deletePlansWithDifferentPlannerVersionForIndex(
+	indexDef *cbgt.IndexDef, planPIndexes *cbgt.PlanPIndexes) *cbgt.PlanPIndexes {
+	for name, plan := range planPIndexes.PlanPIndexes {
+		if plan.IndexUUID == indexDef.UUID && plan.PlannerVersion != cbgt.GetPlannerVersion() {
+			delete(planPIndexes.PlanPIndexes, name)
+		}
+	}
+	return planPIndexes
+}
+
 // assignPIndexesLOCKED updates the cfg with the pindex assignment, and
 // should be invoked while holding the r.m lock.
 func (r *Rebalancer) assignPIndexesLOCKED(index string, node string,
@@ -1081,10 +1103,15 @@ func (r *Rebalancer) assignPIndexesLOCKED(index string, node string,
 		return nil, nil, nil, ErrorNoIndexDefinitionFound
 	}
 
+	// Only require the ones with relevant planner version for the index being
+	// rebalanced.
 	planPIndexes, cas, err := cbgt.PlannerGetPlanPIndexes(r.cfg, r.version)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	// Not modifying the UUID here since that will be modified in updatePlanPIndexesLOCKED.
+	planPIndexes = r.deletePlansWithDifferentPlannerVersionForIndex(indexDef,
+		planPIndexes)
 
 	formerPrimaryNodes := make([]string, len(pms))
 	for i, pm := range pms {
@@ -1235,6 +1262,7 @@ func (r *Rebalancer) updatePlanPIndexesLOCKED(
 	}
 
 	planPIndex.UUID = cbgt.NewUUID()
+	planPIndex.PlannerVersion = cbgt.GetPlannerVersion()
 	planPIndexes.UUID = cbgt.NewUUID()
 	planPIndexes.ImplVersion = r.version
 	// Updating the plans with the computed warnings.
