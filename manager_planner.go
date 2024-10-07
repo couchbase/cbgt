@@ -568,13 +568,23 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 		planPIndexesForIndex = pho.PlanPIndexesForIndex
 
 		adjustedWeights := nodeWeights
+		// override the node weights for single partitioned index to
+		// favour balanced partition assignments.
+		if len(planPIndexesForIndex) == 1 {
+			// ensure that the node stickiness option is not enabled.
+			if enabled, found := options["enablePartitionNodeStickiness"]; !found ||
+				enabled == "false" {
+				adjustedWeights = NormaliseNodeWeights(nodeWeights,
+					planPIndexesPrev, len(planPIndexesPrev.PlanPIndexes))
+			}
+		}
 
 		// Once we have a 1 or more PlanPIndexes for an IndexDef, use
 		// blance to assign the PlanPIndexes to nodes.
 		warnings := BlancePlanPIndexes(mode, indexDef,
 			planPIndexesForIndex, existingPlans,
 			nodeUUIDsAll, nodeUUIDsToAdd, nodeUUIDsToRemove,
-			adjustedWeights, nodeHierarchy, false)
+			adjustedWeights, nodeHierarchy, true)
 
 		planPIndexes.Warnings[indexDef.Name] = []string{}
 
