@@ -88,7 +88,8 @@ var RootCAsProvider func(bucketName, bucketUUID string) func() *x509.CertPool
 //   - TLSRootCAProvider
 func setupConfigParams(bucketName, bucketUUID, server string, options map[string]string) (
 	connStr string, useTLS bool, caProvider certProvider) {
-	if options != nil && options["authType"] == "cbauth" {
+	iscbauth := options != nil && options["authType"] == "cbauth"
+	if iscbauth {
 		caProvider = FetchRootCAs
 	} else {
 		if RootCAsProvider != nil {
@@ -107,8 +108,10 @@ func setupConfigParams(bucketName, bucketUUID, server string, options map[string
 		}
 	}
 
-	if caProvider != nil && caProvider() != nil {
-		useTLS = true
+	if caProvider != nil {
+		if !iscbauth || caProvider() != nil {
+			useTLS = true
+		}
 	}
 
 	return connStr, useTLS, caProvider
