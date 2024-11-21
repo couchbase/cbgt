@@ -112,10 +112,25 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 			log.Warnf("janitor: partiallyRollbackPIndex for pindex %s, cleaning "+
 				"and trying full rollback, err: %v", pindex.Name, err)
 
-			os.RemoveAll(pindex.Path)
+			pindex.closed = false
+			err = mgr.stopPIndexFeeds(pindex)
+			if err != nil {
+				return err
+			}
 
-			// Stopping pindex to unregister it from mgr.
-			mgr.stopPIndex(pindex, false)
+			if pindex.Dest != nil {
+				buf := bytes.NewBuffer(nil)
+				buf.Write([]byte(fmt.Sprintf(
+					`{"event":"stopPIndex","name":"%s","remove":%t,"time":"%s","stats":`,
+					pindex.Name, true, time.Now().Format(time.RFC3339Nano))))
+				err := pindex.Dest.Stats(buf)
+				if err == nil {
+					buf.Write(JsonCloseBrace)
+					mgr.AddEvent(buf.Bytes())
+				}
+			}
+			mgr.unregisterPIndex(pindex.Name, nil)
+			pindex.Close(true)
 
 			// Full rollback if the partial rollback failed.
 			return mgr.fullRollbackPIndex(pindex)
@@ -128,7 +143,8 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 	log.Printf("janitor: fully rolling back pindex %s", pindex.Name)
 	pindexName := pindex.Name
-	pindex, err := createNewPIndex(mgr, pindex.Name, pindex.UUID,
+	var err error
+	pindex, err = createNewPIndex(mgr, pindex.Name, pindex.UUID,
 		pindex.IndexType, pindex.IndexName, pindex.IndexUUID, pindex.IndexParams,
 		pindex.SourceType, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams,
 		pindex.SourcePartitions, pindex.Path, Rollback)
@@ -1409,16 +1425,9 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 
 func (mgr *Manager) stopPIndex(pindex *PIndex, remove bool) error {
 	// First, stop any feeds that might be sending to the pindex's dest.
-	feeds, _ := mgr.CurrentMaps()
-	for _, feed := range feeds {
-		for _, dest := range feed.Dests() {
-			if dest == pindex.Dest {
-				err := mgr.stopFeed(feed)
-				if err != nil {
-					return err
-				}
-			}
-		}
+	err := mgr.stopPIndexFeeds(pindex)
+	if err != nil {
+		return err
 	}
 
 	if pindex.Dest != nil {
@@ -1501,6 +1510,22 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 		pindexFirst.SourceType, pindexFirst.SourceName,
 		pindexFirst.SourceUUID, pindexFirst.SourceParams,
 		dests)
+}
+
+
+func (mgr *Manager) stopPIndexFeeds(pindex *PIndex) error {
+	feeds, _ := mgr.CurrentMaps()
+	for _, feed := range feeds {
+		for _, dest := range feed.Dests() {
+			if dest == pindex.Dest {
+				err := mgr.stopFeed(feed)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (mgr *Manager) trackResumeBucketState(source, sourceType string) {
