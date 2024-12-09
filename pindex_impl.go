@@ -277,7 +277,9 @@ type QueryCtlParams struct {
 // [4] PartitionSelection value can optionally be specified for performing ..
 // advanced scatter gather operations, recognized options:
 //   - ""              : default behavior - active partitions are selected
-//   - local           : local partitions are favored, pseudo random selection from remote
+//   - local           : local partitions are favored, local server group after and
+//     pseudo random selection from remote otherwise
+//   - local_only      : local partitions are favored, local server group after, else missing
 //   - random          : pseudo random selection from available local and remote
 //   - random_balanced : random selection from available local and remote nodes by
 //     distributing the query load across all nodes.
