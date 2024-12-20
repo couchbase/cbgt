@@ -140,13 +140,13 @@ func (c *ErrorUntilCfg) Refresh() error {
 	return c.inner.Refresh()
 }
 
-func (c *ErrorUntilCfg) ClusterVersion() (uint64, error) {
+func (c *ErrorUntilCfg) ClusterVersion() (string, error) {
 	c.numOps++
 	if c.numOps < c.errUntil {
-		return 0, fmt.Errorf("ClusterVersion error until %d",
+		return "", fmt.Errorf("ClusterVersion error until %d",
 			c.errUntil)
 	}
-	return CompatibilityVersion(LeanPlanVersion)
+	return LeanPlanVersion, nil
 }
 
 // ------------------------------------------------
