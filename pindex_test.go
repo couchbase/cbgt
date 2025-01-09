@@ -20,7 +20,7 @@ import (
 )
 
 func TestOpenPIndex(t *testing.T) {
-	pindex, err := OpenPIndex(nil, "not-a-real-file")
+	pindex, err := OpenPIndex(nil, "not-a-real-file", nil)
 	if pindex != nil || err == nil {
 		t.Errorf("expected OpenPIndex to fail on a bad file")
 	}
