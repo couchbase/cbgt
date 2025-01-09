@@ -283,11 +283,16 @@ type QueryCtlParams struct {
 //   - random          : pseudo random selection from available local and remote
 //   - random_balanced : random selection from available local and remote nodes by
 //     distributing the query load across all nodes.
+//
+// [5] GlobalScoring is an optional setting to enable scoring for the query
+// at a global level across all the partitions of the index. This is useful to
+// keep the scoring consistent (roughly) across varying partition counts.
 type QueryCtl struct {
 	Timeout            int64              `json:"timeout"`
 	Validate           bool               `json:"validate,omitempty"`
 	Consistency        *ConsistencyParams `json:"consistency"`
 	PartitionSelection string             `json:"partition_selection,omitempty"`
+	GlobalScoring      bool               `json:"global_scoring,omitempty"`
 }
 
 // QUERY_CTL_DEFAULT_TIMEOUT_MS is the default query timeout.
