@@ -814,8 +814,6 @@ func (r *Rebalancer) calcBegEndMaps(indexDef *cbgt.IndexDef) (
 		r.existingPlanPIndexes.PlanPIndexes[k] = v
 	}
 
-	r.endPlanPIndexes.Warnings[indexDef.Name] = []string{}
-
 	for partitionName, partitionWarning := range warnings {
 		if _, exists := r.endPlanPIndexes.PlanPIndexes[partitionName]; exists {
 			if r.endPlanPIndexes.PlanPIndexes[partitionName].IndexName == indexDef.Name {

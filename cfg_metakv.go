@@ -134,7 +134,7 @@ type CfgMetaKvEntry struct {
 type VersionReader interface {
 	// ClusterVersion retrieves the cluster
 	// compatibility information from the ns_server
-	ClusterVersion() (uint64, error)
+	ClusterVersion() (string, error)
 }
 
 // NewCfgMetaKv returns a CfgMetaKv that reads and stores its single
@@ -787,53 +787,58 @@ func delSharedPlan(c *CfgMetaKv, key string, cas uint64) error {
 }
 
 type Compatibility struct {
-	ClusterCompatibility int `json:"clusterCompatibility"`
+	// For cluster version tracker
+	ClusterCompatibility int    `json:"clusterCompatibility"`
+	Version              string `json:"version"`
 }
 
 type NsServerResponse struct {
 	Nodes []Compatibility `json:"nodes"`
 }
 
-func (c *CfgMetaKv) ClusterVersion() (uint64, error) {
+func (c *CfgMetaKv) ClusterVersion() (string, error) {
 	if len(c.nsServerUrl) < 2 {
-		return 1, fmt.Errorf("cfg_metakv: no ns_server URL configured")
+		return "", fmt.Errorf("cfg_metakv: no ns_server URL configured")
 	}
 
 	u, err := CBAuthURL(c.nsServerUrl)
 	if err != nil {
-		return 0, fmt.Errorf("cfg_metakv: auth for ns_server,"+
+		return "", fmt.Errorf("cfg_metakv: auth for ns_server,"+
 			" nsServerURL: %s, authType: %s, err: %v",
 			c.nsServerUrl, "cbauth", err)
 	}
 
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err := HttpClient().Do(req)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	respBuf, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, fmt.Errorf("cfg_metakv: error reading resp.Body,"+
+		return "", fmt.Errorf("cfg_metakv: error reading resp.Body,"+
 			" nsServerURL: %s, resp: %#v, err: %v", c.nsServerUrl, resp, err)
 	}
 
 	rv := &NsServerResponse{}
 	err = UnmarshalJSON(respBuf, rv)
 	if err != nil {
-		return 0, fmt.Errorf("cfg_metakv: error parsing respBuf: %s,"+
+		return "", fmt.Errorf("cfg_metakv: error parsing respBuf: %s,"+
 			" nsServerURL: %s, err: %v", respBuf, c.nsServerUrl, err)
 
 	}
 
-	return uint64(rv.Nodes[0].ClusterCompatibility), nil
+	// Truncate version to be able to compare it with the CfgAppVersion
+	// eg. 7.6.2-0000-enterprise becomes 7.6.2
+	firstDashIndex := strings.Index(rv.Nodes[0].Version, "-")
+	return rv.Nodes[0].Version[:firstDashIndex], nil
 }
 
 func CompatibilityVersion(version string) (uint64, error) {

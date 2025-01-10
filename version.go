@@ -120,11 +120,11 @@ func VerifyEffectiveClusterVersion(cfg interface{}, myVersion string) (bool, err
 			goto NODEDEFS_CHECKS
 		}
 
-		appVersion, err := CompatibilityVersion(CfgAppVersion)
-		if appVersion != ccVersion {
+		// ccVersion will follow the same versioning format as CfgAppVersion. Eg. 7.6.5
+		if CfgAppVersion != ccVersion {
 			log.Printf("version: non matching application compatibility "+
-				"version: %d and clusterCompatibility version: %d",
-				appVersion, ccVersion)
+				"version: %s and clusterCompatibility version: %s",
+				CfgAppVersion, ccVersion)
 			return false, nil
 		}
 		if err != nil {
@@ -132,8 +132,8 @@ func VerifyEffectiveClusterVersion(cfg interface{}, myVersion string) (bool, err
 			goto NODEDEFS_CHECKS
 		}
 
-		log.Printf("version: clusterCompatibility: %d matches with"+
-			" application version: %d", ccVersion, appVersion)
+		log.Printf("version: clusterCompatibility: %s matches with"+
+			" application version: %s", ccVersion, CfgAppVersion)
 		return true, err
 	}
 
@@ -172,7 +172,7 @@ NODEDEFS_CHECKS:
 	return true, nil
 }
 
-func retry(attempts int, f func() (uint64, error)) (val uint64, err error) {
+func retry(attempts int, f func() (string, error)) (val string, err error) {
 	if val, err = f(); err != nil {
 		if attempts > 0 {
 			retry(attempts-1, f)
