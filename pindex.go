@@ -126,7 +126,7 @@ var ErrTerminatedDownload = fmt.Errorf("pindex: case of abruptly terminated down
 
 func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, indexParams,
 	sourceType, sourceName, sourceUUID, sourceParams, sourcePartitions string,
-	path string, createPIndexFunc func(indexType, indexParams, sourceParams,
+	path string, createPIndexCB func(indexType, indexParams, sourceParams,
 		path string, mgr *Manager, restart func()) (PIndexImpl, Dest, error)) (*PIndex, error) {
 
 	var pindex *PIndex
@@ -136,8 +136,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		go mgr.JanitorRollbackKick("rollback:"+pindex.Name, pindex)
 	}
 
-	params := IndexPrepParams{SourceName: sourceName, IndexName: indexName,
-		Params: indexParams}
+	params := IndexPrepParams{SourceName: sourceName, IndexName: indexName, Params: indexParams}
 
 	pBytes, err := MarshalJSON(&params)
 	if err != nil {
@@ -154,8 +153,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		}
 	}
 
-	impl, dest, err := createPIndexFunc(indexType, string(pBytes), sourceParams,
-		path, mgr, rollback)
+	impl, dest, err := createPIndexCB(indexType, string(pBytes), sourceParams, path, mgr, rollback)
 	if err != nil && err != ErrTerminatedDownload {
 		os.RemoveAll(path)
 		return nil, fmt.Errorf("pindex: new indexType: %s, indexParams: %s,"+
