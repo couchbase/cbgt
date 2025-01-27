@@ -62,8 +62,9 @@ func (mgr *Manager) JanitorRollbackKick(msg string, pindex *PIndex) {
 }
 
 // A way for applications to hook into the janitor's rollback phases.
-// Must be set at init time, before the manager is started.
-var RollbackHook func(phase RollbackPhase, pindex *PIndex) (err error)
+// **Must be set at init time, before the manager is started
+// **Works with/alongside PIndexImplType's Rollback
+var RollbackHook func(pindex *PIndex, phase RollbackPhase) (wasPartial bool, err error)
 
 type RollbackPhase int
 
@@ -73,9 +74,10 @@ const (
 )
 
 func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
+	var err error
 	defer func() {
 		if RollbackHook != nil {
-			err := RollbackHook(RollbackCompleted, pindex)
+			_, err = RollbackHook(pindex, RollbackCompleted)
 			if err != nil {
 				log.Warnf("janitor: rollbackPIndex for pindex %s, "+
 					"RollbackHook, err: %v", pindex.Name, err)
@@ -87,25 +89,35 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 		return nil
 	}
 
+	var wasPartial bool
 	if RollbackHook != nil {
-		err := RollbackHook(RollbackInit, pindex)
+		wasPartial, err = RollbackHook(pindex, RollbackInit)
 		if err != nil {
 			return fmt.Errorf("janitor: rollbackPIndex for pindex %s, "+
 				"RollbackHook, err: %v", pindex.Name, err)
 		}
 	}
 
-	err := mgr.stopPIndex(pindex, false)
-	if err != nil {
-		return fmt.Errorf("janitor: rollbackPIndex for pindex %s, stopPIndex, "+
+	if !wasPartial {// Full rollback is also the default (in case RollbackHook is not registered)
+		// Stopping the pindex.
+		// Making sure files are removed, if necessary since cbft might create
+		// files in the pindex directory.
+		err := mgr.stopPIndex(pindex, true)
+		if err != nil {
+			return fmt.Errorf("janitor: fully rollback pindex for pindex %s, stopPIndex, "+
 			"err: %v", pindex.Name, err)
-	}
+		}
 
-	_, err = os.Stat(pindex.Path)
-	if os.IsNotExist(err) {
-		// Full rollback if the files are not there
 		return mgr.fullRollbackPIndex(pindex)
 	} else {
+		// Stopping the pindex.
+		// Will not build the pindex from scratch, hence not removing the files.
+		err := mgr.stopPIndex(pindex, false)
+		if err != nil {
+			return fmt.Errorf("janitor: partially rollback pindex for pindex %s, stopPIndex, "+
+			"err: %v", pindex.Name, err)
+		}
+
 		// Partial rollback if the files are present.
 		err = mgr.partiallyRollbackPIndex(pindex)
 		if err != nil {
@@ -156,7 +168,15 @@ func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 	if err != nil {
 		return fmt.Errorf("janitor: error registering pindex: %s, err: %v", pindex.Name, err)
 	}
-	return nil
+
+	if RollbackHook != nil {
+		// Janitor notification is to be handled by calling application
+		// (Only by cbft asynchronously at the moment, after pindex is copied)
+		return nil
+	}
+
+	// Required if no hook was registered to setup feeds
+	return mgr.JanitorOnce("Adding feeds after full rollback of pindex: " + pindex.Name)
 }
 
 func (mgr *Manager) partiallyRollbackPIndex(pindex *PIndex) error {
@@ -1499,7 +1519,6 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 		pindexFirst.SourceUUID, pindexFirst.SourceParams,
 		dests)
 }
-
 
 func (mgr *Manager) stopPIndexFeeds(pindex *PIndex) error {
 	feeds, _ := mgr.CurrentMaps()
