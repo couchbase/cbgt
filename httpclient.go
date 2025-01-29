@@ -104,7 +104,8 @@ func updateHttpClient(status int) error {
 		ok := rootCAs.AppendCertsFromPEM(ss.CACertInBytes)
 		if ok {
 			transport.TLSClientConfig.RootCAs = rootCAs
-			if *ss.ClientAuthType == tls.RequireAndVerifyClientCert {
+			if ss.ClientAuthType != nil &&
+				*ss.ClientAuthType == tls.RequireAndVerifyClientCert {
 				transport.TLSClientConfig.Certificates = []tls.Certificate{ss.ClientCertificate}
 			}
 			_ = http2.ConfigureTransport(transport)
