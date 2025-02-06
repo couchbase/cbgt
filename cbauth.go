@@ -38,10 +38,11 @@ var ClientCertFile string
 var ClientKeyFile string
 
 type SecuritySetting struct {
-	TLSConfig          *cbauth.TLSConfig
-	ClientAuthType     *tls.ClientAuthType
-	EncryptionEnabled  bool
-	DisableNonSSLPorts bool
+	TLSConfig                  *cbauth.TLSConfig
+	ClientAuthType             *tls.ClientAuthType
+	EncryptionEnabled          bool
+	DisableNonSSLPorts         bool
+	ShouldClientsUseClientCert bool
 
 	ServerCertificate tls.Certificate
 	CACertInBytes     []byte
@@ -238,6 +239,14 @@ func (c *SecurityContext) refreshClientCert(configs *SecuritySetting) error {
 	}
 
 	configs.ClientCertificate = cert
+
+	tlsConfig, err := cbauth.GetTLSConfig()
+	if err != nil {
+		log.Warnf("cbauth: GetTLSConfig failed, err: %v", err)
+		return err
+	}
+
+	configs.ShouldClientsUseClientCert = tlsConfig.ShouldClientsUseClientCert
 
 	return nil
 }
