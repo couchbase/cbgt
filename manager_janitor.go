@@ -125,24 +125,7 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 				"and trying full rollback, err: %v", pindex.Name, err)
 
 			pindex.closed = false
-			err = mgr.stopPIndexFeeds(pindex)
-			if err != nil {
-				return err
-			}
-
-			if pindex.Dest != nil {
-				buf := bytes.NewBuffer(nil)
-				buf.Write([]byte(fmt.Sprintf(
-					`{"event":"stopPIndex","name":"%s","remove":%t,"time":"%s","stats":`,
-					pindex.Name, true, time.Now().Format(time.RFC3339Nano))))
-				err := pindex.Dest.Stats(buf)
-				if err == nil {
-					buf.Write(JsonCloseBrace)
-					mgr.AddEvent(buf.Bytes())
-				}
-			}
-			mgr.unregisterPIndex(pindex.Name, nil)
-			pindex.Close(true)
+			mgr.stopPIndex(pindex, true)
 
 			// Full rollback if the partial rollback failed.
 			return mgr.fullRollbackPIndex(pindex)
