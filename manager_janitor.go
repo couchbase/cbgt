@@ -98,14 +98,14 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 		}
 	}
 
-	if !wasPartial {// Full rollback is also the default (in case RollbackHook is not registered)
+	if !wasPartial { // Full rollback is also the default (in case RollbackHook is not registered)
 		// Stopping the pindex.
 		// Making sure files are removed, if necessary since cbft might create
 		// files in the pindex directory.
 		err := mgr.stopPIndex(pindex, true)
 		if err != nil {
 			return fmt.Errorf("janitor: fully rollback pindex for pindex %s, stopPIndex, "+
-			"err: %v", pindex.Name, err)
+				"err: %v", pindex.Name, err)
 		}
 
 		return mgr.fullRollbackPIndex(pindex)
@@ -115,7 +115,7 @@ func (mgr *Manager) rollbackPIndex(pindex *PIndex) error {
 		err := mgr.stopPIndex(pindex, false)
 		if err != nil {
 			return fmt.Errorf("janitor: partially rollback pindex for pindex %s, stopPIndex, "+
-			"err: %v", pindex.Name, err)
+				"err: %v", pindex.Name, err)
 		}
 
 		// Partial rollback if the files are present.

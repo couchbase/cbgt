@@ -236,7 +236,8 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, no servers provided")
 	}
 
-	connStr, useTLS, caProvider := setupConfigParams(bucketName, bucketUUID, svrs[0], options)
+	connStr, useTLS, caProvider := setupConfigParams(bucketName, bucketUUID,
+		paramsStr, svrs[0], options)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent,"+

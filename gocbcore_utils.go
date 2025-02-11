@@ -79,21 +79,22 @@ type certProvider func() *x509.CertPool
 
 // RootCAsProvider supports override capability when authType isn't "cbauth"
 // and the application wants to use unique TLS config for feeds.
-var RootCAsProvider func(bucketName, bucketUUID string) func() *x509.CertPool
+var RootCAsProvider func(bucketName, bucketUUID, sourceParams string) func() *x509.CertPool
 
 // setupConfigParams sets up the following parameters needed to set up
 // gocbcore AgentConfig/DCPAgentConfig ..
 //   - connection string
 //   - useTLS flag
 //   - TLSRootCAProvider
-func setupConfigParams(bucketName, bucketUUID, server string, options map[string]string) (
+func setupConfigParams(bucketName, bucketUUID, sourceParams, server string,
+	options map[string]string) (
 	connStr string, useTLS bool, caProvider certProvider) {
 	iscbauth := options != nil && options["authType"] == "cbauth"
 	if iscbauth {
 		caProvider = FetchRootCAs
 	} else {
 		if RootCAsProvider != nil {
-			caProvider = RootCAsProvider(bucketName, bucketUUID)
+			caProvider = RootCAsProvider(bucketName, bucketUUID, sourceParams)
 		}
 	}
 
@@ -237,7 +238,8 @@ func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 			fmt.Errorf("gocbcore_utils: createAgents, no servers provided")
 	}
 
-	connStr, useTLS, caProvider := setupConfigParams(sourceName, sourceUUID, svrs[0], options)
+	connStr, useTLS, caProvider := setupConfigParams(sourceName, sourceUUID, sourceParams,
+		svrs[0], options)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gocbcore_utils: createAgents, unable to build"+
@@ -523,7 +525,8 @@ func CBVBucketLookUp(docID, serverIn string,
 		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, no servers provided")
 	}
 
-	connStr, useTLS, caProvider := setupConfigParams(sourceDetails.SourceName, sourceDetails.SourceUUID, svrs[0], nil)
+	connStr, useTLS, caProvider := setupConfigParams(sourceDetails.SourceName,
+		sourceDetails.SourceUUID, sourceDetails.SourceParams, svrs[0], nil)
 	err = config.FromConnStr(connStr)
 	if err != nil {
 		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, unable to build"+
