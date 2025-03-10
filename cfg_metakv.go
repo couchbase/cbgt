@@ -836,6 +836,12 @@ func (c *CfgMetaKv) ClusterVersion() (string, error) {
 	// Truncate version to be able to compare it with the CfgAppVersion
 	// eg. 7.6.2-0000-enterprise becomes 7.6.2
 	firstDashIndex := strings.Index(rv.Nodes[0].Version, "-")
+
+	if firstDashIndex < 0 {
+		// "dash" not found
+		return "", fmt.Errorf("cfg_metakv: unknown version `%v`", rv.Nodes[0].Version)
+	}
+
 	return rv.Nodes[0].Version[:firstDashIndex], nil
 }
 
