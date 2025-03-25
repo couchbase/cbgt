@@ -249,12 +249,17 @@ func (c *SecurityContext) refreshClients(configs *SecuritySetting) error {
 		return err
 	}
 
-	if err := cbdatasource.UpdateSecurityConfig(&cbdatasource.SecurityConfig{
+	sc := &cbdatasource.SecurityConfig{
 		EncryptData:        configs.EncryptionEnabled,
 		DisableNonSSLPorts: configs.DisableNonSSLPorts,
-		Certificates:       []tls.Certificate{configs.ClientCertificate},
 		RootCAs:            FetchRootCAs(),
-	}); err != nil {
+	}
+	if configs.ClientAuthType != nil &&
+		*configs.ClientAuthType == tls.RequireAndVerifyClientCert {
+		sc.Certificates = []tls.Certificate{configs.ClientCertificate}
+	}
+
+	if err := cbdatasource.UpdateSecurityConfig(sc); err != nil {
 		log.Warnf("cbauth: Error updating go-couchbase/cbdatasource's"+
 			" TLS data, err: %v", err)
 		return err
