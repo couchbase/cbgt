@@ -691,7 +691,13 @@ func (a *CBAuthenticator) Credentials(req gocbcore.AuthCredsRequest) (
 
 func (a *CBAuthenticator) Certificate(req gocbcore.AuthCertRequest) (
 	*tls.Certificate, error) {
-	return &GetSecuritySetting().ClientCertificate, nil
+	ss := GetSecuritySetting()
+	if ss.ClientAuthType != nil &&
+		*ss.ClientAuthType == tls.RequireAndVerifyClientCert {
+		return &ss.ClientCertificate, nil
+	}
+
+	return nil, nil
 }
 
 func (a *CBAuthenticator) SupportsTLS() bool {
