@@ -263,8 +263,7 @@ func (c *SecurityContext) refreshClients(configs *SecuritySetting) error {
 		DisableNonSSLPorts: configs.DisableNonSSLPorts,
 		RootCAs:            FetchRootCAs(),
 	}
-	if configs.ClientAuthType != nil &&
-		*configs.ClientAuthType == tls.RequireAndVerifyClientCert {
+	if configs.ShouldClientsUseClientCert {
 		sc.Certificates = []tls.Certificate{configs.ClientCertificate}
 	}
 
