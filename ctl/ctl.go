@@ -1158,6 +1158,7 @@ func (ctl *Ctl) startCtlLOCKED(
 						HttpGet:                            httpGetWithAuth,
 						Manager:                            ctl.optionsCtl.Manager,
 						ExistingNodes:                      existingNodeUUIDs,
+						KeepNodes:                          memberNodeUUIDs,
 						SkipSeqChecksCallback:              ctl.optionsCtl.SkipSeqChecksCallback,
 						Retries:                            seqChecksRetries,
 					})
