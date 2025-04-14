@@ -28,8 +28,12 @@ import (
 
 const CLUSTER_ACTION = "Internal-Cluster-Action"
 
-var ErrorQueryReqRejected = errors.New("query request rejected")
-var ErrorAlreadyPropagated = errors.New("response already propagated")
+var (
+	ErrorQueryReqTimeout         = errors.New("query request timeout")
+	ErrorQueryReqRejected        = errors.New("query request rejected")
+	ErrorAlreadyPropagated       = errors.New("response already propagated")
+	ErrorQueryConsistencyTimeout = errors.New("query consistency requirement not met")
+)
 
 // ListIndexHandler is a REST handler for list indexes.
 type ListIndexHandler struct {
@@ -431,8 +435,10 @@ func (h *QueryHandler) ServeHTTP(
 		}
 
 		status := http.StatusBadRequest
-		if err == ErrorQueryReqRejected {
+		if errors.Is(err, ErrorQueryReqRejected) {
 			status = http.StatusTooManyRequests
+		} else if errors.Is(err, ErrorQueryReqTimeout) || errors.Is(err, ErrorQueryConsistencyTimeout) {
+			status = http.StatusGatewayTimeout
 		}
 
 		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_index: Query,"+
