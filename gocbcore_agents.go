@@ -54,8 +54,8 @@ func setupAgentConfig(name, sourceName string,
 	initialBootstrapNonTLS := defaultInitialBootstrapNonTLS
 
 	useCollections := true
-
 	connectionBufferSize := GocbcoreConnectionBufferSize
+	ioConfigNetworkType := "default"
 
 	if options != nil {
 		if options["feedInitialBootstrapNonTLS"] == "true" {
@@ -74,6 +74,10 @@ func setupAgentConfig(name, sourceName string,
 				connectionBufferSize = uint(valInt)
 			}
 		}
+
+		if val, exists := options["gocbcoreIOConfigNetworkType"]; exists {
+			ioConfigNetworkType = val
+		}
 	}
 
 	return &gocbcore.AgentConfig{
@@ -84,7 +88,7 @@ func setupAgentConfig(name, sourceName string,
 			Auth:          auth,
 		},
 		IoConfig: gocbcore.IoConfig{
-			NetworkType:    "default",
+			NetworkType:    ioConfigNetworkType,
 			UseCollections: useCollections,
 		},
 		KVConfig: gocbcore.KVConfig{
@@ -187,6 +191,10 @@ func setupDCPAgentConfig(
 
 	if options["disableCollectionsSupport"] == "true" {
 		config.IoConfig.UseCollections = false
+	}
+
+	if val, exists := options["gocbcoreIOConfigNetworkType"]; exists {
+		config.IoConfig.NetworkType = val
 	}
 
 	if options["disableStreamIDs"] == "true" {
