@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -100,6 +99,7 @@ type RebalanceOptions struct {
 	StatsSampleErrorThreshold *int
 
 	ExistingNodes []string
+	KeepNodes     []string
 }
 
 type RebalanceLogFunc func(format string, v ...interface{})
@@ -695,11 +695,12 @@ func (r *Rebalancer) rebalanceIndex(stopCh chan struct{},
 // current rebalance operation is a recovery one or not and sets the
 // recoveryPlanPIndexes accordingly.
 func (r *Rebalancer) initPlansForRecoveryRebalance(nodesToAdd []string) {
-	if len(nodesToAdd) == 0 || r.optionsReb.Manager == nil {
+	if r.optionsReb.Manager == nil {
 		return
 	}
-	// check whether the previous cluster contained the nodesToAdd to
-	// figure out whether it is a recovery operation.
+	// check whether the cluster's nodes prior to the last topology change op
+	// are the same as the ones in the recovery plans.
+	// This is used to figure out whether it is a recovery operation.
 	begPlanPIndexesCopy := r.optionsReb.Manager.GetStableLocalPlanPIndexes()
 	if begPlanPIndexesCopy != nil {
 		var prevNodes []string
@@ -708,18 +709,16 @@ func (r *Rebalancer) initPlansForRecoveryRebalance(nodesToAdd []string) {
 				prevNodes = append(prevNodes, uuid)
 			}
 		}
-		// check whether all the nodes to get added were a part of the cluster.
-		cNodes := cbgt.StringsIntersectStrings(prevNodes, nodesToAdd)
-		sort.Strings(cNodes)
-
-		if len(cNodes) != len(nodesToAdd) {
+		prevNodes = cbgt.StringsRemoveDuplicates(prevNodes)
+		slices.Sort(prevNodes)
+		keepNodes := slices.Clone(r.optionsReb.KeepNodes)
+		slices.Sort(keepNodes)
+		// If the nodes in the topology change request aren't the same as the ones
+		// in the stable plan.
+		if !slices.Equal(prevNodes, keepNodes) {
 			return
 		}
-		for i := range nodesToAdd {
-			if cNodes[i] != nodesToAdd[i] {
-				return
-			}
-		}
+
 		r.recoveryPlanPIndexes = begPlanPIndexesCopy
 	}
 }
