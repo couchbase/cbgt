@@ -1078,6 +1078,11 @@ func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
 		// Error cannot be handled without shutting down feed, notify manager
 		f.onError(true,
 			fmt.Errorf("OpenStream, error waiting for vb: %v, err: %v", vbId, err))
+	} else {
+		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream opened for vb: %v,"+
+			" vbUUID: %v, seqStart: %v, seqEnd: %v, manifestUID: %v,"+
+			" streamOptions: {%+v, %+v}", f.Name(), vbId, vbuuid, seqStart, seqEnd,
+			f.manifestUID, f.streamOptions.FilterOptions, f.streamOptions.StreamOptions)
 	}
 }
 
