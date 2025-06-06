@@ -916,7 +916,7 @@ func (f *GocbcoreDCPFeed) lastVbUUIDSeqFromFailOverLog(vbId uint16) (
 	}
 
 	var vbuuid uint64
-	if len(vbMetaData.FailOverLog) > 0 {
+	if len(vbMetaData.FailOverLog) > 0 && lastSeq > 0 {
 		vbuuid = vbMetaData.FailOverLog[0][0]
 	}
 
