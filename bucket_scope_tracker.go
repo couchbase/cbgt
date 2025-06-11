@@ -295,24 +295,26 @@ func (b *BucketScopeInfoTracker) getBucketInfo(bucket string, cacheUpdateCheck s
 	notify := cachedBucketScopeMap[bucket].cv
 	b.m.RUnlock()
 
-	notify.L.Lock()
-	for {
-		// Check isClosed atomically without holding b.m
-		isClosed := cachedBucketScopeMap[bucket].isClosed.Load()
-		if isClosed {
-			return nil
-		}
+	if cacheUpdateCheck != nil {
+		notify.L.Lock()
+		for {
+			// Check isClosed atomically without holding b.m
+			isClosed := cachedBucketScopeMap[bucket].isClosed.Load()
+			if isClosed {
+				return nil
+			}
 
-		// No need for read lock since we're using our cached map reference
-		shouldWait := cacheUpdateCheck(cachedBucketScopeMap)
-		if !shouldWait {
-			break
-		}
+			// No need for read lock since we're using our cached map reference
+			shouldWait := cacheUpdateCheck(cachedBucketScopeMap)
+			if !shouldWait {
+				break
+			}
 
-		// Wait() will handle locking/unlocking automatically
-		notify.Wait()
+			// Wait() will handle locking/unlocking automatically
+			notify.Wait()
+		}
+		notify.L.Unlock()
 	}
-	notify.L.Unlock()
 
 	b.m.RLock()
 	rv := b.bucketScopeInfo[bucket]

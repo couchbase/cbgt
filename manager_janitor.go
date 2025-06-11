@@ -1512,7 +1512,6 @@ func (mgr *Manager) startFeed(pindexes []*PIndex) error {
 		dests)
 }
 
-
 func (mgr *Manager) stopPIndexFeeds(pindex *PIndex) error {
 	feeds, _ := mgr.CurrentMaps()
 	for _, feed := range feeds {
