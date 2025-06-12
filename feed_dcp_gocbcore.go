@@ -1249,10 +1249,18 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 
 	if err != nil {
 		log.Warnf("feed_dcp_gocbcore: [%s] Rollback for vb: %v, to seqno: %v,"+
-			" vbuuid: %v, failed with err: %v",
+			" vb: %v, failed with err: %v",
 			f.Name(), vbId, rollbackSeqno, rollbackVbuuid, err)
 	} else {
 		atomic.AddUint64(&f.dcpStats.TotDCPRollbacks, 1)
+		if f.params.AutoReconnectAfterRollback {
+			// Not used by cbft (feed setup is handled separately)
+			err = f.initiateStream(vbId)
+			if err != nil {
+				log.Warnf("feed_dcp_gocbcore: [%s] AutoReconnectAfterRollback"+
+					" failed, vb: %v, initiateStream err: %v", f.Name(), vbId, err)
+			}
+		}
 	}
 
 	return err
