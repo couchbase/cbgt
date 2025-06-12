@@ -88,6 +88,15 @@ type DCPFeedParams struct {
 
 	// Collections within the scope that the feed would cover.
 	Collections []string `json:"collections,omitempty"`
+
+	// AutoReconnectAfterRollback can be used to automatically
+	// re-initiate a stream request upon rollback completion, as
+	// opposed to deferring that resposibility of setting up the
+	// feed to the janitor.
+	// This option is meant to help clients such as Sync-Gateway
+	// to handle rollbacks at a vbucket level (where a dest is
+	// associated with a vbucket)
+	AutoReconnectAfterRollback bool `json:"autoReconnectAfterRollback,omitempty"`
 }
 
 // NewDCPFeedParams returns a DCPFeedParams initialized with default
