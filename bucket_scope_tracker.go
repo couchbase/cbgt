@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	log "github.com/couchbase/clog"
 )
@@ -78,10 +77,9 @@ var GetPoolsDefaultForBucket = func(server, bucket string, scopes bool) ([]byte,
 // -------------------------------------------------------
 
 type BucketScopeInfo struct {
-	refs     int
-	stopCh   chan struct{}
-	cv       *sync.Cond
-	isClosed atomic.Bool
+	refs   int
+	stopCh chan struct{}
+	cv     *sync.Cond
 
 	ManifestUID       string
 	UUID              string
@@ -209,21 +207,13 @@ func (b *BucketScopeInfoTracker) updateManifestInfoLOCKED(bucket, ManifestUID st
 // issues.
 func broadcastCacheUpdate(cacheVal *BucketScopeInfo) {
 	if cacheVal != nil {
+		cacheVal.cv.L.Lock()
 		cacheVal.cv.Broadcast()
+		cacheVal.cv.L.Unlock()
 	}
 }
 
 func (b *BucketScopeInfoTracker) createListener(bucket string) {
-	defer func() {
-		b.m.Lock() // Change to write lock
-		info, ok := b.bucketScopeInfo[bucket]
-		if ok && info.cv != nil {
-			info.isClosed.Store(true)
-			info.cv.Broadcast()
-		}
-		b.m.Unlock()
-	}()
-
 	// create a listener for the bucket
 	urlPath := b.server + "/pools/default/bs/" + bucket
 
@@ -297,20 +287,7 @@ func (b *BucketScopeInfoTracker) getBucketInfo(bucket string, cacheUpdateCheck s
 
 	if cacheUpdateCheck != nil {
 		notify.L.Lock()
-		for {
-			// Check isClosed atomically without holding b.m
-			isClosed := cachedBucketScopeMap[bucket].isClosed.Load()
-			if isClosed {
-				return nil
-			}
-
-			// No need for read lock since we're using our cached map reference
-			shouldWait := cacheUpdateCheck(cachedBucketScopeMap)
-			if !shouldWait {
-				break
-			}
-
-			// Wait() will handle locking/unlocking automatically
+		for cacheUpdateCheck(cachedBucketScopeMap) {
 			notify.Wait()
 		}
 		notify.L.Unlock()
@@ -319,6 +296,7 @@ func (b *BucketScopeInfoTracker) getBucketInfo(bucket string, cacheUpdateCheck s
 	b.m.RLock()
 	rv := b.bucketScopeInfo[bucket]
 	b.m.RUnlock()
+
 	return rv
 }
 
@@ -327,21 +305,13 @@ func untrackBucket(mgr *Manager, name string) {
 		mgr.bucketScopeInfoTracker.m.Lock()
 		defer mgr.bucketScopeInfoTracker.m.Unlock()
 
-		info, ok := mgr.bucketScopeInfoTracker.bucketScopeInfo[name]
+		_, ok := mgr.bucketScopeInfoTracker.bucketScopeInfo[name]
 		if ok {
 			mgr.bucketScopeInfoTracker.bucketScopeInfo[name].refs--
 			if mgr.bucketScopeInfoTracker.bucketScopeInfo[name].refs == 0 &&
 				!isClosed(mgr.bucketScopeInfoTracker.bucketScopeInfo[name].stopCh) {
 				// cleanup the entry
 				close(mgr.bucketScopeInfoTracker.bucketScopeInfo[name].stopCh)
-
-				// Set isClosed and delete before broadcasting
-				info.isClosed.Store(true)
-				delete(mgr.bucketScopeInfoTracker.bucketScopeInfo, name)
-
-				// Broadcast without holding the lock
-				info.cv.Broadcast()
-				return
 			}
 		}
 	}
