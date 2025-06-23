@@ -149,6 +149,7 @@ func (mgr *Manager) fullRollbackPIndex(pindex *PIndex) error {
 
 	err = mgr.registerPIndex(pindex)
 	if err != nil {
+		pindex.Close(true)
 		return fmt.Errorf("janitor: error registering pindex: %s, err: %v", pindex.Name, err)
 	}
 
