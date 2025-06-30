@@ -1408,19 +1408,32 @@ func (f *GocbcoreDCPFeed) checkIfSourceExists(force, waitForUpdate bool) (bool, 
 
 // cacheUpdateCheck is a conditional check to see if the bucket scope info in the
 // bucketScopeTracker has been updated, and if so, whether the feed's source
-// exists or not. This is used to exit out the thread waiting in a scenario when
-// the upstream codepath necessitates a network call via the
-// bucket streaming endpoints for the cache to be updated and whether the feed
-// has to be closed (refer the getBucketInfo() method in bucket_scope_tracker.go)
+// changed or not. This is used to exit out the thread waiting in a scenario when
+// the upstream codepath necessitates a refresh on the cached info based on the streaming
+// endpoint response and whether the feed has to be closed (refer the
+// getBucketInfo() method in bucket_scope_tracker.go)
 // this function is used only when we are using the bucket streaming endpoint
-// for verify source not exists check i.e. when we have a valid instance of
-// bucketScopeTracker running.
+// to check if source has changed or not and only when we have a valid instance of
+// bucketScopeTracker running in manager.
 func (f *GocbcoreDCPFeed) cacheUpdateCheck(bucketScopeInfoMap map[string]*BucketScopeInfo) bool {
 	bucketScopeInfo, ok := bucketScopeInfoMap[f.bucketName]
 	if !ok {
+		// bucket scope tracker entry is deleted only when the bucket is not alive
+		// which is only identified based on a bucket triggered event
 		return false
 	}
 
+	// bucket is present
+	select {
+	case <-bucketScopeInfo.stopCh:
+		// closed channel => no need to wait for checks for source change since no
+		// more feeds are listening for updates.
+		// this is triggered only on a feed closure and not a bucket triggered event
+		return false
+	default:
+	}
+
+	// bucket scope info changed -> source changed?
 	if len(bucketScopeInfo.UUID) == 0 ||
 		bucketScopeInfo.UUID != f.bucketUUID ||
 		bucketScopeInfo.scopeManifestInfo == nil {

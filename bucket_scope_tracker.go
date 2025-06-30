@@ -223,15 +223,23 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 	// call only when the manifestUID changes.
 	decodeAndNotifyResponse := func(data []byte) error {
 		b.m.Lock()
-		defer b.m.Unlock()
+		var isSourceDeleted bool
+		defer func() {
+			bucketScopeInfo := b.bucketScopeInfo[bucket]
+			if isSourceDeleted {
+				// if the source is deleted, remove the cache entry
+				delete(b.bucketScopeInfo, bucket)
+			}
+			// decodeAndNotifyResponse must always broadcast since theres a definite
+			// change in the bucket scope info
+			broadcastCacheUpdate(bucketScopeInfo)
+			b.m.Unlock()
+		}()
 		if isResponseEquivalentToResourceNotFound(string(data)) {
 			if !isClosed(b.bucketScopeInfo[bucket].stopCh) {
 				close(b.bucketScopeInfo[bucket].stopCh)
 			}
-
-			bucketScopeInfo := b.bucketScopeInfo[bucket]
-			delete(b.bucketScopeInfo, bucket)
-			broadcastCacheUpdate(bucketScopeInfo)
+			isSourceDeleted = true
 			return fmt.Errorf(string(data))
 		}
 		var streamResp *bucketStreamingResponse
@@ -240,7 +248,6 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 			// indicates that its a marshal error, however the bucket still exists
 			// since at this point its definitely not a 404
 			b.bucketScopeInfo[bucket].UUID = ""
-			broadcastCacheUpdate(b.bucketScopeInfo[bucket])
 			return err
 		}
 
@@ -249,13 +256,11 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 		if streamResp.ManifestUID != b.bucketScopeInfo[bucket].ManifestUID {
 			err := b.updateManifestInfoLOCKED(bucket, streamResp.ManifestUID)
 			if err != nil {
-				broadcastCacheUpdate(b.bucketScopeInfo[bucket])
 				return err
 			}
 			b.bucketScopeInfo[bucket].ManifestUID = streamResp.ManifestUID
 		}
 		b.bucketScopeInfo[bucket].NumVBuckets = streamResp.NumVBuckets
-		broadcastCacheUpdate(b.bucketScopeInfo[bucket])
 		return nil
 	}
 
@@ -305,13 +310,13 @@ func untrackBucket(mgr *Manager, name string) {
 		mgr.bucketScopeInfoTracker.m.Lock()
 		defer mgr.bucketScopeInfoTracker.m.Unlock()
 
-		_, ok := mgr.bucketScopeInfoTracker.bucketScopeInfo[name]
+		bucketInfo, ok := mgr.bucketScopeInfoTracker.bucketScopeInfo[name]
 		if ok {
-			mgr.bucketScopeInfoTracker.bucketScopeInfo[name].refs--
-			if mgr.bucketScopeInfoTracker.bucketScopeInfo[name].refs == 0 &&
-				!isClosed(mgr.bucketScopeInfoTracker.bucketScopeInfo[name].stopCh) {
-				// cleanup the entry
-				close(mgr.bucketScopeInfoTracker.bucketScopeInfo[name].stopCh)
+			bucketInfo.refs--
+			if bucketInfo.refs == 0 && !isClosed(bucketInfo.stopCh) {
+				// close the channel to stop the listener and broadcast
+				close(bucketInfo.stopCh)
+				broadcastCacheUpdate(bucketInfo)
 			}
 		}
 	}
@@ -320,9 +325,9 @@ func untrackBucket(mgr *Manager, name string) {
 func trackBucket(mgr *Manager, name string) {
 	if mgr.bucketScopeInfoTracker != nil {
 		mgr.bucketScopeInfoTracker.m.Lock()
-		_, ok := mgr.bucketScopeInfoTracker.bucketScopeInfo[name]
-		if ok && mgr.bucketScopeInfoTracker.bucketScopeInfo[name].refs > 0 {
-			mgr.bucketScopeInfoTracker.bucketScopeInfo[name].refs++
+		bucketInfo, ok := mgr.bucketScopeInfoTracker.bucketScopeInfo[name]
+		if ok && bucketInfo.refs > 0 {
+			bucketInfo.refs++
 			mgr.bucketScopeInfoTracker.m.Unlock()
 			// no-op, no need to create a tracker for a bucket that already exists
 			return
