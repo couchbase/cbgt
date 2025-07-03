@@ -18,7 +18,7 @@ import (
 // msg ring categorizes a buf as small versus large for reuse.
 var MsgRingMaxSmallBufSize = 1024
 
-// MsgRingMaxBufPoolSize is the max pool size for reused buf's.
+// MsgRingMaxSmallBufSize is the max pool size for reused buf's.
 var MsgRingMaxBufPoolSize = 8
 
 // A MsgRing wraps an io.Writer, and remembers a ring of previous
@@ -59,11 +59,11 @@ func (m *MsgRing) Write(p []byte) (n int, err error) {
 	if oldMsg != nil {
 		if len(oldMsg) <= MsgRingMaxSmallBufSize {
 			if len(m.SmallBufs) < MsgRingMaxBufPoolSize {
-				m.SmallBufs = append(m.SmallBufs, oldMsg)
+				m.SmallBufs = append(m.SmallBufs)
 			}
 		} else {
 			if len(m.LargeBufs) < MsgRingMaxBufPoolSize {
-				m.LargeBufs = append(m.LargeBufs, oldMsg)
+				m.LargeBufs = append(m.LargeBufs)
 			}
 		}
 	}
