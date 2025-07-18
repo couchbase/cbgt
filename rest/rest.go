@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/rcrowley/go-metrics"
 
 	"github.com/couchbase/cbgt"
 	log "github.com/couchbase/clog"
@@ -296,7 +297,7 @@ func (s *RESTPathStats) FocusStats(focusVal string) *RESTFocusStats {
 	}
 	rv, exists := s.focusStats[focusVal]
 	if !exists {
-		rv = &RESTFocusStats{}
+		rv = newRESTFocusStats()
 		s.focusStats[focusVal] = rv
 	}
 	s.m.Unlock()
@@ -318,7 +319,7 @@ func (s *RESTPathStats) ResetFocusStats(focusVal string) {
 	s.m.Lock()
 	if s.focusStats != nil {
 		if _, exists := s.focusStats[focusVal]; exists {
-			s.focusStats[focusVal] = &RESTFocusStats{}
+			s.focusStats[focusVal] = newRESTFocusStats()
 		}
 	}
 	s.m.Unlock()
@@ -339,6 +340,13 @@ type RESTFocusStats struct {
 	TotClientRequestTimeNS   uint64
 	TotInternalRequest       uint64
 	TotInternalRequestTimeNS uint64
+	ClientRequestTimer       metrics.Timer
+}
+
+func newRESTFocusStats() *RESTFocusStats {
+	return &RESTFocusStats{
+		ClientRequestTimer: metrics.NewTimer(),
+	}
 }
 
 // AtomicCopyTo copies stats from s to r (from source to result).
@@ -356,6 +364,7 @@ func (s *RESTFocusStats) AtomicCopyTo(r *RESTFocusStats) {
 				atomic.LoadUint64(svefp.(*uint64)))
 		}
 	}
+	r.ClientRequestTimer = s.ClientRequestTimer.Snapshot()
 }
 
 // -------------------------------------------------------

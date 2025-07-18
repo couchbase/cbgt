@@ -370,7 +370,9 @@ func (h *QueryHandler) ServeHTTP(
 			atomic.AddUint64(&focusStats.TotClientRequest, 1)
 
 			atomic.AddUint64(&focusStats.TotClientRequestTimeNS,
-				uint64(time.Now().Sub(startTime)))
+				uint64(time.Since(startTime)))
+
+			focusStats.ClientRequestTimer.Update(time.Since(startTime))
 		}
 
 		if h.slowQueryLogTimeout > time.Duration(0) {
@@ -410,7 +412,7 @@ func (h *QueryHandler) ServeHTTP(
 			atomic.AddUint64(&focusStats.TotInternalRequest, 1)
 
 			atomic.AddUint64(&focusStats.TotInternalRequestTimeNS,
-				uint64(time.Now().Sub(startTime)))
+				uint64(time.Since(startTime)))
 		}
 	}
 
@@ -419,13 +421,13 @@ func (h *QueryHandler) ServeHTTP(
 			if focusStats != nil {
 				atomic.AddUint64(&focusStats.TotRequestErr, 1)
 
-				if err == context.DeadlineExceeded || err == contextOld.DeadlineExceeded {
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, contextOld.DeadlineExceeded) {
 					atomic.AddUint64(&focusStats.TotRequestTimeout, 1)
 				}
 			}
 		}
 
-		if err == ErrorAlreadyPropagated {
+		if errors.Is(err, ErrorAlreadyPropagated) {
 			// query result was already propagated
 			return
 		}
