@@ -9,10 +9,12 @@
 package cbgt
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -153,11 +155,16 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		}
 	}
 
+	err = VerifySourceExists(mgr, sourceName, sourceUUID, sourceParams)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSourceDoesNotExist, err)
+	}
+
 	impl, dest, err := createPIndexCB(indexType, string(pBytes), sourceParams, path, mgr, rollback)
 	if err != nil && err != ErrTerminatedDownload {
 		os.RemoveAll(path)
 		return nil, fmt.Errorf("pindex: new indexType: %s, indexParams: %s,"+
-			" path: %s, err: %s", indexType, indexParams, path, err)
+			" path: %s, err: %w", indexType, indexParams, path, err)
 	}
 
 	pindex = &PIndex{
@@ -212,6 +219,8 @@ func NewPIndex(mgr *Manager, name, uuid,
 		sourceType, sourceName, sourceUUID, sourceParams, sourcePartitions, path, NewPIndexImplEx)
 }
 
+var ErrSourceDoesNotExist = errors.New("source does not exist")
+
 // OpenPIndex reopens a previously created pindex.  The path argument
 // must be a directory for the pindex.
 func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
@@ -243,6 +252,11 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 		}
 	}()
 
+	err = VerifySourceExists(mgr, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSourceDoesNotExist, err)
+	}
+
 	impl, dest, err := OpenPIndexImplUsing(pindex.IndexType, path,
 		pindex.IndexParams, rollback)
 	if err != nil {
@@ -260,6 +274,109 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 	}
 
 	return pindex, nil
+}
+
+type ScopeParams struct {
+	Name        string             `json:"name"`
+	Collections []CollectionParams `json:"collections"`
+}
+
+type CollectionParams struct {
+	Name string `json:"name"`
+	Uid  string `json:"uid"`
+}
+
+// function overridable for testing purposes only
+var VerifySourceExists = func(mgr *Manager, sourceName, sourceUUID, sourceParams string) error {
+	resp, err := GetPoolsDefaultForBucket(mgr.Server(), sourceName, false)
+	if err != nil {
+		log.Warnf("unable to fetch bucket manifest %s, err: %v", sourceName, err)
+		return nil
+	}
+
+	if isResponseEquivalentToResourceNotFound(string(resp)) {
+		return fmt.Errorf("bucket %s not found", sourceName)
+	}
+
+	if sourceUUID == "" {
+		return nil
+	}
+
+	uuidResp := struct {
+		UUID string `json:"uuid"`
+	}{}
+	err = UnmarshalJSON(resp, &uuidResp)
+	if err != nil {
+		log.Warnf("unable to parse bucket UUID from response %s, err: %v", resp, err)
+		return nil
+	}
+
+	if sourceUUID != uuidResp.UUID {
+		return fmt.Errorf("bucket %s UUID mismatch, expected %s, got %s",
+			sourceName, uuidResp.UUID, sourceUUID)
+	}
+
+	resp, err = GetPoolsDefaultForBucket(mgr.Server(), sourceName, true)
+	if err != nil {
+		log.Warnf("unable to fetch bucket manifest %s, err: %v", sourceName, err)
+		return nil
+	}
+
+	if isResponseEquivalentToResourceNotFound(string(resp)) {
+		return fmt.Errorf("bucket %s not found", sourceName)
+	}
+
+	if sourceParams == "" || sourceParams == "null" {
+		return nil
+	}
+
+	var scopeParams *ScopeParams
+	err = UnmarshalJSON([]byte(sourceParams), &scopeParams)
+	if err != nil {
+		return fmt.Errorf("pindex: could not parse sourceParams: %s, err: %v", sourceParams, err)
+	}
+
+	if scopeParams.Name == "" {
+		return nil
+	}
+
+	var m manifest
+	if err = m.UnmarshalJSON(resp); err != nil {
+		log.Warnf("unable to parse bucket manifest %s, err: %v", sourceName, err)
+		return nil
+	}
+
+	found := false
+	for _, s := range m.scopes {
+		if s.name == scopeParams.Name {
+			found = true
+
+		OUTER:
+			for i := range scopeParams.Collections {
+				for _, coll := range s.collections {
+					if coll.name == scopeParams.Collections[i].Name {
+						collectionUID, err := strconv.ParseUint(scopeParams.Collections[i].Uid, 16, 32)
+						if err != nil {
+							return err
+						}
+						if coll.uid != uint32(collectionUID) {
+							return fmt.Errorf("collection %s UID mismatch in scope %s in bucket %s, expected %d, got %d",
+								scopeParams.Collections[i], scopeParams.Name, sourceName, collectionUID, coll.uid)
+						}
+						continue OUTER
+					}
+				}
+
+				return fmt.Errorf("collection %s not found in scope %s in bucket %s",
+					scopeParams.Collections[i], scopeParams.Name, sourceName)
+			}
+		}
+	}
+	if !found {
+		return fmt.Errorf("scope %s not found in bucket %s", scopeParams.Name, sourceName)
+	}
+
+	return nil
 }
 
 // Computes the storage path for a pindex.

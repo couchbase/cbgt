@@ -397,7 +397,7 @@ func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 			return NewBadRequestError("manager_api: no indexes on deletion"+
 				" of indexName: %s", indexName)
 		}
-		if VersionGTE(mgr.version, indexDefs.ImplVersion) == false {
+		if !VersionGTE(mgr.version, indexDefs.ImplVersion) {
 			return NewInternalServerError("manager_api: could not delete index,"+
 				" indexDefs.ImplVersion: %s > mgr.version: %s",
 				indexDefs.ImplVersion, mgr.version)

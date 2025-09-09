@@ -10,6 +10,7 @@ package cbgt
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -1372,6 +1373,11 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 	if err == nil {
 		pindex, err = OpenPIndex(mgr, path)
 		if err != nil {
+			if errors.Is(err, ErrSourceDoesNotExist) {
+				go mgr.DeleteIndexEx(planPIndex.IndexName, planPIndex.IndexUUID)
+				os.RemoveAll(path)
+				return fmt.Errorf("janitor: startPIndex, err: %v", err)
+			}
 			log.Errorf("janitor: startPIndex, OpenPIndex error,"+
 				" cleaning up and trying NewPIndex,"+
 				" path: %s, err: %v", path, err)
@@ -1399,6 +1405,11 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 			planPIndex.SourceParams,
 			planPIndex.SourcePartitions,
 			path)
+		if errors.Is(err, ErrSourceDoesNotExist) {
+			go mgr.DeleteIndexEx(planPIndex.IndexName, planPIndex.IndexUUID)
+			os.RemoveAll(path)
+			return fmt.Errorf("janitor: startPIndex, err: %v", err)
+		}
 		if err != nil {
 			return fmt.Errorf("janitor: NewPIndex, name: %s, err: %v",
 				planPIndex.Name, err)

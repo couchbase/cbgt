@@ -166,11 +166,11 @@ func obtainBucketManifest(mgr *Manager, bucketName string, force bool,
 		// fallback non-streaming way of fetching bucket/scope info
 		resp, err := GetPoolsDefaultForBucket(mgr.Server(), bucketName, true)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("manifest: error fetching manifest, err: %v", err)
 		}
 		var rv manifest
 		if err = rv.UnmarshalJSON(resp); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("manifest: error parsing respBuf, resp: %s, err: %v", resp, err)
 		}
 		return &rv, nil
 	}
