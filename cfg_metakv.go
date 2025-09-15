@@ -115,6 +115,7 @@ type CfgMetaKv struct {
 	lastSplitCAS uint64
 	splitEntries map[string]CfgMetaKvEntry
 	nsServerUrl  string
+	lastCAS      uint64 // Applicable to non-split metaKVEntries _only_
 
 	advMetaEncodingSupported int32
 
@@ -562,16 +563,13 @@ func (a *cfgMetaKvNodeDefsSplitHandler) del(
 
 type cfgMetaKvIndexDefsHandler struct{}
 
-// set() splits an indexDefs into multiple child metakv entries and must
-// be invoked with c.m.Lock()'ed.
+// set() must be invoked with c.m.Lock()'ed.
 func (a *cfgMetaKvIndexDefsHandler) set(
 	c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error) {
-	curEntry := c.splitEntries[key]
-
 	// Skipping CAS checks if the force key is passed.
-	if cas != CFG_CAS_FORCE && cas != 0 && cas != curEntry.cas {
-		log.Warnf("cfg_metakv: Set split, key: %v, cas mismatch: %x != %x",
-			key, cas, curEntry.cas)
+	if cas != CFG_CAS_FORCE && cas != 0 && cas != c.lastCAS {
+		log.Warnf("cfg_metakv: Set, key: %v, cas mismatch: %x != %x",
+			key, cas, c.lastCAS)
 
 		return 0, &CfgCASError{}
 	}
@@ -581,14 +579,13 @@ func (a *cfgMetaKvIndexDefsHandler) set(
 		return 0, err
 	}
 
-	casResult := c.lastSplitCAS + 1
-	c.lastSplitCAS = casResult
+	casResult := c.lastCAS + 1
+	c.lastCAS = casResult
 	return casResult, nil
 }
 
-// get() retrieves multiple child entries from the metakv and weaves
-// the results back into a composite indexDefs.  get() must be invoked
-// with c.m.Lock()'ed.
+// get(..) retrieves entry from metakv for composite indexDefs;
+// must be invoked with c.m.Lock()'ed.
 func (a *cfgMetaKvIndexDefsHandler) get(
 	c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error) {
 	data, _, err := c.getRawLOCKED(key, cas)
@@ -596,15 +593,7 @@ func (a *cfgMetaKvIndexDefsHandler) get(
 		return nil, 0, err
 	}
 
-	casResult := c.lastSplitCAS + 1
-	c.lastSplitCAS = casResult
-
-	c.splitEntries[key] = CfgMetaKvEntry{
-		cas:  casResult,
-		data: data,
-	}
-
-	return data, casResult, nil
+	return data, c.lastCAS, nil
 }
 
 func (a *cfgMetaKvIndexDefsHandler) del(
