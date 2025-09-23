@@ -1451,8 +1451,8 @@ func (r *Rebalancer) waitAssignPIndexDone(stopCh, stopCh2 chan struct{},
 					if timeout > 0 && time.Now().Sub(start) > timeout {
 						r.Logf("rebalance: waitAssignPIndexDone,"+
 							" skipping a stats sample grab for pindex %s, partition %s,"+
-							" formerPrimaryNode %s, on timeout %d secs",
-							pindex, sourcePartition, formerPrimaryNode, timeout)
+							" formerPrimaryNode %s, on timeout %s",
+							pindex, sourcePartition, formerPrimaryNode, timeout.String())
 						break INIT_WANT_SEQ
 					}
 				}
