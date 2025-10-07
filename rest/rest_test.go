@@ -663,3 +663,100 @@ func TestPathFocusName(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateIndexVBucketValidation(t *testing.T) {
+	emptyDir, _ := os.MkdirTemp("./tmp", "test")
+	defer os.RemoveAll(emptyDir)
+
+	cfg := cbgt.NewCfgMem()
+	mgr := cbgt.NewManager(cbgt.VERSION, cfg, cbgt.NewUUID(),
+		nil, "", 1, "", ":1000",
+		emptyDir, "some-datasource", nil)
+	err := mgr.Start("wanted")
+	if err != nil {
+		t.Errorf("expected Manager.Start() to work, err: %v", err)
+	}
+	defer mgr.Stop()
+
+	// Mock GetNumSourcePartitionsForBucket to return a known vbucket count
+	origGetNumSourcePartitions := GetNumSourcePartitionsForBucket
+	defer func() {
+		GetNumSourcePartitionsForBucket = origGetNumSourcePartitions
+	}()
+
+	GetNumSourcePartitionsForBucket = func(server, bucketName string) (int, error) {
+		return 1024, nil
+	}
+
+	handler := NewCreateIndexHandler(mgr, false)
+
+	// Helper to create request with proper routing vars
+	createRequest := func(indexName, body string) (*http.Request, *httptest.ResponseRecorder) {
+		req := httptest.NewRequest("PUT", "/api/index/"+indexName,
+			bytes.NewBufferString(body))
+		req.Form = url.Values{}
+		req.Form.Set("indexType", "fulltext-index")
+		req.Form.Set("sourceType", "couchbase")
+		req.Form.Set("sourceName", "test-bucket")
+
+		req.Header.Set("Internal-Cluster-Action", "orchestrator-forwarded")
+
+		req = mux.SetURLVars(req, map[string]string{"indexName": indexName})
+
+		w := httptest.NewRecorder()
+		return req, w
+	}
+
+	// Test 1: Valid partition count (should succeed)
+	t.Run("ValidPartitionCount", func(t *testing.T) {
+		body := `{"type":"fulltext-index","planParams":{"indexPartitions":16}}`
+		req, w := createRequest("test-index-valid", body)
+		handler.ServeHTTP(w, req)
+
+		// Should succeed (16 < 1024)
+		if w.Code == http.StatusBadRequest {
+			respBody := w.Body.String()
+			if regexp.MustCompile("vbucket").MatchString(respBody) {
+				t.Errorf("Should accept 16 partitions, got vbucket error: %s", respBody)
+			}
+		}
+	})
+
+	// Test 2: Excessive partition count (should FAIL)
+	t.Run("ExcessivePartitionCount", func(t *testing.T) {
+		body := `{"type":"fulltext-index","planParams":{"indexPartitions":100000000}}`
+		req, w := createRequest("test-index-excessive", body)
+		handler.ServeHTTP(w, req)
+
+		// Should FAIL with BadRequest (100000000 > 1024)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected BadRequest for excessive partitions, got %d. Response: %s",
+				w.Code, w.Body.String())
+		}
+
+		// Check error message mentions vbuckets
+		respBody := w.Body.String()
+		if !regexp.MustCompile("vbucket").MatchString(respBody) {
+			t.Errorf("Expected error message to mention vbuckets, got: %s", respBody)
+		}
+		t.Logf("Correctly rejected 100M partitions with error: %s", respBody)
+	})
+
+	// Test 4: Partition count just over limit (should FAIL)
+	t.Run("PartitionCountJustOverLimit", func(t *testing.T) {
+		body := `{"type":"fulltext-index","planParams":{"indexPartitions":1025}}`
+		req, w := createRequest("test-index-over-limit", body)
+		handler.ServeHTTP(w, req)
+
+		// Should FAIL (1025 > 1024)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected BadRequest for 1025 partitions, got %d", w.Code)
+		}
+
+		// Verify vbucket error message
+		respBody := w.Body.String()
+		if regexp.MustCompile("vbucket").MatchString(respBody) {
+			t.Logf("Correctly rejected 1025 partitions (bucket has 1024 vbuckets)")
+		}
+	})
+}

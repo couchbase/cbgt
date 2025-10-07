@@ -252,7 +252,8 @@ func (h *CreateIndexHandler) ServeHTTP(
 	}
 
 	if indexType == "fulltext-index" {
-		if planParams.IndexPartitions > 0 {
+		// Only fetch vbucket count and perform calculations if partition parameters are specified
+		if planParams.IndexPartitions > 0 || planParams.MaxPartitionsPerPIndex > 0 {
 			numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
 			if err != nil {
 				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
@@ -262,21 +263,25 @@ func (h *CreateIndexHandler) ServeHTTP(
 				return
 			}
 
-			planParams.MaxPartitionsPerPIndex =
-				int(math.Ceil(float64(numSourcePartitions) / float64(planParams.IndexPartitions)))
+			// Calculate partition parameters based on user input
+			if planParams.IndexPartitions > 0 {
+				planParams.MaxPartitionsPerPIndex =
+					int(math.Ceil(float64(numSourcePartitions) / float64(planParams.IndexPartitions)))
 
-		} else if planParams.MaxPartitionsPerPIndex > 0 {
-			numSourcePartitions, err := GetNumSourcePartitionsForBucket(h.mgr.Server(), sourceName)
-			if err != nil {
-				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
-					" error obtaining vbucket count for bucket: %s, err: %v", sourceName, err),
-					http.StatusInternalServerError)
-				atomic.AddUint64(&totalCreateIndexIntSerErr, 1)
-				return
+			} else if planParams.MaxPartitionsPerPIndex > 0 {
+				planParams.IndexPartitions =
+					int(math.Ceil(float64(numSourcePartitions) / float64(planParams.MaxPartitionsPerPIndex)))
 			}
 
-			planParams.IndexPartitions =
-				int(math.Ceil(float64(numSourcePartitions) / float64(planParams.MaxPartitionsPerPIndex)))
+			// Validate IndexPartitions against vbucket count
+			if planParams.IndexPartitions > numSourcePartitions {
+				ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
+					" cannot create index with %d partitions, source bucket '%s' has %d vbuckets",
+					planParams.IndexPartitions, sourceName, numSourcePartitions),
+					http.StatusBadRequest)
+				atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
+				return
+			}
 		}
 	}
 
