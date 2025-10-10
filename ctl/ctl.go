@@ -940,7 +940,13 @@ func (ctl *Ctl) dispatchCtlLOCKED(
 	memberNodeUUIDs []string,
 	movingPartitionsCount int,
 	ctlOnProgress CtlOnProgressFunc) error {
-	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) {
+	// Rev can increase due to server-group changes on node
+	// initialization which prevents stopping of rebalances
+	// with an older rev.
+	//
+	// So, only enforce rev check for non-stop operations.
+	if rev != "" && rev != fmt.Sprintf("%d", ctl.revNum) &&
+		mode != "stop" && mode != "stopChangeTopology" {
 		return ErrCtlWrongRev
 	}
 
