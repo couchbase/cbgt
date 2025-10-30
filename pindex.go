@@ -155,7 +155,7 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 		}
 	}
 
-	err = VerifySourceExists(mgr, sourceName, sourceUUID, sourceParams)
+	err = verifySourceExists(mgr, sourceName, sourceUUID, sourceParams)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSourceDoesNotExist, err)
 	}
@@ -252,7 +252,7 @@ func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 		}
 	}()
 
-	err = VerifySourceExists(mgr, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams)
+	err = verifySourceExists(mgr, pindex.SourceName, pindex.SourceUUID, pindex.SourceParams)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSourceDoesNotExist, err)
 	}
@@ -286,8 +286,11 @@ type CollectionParams struct {
 	Uid  string `json:"uid"`
 }
 
-// function overridable for testing purposes only
-var VerifySourceExists = func(mgr *Manager, sourceName, sourceUUID, sourceParams string) error {
+func verifySourceExists(mgr *Manager, sourceName, sourceUUID, sourceParams string) error {
+	if mgr == nil {
+		return nil
+	}
+
 	resp, err := GetPoolsDefaultForBucket(mgr.Server(), sourceName, false)
 	if err != nil {
 		log.Warnf("unable to fetch bucket manifest %s, err: %v", sourceName, err)

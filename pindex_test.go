@@ -20,12 +20,6 @@ import (
 )
 
 func TestOpenPIndex(t *testing.T) {
-	prevVerifySourceExists := VerifySourceExists
-	VerifySourceExists = func(mgr *Manager, sourceName, sourceUUID, sourceParams string) error {
-		return nil
-	}
-	defer func() { VerifySourceExists = prevVerifySourceExists }()
-
 	pindex, err := OpenPIndex(nil, "not-a-real-file")
 	if pindex != nil || err == nil {
 		t.Errorf("expected OpenPIndex to fail on a bad file")
@@ -33,19 +27,13 @@ func TestOpenPIndex(t *testing.T) {
 }
 
 func TestNewPIndex(t *testing.T) {
-	prevVerifySourceExists := VerifySourceExists
-	VerifySourceExists = func(mgr *Manager, sourceName, sourceUUID, sourceParams string) error {
-		return nil
-	}
-	defer func() { VerifySourceExists = prevVerifySourceExists }()
-
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	pindex, err := NewPIndex(nil, "fake", "uuid",
 		"blackhole", "indexName", "indexUUID", "",
 		"sourceType", "sourceName", "sourceUUID",
-		"", "sourcePartitions",
+		"sourceParams", "sourcePartitions",
 		PIndexPath(emptyDir, "fake"))
 	if pindex == nil || err != nil {
 		t.Errorf("expected NewPIndex to work")
@@ -57,19 +45,13 @@ func TestNewPIndex(t *testing.T) {
 }
 
 func TestClonePIndex(t *testing.T) {
-	prevVerifySourceExists := VerifySourceExists
-	VerifySourceExists = func(mgr *Manager, sourceName, sourceUUID, sourceParams string) error {
-		return nil
-	}
-	defer func() { VerifySourceExists = prevVerifySourceExists }()
-
 	emptyDir, _ := os.MkdirTemp("./tmp", "test")
 	defer os.RemoveAll(emptyDir)
 
 	pindex, err := NewPIndex(nil, "fake", "uuid",
 		"blackhole", "indexName", "indexUUID", "",
 		"sourceType", "sourceName", "sourceUUID",
-		"", "sourcePartitions",
+		"sourceParams", "sourcePartitions",
 		PIndexPath(emptyDir, "fake"))
 	if pindex == nil || err != nil {
 		t.Errorf("expected NewPIndex to work")
