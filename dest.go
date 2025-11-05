@@ -82,7 +82,7 @@ type Dest interface {
 	// at the end of operation (even when cancelled or error), so that
 	// the caller might get a rough idea of ingest velocity.
 	ConsistencyWait(partition, partitionUUID string,
-		consistencyLevel string,
+		consistencyLevel ConsistencyLevel,
 		consistencySeq uint64,
 		cancelCh <-chan bool) error
 

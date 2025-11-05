@@ -330,6 +330,130 @@ func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 
 // ----------------------------------------------------------------
 
+type clusterInfo struct {
+	agent       *gocbcore.Agent
+	dcpAgent    *gocbcore.DCPAgent
+	manifest    *gocbcore.Manifest
+	numServers  int
+	numVBuckets int
+}
+
+func cbGetClusterInfo(sourceName, sourceUUID, sourceParams,
+	serverIn string, options map[string]string, closeCh <-chan struct{}) (*clusterInfo, error) {
+	agent, dcpAgent, err := statsAgentsMap.obtainAgents(sourceName, sourceUUID,
+		sourceParams, serverIn, options)
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: cbGetClusterInfo, obtainAgents err: %v", err)
+	}
+
+	manifest, err := getCollectionManifest(agent, closeCh)
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: cbGetClusterInfo, GetCollectionManifest err: %v", err)
+	}
+
+	configSnapshot, err := agent.ConfigSnapshot()
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: cbGetClusterInfo, ConfigSnapshot err: %v", err)
+	}
+
+	numServers, err := configSnapshot.NumServers()
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: cbGetClusterInfo,"+
+			" couldn't determine number of servers in target cluster, err: %v", err)
+	}
+
+	numVBuckets, err := configSnapshot.NumVbuckets()
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: cbGetClusterInfo,"+
+			" couldn't determine number of vbuckets in target cluster, err: %v", err)
+	}
+
+	return &clusterInfo{
+		agent:       agent,
+		dcpAgent:    dcpAgent,
+		manifest:    manifest,
+		numServers:  numServers,
+		numVBuckets: numVBuckets,
+	}, nil
+}
+
+func getCollectionManifest(agent *gocbcore.Agent, closeCh <-chan struct{}) (*gocbcore.Manifest, error) {
+	signal := make(chan error, 1)
+	var manifest gocbcore.Manifest
+
+	op, err := agent.GetCollectionManifest(
+		gocbcore.GetCollectionManifestOptions{},
+		func(res *gocbcore.GetCollectionManifestResult, er error) {
+			if er == nil && res == nil {
+				er = fmt.Errorf("manifest not retrieved")
+			}
+			if er == nil {
+				er = manifest.UnmarshalJSON(res.Manifest)
+			}
+			signal <- er
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	if err = waitForResponse(signal, closeCh, op, GocbcoreStatsTimeout); err != nil {
+		return nil, err
+	}
+
+	return &manifest, nil
+}
+
+// cbFetchVBucketSeqNos is a generic helper that fetches vbucket sequence numbers
+// for a specified set of collections. It handles the common pattern of:
+// 1. Iterating over servers and filter options (collections)
+// 2. Calling GetVbucketSeqnos for each server/collection combination
+// 3. Processing the results through a callback
+//
+// Parameters:
+//   - info: cluster information including dcpAgent, numServers, etc.
+//   - filterOptionsList: list of filter options to iterate over (one per collection, or a single nil for all collections)
+//   - closeCh: optional channel; if closed, any blocking KV call returns immediately. Pass nil to disable.
+//   - processEntries: callback to process each batch of sequence number entries
+func cbFetchVBucketSeqNos(
+	info *clusterInfo,
+	filterOptionsList []*gocbcore.GetVbucketSeqnoFilterOptions,
+	closeCh <-chan struct{},
+	processEntries func(entries []gocbcore.VbSeqNoEntry, filterOpts *gocbcore.GetVbucketSeqnoFilterOptions),
+) error {
+
+	signal := make(chan error, 1)
+	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{}
+
+	for serverIdx := 1; serverIdx <= info.numServers; serverIdx++ {
+		for _, filterOpts := range filterOptionsList {
+			vbucketSeqnoOptions.FilterOptions = filterOpts
+
+			op, err := info.dcpAgent.GetVbucketSeqnos(
+				serverIdx,
+				memd.VbucketStateActive,
+				vbucketSeqnoOptions,
+				func(entries []gocbcore.VbSeqNoEntry, er error) {
+					if er == nil {
+						processEntries(entries, filterOpts)
+					}
+					signal <- er
+				})
+
+			if err != nil {
+				return err
+			}
+
+			if err = waitForResponse(signal, closeCh, op, GocbcoreStatsTimeout); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------
+
 // CBPartitionSeqs implements FeedPartitionSeqsFunc func signature and returns a map
 // keyed by partition/vbucket ID with values of
 //   - the highest seqno across the relevant collections in that vBucket
@@ -340,65 +464,31 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	map[string]UUIDSeq, error) {
 	if options["disableCollectionsSupport"] == "true" {
 		return nil,
-			fmt.Errorf("CBPartitionSeqs supported only with collections")
+			fmt.Errorf("gocbcore_utils: CBPartitionSeqs," +
+				" collections support is disabled")
 	}
 
-	agent, dcpAgent, err := statsAgentsMap.obtainAgents(sourceName, sourceUUID,
-		sourceParams, serverIn, options)
+	info, err := cbGetClusterInfo(sourceName, sourceUUID,
+		sourceParams, serverIn, options, nil)
 	if err != nil {
 		return nil,
-			fmt.Errorf("gocbcore_utils: CBPartitionSeqs, fetchClient err: %v", err)
+			fmt.Errorf("gocbcore_utils: CBPartitionSeqs, %v", err)
 	}
 
-	signal := make(chan error, 1)
-
-	var manifest gocbcore.Manifest
-	op, err := agent.GetCollectionManifest(
-		gocbcore.GetCollectionManifestOptions{},
-		func(res *gocbcore.GetCollectionManifestResult, er error) {
-			if er == nil && res == nil {
-				er = fmt.Errorf("manifest not retrieved")
-			}
-
-			if er == nil {
-				er = manifest.UnmarshalJSON(res.Manifest)
-			}
-
-			signal <- er
-		})
-
-	if err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-			" GetCollectionManifest err: %v", err)
-	}
-	if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-			" GetCollectionManifest failed, err: %v", err)
-	}
-
-	configSnapshot, err := agent.ConfigSnapshot()
-	if err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-			" ConfigSnapshot err: %v", err)
-	}
-
-	numServers, err := configSnapshot.NumServers()
-	if err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-			" Couldn't determine number of servers in target cluster, err: %v", err)
-	}
-
-	numVBuckets, err := configSnapshot.NumVbuckets()
-	if err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-			" Couldn't determine number of vbuckets in target cluster, err: %v", err)
-	}
-
+	// Build list of all collection IDs from the manifest
 	collectionsIDtoName := map[uint32]string{}
-	for _, manifestScope := range manifest.Scopes {
+	for _, manifestScope := range info.manifest.Scopes {
 		for _, coll := range manifestScope.Collections {
 			collectionsIDtoName[coll.UID] = manifestScope.Name + ":" + coll.Name
 		}
+	}
+
+	// Create filter options for each collection
+	filterOptionsList := make([]*gocbcore.GetVbucketSeqnoFilterOptions, 0, len(collectionsIDtoName))
+	for collID := range collectionsIDtoName {
+		filterOptionsList = append(filterOptionsList, &gocbcore.GetVbucketSeqnoFilterOptions{
+			CollectionID: collID,
+		})
 	}
 
 	rv := map[string]UUIDSeq{}
@@ -416,40 +506,26 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		}
 	}
 
-	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{
-		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{},
+	err = cbFetchVBucketSeqNos(
+		info,
+		filterOptionsList,
+		nil,
+		func(entries []gocbcore.VbSeqNoEntry, filterOpts *gocbcore.GetVbucketSeqnoFilterOptions) {
+			collID := uint32(0)
+			if filterOpts != nil {
+				collID = filterOpts.CollectionID
+			}
+			for _, entry := range entries {
+				addSeqnoToRV(entry.VbID, collID, uint64(entry.SeqNo))
+			}
+		},
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs, %v", err)
 	}
 
-	for serverIdx := 1; serverIdx < numServers+1; serverIdx++ {
-		for collID := range collectionsIDtoName {
-			vbucketSeqnoOptions.FilterOptions.CollectionID = collID
-			op, err := dcpAgent.GetVbucketSeqnos(
-				serverIdx,               // server index (as per KV)
-				memd.VbucketStateActive, // active vbuckets only
-				vbucketSeqnoOptions,     // contains collectionID
-				func(entries []gocbcore.VbSeqNoEntry, er error) {
-					if er == nil {
-						for _, entry := range entries {
-							addSeqnoToRV(entry.VbID, collID, uint64(entry.SeqNo))
-						}
-					}
-
-					signal <- er
-				})
-
-			if err != nil {
-				return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-					" GetVbucketSeqnos err: %v", err)
-			}
-
-			if err = waitForResponse(signal, nil, op, GocbcoreStatsTimeout); err != nil {
-				return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs,"+
-					" GetVbucketSeqnos callback err: %v", err)
-			}
-		}
-	}
-
-	if len(rv) != numVBuckets {
+	if len(rv) != info.numVBuckets {
 		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs," +
 			" Could not obtain high sequence numbers for all vbuckets")
 	}

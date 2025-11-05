@@ -111,7 +111,7 @@ func (t *BlackHole) Rollback(partition string, rollbackSeq uint64) error {
 }
 
 func (t *BlackHole) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string,
+	consistencyLevel ConsistencyLevel,
 	consistencySeq uint64,
 	cancelCh <-chan bool) error {
 	return nil

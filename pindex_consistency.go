@@ -14,13 +14,27 @@ import (
 	"sync"
 )
 
+// ConsistencyLevel represents the level of consistency required for a
+// client's request.
+type ConsistencyLevel string
+
+const (
+	// ConsistencyLevelUnbounded means stale results are ok.
+	ConsistencyLevelUnbounded ConsistencyLevel = ""
+
+	// ConsistencyLevelAtPlus means we need consistency at least at or
+	// beyond the consistency vector but not before.
+	ConsistencyLevelAtPlus ConsistencyLevel = "at_plus"
+
+	// ConsistencyLevelScanPlus means we need consistency at least
+	// at or beyond the entire state of KV.
+	ConsistencyLevelScanPlus ConsistencyLevel = "scan_plus"
+)
+
 // ConsistencyParams represent the consistency requirements of a
 // client's request.
 type ConsistencyParams struct {
-	// A Level value of "" means stale is ok; "at_plus" means we need
-	// consistency at least at or beyond the consistency vector but
-	// not before.
-	Level string `json:"level"`
+	Level ConsistencyLevel `json:"level"`
 
 	// Keyed by indexName.
 	Vectors map[string]ConsistencyVector `json:"vectors"`
@@ -41,7 +55,7 @@ type ConsistencyVector map[string]uint64
 // consistency.
 type ConsistencyWaiter interface {
 	ConsistencyWait(partition, partitionUUID string,
-		consistencyLevel string,
+		consistencyLevel ConsistencyLevel,
 		consistencySeq uint64,
 		cancelCh <-chan bool) error
 }
@@ -50,7 +64,7 @@ type ConsistencyWaiter interface {
 // for a partition.
 type ConsistencyWaitReq struct {
 	PartitionUUID    string
-	ConsistencyLevel string
+	ConsistencyLevel ConsistencyLevel
 	ConsistencySeq   uint64
 	CancelCh         <-chan bool
 	DoneCh           chan error
@@ -207,7 +221,7 @@ func ConsistencyWaitGroup(indexName string,
 func ConsistencyWaitPartitions(
 	t ConsistencyWaiter,
 	partitions map[string]bool,
-	consistencyLevel string,
+	consistencyLevel ConsistencyLevel,
 	consistencyVector map[string]uint64,
 	cancelCh <-chan bool) error {
 	// Key of consistencyVector looks like either just "partition" or

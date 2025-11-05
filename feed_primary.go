@@ -184,7 +184,7 @@ func (t *PrimaryFeed) RollbackEx(partition string,
 }
 
 func (t *PrimaryFeed) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string,
+	consistencyLevel ConsistencyLevel,
 	consistencySeq uint64,
 	cancelCh <-chan bool) error {
 	dest, err := t.pf(partition, nil, t.dests)

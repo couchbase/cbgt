@@ -264,7 +264,7 @@ func (t *DestForwarder) RollbackEx(partition string,
 }
 
 func (t *DestForwarder) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string,
+	consistencyLevel ConsistencyLevel,
 	consistencySeq uint64,
 	cancelCh <-chan bool) error {
 	dest, err := t.DestProvider.Dest(partition)

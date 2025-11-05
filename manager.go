@@ -337,6 +337,11 @@ type ClusterOptions struct {
 	SearchHistoryMaxRecords            string `json:"searchHistoryMaxRecords"`
 	SearchHistoryEnabled               string `json:"searchHistoryEnabled"`
 	EnableLazyIndexUpdate              string `json:"enableLazyIndexUpdate"`
+
+	// For Scan Plus
+	ScanPlusFetchBucketWideSeqNos string `json:"scanPlusFetchBucketWideSeqNos"`
+	ScanPlusNumWorkers            string `json:"scanPlusNumWorkers"`
+	ScanPlusNumRetries            string `json:"scanPlusNumRetries"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")

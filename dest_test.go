@@ -57,7 +57,7 @@ func (s *TestDest) Rollback(partition string,
 }
 
 func (s *TestDest) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string,
+	consistencyLevel ConsistencyLevel,
 	consistencySeq uint64,
 	cancelCh <-chan bool) error {
 	return nil
