@@ -10,6 +10,7 @@ package cbgt
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -33,6 +34,8 @@ const FeedAllotmentOnePerPIndex = "oneFeedPerPIndex"
 const JANITOR_CLOSE_PINDEX = "janitor_close_pindex"
 const JANITOR_REMOVE_PINDEX = "janitor_remove_pindex"
 const JANITOR_ROLLBACK_PINDEX = "janitor_rollback_pindex"
+
+const UpdatedMappingKey = "updated_mapping"
 
 // JanitorNOOP sends a synchronous NOOP to the manager's janitor, if any.
 func (mgr *Manager) JanitorNOOP(msg string) {
@@ -170,7 +173,7 @@ func (mgr *Manager) partiallyRollbackPIndex(pindex *PIndex) error {
 	pindexPath := pindex.Path
 	log.Printf("janitor: partial rollback, path: %s", pindexPath)
 
-	pindex, err := OpenPIndex(mgr, pindexPath)
+	pindex, err := OpenPIndex(mgr, pindexPath, nil)
 	if err != nil {
 		return err
 	}
@@ -350,6 +353,23 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 			" pindex: %s", req.pindex.Name)
 		return nil
 	}
+
+	var params map[string]json.RawMessage
+	if req.updatedParams != "" {
+		err := json.Unmarshal([]byte(req.updatedParams), &params)
+		if err != nil {
+			return fmt.Errorf("janitor: restartPIndex could not unmarshal updatedParams, "+
+				"err: %v, updatedParams: %s", err, req.updatedParams)
+		}
+		if val, ok := params["mapping"]; ok {
+			if len(val) == 0 {
+				return fmt.Errorf("janitor: restartPIndex updatedParams is empty")
+			}
+		} else {
+			return fmt.Errorf("janitor: restartPIndex mapping key not present in updatedParams")
+		}
+	}
+
 	// stop the pindex first
 	err := mgr.stopPIndex(req.pindex, false)
 	if err != nil {
@@ -373,6 +393,9 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	pi := req.pindex.Clone()
 	pi.Name = req.planPIndexName
 	pi.Path = newPath
+	if req.updatedParams != "" {
+		pi.IndexParams = req.updatedParams
+	}
 
 	// persist PINDEX_META only if manager's dataDir is set
 	if len(mgr.dataDir) > 0 {
@@ -394,7 +417,13 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 	}
 
 	// open the pindex and register
-	pindex, err := OpenPIndex(mgr, pi.Path)
+	var options map[string]interface{}
+	if req.updatedParams != "" {
+		options = map[string]interface{}{
+			UpdatedMappingKey: string(params["mapping"]),
+		}
+	}
+	pindex, err := OpenPIndex(mgr, pi.Path, options)
 	if err != nil {
 		cleanDir(req.pindex.Path)
 		return fmt.Errorf("janitor: restartPIndex could not open "+
@@ -418,11 +447,13 @@ type pindexHibernateReq struct {
 type pindexRestartReq struct {
 	pindex         *PIndex
 	planPIndexName string
+	updatedParams  string
 }
 
 type pindexRestartErr struct {
-	err    error
-	pindex *PIndex
+	err           error
+	pindex        *PIndex
+	updatedParams string
 }
 
 func (re *pindexRestartErr) Error() string {
@@ -443,8 +474,11 @@ func (mgr *Manager) pindexesRestart(
 			for req := range requestCh {
 				err := mgr.restartPIndex(req)
 				if err != nil {
-					responseCh <- &pindexRestartErr{err: err,
-						pindex: req.pindex}
+					responseCh <- &pindexRestartErr{
+						err:           err,
+						pindex:        req.pindex,
+						updatedParams: req.updatedParams,
+					}
 				}
 			}
 			wg.Done()
@@ -611,7 +645,7 @@ func (mgr *Manager) JanitorOnce(reason string) error {
 	log.Printf("janitor: pindexes to restart: %d", len(pindexesToRestart))
 	for _, pi := range pindexesToRestart {
 		if pi.pindex != nil {
-			log.Printf("  pindex: %v; UUID: %v", pi.pindex.Name, pi.pindex.IndexUUID)
+			log.Printf("  pindex: %v; UUID: %v, newMapping: %v", pi.pindex.Name, pi.pindex.IndexUUID, pi.updatedParams)
 		}
 	}
 	// restart any of the pindexes so that they can
@@ -790,12 +824,17 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 					}
 					continue
 				}
-				if pindexImplType.AnalyzeIndexDefUpdates != nil &&
-					pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq) ==
-						PINDEXES_RESTART {
-					pindexesToRestart = append(pindexesToRestart,
-						getPIndexesToRestart(pindexes, planPIndexes)...)
-					continue
+				if pindexImplType.AnalyzeIndexDefUpdates != nil {
+					resultCode := pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq)
+					if resultCode == PINDEXES_REFRESH ||
+						(resultCode == PINDEXES_LAZYUPDATE && mgr.GetOption("enableLazyIndexUpdate") == "True") {
+						pindexesToRestart = append(pindexesToRestart,
+							getPIndexesToRestart(pindexes, planPIndexes, resultCode)...)
+						continue
+					} else {
+						pindexesToRemove = append(pindexesToRemove, pindexes...)
+						planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
+					}
 				} else {
 					pindexesToRemove = append(pindexesToRemove, pindexes...)
 					planPIndexesToAdd = append(planPIndexesToAdd, planPIndexes...)
@@ -889,14 +928,16 @@ func advPIndexClassifier(mgr *Manager, indexPIndexMap map[string][]*PIndex,
 						continue
 					}
 
-					// restartable pindex found from plan
-					if pindexImplType.AnalyzeIndexDefUpdates != nil &&
-						pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq) ==
-							PINDEXES_RESTART {
-						pindexesToRestart = append(pindexesToRestart,
-							newPIndexRestartReq(targetPlan, pindex))
-						restartable[targetPlan.Name] = struct{}{}
-						continue
+					// restartable or updatable pindex found from plan
+					if pindexImplType.AnalyzeIndexDefUpdates != nil {
+						resultCode := pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq)
+						if resultCode == PINDEXES_REFRESH ||
+							(resultCode == PINDEXES_LAZYUPDATE && mgr.GetOption("enableLazyIndexUpdate") == "True") {
+							pindexesToRestart = append(pindexesToRestart,
+								newPIndexRestartReq(targetPlan, pindex, resultCode))
+							restartable[targetPlan.Name] = struct{}{}
+							continue
+						}
 					}
 					// upon no restartability, consider the pindex for removal
 					pindexesToRemove = append(pindexesToRemove, pindex)
@@ -928,29 +969,38 @@ func advPIndexClassifier(mgr *Manager, indexPIndexMap map[string][]*PIndex,
 }
 
 func newPIndexRestartReq(addPlanPI *PlanPIndex,
-	pindex *PIndex) *pindexRestartReq {
-	pindex.IndexUUID = addPlanPI.IndexUUID
-	pindex.IndexParams = addPlanPI.IndexParams
-	pindex.SourceParams = addPlanPI.SourceParams
-	return &pindexRestartReq{
+	pindex *PIndex, code ResultCode) *pindexRestartReq {
+	rv := &pindexRestartReq{
 		pindex:         pindex,
 		planPIndexName: addPlanPI.Name,
 	}
+	rv.pindex.IndexUUID = addPlanPI.IndexUUID
+	rv.pindex.SourceParams = addPlanPI.SourceParams
+	if code == PINDEXES_LAZYUPDATE {
+		rv.updatedParams = addPlanPI.IndexParams
+	} else {
+		rv.pindex.IndexParams = addPlanPI.IndexParams
+	}
+	return rv
 }
 
 func getPIndexesToRestart(pindexesToRemove []*PIndex,
-	addPlanPIndexes []*PlanPIndex) []*pindexRestartReq {
+	addPlanPIndexes []*PlanPIndex, code ResultCode) []*pindexRestartReq {
 	pindexesToRestart := make([]*pindexRestartReq, len(pindexesToRemove))
 	i := 0
 	for _, pindex := range pindexesToRemove {
 		for _, addPlanPI := range addPlanPIndexes {
 			if addPlanPI.SourcePartitions == pindex.SourcePartitions {
 				pindex.IndexUUID = addPlanPI.IndexUUID
-				pindex.IndexParams = addPlanPI.IndexParams
 				pindex.SourceParams = addPlanPI.SourceParams
 				pindexesToRestart[i] = &pindexRestartReq{
 					pindex:         pindex,
 					planPIndexName: addPlanPI.Name,
+				}
+				if code == PINDEXES_LAZYUPDATE {
+					pindexesToRestart[i].updatedParams = addPlanPI.IndexParams
+				} else {
+					pindexesToRestart[i].pindex.IndexParams = addPlanPI.IndexParams
 				}
 				i++
 			}
@@ -1371,7 +1421,7 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 	// existing path might happen during a case of rollback.
 	_, err = os.Stat(path)
 	if err == nil {
-		pindex, err = OpenPIndex(mgr, path)
+		pindex, err = OpenPIndex(mgr, path, nil)
 		if err != nil {
 			if errors.Is(err, ErrSourceDoesNotExist) {
 				go mgr.DeleteIndexEx(planPIndex.IndexName, planPIndex.IndexUUID)
