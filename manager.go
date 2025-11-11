@@ -334,7 +334,6 @@ type ClusterOptions struct {
 	BucketInHibernation                string `json:"bucketInHibernation"`
 	HibernationSourcePartitions        string `json:"hibernationSourcePartitions"`
 	KNNSearchRequestConcurrencyLimit   string `json:"KNNSearchRequestConcurrencyLimit"`
-	EnableLazyIndexUpdate              string `json:"enableLazyIndexUpdate"`
 }
 
 var ErrNoIndexDefs = errors.New("no index definitions found")
@@ -704,7 +703,7 @@ func (mgr *Manager) LoadDataDir() error {
 					continue
 				}
 				// we have already validated the pindex paths, hence feeding directly
-				pindex, err := OpenPIndex(mgr, req.path, nil)
+				pindex, err := OpenPIndex(mgr, req.path)
 				if err != nil {
 					if strings.Contains(err.Error(), panicCallStack) {
 						log.Printf("manager: OpenPIndex error,"+

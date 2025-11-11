@@ -221,10 +221,9 @@ func NewPIndex(mgr *Manager, name, uuid,
 
 var ErrSourceDoesNotExist = errors.New("source does not exist")
 
-// OpenPIndex reopens a previously created pindex
-// The path argument must be a directory for the pindex
-// If options has an updated mapping, an index update is attempted
-func OpenPIndex(mgr *Manager, path string, options map[string]interface{}) (pindex *PIndex, err error) {
+// OpenPIndex reopens a previously created pindex.  The path argument
+// must be a directory for the pindex.
+func OpenPIndex(mgr *Manager, path string) (pindex *PIndex, err error) {
 	pindex = &PIndex{}
 	// load PINDEX_META only if manager's dataDir is set
 	if mgr != nil && len(mgr.dataDir) > 0 {
@@ -258,11 +257,8 @@ func OpenPIndex(mgr *Manager, path string, options map[string]interface{}) (pind
 		return nil, fmt.Errorf("%w: %v", ErrSourceDoesNotExist, err)
 	}
 
-	if options == nil {
-		options = make(map[string]interface{})
-	}
-	options["indexParams"] = pindex.IndexParams
-	impl, dest, err := OpenPIndexImplUsing(pindex.IndexType, path, rollback, options)
+	impl, dest, err := OpenPIndexImplUsing(pindex.IndexType, path,
+		pindex.IndexParams, rollback)
 	if err != nil {
 		return nil, fmt.Errorf("pindex: could not open indexType: %s,"+
 			" path: %s, err: %v", pindex.IndexType, path, err)

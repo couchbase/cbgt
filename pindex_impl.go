@@ -62,10 +62,8 @@ type PIndexImplType struct {
 	// Optional, invoked by the manager when it wants a pindex
 	// implementation to reconstitute and reload a pindex instance
 	// back into the process, with the updated index parameter values.
-	// If the options contains an updated index definition, an index update
-	// is attempted
-	OpenEx func(indexType, path string, restart func(),
-		options map[string]interface{}) (PIndexImpl, Dest, error)
+	OpenUsing func(indexType, path, indexParams string,
+		restart func()) (PIndexImpl, Dest, error)
 
 	// Invoked by the manager when it wants a count of documents from
 	// an index.  The registered Count() function can be nil.
@@ -147,11 +145,8 @@ type ConfigAnalyzeRequest struct {
 type ResultCode string
 
 const (
-	// PINDEXES_REFRESH suggests a close and opening of the pindexes
-	PINDEXES_REFRESH ResultCode = "request_refresh_pindexes"
-
-	// PINDEXES_LAZYUPDATE suggests a lazy update of the pindexes
-	PINDEXES_LAZYUPDATE ResultCode = "request_lazy_update_pindexes"
+	// PINDEXES_RESTART suggests a reboot of the pindexes
+	PINDEXES_RESTART ResultCode = "request_restart_pindexes"
 )
 
 // PIndexImplTypes is a global registry of pindex type backends or
@@ -218,16 +213,15 @@ func OpenPIndexImpl(indexType, path string, restart func()) (
 
 // OpenPIndexImplUsing loads an index partition of the given, registered
 // index type from a given path with the given indexParams.
-// If options has updated mapping, an index update is attempted
-func OpenPIndexImplUsing(indexType, path string, restart func(),
-	options map[string]interface{}) (PIndexImpl, Dest, error) {
+func OpenPIndexImplUsing(indexType, path, indexParams string,
+	restart func()) (PIndexImpl, Dest, error) {
 	t, exists := PIndexImplTypes[indexType]
-	if !exists || t == nil || t.OpenEx == nil {
+	if !exists || t == nil || t.OpenUsing == nil {
 		return nil, nil, fmt.Errorf("pindex_impl: OpenPIndexImplUsing"+
 			" indexType: %s", indexType)
 	}
 
-	return t.OpenEx(indexType, path, restart, options)
+	return t.OpenUsing(indexType, path, indexParams, restart)
 }
 
 // PIndexImplTypeForIndex retrieves from the Cfg provider the index

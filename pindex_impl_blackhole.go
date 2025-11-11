@@ -21,7 +21,7 @@ func init() {
 	RegisterPIndexImplType("blackhole", &PIndexImplType{
 		New:                    NewBlackHolePIndexImpl,
 		Open:                   OpenBlackHolePIndexImpl,
-		OpenEx:                 OpenBlackHolePIndexImplEx,
+		OpenUsing:              OpenBlackHolePIndexImplUsing,
 		Count:                  nil, // Content of blackhole isn't countable.
 		Query:                  nil, // Content of blackhole isn't queryable.
 		AnalyzeIndexDefUpdates: restartOnIndexDefChanges,
@@ -50,11 +50,11 @@ func NewBlackHolePIndexImpl(indexType, indexParams,
 
 func OpenBlackHolePIndexImpl(indexType, path string, restart func()) (
 	PIndexImpl, Dest, error) {
-	return OpenBlackHolePIndexImplEx(indexType, path, restart, nil)
+	return OpenBlackHolePIndexImplUsing(indexType, path, "", restart)
 }
 
-func OpenBlackHolePIndexImplEx(indexType, path string, restart func(),
-	options map[string]interface{}) (PIndexImpl, Dest, error) {
+func OpenBlackHolePIndexImplUsing(indexType, path, indexParams string, restart func()) (
+	PIndexImpl, Dest, error) {
 	buf, err := os.ReadFile(path + string(os.PathSeparator) + "black.hole")
 	if err != nil {
 		return nil, nil, err
@@ -237,5 +237,5 @@ func restartOnIndexDefChanges(
 			configRequest.IndexDefnCur.Params) {
 		return ""
 	}
-	return PINDEXES_REFRESH
+	return PINDEXES_RESTART
 }
