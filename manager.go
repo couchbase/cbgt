@@ -334,6 +334,8 @@ type ClusterOptions struct {
 	BucketInHibernation                string `json:"bucketInHibernation"`
 	HibernationSourcePartitions        string `json:"hibernationSourcePartitions"`
 	KNNSearchRequestConcurrencyLimit   string `json:"KNNSearchRequestConcurrencyLimit"`
+	SearchHistoryMaxRecords            string `json:"searchHistoryMaxRecords"`
+	SearchHistoryEnabled               string `json:"searchHistoryEnabled"`
 	EnableLazyIndexUpdate              string `json:"enableLazyIndexUpdate"`
 }
 
