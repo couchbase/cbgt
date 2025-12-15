@@ -148,10 +148,18 @@ type ResultCode string
 
 const (
 	// PINDEXES_REFRESH suggests a close and opening of the pindexes
+	// Used when there are non-mapping related changes
 	PINDEXES_REFRESH ResultCode = "request_refresh_pindexes"
 
 	// PINDEXES_LAZYUPDATE suggests a lazy update of the pindexes
+	// Used when there are mapping related changes with deleted/modified fields
 	PINDEXES_LAZYUPDATE ResultCode = "request_lazy_update_pindexes"
+
+	// PINDEXES_CONFIGUPDATE suggests a forced update of the pindexes
+	// Used when there are mapping related changes other than
+	// deleted/modified fields.
+	// Example: scoring model changes, unused analyzer changes etc.
+	PINDEXES_CONFIGUPDATE ResultCode = "request_config_update_pindexes"
 )
 
 // PIndexImplTypes is a global registry of pindex type backends or

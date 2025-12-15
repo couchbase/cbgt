@@ -827,7 +827,8 @@ func classifyAddRemoveRestartPIndexes(mgr *Manager, addPlanPIndexes []*PlanPInde
 				if pindexImplType.AnalyzeIndexDefUpdates != nil {
 					resultCode := pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq)
 					if resultCode == PINDEXES_REFRESH ||
-						(resultCode == PINDEXES_LAZYUPDATE && mgr.GetOption("enableLazyIndexUpdate") == "True") {
+						(resultCode == PINDEXES_LAZYUPDATE && mgr.GetOption("enableLazyIndexUpdate") == "True") ||
+						resultCode == PINDEXES_CONFIGUPDATE {
 						pindexesToRestart = append(pindexesToRestart,
 							getPIndexesToRestart(pindexes, planPIndexes, resultCode)...)
 						continue
@@ -932,7 +933,8 @@ func advPIndexClassifier(mgr *Manager, indexPIndexMap map[string][]*PIndex,
 					if pindexImplType.AnalyzeIndexDefUpdates != nil {
 						resultCode := pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeReq)
 						if resultCode == PINDEXES_REFRESH ||
-							(resultCode == PINDEXES_LAZYUPDATE && mgr.GetOption("enableLazyIndexUpdate") == "True") {
+							(resultCode == PINDEXES_LAZYUPDATE && mgr.GetOption("enableLazyIndexUpdate") == "True") ||
+							resultCode == PINDEXES_CONFIGUPDATE {
 							pindexesToRestart = append(pindexesToRestart,
 								newPIndexRestartReq(targetPlan, pindex, resultCode))
 							restartable[targetPlan.Name] = struct{}{}
@@ -976,7 +978,7 @@ func newPIndexRestartReq(addPlanPI *PlanPIndex,
 	}
 	rv.pindex.IndexUUID = addPlanPI.IndexUUID
 	rv.pindex.SourceParams = addPlanPI.SourceParams
-	if code == PINDEXES_LAZYUPDATE {
+	if code == PINDEXES_LAZYUPDATE || code == PINDEXES_CONFIGUPDATE {
 		rv.updatedParams = addPlanPI.IndexParams
 	} else {
 		rv.pindex.IndexParams = addPlanPI.IndexParams
@@ -997,7 +999,7 @@ func getPIndexesToRestart(pindexesToRemove []*PIndex,
 					pindex:         pindex,
 					planPIndexName: addPlanPI.Name,
 				}
-				if code == PINDEXES_LAZYUPDATE {
+				if code == PINDEXES_LAZYUPDATE || code == PINDEXES_CONFIGUPDATE {
 					pindexesToRestart[i].updatedParams = addPlanPI.IndexParams
 				} else {
 					pindexesToRestart[i].pindex.IndexParams = addPlanPI.IndexParams
