@@ -53,20 +53,23 @@ func NewMsgRing(inner io.Writer, ringSize int) (*MsgRing, error) {
 func (m *MsgRing) Write(p []byte) (n int, err error) {
 	m.m.Lock()
 
+	// RECYCLING ISN'T OCCURRING ANYWAY;
+	// DISABLE RECYCLING ON ACCOUNT OF MB-67483
+	//
 	// Recycle the oldMsg into the small-vs-large pools, as long as
 	// there's enough pool space.
-	oldMsg := m.Msgs[m.Next]
-	if oldMsg != nil {
-		if len(oldMsg) <= MsgRingMaxSmallBufSize {
-			if len(m.SmallBufs) < MsgRingMaxBufPoolSize {
-				m.SmallBufs = append(m.SmallBufs, oldMsg)
-			}
-		} else {
-			if len(m.LargeBufs) < MsgRingMaxBufPoolSize {
-				m.LargeBufs = append(m.LargeBufs, oldMsg)
-			}
-		}
-	}
+	// oldMsg := m.Msgs[m.Next]
+	// if oldMsg != nil {
+	//     if len(oldMsg) <= MsgRingMaxSmallBufSize {
+	//         if len(m.SmallBufs) < MsgRingMaxBufPoolSize {
+	//             m.SmallBufs = append(m.SmallBufs)
+	//         }
+	//     } else {
+	//         if len(m.LargeBufs) < MsgRingMaxBufPoolSize {
+	//             m.LargeBufs = append(m.LargeBufs)
+	//         }
+	//     }
+	// }
 
 	// Allocate a new buf or recycled buf from the pools.
 	var buf []byte
