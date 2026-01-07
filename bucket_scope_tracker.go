@@ -240,7 +240,7 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 				close(b.bucketScopeInfo[bucket].stopCh)
 			}
 			isSourceDeleted = true
-			return fmt.Errorf(string(data))
+			return fmt.Errorf("%s", string(data))
 		}
 		var streamResp *bucketStreamingResponse
 		err := UnmarshalJSON(data, &streamResp)

@@ -59,11 +59,11 @@ func (m *MsgRing) Write(p []byte) (n int, err error) {
 	if oldMsg != nil {
 		if len(oldMsg) <= MsgRingMaxSmallBufSize {
 			if len(m.SmallBufs) < MsgRingMaxBufPoolSize {
-				m.SmallBufs = append(m.SmallBufs)
+				m.SmallBufs = append(m.SmallBufs, oldMsg)
 			}
 		} else {
 			if len(m.LargeBufs) < MsgRingMaxBufPoolSize {
-				m.LargeBufs = append(m.LargeBufs)
+				m.LargeBufs = append(m.LargeBufs, oldMsg)
 			}
 		}
 	}
