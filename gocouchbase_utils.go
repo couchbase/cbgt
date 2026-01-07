@@ -364,9 +364,8 @@ func CouchbaseSourceVBucketLookUp(docID, serverIn string,
 	authParams := `{"authUser": "` + uname + `",` + `"authPassword":"` + pwd + `"}`
 	if sourceDetails.SourceType != SOURCE_TYPE_COUCHBASE &&
 		sourceDetails.SourceType != SOURCE_TYPE_DCP {
-		return "", fmt.Errorf("operation not supported on " +
-			sourceDetails.SourceType + " type bucket " +
-			sourceDetails.SourceName)
+		return "", fmt.Errorf("operation not supported on %s type bucket %s",
+			sourceDetails.SourceType, sourceDetails.SourceName)
 	}
 	bucket, err := CouchbaseBucket(sourceDetails.SourceName, "",
 		authParams, server, nil)
