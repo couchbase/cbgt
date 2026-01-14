@@ -330,9 +330,10 @@ func CBPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 
 // ----------------------------------------------------------------
 
-// CBPartitionSeqs returns a map keyed by partition/vbucket ID
-// with values of each vbucket's UUID / high_seqno. It implements the
-// FeedPartitionsFunc func signature.
+// CBPartitionSeqs implements FeedPartitionSeqsFunc func signature and returns a map
+// keyed by partition/vbucket ID with values of
+//   - the highest seqno across the relevant collections in that vBucket
+//   - the collection's UID
 func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	sourceParams, serverIn string,
 	options map[string]string) (
@@ -401,8 +402,15 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	}
 
 	rv := map[string]UUIDSeq{}
+	maxSeqNoMap := make(map[uint16]uint64)
 	addSeqnoToRV := func(vbID uint16, collID uint32, seqNo uint64) {
-		rv[vbucketIdStrings[vbID]+":"+collectionsIDtoName[collID]] = UUIDSeq{
+		// account for the highest seqno for the vbucket across the collections
+		if maxSeqNo, ok := maxSeqNoMap[vbID]; ok && maxSeqNo > seqNo {
+			return
+		}
+		maxSeqNoMap[vbID] = seqNo
+		rv[vbucketIdStrings[vbID]] = UUIDSeq{
+			// the collection's UID having the highest seqno for this vbucket
 			UUID: fmt.Sprintf("%v", collID),
 			Seq:  seqNo,
 		}
@@ -441,7 +449,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		}
 	}
 
-	if len(rv) != len(collectionsIDtoName)*numVBuckets {
+	if len(rv) != numVBuckets {
 		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs," +
 			" Could not obtain high sequence numbers for all vbuckets")
 	}
