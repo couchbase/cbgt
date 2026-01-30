@@ -924,9 +924,9 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 
 	if nodeDefs == nil || refresh {
 		mgr.m.Lock()
-		defer mgr.m.Unlock()
 		nodeDefs, _, err = CfgGetNodeDefs(mgr.Cfg(), kind)
-		if err != nil {
+		if err != nil || nodeDefs == nil {
+			mgr.m.Unlock()
 			return nil, err
 		}
 		mgr.lastNodeDefs[kind] = nodeDefs
@@ -940,6 +940,8 @@ func (mgr *Manager) GetNodeDefs(kind string, refresh bool) (
 				log.Printf("manager: refreshed container: %s", mgr.container)
 			}
 		}
+
+		mgr.m.Unlock()
 
 		if RegisteredPIndexCallbacks.OnRefresh != nil {
 			RegisteredPIndexCallbacks.OnRefresh()
@@ -963,7 +965,7 @@ func (mgr *Manager) GetIndexDefs(refresh bool) (lastIndexDefs *IndexDefs,
 	if lastIndexDefs == nil || refresh {
 		mgr.m.Lock()
 		lastIndexDefs, _, err = CfgGetIndexDefs(mgr.cfg)
-		if err != nil {
+		if err != nil || lastIndexDefs == nil {
 			mgr.m.Unlock()
 			return nil, nil, err
 		}
