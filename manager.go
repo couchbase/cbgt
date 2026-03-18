@@ -336,6 +336,7 @@ type ClusterOptions struct {
 	KNNSearchRequestConcurrencyLimit   string `json:"KNNSearchRequestConcurrencyLimit"`
 	SearchHistoryMaxRecords            string `json:"searchHistoryMaxRecords"`
 	SearchHistoryEnabled               string `json:"searchHistoryEnabled"`
+	CustomScriptQueriesEnabled         string `json:"customScriptQueriesEnabled"`
 	EnableLazyIndexUpdate              string `json:"enableLazyIndexUpdate"`
 
 	// For Scan Plus
