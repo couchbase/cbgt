@@ -77,6 +77,9 @@ type Manager struct {
 	lastPlanPIndexesByName map[string][]*PlanPIndex
 	coveringCache          map[CoveringPIndexesSpec]*CoveringPIndexes
 
+	namesMutex  sync.RWMutex
+	pIndexNames map[string]string // Key is PIndex.Path(), value is PIndex.Name().
+
 	feedsMutex sync.RWMutex
 	feeds      map[string]Feed // Key is Feed.Name().
 
@@ -97,6 +100,18 @@ type Manager struct {
 	bucketInHibernationMutex sync.RWMutex
 	bucketInHibernation      string
 	bucketScopeInfoTracker   *BucketScopeInfoTracker
+
+	// pindexesLoaded is used to indicate whether the initial
+	// loading of pindexes from dataDir is done or not.
+	pindexesLoaded atomic.Bool
+
+	// callback functions for encryption related operations
+	// These are set by the encryption manager when it is
+	// initialized and used by the manager and its child
+	// components for encryption related operations.
+	bucketUpdateCallback        atomic.Value // type bucketUpdateCallback
+	encryptAndWriteFileCallback atomic.Value // type encryptAndWriteFileCallback
+	decryptAndReadFileCallback  atomic.Value // type decryptAndReadFileCallback
 }
 
 func (mgr *Manager) GetHibernationContext() (context.Context, context.CancelFunc) {
@@ -397,6 +412,7 @@ func NewManagerEx(version string, cfg Cfg, uuid string, tags []string,
 		options:                options,
 		feeds:                  make(map[string]Feed),
 		pindexes:               make(map[string]*PIndex),
+		pIndexNames:            make(map[string]string),
 		bootingPIndexes:        make(map[string]bool),
 		plannerCh:              make(chan *workReq),
 		janitorCh:              make(chan *workReq),
@@ -743,13 +759,26 @@ func (mgr *Manager) LoadDataDir() error {
 	// feed the openPIndex workers with pindex paths
 	for _, dirInfo := range dirEntries {
 		path := mgr.dataDir + string(os.PathSeparator) + dirInfo.Name()
-		// validate the pindex path here, if valid then
-		// send to workers for further processing
 		name, ok := mgr.ParsePIndexPath(path)
-		if !ok {
-			// Skip the entry that doesn't match the naming pattern.
-			continue
+		if ok {
+			newName := convertOldPIndexPath(name)
+			log.Printf("manager: renaming pindex directory from old path format to new path format,"+
+				" newPath: %s, oldPath: %s", newName, name)
+			newPath := mgr.dataDir + string(os.PathSeparator) + newName
+			os.Rename(path, newPath)
+			err := mgr.SetPIndexName(newName, name)
+			if err != nil {
+				log.Errorf("manager: could not set pindex name, newName: %s, oldName: %s, err: %v", newName, name, err)
+				continue
+			}
+			path = newPath
+		} else {
+			name, ok = mgr.ParsePIndexPathUUID(path)
+			if !ok {
+				continue
+			}
 		}
+
 		openReqs <- &pindexLoadReq{path: path, pindexName: name}
 	}
 	close(openReqs)
@@ -759,6 +788,7 @@ func (mgr *Manager) LoadDataDir() error {
 		wg.Wait()
 		atomic.AddUint64(&mgr.stats.TotLoadDataDir, 1)
 		log.Printf("manager: loading dataDir... done")
+		mgr.pindexesLoaded.Store(true)
 	}()
 
 	// leave the pindex loading task to the async workers and return here
@@ -1177,7 +1207,7 @@ func (mgr *Manager) GetStableLocalPlanPIndexes() *PlanPIndexes {
 	// on the writer side to end up having multiple files on disk.
 	for i := len(files) - 1; i >= 0; i-- {
 		path := filepath.Join(dirPath, files[i].Name())
-		val, err := os.ReadFile(path)
+		val, _, err := mgr.DecryptAndReadFile(path)
 		if err != nil {
 			log.Errorf("manager: GetStableLocalPlanPIndexes, readFile, err: %v", err)
 			// in case of a file read error, check for any subsequent plan files.
@@ -1299,7 +1329,7 @@ func (mgr *Manager) checkAndStoreStablePlanPIndexes(planPIndexes *PlanPIndexes) 
 		log.Errorf("manager: persistPlanPIndexes,  MkdirAll failed, err: %v", err)
 		return
 	}
-	err = os.WriteFile(newPath, val, 0600)
+	_, err = mgr.EncryptAndWriteFile(newPath, val, 0600)
 	if err != nil {
 		log.Errorf("manager: persistPlanPIndexes writeFile failed, err: %v", err)
 		return
@@ -1344,10 +1374,35 @@ func (mgr *Manager) PIndexPath(pindexName string) string {
 	return PIndexPath(mgr.dataDir, pindexName)
 }
 
+func (mgr *Manager) PIndexPathEx(pindexName string) (string, error) {
+	path, err := mgr.GetPIndexPath(pindexName)
+	if err != nil {
+		return "", err
+	}
+
+	return mgr.dataDir + string(os.PathSeparator) + path, nil
+}
+
 // ParsePIndexPath returns the name for a pindex given a filesystem
 // path.  See also PIndexPath().
 func (mgr *Manager) ParsePIndexPath(pindexPath string) (string, bool) {
 	return ParsePIndexPath(mgr.dataDir, pindexPath)
+}
+
+// ParsePIndexPathUUID returns the name for a pindex given a
+// filesystem path, with the new UUID based paths by accessing
+// cfg for the path to pindex mapping
+func (mgr *Manager) ParsePIndexPathUUID(pindexPath string) (string, bool) {
+	path, ok := ParsePIndexPathUUID(mgr.dataDir, pindexPath)
+	if !ok {
+		return "", false
+	}
+
+	name, err := mgr.GetPIndexName(path, true)
+	if err != nil {
+		return "", false
+	}
+	return name, true
 }
 
 // ---------------------------------------------------------------
@@ -1558,6 +1613,63 @@ func (mgr *Manager) AddEvent(jsonBytes []byte) {
 	}
 	mgr.events.PushBack(jsonBytes)
 	mgr.eventsMutex.Unlock()
+}
+
+// returns whether the manager has completed the boot up process of loading
+// the pindexes from disk.
+func (mgr *Manager) BootingDone() bool {
+	return mgr.pindexesLoaded.Load()
+}
+
+// --------------------------------------------------------
+
+type bucketUpdateCallback func()
+type encryptAndWriteFileCallback func(path string, data []byte, perm os.FileMode) (string, error)
+type decryptAndReadFileCallback func(path string) ([]byte, string, error)
+
+func (mgr *Manager) SetBucketUpdateCallback(callback bucketUpdateCallback) {
+	mgr.bucketUpdateCallback.Store(callback)
+}
+
+func (mgr *Manager) BucketsMaybeUpdated() {
+	callback := mgr.bucketUpdateCallback.Load()
+	if callback != nil {
+		go callback.(bucketUpdateCallback)()
+	}
+}
+
+func (mgr *Manager) SetEncryptAndWriteFileCallback(callback encryptAndWriteFileCallback) {
+	mgr.encryptAndWriteFileCallback.Store(callback)
+}
+
+// EncryptAndWriteFile writes the given data to the
+// specified path with encryption if the callback is set, otherwise
+// it writes the data as is.
+func (mgr *Manager) EncryptAndWriteFile(path string, data []byte,
+	perm os.FileMode) (string, error) {
+	callback := mgr.encryptAndWriteFileCallback.Load()
+	if callback != nil {
+		return callback.(encryptAndWriteFileCallback)(path, data, perm)
+	} else {
+		err := os.WriteFile(path, data, perm)
+		return "", err
+	}
+}
+
+func (mgr *Manager) SetDecryptAndReadFileCallback(callback decryptAndReadFileCallback) {
+	mgr.decryptAndReadFileCallback.Store(callback)
+}
+
+// DecryptAndReadFile reads the data from the specified path with decryption
+// if the callback is set, otherwise it reads the data as is.
+func (mgr *Manager) DecryptAndReadFile(path string) ([]byte, string, error) {
+	callback := mgr.decryptAndReadFileCallback.Load()
+	if callback != nil {
+		return callback.(decryptAndReadFileCallback)(path)
+	} else {
+		data, err := os.ReadFile(path)
+		return data, "", err
+	}
 }
 
 // --------------------------------------------------------

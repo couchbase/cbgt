@@ -196,8 +196,8 @@ func createNewPIndex(mgr *Manager, name, uuid, indexType, indexName, indexUUID, 
 			return nil, err
 		}
 
-		err = os.WriteFile(path+string(os.PathSeparator)+PINDEX_META_FILENAME,
-			buf, 0600)
+		_, err = mgr.EncryptAndWriteFile(
+			path+string(os.PathSeparator)+PINDEX_META_FILENAME, buf, 0600)
 		if err != nil {
 			dest.Close(true)
 			return nil, fmt.Errorf("pindex: could not save PINDEX_META_FILENAME,"+
@@ -228,7 +228,8 @@ func OpenPIndex(mgr *Manager, path string, options map[string]interface{}) (pind
 	pindex = &PIndex{}
 	// load PINDEX_META only if manager's dataDir is set
 	if mgr != nil && len(mgr.dataDir) > 0 {
-		buf, err := os.ReadFile(path + string(os.PathSeparator) + PINDEX_META_FILENAME)
+		buf, _, err := mgr.DecryptAndReadFile(
+			path + string(os.PathSeparator) + PINDEX_META_FILENAME)
 		if err != nil {
 			return nil, fmt.Errorf("pindex: could not load PINDEX_META_FILENAME,"+
 				" path: %s, err: %v", path, err)
@@ -410,6 +411,18 @@ func ParsePIndexPath(dataDir, pindexPath string) (string, bool) {
 	pindexName := pindexPath[len(prefix):]
 	pindexName = pindexName[0 : len(pindexName)-len(pindexPathSuffix)]
 	return pindexName, true
+}
+
+func ParsePIndexPathUUID(dataDir, pindexPath string) (string, bool) {
+	prefix := dataDir + string(os.PathSeparator)
+	if !strings.HasPrefix(pindexPath, prefix) {
+		return "", false
+	}
+	path := pindexPath[len(prefix):]
+	if len(path) != 16 {
+		return "", false
+	}
+	return path, true
 }
 
 // ---------------------------------------------------------
@@ -687,4 +700,137 @@ func (mgr *Manager) coveringCacheVerLOCKED() uint64 {
 		mgr.stats.TotRefreshLastPlanPIndexes +
 		mgr.stats.TotRegisterPIndex +
 		mgr.stats.TotUnregisterPIndex
+}
+
+const PINDEX_NAMES = "pIndexNames"
+
+// ----------------------------------------------------------------------------
+
+// obtain the pindex name for a given pindex UUID path, optionally refreshing from
+// cfg if not found in cache
+func (mgr *Manager) GetPIndexName(pIndexPath string, refresh bool) (string, error) {
+	mgr.namesMutex.RLock()
+	name, _ := mgr.pIndexNames[pIndexPath]
+	mgr.namesMutex.RUnlock()
+
+	if name == "" && refresh {
+		namesMap, err := CfgGetPIndexNames(mgr.Cfg())
+		if err != nil {
+			return "", fmt.Errorf("pindex: could not get pindex names from cfg, err: %v", err)
+		}
+		name, _ = namesMap[pIndexPath]
+		if name == "" {
+			return "", fmt.Errorf("pindex: no name found for pindexPath: %s", pIndexPath)
+		}
+		mgr.namesMutex.Lock()
+		mgr.pIndexNames[pIndexPath] = name
+		mgr.namesMutex.Unlock()
+	}
+
+	return name, nil
+}
+
+// obtain a UUID path for a given pindex name, creating one if it does
+// not already exist, and persist the mapping to cfg
+func (mgr *Manager) GetPIndexPath(pIndexName string) (string, error) {
+	mgr.namesMutex.RLock()
+	for path, name := range mgr.pIndexNames {
+		if name == pIndexName {
+			mgr.namesMutex.RUnlock()
+			return path, nil
+		}
+	}
+	mgr.namesMutex.RUnlock()
+
+	path := convertOldPIndexPath(pIndexName)
+	err := CfgSetPIndexPaths(mgr.Cfg(), path, pIndexName)
+	if err != nil {
+		return "", fmt.Errorf("pindex: could not set pindex path in cfg, err: %v", err)
+	}
+	mgr.namesMutex.Lock()
+	mgr.pIndexNames[path] = pIndexName
+	mgr.namesMutex.Unlock()
+	return path, nil
+}
+
+// set a pindex name for a given pindex path, and persist the mapping to cfg
+func (mgr *Manager) SetPIndexName(path, name string) error {
+	err := CfgSetPIndexPaths(mgr.Cfg(), path, name)
+	if err != nil {
+		return err
+	}
+	mgr.namesMutex.Lock()
+	mgr.pIndexNames[path] = name
+	mgr.namesMutex.Unlock()
+	return nil
+}
+
+// obtain all pindex name to path mappings from cfg
+func CfgGetPIndexNames(cfg Cfg) (map[string]string, error) {
+	// silently return if cfg is nil, which can
+	// happen in some unit tests
+	if cfg == nil {
+		return map[string]string{}, nil
+	}
+
+	v, _, err := cfg.Get(PINDEX_NAMES, 0)
+	if err != nil {
+		return nil, err
+	}
+	var rv map[string]string
+	err = UnmarshalJSON(v, &rv)
+	if err != nil {
+		return nil, err
+	}
+	return rv, nil
+}
+
+// set a pindex name for a given pindex path, and persist the
+// mapping to cfg, with retry on CAS mismatch
+func CfgSetPIndexPaths(cfg Cfg, path, name string) error {
+	// silently return if cfg is nil, which can
+	// happen in some unit tests
+	if cfg == nil {
+		return nil
+	}
+
+	setFunc := func() error {
+		v, cas, err := cfg.Get(PINDEX_NAMES, 0)
+		if err != nil {
+			return err
+		}
+
+		var rv map[string]string
+		if v != nil {
+			err = UnmarshalJSON(v, &rv)
+			if err != nil {
+				return err
+			}
+		} else {
+			rv = make(map[string]string)
+		}
+
+		rv[path] = name
+
+		buf, err := MarshalJSON(rv)
+		if err != nil {
+			return err
+		}
+
+		_, err = cfg.Set(PINDEX_NAMES, buf, cas)
+		return err
+	}
+
+	return RetryOnCASMismatch(setFunc, 100)
+}
+
+// Converts old pindex paths to new randomly generated UUID paths
+func convertOldPIndexPath(name string) string {
+	// check if the path does not have the .pindex suffix and is 16 characters
+	// long since that is the length of the new UUID path.
+	if !strings.HasSuffix(name, pindexPathSuffix) && len(name) == 16 {
+		return name
+	}
+
+	return NewUUID()
 }

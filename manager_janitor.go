@@ -378,7 +378,11 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 			" pindex: %s, err: %v", req.pindex.Name, err)
 	}
 	// rename the pindex folder and name as per the new plan
-	newPath := mgr.PIndexPath(req.planPIndexName)
+	newPath, err := mgr.PIndexPathEx(req.planPIndexName)
+	if err != nil {
+		cleanDir(req.pindex.Path)
+		return fmt.Errorf("janitor: restartPIndex failed to get new pindex path for pindex: %s, err: %v", req.planPIndexName, err)
+	}
 	if newPath != req.pindex.Path {
 		err = os.Rename(req.pindex.Path, newPath)
 		if err != nil {
@@ -407,8 +411,8 @@ func (mgr *Manager) restartPIndex(req *pindexRestartReq) error {
 				" Marshal pindex: %s, err: %v", pi.Name, err)
 
 		}
-		err = os.WriteFile(pi.Path+string(os.PathSeparator)+
-			PINDEX_META_FILENAME, buf, 0600)
+		_, err = mgr.EncryptAndWriteFile(
+			newPath+string(os.PathSeparator)+PINDEX_META_FILENAME, buf, 0600)
 		if err != nil {
 			cleanDir(pi.Path)
 			return fmt.Errorf("janitor: restartPIndex could not save "+
@@ -516,7 +520,10 @@ func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
 			" pindex: %s, err: %v", r.pindex.Name, err)
 	}
 	// rename the pindex folder and name as per the new plan
-	newPath := mgr.PIndexPath(r.planPIndexName)
+	newPath, err := mgr.PIndexPathEx(r.planPIndexName)
+	if err != nil {
+		return nil, fmt.Errorf("janitor: hibernateRestart failed to get new pindex path for pindex: %s, err: %v", r.planPIndexName, err)
+	}
 	if newPath != r.pindex.Path {
 		err = os.Rename(r.pindex.Path, newPath)
 		if err != nil {
@@ -539,8 +546,8 @@ func (mgr *Manager) hibernateRestart(r *pindexRestartReq) (*PIndex, error) {
 				" Marshal pindex: %s, err: %v", pi.Name, err)
 
 		}
-		err = os.WriteFile(pi.Path+string(os.PathSeparator)+
-			PINDEX_META_FILENAME, buf, 0600)
+		_, err = mgr.EncryptAndWriteFile(
+			newPath+string(os.PathSeparator)+PINDEX_META_FILENAME, buf, 0600)
 		if err != nil {
 			return nil, fmt.Errorf("janitor: hibernateRestart could not save "+
 				"PINDEX_META_FILENAME,"+" path: %s, err: %v", pi.Path, err)
@@ -1418,7 +1425,10 @@ func (mgr *Manager) startPIndex(planPIndex *PlanPIndex) error {
 	var pindex *PIndex
 	var err error
 
-	path := mgr.PIndexPath(planPIndex.Name)
+	path, err := mgr.PIndexPathEx(planPIndex.Name)
+	if err != nil {
+		return fmt.Errorf("janitor: startPIndex failed to get pindex path for pindex: %s, err: %v", planPIndex.Name, err)
+	}
 	// First, try reading the path with OpenPIndex().  An
 	// existing path might happen during a case of rollback.
 	_, err = os.Stat(path)

@@ -248,6 +248,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 	}
 
 	version := CfgGetVersion(mgr.cfg)
+	mgr.BucketsMaybeUpdated()
 
 	indexCreateFunc := func() error {
 		indexDefs, cas, err := CfgGetIndexDefs(mgr.cfg)
@@ -384,6 +385,7 @@ func (mgr *Manager) DeleteIndex(indexName string) error {
 func (mgr *Manager) DeleteIndexEx(indexName, indexUUID string) (
 	string, error) {
 	atomic.AddUint64(&mgr.stats.TotDeleteIndex, 1)
+	mgr.BucketsMaybeUpdated()
 
 	var indexDef *IndexDef
 	var exists bool
@@ -619,6 +621,7 @@ func (mgr *Manager) BumpIndexDefs(indexDefsUUID string) error {
 // sourceType and sourceName.
 func (mgr *Manager) DeleteAllIndexFromSource(
 	sourceType, sourceName, sourceUUID string) error {
+	mgr.BucketsMaybeUpdated()
 
 	var deletedCount uint64
 	indexDeleteFromSourceFunc := func() error {
