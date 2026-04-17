@@ -7,7 +7,7 @@ require (
 	github.com/couchbase/cbauth v0.1.13
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-couchbase v0.1.1
-	github.com/couchbase/gocbcore/v10 v10.7.0
+	github.com/couchbase/gocbcore/v10 v10.9.1
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/tools-common/cloud/v8 v8.1.3
@@ -22,7 +22,7 @@ require (
 	github.com/couchbase/tools-common/testing v1.0.3 // indirect
 	github.com/couchbase/tools-common/types/v2 v2.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/golang/snappy v0.0.4 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
