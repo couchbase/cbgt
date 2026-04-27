@@ -490,14 +490,63 @@ type GocbcoreDCPFeed struct {
 	dcpStats *gocbcoreDCPFeedStats
 
 	m                 sync.Mutex
-	remaining         sync.WaitGroup
 	closed            bool
 	shutdownInitiated bool
-	active            map[uint16]bool
 	stats             *DestStats
-	stopAfterReached  map[string]bool // May be nil.
+
+	// Stream lifecycle bookkeeping: active tracks vbuckets with open
+	// streams (guarded by m), remaining is the WaitGroup drained on
+	// shutdown, and stopAfterRemaining (atomic) counts vbuckets yet
+	// to reach their stopAfter seqno when in stopAfter mode.
+	active             map[uint16]bool
+	remaining          sync.WaitGroup
+	stopAfterRemaining int32
+
+	// completedPartitions is the set of partitions whose DCP streams
+	// hit a terminal-success code path (End(err==nil), or filter-empty
+	// in stopAfter mode). Consumers can read it via
+	// CompletedPartitions() inside OnUnregisterFeed to distinguish a
+	// self-close from a manager-driven teardown. Guarded by completedMu.
+	completedMu         sync.Mutex
+	completedPartitions map[string]struct{}
 
 	closeCh chan struct{}
+}
+
+// FeedPartitionCompletion is implemented by feeds that record which
+// partitions reached a natural end-of-stream. Consumers can type-assert
+// a Feed to this interface inside ManagerEventHandlers.OnUnregisterFeed
+// to determine which vbuckets self-completed (vs. which were torn down
+// when the manager closed).
+type FeedPartitionCompletion interface {
+	CompletedPartitions() map[string]struct{}
+}
+
+// CompletedPartitions returns a snapshot of partitions whose streams
+// reached a terminal-success path. The map is keyed by partition
+// string (the canonical decimal form of the vbucket id); the value
+// type is struct{} so it functions as a set. Presence of a partition
+// in the returned map means a stream for that vb in this feed
+// instance ended via End(err==nil) or via End(ErrDCPStreamFilterEmpty)
+// while the vb was a stopAfter target. Absence means the stream was
+// torn down or hit an error path.
+func (f *GocbcoreDCPFeed) CompletedPartitions() map[string]struct{} {
+	f.completedMu.Lock()
+	defer f.completedMu.Unlock()
+	out := make(map[string]struct{}, len(f.completedPartitions))
+	for k := range f.completedPartitions {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+func (f *GocbcoreDCPFeed) markPartitionCompleted(partition string) {
+	f.completedMu.Lock()
+	if f.completedPartitions == nil {
+		f.completedPartitions = make(map[string]struct{})
+	}
+	f.completedPartitions[partition] = struct{}{}
+	f.completedMu.Unlock()
 }
 
 type gocbcoreDCPFeedStats struct {
@@ -580,24 +629,40 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 			" no vbucketids for this feed")
 	}
 
+	// Count only the vbuckets that are both active (in dests) and have a
+	// stopAfter target — these are the streams whose natural End(nil) will
+	// decrement the counter.
+	var stopAfterRemaining int32
+	if stopAfter != nil {
+		for _, vbId := range vbucketIds {
+			partition, _, perr := VBucketIdToPartitionDest(pf, dests, vbId, nil)
+			if perr == nil {
+				if _, exists := stopAfter[partition]; exists {
+					stopAfterRemaining++
+				}
+			}
+		}
+	}
+
 	feed := &GocbcoreDCPFeed{
-		name:       name,
-		indexName:  indexName,
-		indexUUID:  indexUUID,
-		servers:    servers,
-		bucketName: bucketName,
-		bucketUUID: bucketUUID,
-		params:     params,
-		pf:         pf,
-		dests:      dests,
-		disable:    disable,
-		stopAfter:  stopAfter,
-		mgr:        mgr,
-		vbucketIds: vbucketIds,
-		dcpStats:   &gocbcoreDCPFeedStats{},
-		stats:      NewDestStats(),
-		active:     make(map[uint16]bool),
-		closeCh:    make(chan struct{}),
+		name:               name,
+		indexName:          indexName,
+		indexUUID:          indexUUID,
+		servers:            servers,
+		bucketName:         bucketName,
+		bucketUUID:         bucketUUID,
+		params:             params,
+		pf:                 pf,
+		dests:              dests,
+		disable:            disable,
+		stopAfter:          stopAfter,
+		mgr:                mgr,
+		vbucketIds:         vbucketIds,
+		dcpStats:           &gocbcoreDCPFeedStats{},
+		stats:              NewDestStats(),
+		active:             make(map[uint16]bool),
+		stopAfterRemaining: stopAfterRemaining,
+		closeCh:            make(chan struct{}),
 	}
 
 	for partition, dest := range dests {
@@ -840,6 +905,47 @@ func (f *GocbcoreDCPFeed) close() bool {
 	return true
 }
 
+// closeOnStopAfterReached is the close path used when every stopAfter
+// target has hit a terminal-success End. Unlike close(), it inspects
+// the per-vb active map and only invokes closeAllStreamsLOCKED if any
+// vbuckets remain active (e.g. non-stopAfter vbs that were given
+// maxEndSeqno). When every vb is a stopAfter target — the SG resync
+// case — the active map is fully drained by the time we get here, so
+// the agent.CloseStream calls would be no-ops anyway and we skip them.
+//
+// In-progress shutdowns (Close / NotifyMgrOnClose) are unaffected;
+// they continue to go through close() unconditionally.
+func (f *GocbcoreDCPFeed) closeOnStopAfterReached() {
+	f.m.Lock()
+	if f.closed {
+		f.m.Unlock()
+		return
+	}
+	f.closed = true
+
+	var hasActive bool
+	for _, vbId := range f.vbucketIds {
+		if f.active[vbId] {
+			hasActive = true
+			break
+		}
+	}
+	if hasActive {
+		f.closeAllStreamsLOCKED()
+	}
+	CloseDCPAgent(f.bucketName, f.bucketUUID, f.agent)
+	f.m.Unlock()
+
+	f.mgr.unregisterFeed(f.Name())
+
+	close(f.closeCh)
+	f.wait()
+
+	untrackBucket(f.mgr, f.bucketName)
+
+	log.Printf("feed_dcp_gocbcore: Close, name: %s", f.Name())
+}
+
 func (f *GocbcoreDCPFeed) getCloseStreamOptions() gocbcore.CloseStreamOptions {
 	rv := gocbcore.CloseStreamOptions{}
 	if f.agent.HasCollectionsSupport() {
@@ -931,9 +1037,26 @@ func (f *GocbcoreDCPFeed) initiateStream(vbId uint16) error {
 	}
 
 	go f.initiateStreamEx(vbId, true, gocbcore.VbUUID(vbuuid),
-		gocbcore.SeqNo(lastSeq), maxEndSeqno)
+		gocbcore.SeqNo(lastSeq), f.stopAfterSeqno(vbId))
 
 	return nil
+}
+
+// stopAfterSeqno returns the seqEnd to use when opening a DCP stream. In
+// stopAfter mode it returns the target seqno for the vbucket so that KV ends
+// the stream naturally; otherwise it returns maxEndSeqno.
+func (f *GocbcoreDCPFeed) stopAfterSeqno(vbId uint16) gocbcore.SeqNo {
+	if f.stopAfter == nil {
+		return maxEndSeqno
+	}
+	partition, _, err := VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
+	if err != nil {
+		return maxEndSeqno
+	}
+	if uuidSeq, exists := f.stopAfter[partition]; exists {
+		return gocbcore.SeqNo(uuidSeq.Seq)
+	}
+	return maxEndSeqno
 }
 
 func (f *GocbcoreDCPFeed) initiateStreamEx(vbId uint16, isNewStream bool,
@@ -1172,7 +1295,7 @@ func (f *GocbcoreDCPFeed) setMetaData(vbId uint16, m *metaData) error {
 	return Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -1191,7 +1314,7 @@ func (f *GocbcoreDCPFeed) getMetaData(vbId uint16) (*metaData, uint64, error) {
 	err := Timer(func() error {
 		partition, dest, er :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if er != nil || f.checkStopAfter(partition) {
+		if er != nil {
 			return er
 		}
 
@@ -1237,7 +1360,7 @@ func (f *GocbcoreDCPFeed) rollback(vbId uint16, rollbackSeqno uint64) error {
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, vbId, nil)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -1279,51 +1402,6 @@ func (f *GocbcoreDCPFeed) complete(vbId uint16) {
 		f.remaining.Done()
 	}
 	f.m.Unlock()
-}
-
-// ----------------------------------------------------------------
-
-// checkStopAfter checks to see if we've already reached the
-// stopAfterReached state for a partition.
-func (f *GocbcoreDCPFeed) checkStopAfter(partition string) bool {
-	f.m.Lock()
-	reached := f.stopAfterReached != nil && f.stopAfterReached[partition]
-	f.m.Unlock()
-
-	return reached
-}
-
-// updateStopAfter checks and maintains the stopAfterReached tracking
-// maps, which are used for so-called "one-time indexing". Once we've
-// reached the stopping point, we close the feed (after all partitions
-// have reached their stopAfter sequence numbers).
-func (f *GocbcoreDCPFeed) updateStopAfter(partition string, seqNo uint64) {
-	if f.stopAfter == nil {
-		return
-	}
-
-	uuidSeq, exists := f.stopAfter[partition]
-	if !exists {
-		return
-	}
-
-	// TODO: check UUID matches?
-	if seqNo >= uuidSeq.Seq {
-		f.m.Lock()
-
-		if f.stopAfterReached == nil {
-			f.stopAfterReached = map[string]bool{}
-		}
-		f.stopAfterReached[partition] = true
-
-		allDone := len(f.stopAfterReached) >= len(f.stopAfter)
-
-		f.m.Unlock()
-
-		if allDone {
-			f.Close()
-		}
-	}
 }
 
 // ----------------------------------------------------------------

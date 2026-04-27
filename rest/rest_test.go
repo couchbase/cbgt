@@ -79,6 +79,9 @@ func (meh *TestMEH) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 func (meh *TestMEH) OnFeedError(srcType string, r cbgt.Feed, err error) {
 }
 
+func (meh *TestMEH) OnUnregisterFeed(feed cbgt.Feed) {
+}
+
 func (meh *TestMEH) OnRefreshManagerOptions(o map[string]string) {
 }
 

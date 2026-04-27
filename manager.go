@@ -376,6 +376,7 @@ type ManagerEventHandlers interface {
 	OnRegisterPIndex(pindex *PIndex)
 	OnUnregisterPIndex(pindex *PIndex)
 	OnFeedError(srcType string, r Feed, err error)
+	OnUnregisterFeed(feed Feed)
 	OnRefreshManagerOptions(options map[string]string)
 }
 
@@ -906,14 +907,17 @@ func (mgr *Manager) registerFeed(feed Feed) error {
 
 func (mgr *Manager) unregisterFeed(name string) Feed {
 	mgr.feedsMutex.Lock()
-	defer mgr.feedsMutex.Unlock()
-
 	rv, ok := mgr.feeds[name]
 	if ok {
 		feeds := mgr.copyFeedsLOCKED()
 		delete(feeds, name)
 		mgr.feeds = feeds
 		atomic.AddUint64(&mgr.stats.TotUnregisterFeed, 1)
+	}
+	mgr.feedsMutex.Unlock()
+
+	if ok && mgr.meh != nil {
+		mgr.meh.OnUnregisterFeed(rv)
 	}
 
 	return rv

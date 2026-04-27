@@ -979,6 +979,9 @@ func (meh *TestMEH) OnFeedError(srcType string, r Feed,
 	err error) {
 }
 
+func (meh *TestMEH) OnUnregisterFeed(feed Feed) {
+}
+
 func (meh *TestMEH) OnRefreshManagerOptions(o map[string]string) {
 }
 

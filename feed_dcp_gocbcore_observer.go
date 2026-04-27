@@ -56,7 +56,7 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(sm gocbcore.DcpSnapshotMarker) {
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, sm.VbID, nil)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -90,7 +90,7 @@ func (f *GocbcoreDCPFeed) Mutation(m gocbcore.DcpMutation) {
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, m.VbID, m.Key)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -120,8 +120,6 @@ func (f *GocbcoreDCPFeed) Mutation(m gocbcore.DcpMutation) {
 				f.Name(), partition, log.Tag(log.UserData, m.Key), m.SeqNo, err)
 		}
 
-		f.updateStopAfter(partition, m.SeqNo)
-
 		return nil
 	}, f.stats.TimerDataUpdate)
 
@@ -146,7 +144,7 @@ func (f *GocbcoreDCPFeed) Deletion(d gocbcore.DcpDeletion) {
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, d.VbID, d.Key)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -174,8 +172,6 @@ func (f *GocbcoreDCPFeed) Deletion(d gocbcore.DcpDeletion) {
 			return fmt.Errorf("name: %s, partition: %s, key: %v, seq: %d, err: %v",
 				f.Name(), partition, log.Tag(log.UserData, d.Key), d.SeqNo, err)
 		}
-
-		f.updateStopAfter(partition, d.SeqNo)
 
 		return nil
 	}, f.stats.TimerDataDelete)
@@ -218,6 +214,23 @@ func (f *GocbcoreDCPFeed) End(e gocbcore.DcpStreamEnd, err error) {
 		f.complete(e.VbID)
 		log.Printf("feed_dcp_gocbcore: [%s] DCP stream [%v] ended for vb: %v,"+
 			" last seq: %v", f.Name(), e.StreamID, e.VbID, lastReceivedSeqno)
+		// Record the natural completion for inspection via
+		// CompletedPartitions() inside OnUnregisterFeed; also drive the
+		// stopAfter counter if applicable. A natural stream end always
+		// means the target seqno was reached (or no further events will
+		// arrive), including the case where a stream ends with no
+		// mutations because it was already at the target when opened.
+		if partition, _, perr := VBucketIdToPartitionDest(
+			f.pf, f.dests, e.VbID, nil); perr == nil {
+			f.markPartitionCompleted(partition)
+			if f.stopAfter != nil {
+				if _, exists := f.stopAfter[partition]; exists {
+					if atomic.AddInt32(&f.stopAfterRemaining, -1) <= 0 {
+						go f.closeOnStopAfterReached()
+					}
+				}
+			}
+		}
 	} else if errors.Is(err, gocbcore.ErrShutdown) ||
 		errors.Is(err, gocbcore.ErrSocketClosed) ||
 		errors.Is(err, gocbcore.ErrDCPStreamFilterEmpty) {
@@ -234,7 +247,7 @@ func (f *GocbcoreDCPFeed) End(e gocbcore.DcpStreamEnd, err error) {
 		go func(vb uint16) {
 			vbuuid, lastSeq, _ := f.lastVbUUIDSeqFromFailOverLog(vb)
 			f.initiateStreamEx(vb, false, gocbcore.VbUUID(vbuuid),
-				gocbcore.SeqNo(lastSeq), maxEndSeqno)
+				gocbcore.SeqNo(lastSeq), f.stopAfterSeqno(vb))
 		}(e.VbID)
 	} else if errors.Is(err, gocbcore.ErrDCPStreamClosed) {
 		f.complete(e.VbID)
@@ -258,7 +271,7 @@ func (f *GocbcoreDCPFeed) CreateCollection(c gocbcore.DcpCollectionCreation) {
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, c.VbID, nil)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -274,8 +287,6 @@ func (f *GocbcoreDCPFeed) CreateCollection(c gocbcore.DcpCollectionCreation) {
 			return fmt.Errorf("name: %s, partition: %s,"+
 				" seq: %d, err: %v", f.Name(), partition, c.SeqNo, err)
 		}
-
-		f.updateStopAfter(partition, c.SeqNo)
 
 		return nil
 	}, f.stats.TimerCreateCollection)
@@ -326,7 +337,7 @@ func (f *GocbcoreDCPFeed) OSOSnapshot(o gocbcore.DcpOSOSnapshot) {
 
 	partition, dest, err :=
 		VBucketIdToPartitionDest(f.pf, f.dests, o.VbID, nil)
-	if err == nil && !f.checkStopAfter(partition) {
+	if err == nil {
 		if destColl, ok := dest.(DestCollection); ok {
 			err = destColl.OSOSnapshot(partition, o.SnapshotType)
 		}
@@ -349,7 +360,7 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(s gocbcore.DcpSeqNoAdvanced) {
 	err := Timer(func() error {
 		partition, dest, err :=
 			VBucketIdToPartitionDest(f.pf, f.dests, s.VbID, nil)
-		if err != nil || f.checkStopAfter(partition) {
+		if err != nil {
 			return err
 		}
 
@@ -365,8 +376,6 @@ func (f *GocbcoreDCPFeed) SeqNoAdvanced(s gocbcore.DcpSeqNoAdvanced) {
 			return fmt.Errorf("name: %s, partition: %s,"+
 				" seq: %d, err: %v", f.Name(), partition, s.SeqNo, err)
 		}
-
-		f.updateStopAfter(partition, s.SeqNo)
 
 		return nil
 	}, f.stats.TimerSeqNoAdvanced)
