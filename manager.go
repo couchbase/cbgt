@@ -354,6 +354,7 @@ type ClusterOptions struct {
 	CustomScriptQueriesEnabled         string `json:"customScriptQueriesEnabled"`
 	EnableLazyIndexUpdate              string `json:"enableLazyIndexUpdate"`
 	CollectionsLimitPerIndex           string `json:"collectionsLimitPerIndex"`
+	MinSamplesPerCentroid              string `json:"minSamplesPerCentroid"`
 
 	// For Scan Plus
 	ScanPlusFetchBucketWideSeqNos string `json:"scanPlusFetchBucketWideSeqNos"`
