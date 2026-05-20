@@ -81,8 +81,8 @@ type ErrorConsistencyWait struct {
 }
 
 func (e *ErrorConsistencyWait) Error() string {
-	return fmt.Sprintf("ErrorConsistencyWait, startEndSeqs: %#v,"+
-		" err: %v", e.StartEndSeqs, e.Err)
+	return fmt.Sprintf("consistency wait %s: %v (startEndSeqs: %v)",
+		e.Status, e.Err, e.StartEndSeqs)
 }
 
 // ErrorLocalPIndexHealth represents the unavailable pindexes and
@@ -111,7 +111,9 @@ func ConsistencyWaitDone(partition string,
 		rv := map[string][]uint64{}
 		rv[partition] = []uint64{seqStart, currSeq()}
 
-		err := fmt.Errorf("pindex_consistency: ConsistencyWaitDone cancelled")
+		err := fmt.Errorf("pindex_consistency: request cancelled or timed out"+
+			" while waiting for partition %q to reach the requested sequence number",
+			partition)
 
 		return &ErrorConsistencyWait{ // TODO: track stats.
 			Err:          err,
@@ -195,7 +197,8 @@ func ConsistencyWaitGroup(indexName string,
 	if cancelCh != nil {
 		select {
 		case <-cancelCh:
-			return fmt.Errorf("pindex_consistency: ConsistencyWaitGroup cancelled")
+			return fmt.Errorf("pindex_consistency: request cancelled or timed out" +
+				" while waiting for index pindexes to reach the requested consistency")
 		default:
 		}
 	}

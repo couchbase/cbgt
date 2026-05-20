@@ -298,7 +298,8 @@ func newSeqNosRequest(sourceName, sourceUUID, sourceParams, serverIn,
 func (r *seqNosRequest) response(cancelCh <-chan bool) *seqNosResponse {
 	select {
 	case <-cancelCh:
-		return &seqNosResponse{err: fmt.Errorf("pindex_scan_consistency: GetSeqNos cancelled")}
+		return &seqNosResponse{err: fmt.Errorf("pindex_scan_consistency: request" +
+			" cancelled or timed out while fetching high sequence numbers from KV")}
 	case resp := <-r.respCh:
 		return resp
 	}
