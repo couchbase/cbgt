@@ -11,6 +11,7 @@ package cbgt
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand"
 	"strconv"
@@ -81,6 +82,9 @@ var scanPlusNumRetries atomic.Int32
 // scanPlusReader is the singleton seqNosReader instance.
 var scanPlusReader *seqNosReader
 
+// scanPlusReaderStarted gates access to scanPlusReader.
+var scanPlusReaderStarted atomic.Bool
+
 type ScanPlusReaderOptions struct {
 	numWorkers  *int
 	errCallback func()
@@ -94,25 +98,66 @@ type ScanPlusReaderOptions struct {
 func init() {
 	scanPlusFetchBucketWideSeqNos.Store(defaultScanPlusFetchBucketWideSeqNos)
 	scanPlusNumRetries.Store(defaultScanPlusNumRetries)
-	scanPlusReader = newSeqNosReader(defaultScanPlusNumWorkers, cbFetchSeqNos, func() {})
-	scanPlusReader.start()
 }
 
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
 
-// RefreshScanPlusOptions updates the scanPlusFetchBucketWideSeqNos flag and worker count
-// based on the provided options map. Only updates values that are explicitly
-// set in the options map.
+func StartScanPlusReader(options map[string]string, errCallback func()) error {
+	if scanPlusReaderStarted.Load() {
+		log.Warnf("pindex_scan_consistency: StartScanPlusReader called more than once; ignoring")
+		return nil
+	}
+
+	bucketLevel, nw, nr, err := parseScanPlusOptions(options)
+	if err != nil {
+		return err
+	}
+
+	if bucketLevel != nil {
+		scanPlusFetchBucketWideSeqNos.Store(*bucketLevel)
+	}
+	if nr != nil {
+		scanPlusNumRetries.Store(int32(*nr))
+	}
+
+	numWorkers := defaultScanPlusNumWorkers
+	if nw != nil {
+		numWorkers = *nw
+	}
+
+	if errCallback == nil {
+		errCallback = func() {}
+	}
+
+	scanPlusReader = newSeqNosReader(numWorkers, cbFetchSeqNos, errCallback)
+	scanPlusReader.start()
+	scanPlusReaderStarted.Store(true)
+	return nil
+}
+
+// RefreshScanPlusOptions updates scan-plus tunables based on the options map.
 func RefreshScanPlusOptions(options map[string]string, errCallback func()) error {
 	bucketLevel, nw, nr, err := parseScanPlusOptions(options)
 	if err != nil {
 		return err
 	}
 
-	// Refresh reader options only if explicitly set.
+	if bucketLevel != nil {
+		scanPlusFetchBucketWideSeqNos.Store(*bucketLevel)
+	}
+	if nr != nil {
+		scanPlusNumRetries.Store(int32(*nr))
+	}
+
+	// Worker-config refresh requires the reader to be running.
 	if nw != nil || errCallback != nil {
+		if !scanPlusReaderStarted.Load() {
+			log.Warnf("pindex_scan_consistency: RefreshScanPlusOptions: reader" +
+				" not started; skipping worker-config refresh")
+			return nil
+		}
 		// block until reader applies these options
 		doneCh := make(chan struct{})
 		scanPlusReader.refreshCh <- ScanPlusReaderOptions{
@@ -121,13 +166,6 @@ func RefreshScanPlusOptions(options map[string]string, errCallback func()) error
 			doneCh:      doneCh,
 		}
 		<-doneCh
-	}
-
-	if bucketLevel != nil {
-		scanPlusFetchBucketWideSeqNos.Store(*bucketLevel)
-	}
-	if nr != nil {
-		scanPlusNumRetries.Store(int32(*nr))
 	}
 
 	return nil
@@ -139,6 +177,11 @@ func RefreshScanPlusOptions(options map[string]string, errCallback func()) error
 func GetSeqNos(sourceName, sourceUUID, sourceParams, serverIn string,
 	scopeName string, collectionNames []string,
 	cancelCh <-chan bool) (map[string]uint64, error) {
+
+	if !scanPlusReaderStarted.Load() {
+		return nil, errors.New("pindex_scan_consistency: GetSeqNos called before" +
+			" StartScanPlusReader")
+	}
 
 	retries := int(scanPlusNumRetries.Load())
 
@@ -192,9 +235,7 @@ func GetSeqNos(sourceName, sourceUUID, sourceParams, serverIn string,
 		}
 		if i == 0 {
 			maxSeqNos = make(map[string]uint64, len(res.seqNos))
-			for vbID, seqNo := range res.seqNos {
-				maxSeqNos[vbID] = seqNo
-			}
+			maps.Copy(maxSeqNos, res.seqNos)
 		} else {
 			for vbID, seqNo := range res.seqNos {
 				if seqNo > maxSeqNos[vbID] {
