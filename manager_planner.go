@@ -546,6 +546,12 @@ func CalcPlan(mode string, indexDefs *IndexDefs, nodeDefs *NodeDefs,
 			continue
 		}
 
+		// If the index definition changes are updatable without needing to rebuild the index, then
+		// clone the previous plan for this index.
+		if CaseUpdatablePlan(indexDef, planPIndexesPrev, planPIndexes) {
+			continue
+		}
+
 		// Skip if the plannerFilter returns false.
 		if plannerFilter != nil &&
 			!plannerFilter(indexDef, planPIndexesPrev, planPIndexes) {
@@ -1133,6 +1139,33 @@ func sameIndexDefsExceptUUID(def1, def2 *IndexDef) bool {
 
 // --------------------------------------------------------
 
+// Deep copy PlanPIndexNode(s) properties,
+// except for Index Control Status (CanRead and CanWrite)
+//
+// Index Control Status must be updated in the new plan as per
+// the latest index definition.
+// This is to make sure user is able to change Index Control Status
+// even for planFrozen indexes.
+func copyPlanPIndexNodes(planPIndexPrev, planPIndexNew *PlanPIndex, planParams *PlanParams) {
+	for nodeID, planPIndexNode := range planPIndexPrev.Nodes {
+		// default Index Control Status
+		canRead, canWrite := DefaultIndexCanRead, DefaultIndexCanWrite
+
+		// Use the latest Index Control (Read and Write Status)
+		// from index definition
+		if npp := planParams.NodePlanParams[""][""]; npp != nil {
+			canRead = planParams.NodePlanParams[""][""].CanRead
+			canWrite = planParams.NodePlanParams[""][""].CanWrite
+		}
+
+		planPIndexNew.Nodes[nodeID] = &PlanPIndexNode{
+			CanRead:  canRead,
+			CanWrite: canWrite,
+			Priority: planPIndexNode.Priority,
+		}
+	}
+}
+
 // CasePlanFrozen returns true if the plan for the indexDef is frozen,
 // in which case it also populates endPlanPIndexes with a clone of the
 // indexDef's plans from begPlanPIndexes, except for the updated
@@ -1172,35 +1205,104 @@ func CasePlanFrozen(indexDef *IndexDef,
 					Nodes: map[string]*PlanPIndexNode{},
 				}
 
-				// Deep copy PlanPIndexNode(s) properties,
-				// except for Index Control Status (CanRead and CanWrite)
-				//
-				// Index Control Status must be updated in the new plan as per
-				// the latest index definition.
-				// This is to make sure user is able to change Index Control Status
-				// even for planFrozen indexes.
-				for nodeID, planPIndexNode := range p.Nodes {
-					// default Index Control Status
-					canRead, canWrite := DefaultIndexCanRead, DefaultIndexCanWrite
-
-					// Use the latest Index Control (Read and Write Status)
-					// from index definition
-					if npp := indexDef.PlanParams.NodePlanParams[""][""]; npp != nil {
-						canRead = indexDef.PlanParams.NodePlanParams[""][""].CanRead
-						canWrite = indexDef.PlanParams.NodePlanParams[""][""].CanWrite
-					}
-
-					endPlanPIndexes.PlanPIndexes[n].Nodes[nodeID] = &PlanPIndexNode{
-						CanRead:  canRead,
-						CanWrite: canWrite,
-						Priority: planPIndexNode.Priority,
-					}
-				}
+				// Deep copy PlanPIndexNode(s) properties
+				copyPlanPIndexNodes(p, endPlanPIndexes.PlanPIndexes[n], &indexDef.PlanParams)
 			}
 		}
 	}
 
 	return true
+}
+
+// Check if the index defintion changes are updatable without
+// needing to rebuild the index
+func updatableIndexDef(def1, def2 *IndexDef) int {
+	if def1.Type != def2.Type ||
+		def1.Name != def2.Name ||
+		def1.SourceName != def2.SourceName ||
+		def1.SourceType != def2.SourceType ||
+		def1.SourceUUID != def2.SourceUUID ||
+		def1.SourceParams != def2.SourceParams {
+		return 0
+	}
+
+	pindexImplType, exists := PIndexImplTypes[def1.Type]
+	if !exists || pindexImplType == nil ||
+		pindexImplType.AnalyzeIndexDefUpdates == nil {
+		return 0
+	}
+
+	configAnalyzeRequest := &ConfigAnalyzeRequest{
+		IndexDefnCur:  def1,
+		IndexDefnPrev: def2,
+	}
+
+	resultCode := pindexImplType.AnalyzeIndexDefUpdates(configAnalyzeRequest)
+	if resultCode != "" {
+		return 1
+	}
+	return 0
+}
+
+// CaseUpdatablePlan returns true if the plans are updatable without needing to rebuild the index,
+// in which case it also populates endPlanPIndexes with a clone of the indexDef's plans from begPlanPIndexes, except for the updated
+// Index Control Status (CanRead and CanWrite) from the latest index.
+func CaseUpdatablePlan(indexDef *IndexDef,
+	begPlanPIndexes, endPlanPIndexes *PlanPIndexes) bool {
+	var found bool
+
+	if begPlanPIndexes != nil && endPlanPIndexes != nil {
+		// Track the number of pindexes in the previous plan
+		numPIndexes := len(endPlanPIndexes.PlanPIndexes)
+		// Track updatable status since it will not change across all the pindexes in the plan.
+		updatable := -1
+
+		// iterate through the previous plan and deep copy if the index definition
+		// is updatable and if the number of pindexes and replicas are the same as the previous plan.
+		for name, planPIndexPrev := range begPlanPIndexes.PlanPIndexes {
+			numReplicas := len(planPIndexPrev.Nodes) - 1
+			if planPIndexPrev.IndexName == indexDef.Name &&
+				planPIndexPrev.IndexUUID != indexDef.UUID &&
+				numPIndexes == indexDef.PlanParams.IndexPartitions &&
+				numReplicas == indexDef.PlanParams.NumReplicas {
+
+				// Only check once
+				if updatable == -1 {
+					updatable = updatableIndexDef(indexDef,
+						getIndexDefFromPlanPIndexes([]*PlanPIndex{planPIndexPrev}))
+				}
+
+				// Return if not updatable
+				if updatable == 0 {
+					return false
+				}
+
+				// # Deep copy PlanPIndex
+				endPlanPIndexes.PlanPIndexes[name] = &PlanPIndex{
+					Name:             planPIndexPrev.Name,
+					UUID:             planPIndexPrev.UUID,
+					IndexType:        planPIndexPrev.IndexType,
+					IndexName:        planPIndexPrev.IndexName,
+					IndexUUID:        planPIndexPrev.IndexUUID,
+					IndexParams:      indexDef.Params, // But keep the new params
+					SourceType:       planPIndexPrev.SourceType,
+					SourceName:       planPIndexPrev.SourceName,
+					SourceUUID:       planPIndexPrev.SourceUUID,
+					SourceParams:     planPIndexPrev.SourceParams,
+					SourcePartitions: planPIndexPrev.SourcePartitions,
+					HibernationPath:  planPIndexPrev.HibernationPath,
+
+					Nodes: map[string]*PlanPIndexNode{},
+				}
+
+				// Deep copy PlanPIndexNode(s) properties
+				copyPlanPIndexNodes(planPIndexPrev, endPlanPIndexes.PlanPIndexes[name], &indexDef.PlanParams)
+				found = true
+			}
+		}
+	}
+
+	return found
 }
 
 // --------------------------------------------------------
