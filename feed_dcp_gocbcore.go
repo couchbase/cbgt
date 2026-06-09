@@ -473,6 +473,8 @@ type GocbcoreDCPFeed struct {
 	mgr        *Manager
 
 	agent *gocbcore.DCPAgent
+	// if agent supports collections or not
+	supportsCollections bool
 
 	scope       string
 	collections []string
@@ -703,6 +705,8 @@ func newGocbcoreDCPFeed(name, indexName, indexUUID, servers,
 		return nil, feed.onSetupError(
 			fmt.Errorf("newGocbcoreDCPFeed DCPAgent, err: %w", err))
 	}
+
+	feed.supportsCollections = feed.agent.HasCollectionsSupport()
 
 	log.Printf("feed_dcp_gocbcore: newGocbcoreDCPFeed, name: %s, indexName: %s,"+
 		" server: %v, bucketName: %s, bucketUUID: %s",
