@@ -101,7 +101,7 @@ func (f *GocbcoreDCPFeed) Mutation(m gocbcore.DcpMutation) {
 				Flags:    m.Flags,
 				Datatype: m.Datatype,
 			}
-			if f.agent.HasCollectionsSupport() {
+			if f.supportsCollections {
 				extras.ScopeId = f.streamOptions.FilterOptions.ScopeID
 				extras.CollectionId = m.CollectionID
 			}
@@ -156,7 +156,7 @@ func (f *GocbcoreDCPFeed) Deletion(d gocbcore.DcpDeletion) {
 				Datatype: d.Datatype,
 				Value:    d.Value,
 			}
-			if f.agent.HasCollectionsSupport() {
+			if f.supportsCollections {
 				extras.ScopeId = f.streamOptions.FilterOptions.ScopeID
 				extras.CollectionId = d.CollectionID
 			}
