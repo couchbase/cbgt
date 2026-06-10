@@ -221,9 +221,9 @@ func (am *gocbcoreAgentsMap) reconfigureSecurityForAgents(
 func (am *gocbcoreAgentsMap) createAgentsLOCKED(sourceName, sourceUUID,
 	sourceParams, server string, options map[string]string) (
 	*gocbcore.Agent, *gocbcore.DCPAgent, error) {
-	auth, err := gocbAuth(sourceParams, options["authType"])
+	auth, err := gocbcoreAuth(sourceParams, options["authType"])
 	if err != nil {
-		return nil, nil, fmt.Errorf("gocbcore_utils: createAgents, gocbAuth,"+
+		return nil, nil, fmt.Errorf("gocbcore_utils: createAgents, gocbcoreAuth,"+
 			" sourceName: %s, err: %v", sourceName, err)
 	}
 
@@ -597,9 +597,9 @@ func CBStats(sourceType, sourceName, sourceUUID,
 func CBVBucketLookUp(docID, serverIn string,
 	sourceDetails *IndexDef, req *http.Request) (string, error) {
 
-	auth, err := gocbAuth("", "cbauth")
+	auth, err := gocbcoreAuth("", "cbauth")
 	if err != nil {
-		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, gocbAuth,"+
+		return "", fmt.Errorf("gocbcore_utils: CBVBucketLookUp, gocbcoreAuth,"+
 			" sourceName: %s, err: %v", sourceDetails.SourceName, err)
 	}
 
@@ -666,6 +666,8 @@ func CBSourceUUIDLookUp(sourceName, sourceParams, serverIn string,
 
 // ----------------------------------------------------------------
 
+// NOTE: these authentication implementations are based on gocbcore.AuthProvider
+// interface which is not compatible with gocb.Authenticator interface used in cbft/gocb_utils.go
 type AuthParams struct {
 	AuthUser     string `json:"authUser"`
 	AuthPassword string `json:"authPassword"`
@@ -791,14 +793,14 @@ func (a *CBAuthenticator) SupportsNonTLS() bool {
 	return true
 }
 
-func gocbAuth(sourceParams string, authType string) (
+func gocbcoreAuth(sourceParams string, authType string) (
 	auth gocbcore.AuthProvider, err error) {
 	params := &AuthParams{}
 
 	if sourceParams != "" {
 		err := UnmarshalJSON([]byte(sourceParams), params)
 		if err != nil {
-			return nil, fmt.Errorf("gocbcore_utils: gocbAuth" +
+			return nil, fmt.Errorf("gocbcore_utils: gocbcoreAuth" +
 				" failed to parse sourceParams JSON to CBAuthParams")
 		}
 	}

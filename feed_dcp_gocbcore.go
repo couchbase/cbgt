@@ -221,9 +221,9 @@ func (dm *gocbcoreDCPAgentMap) fetchAgent(bucketName, bucketUUID, paramsStr,
 		dm.entries[key] = map[*gocbcore.DCPAgent]*dcpAgentDetails{}
 	}
 
-	auth, err := gocbAuth(paramsStr, options["authType"])
+	auth, err := gocbcoreAuth(paramsStr, options["authType"])
 	if err != nil {
-		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, gocbAuth,"+
+		return nil, fmt.Errorf("feed_dcp_gocbcore: fetchAgent, gocbcoreAuth,"+
 			" bucketName: %s, err: %v", bucketName, err)
 	}
 
