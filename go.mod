@@ -10,7 +10,7 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.5.2
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/tools-common/cloud/v8 v8.1.3
+	github.com/couchbase/tools-common/cloud/v8 v8.1.4
 	github.com/couchbase/tools-common/fs v1.0.3
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/gorilla/mux v1.8.0
