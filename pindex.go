@@ -81,6 +81,8 @@ func (p *PIndex) Close(remove bool) error {
 			log.Errorf("pindex: %s Close failed, err: %v", p.Name, err)
 			return err
 		}
+	} else if remove {
+		_ = os.RemoveAll(p.Path)
 	}
 
 	log.Printf("pindex: %s Close completed successfully", p.Name)
