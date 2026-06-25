@@ -340,13 +340,18 @@ func verifySourceExists(mgr *Manager, sourceName, sourceUUID, sourceParams strin
 		return nil
 	}
 
-	var scopeParams *ScopeParams
-	err = UnmarshalJSON([]byte(sourceParams), &scopeParams)
+	sourceParamsStruct := struct {
+		ScopeParams ScopeParams `json:"scopeParams"`
+	}{}
+	err = UnmarshalJSON([]byte(sourceParams), &sourceParamsStruct)
 	if err != nil {
-		return fmt.Errorf("pindex: could not parse sourceParams: %s, err: %v", sourceParams, err)
+		log.Warnf("unable to parse sourceParams %s, err: %v", sourceParams, err)
+		return nil
 	}
 
+	scopeParams := sourceParamsStruct.ScopeParams
 	if scopeParams.Name == "" {
+		log.Warnf("scope name is empty in sourceParams %s, err: %v", sourceParams, err)
 		return nil
 	}
 
