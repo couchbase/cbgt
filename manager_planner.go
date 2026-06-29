@@ -1252,8 +1252,15 @@ func CaseUpdatablePlan(indexDef *IndexDef,
 	var found bool
 
 	if begPlanPIndexes != nil && endPlanPIndexes != nil {
-		// Track the number of pindexes in the previous plan
-		numPIndexes := len(endPlanPIndexes.PlanPIndexes)
+		// Track the number of pindexes for this index in the previous plan.
+		// This must be scoped to the index being planned (matched by name) and
+		// computed from the previous plan (begPlanPIndexes).
+		numPIndexes := 0
+		for _, planPIndexPrev := range begPlanPIndexes.PlanPIndexes {
+			if planPIndexPrev.IndexName == indexDef.Name {
+				numPIndexes++
+			}
+		}
 		// Track updatable status since it will not change across all the pindexes in the plan.
 		updatable := -1
 
