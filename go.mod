@@ -12,7 +12,6 @@ require (
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/tools-common/cloud/v8 v8.1.4
 	github.com/couchbase/tools-common/fs v1.0.3
-	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/gorilla/mux v1.8.0
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	golang.org/x/net v0.48.0

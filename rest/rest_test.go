@@ -22,27 +22,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func TestInitStaticRouter(t *testing.T) {
-	r := mux.NewRouter()
-
-	staticDir := ""
-	staticETag := ""
-	pagesHandler := RewriteURL("/", http.FileServer(AssetFS()))
-
-	r = InitStaticRouter(r,
-		staticDir, staticETag, []string{
-			"/indexes",
-			"/nodes",
-			"/monitor",
-			"/manage",
-			"/logs",
-			"/debug",
-		}, pagesHandler)
-	if r == nil {
-		t.Errorf("expected r")
-	}
-}
-
 func TestMustEncode(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -99,7 +78,7 @@ func TestNewRESTRouter(t *testing.T) {
 		nil, "", 1, "", ":1000",
 		emptyDir, "some-datasource", nil)
 	r, meta, err := NewRESTRouter("v0", mgr, emptyDir, "", ring,
-		AssetDir, Asset)
+		nil, nil)
 	if r == nil || meta == nil || err != nil {
 		t.Errorf("expected no errors")
 	}
@@ -108,7 +87,7 @@ func TestNewRESTRouter(t *testing.T) {
 		[]string{"queryer", "anotherTag"},
 		"", 1, "", ":1000", emptyDir, "some-datasource", nil)
 	r, meta, err = NewRESTRouter("v0", mgr, emptyDir, "", ring,
-		AssetDir, Asset)
+		nil, nil)
 	if r == nil || meta == nil || err != nil {
 		t.Errorf("expected no errors")
 	}
@@ -202,7 +181,7 @@ func TestHandlersForRuntimeOps(t *testing.T) {
 	mr.Write([]byte("world"))
 
 	router, _, err := NewRESTRouter("v0", mgr, "static", "", mr,
-		AssetDir, Asset)
+		nil, nil)
 	if err != nil || router == nil {
 		t.Errorf("no mux router")
 	}
@@ -305,7 +284,7 @@ func TestHandlersForEmptyManager(t *testing.T) {
 	mgr.AddEvent([]byte(`"buzz"`))
 
 	router, _, err := NewRESTRouter("v0", mgr, "static", "", mr,
-		AssetDir, Asset)
+		nil, nil)
 	if err != nil || router == nil {
 		t.Errorf("no mux router")
 	}

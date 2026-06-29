@@ -1,13 +1,8 @@
 default: build
 
-build: gen-bindata
+build:
 	go build ./...
 	go build ./cmd/cbgt-ctl
-
-gen-bindata:
-	(cd rest; \
-     go-bindata-assetfs -pkg=rest ./static/... -o bindata_assetfs.go; \
-     gofmt -s -w bindata_assetfs.go)
 
 coverage:
 	go test -coverprofile=coverage.out -covermode=count
@@ -26,7 +21,6 @@ coverage:
 #   git grep v0.2.0 # Look for old version strings.
 #   git grep v0.2   # Look for old version strings.
 #   # Edit/update files, if any.
-#   # Ensure bindata_assetfs.go is up-to-date, by running...
 #   make build
 #   # Then, run tests...
 #   go test ./...

@@ -370,27 +370,15 @@ func (s *RESTFocusStats) AtomicCopyTo(r *RESTFocusStats) {
 // -------------------------------------------------------
 
 // NewRESTRouter creates a mux.Router initialized with the REST API
-// and web UI routes.  See also InitStaticRouter and InitRESTRouter if
-// you need finer control of the router initialization.
+// routes.  See also InitRESTRouter if you need finer control of the
+// router initialization.
 func NewRESTRouter(versionMain string, mgr *cbgt.Manager,
 	staticDir, staticETag string, mr *cbgt.MsgRing,
 	assetDir func(name string) ([]string, error),
 	asset func(name string) ([]byte, error)) (
 	*mux.Router, map[string]RESTMeta, error) {
-	prefix := mgr.GetOption("urlPrefix")
-
 	r := mux.NewRouter()
 	r.StrictSlash(true)
-
-	r = InitStaticRouterEx(r,
-		staticDir, staticETag, []string{
-			prefix + "/indexes",
-			prefix + "/nodes",
-			prefix + "/monitor",
-			prefix + "/manage",
-			prefix + "/logs",
-			prefix + "/debug",
-		}, nil, mgr)
 
 	return InitRESTRouter(r, versionMain, mgr,
 		staticDir, staticETag, mr, assetDir, asset)
