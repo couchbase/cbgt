@@ -21,10 +21,15 @@ import (
 
 type BadRequestError struct {
 	errMsg string
+	cause  error
 }
 
 func (e *BadRequestError) Error() string {
 	return e.errMsg
+}
+
+func (e *BadRequestError) Unwrap() error {
+	return e.cause
 }
 
 func NewBadRequestError(format string, args ...interface{}) error {
@@ -33,12 +38,26 @@ func NewBadRequestError(format string, args ...interface{}) error {
 	})
 }
 
+// WrapBadRequestError tags err as a BadRequestError while keeping the
+// original error chain available to errors.Is/errors.As.
+func WrapBadRequestError(err error) error {
+	return fmt.Errorf("%w", &BadRequestError{
+		errMsg: err.Error(),
+		cause:  err,
+	})
+}
+
 type InternalServerError struct {
 	errMsg string
+	cause  error
 }
 
 func (e *InternalServerError) Error() string {
 	return e.errMsg
+}
+
+func (e *InternalServerError) Unwrap() error {
+	return e.cause
 }
 
 func NewInternalServerError(format string, args ...interface{}) error {
@@ -178,7 +197,7 @@ func (mgr *Manager) CreateIndexEx(payload *CreateIndexPayload) (string, string, 
 		indexDef, err = pindexImplType.Prepare(mgr, indexDef)
 		if err != nil {
 			return adjustedIndexName, "", fmt.Errorf("manager_api: CreateIndex, Prepare failed,"+
-				" err: %v", err)
+				" err: %w", err)
 		}
 	}
 	payload.SourceParams = indexDef.SourceParams

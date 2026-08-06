@@ -330,9 +330,13 @@ func (h *CreateIndexHandler) ServeHTTP(
 			status = http.StatusBadRequest
 			atomic.AddUint64(&totalCreateIndexBadReqErr, 1)
 		}
-		ShowErrorBody(w, requestBody, fmt.Sprintf("rest_create_index:"+
+		var reason string
+		if errors.Is(err, cbgt.ErrSourceDoesNotExist) {
+			reason = "keyspace not found"
+		}
+		ShowErrorBodyWithReason(w, requestBody, fmt.Sprintf("rest_create_index:"+
 			" error creating index: %s, err: %v",
-			indexName, err), status)
+			indexName, err), reason, err.Error(), status)
 		return
 	}
 

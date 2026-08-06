@@ -304,7 +304,7 @@ func verifySourceExists(mgr *Manager, sourceName, sourceUUID, sourceParams strin
 		return nil
 	}
 
-	if isResponseEquivalentToResourceNotFound(string(resp)) {
+	if IsResponseEquivalentToResourceNotFound(string(resp)) {
 		return fmt.Errorf("bucket %s not found", sourceName)
 	}
 
@@ -332,7 +332,7 @@ func verifySourceExists(mgr *Manager, sourceName, sourceUUID, sourceParams strin
 		return nil
 	}
 
-	if isResponseEquivalentToResourceNotFound(string(resp)) {
+	if IsResponseEquivalentToResourceNotFound(string(resp)) {
 		return fmt.Errorf("bucket %s not found", sourceName)
 	}
 

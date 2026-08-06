@@ -24,7 +24,9 @@ var resourceNotFoundStrs = []string{
 	"Attempt to access non existent bucket",
 }
 
-func isResponseEquivalentToResourceNotFound(resp string) bool {
+// IsResponseEquivalentToResourceNotFound checks whether an ns_server
+// response body indicates that the requested bucket does not exist.
+func IsResponseEquivalentToResourceNotFound(resp string) bool {
 	for _, str := range resourceNotFoundStrs {
 		if strings.Contains(string(resp), str) {
 			return true
@@ -136,7 +138,7 @@ func isBucketAlive(mgr *Manager, sourceUUID, bucketName string, force bool,
 			// in case of a marshalling error, let's quickly check if it's
 			// the situation of ns_server reporting that the "Requested resource not found.";
 			// if so, we can safely assume that the bucket is deleted.
-			if isResponseEquivalentToResourceNotFound(string(resp)) {
+			if IsResponseEquivalentToResourceNotFound(string(resp)) {
 				return true, nil
 			}
 			return false, fmt.Errorf("response: %v, err: %v", string(resp), err)
@@ -167,6 +169,10 @@ func obtainBucketManifest(mgr *Manager, bucketName string, force bool,
 		resp, err := GetPoolsDefaultForBucket(mgr.Server(), bucketName, true)
 		if err != nil {
 			return nil, fmt.Errorf("manifest: error fetching manifest, err: %v", err)
+		}
+		if IsResponseEquivalentToResourceNotFound(string(resp)) {
+			return nil, fmt.Errorf("manifest: bucket '%s' does not exist,"+
+				" err: %w", bucketName, ErrSourceDoesNotExist)
 		}
 		var rv manifest
 		if err = rv.UnmarshalJSON(resp); err != nil {
@@ -235,7 +241,7 @@ func (b *BucketScopeInfoTracker) createListener(bucket string) {
 			broadcastCacheUpdate(bucketScopeInfo)
 			b.m.Unlock()
 		}()
-		if isResponseEquivalentToResourceNotFound(string(data)) {
+		if IsResponseEquivalentToResourceNotFound(string(data)) {
 			if !isClosed(b.bucketScopeInfo[bucket].stopCh) {
 				close(b.bucketScopeInfo[bucket].stopCh)
 			}

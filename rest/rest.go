@@ -61,7 +61,25 @@ func ShowErrorBody(w http.ResponseWriter, requestBody []byte, msg string, code i
 	PropagateError(w, requestBody, msg, code)
 }
 
+// ShowErrorBodyWithReason works like ShowErrorBody, but additionally
+// includes a short human-readable "reason" for the failure and a
+// "details" string carrying the underlying error chain in the response.
+func ShowErrorBodyWithReason(w http.ResponseWriter, requestBody []byte,
+	msg, reason, errDetails string, code int) {
+	log.Errorf("rest: error code: %d, msg: %s", code, msg)
+	PropagateErrorWithReason(w, requestBody, msg, reason, errDetails, code)
+}
+
 func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code int) {
+	PropagateErrorWithReason(w, requestBody, msg, "", "", code)
+}
+
+// PropagateErrorWithReason writes an error response whose payload carries,
+// besides the legacy flat "error" string (retained for backward
+// compatibility), a short "reason" for the failure and a "details" string
+// with the underlying error chain, whenever a reason is available.
+func PropagateErrorWithReason(w http.ResponseWriter, requestBody []byte,
+	msg, reason, errDetails string, code int) {
 	if isRetryableError(code) {
 		w.Header().Set("Retry-After", RetryAfter)
 	}
@@ -69,6 +87,11 @@ func PropagateError(w http.ResponseWriter, requestBody []byte, msg string, code 
 	details := map[string]interface{}{
 		"status": "fail",
 		"error":  msg,
+	}
+
+	if reason != "" {
+		details["reason"] = reason
+		details["details"] = errDetails
 	}
 
 	if requestBody != nil {
