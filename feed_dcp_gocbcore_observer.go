@@ -41,8 +41,21 @@ type GocbcoreDCPExtras struct {
 // ----------------------------------------------------------------
 
 // GocbcoreDCPFeed's implementation of the gocbcore.StreamObserver interface.
+//
+// MB-70770: the data-path callbacks below are fenced on the feed's closed
+// state. A torn-down feed's connection can still deliver buffered events
+// into Dests that its replacement feed is concurrently writing to — two
+// dispatchers for one vbucket — which can resurrect a deleted document as
+// a permanent ghost. Drops are counted in TotDCPStaleEventsDropped. End()
+// is deliberately not fenced: it drives teardown accounting (complete()),
+// and its reconnect path is already fenced in initiateStreamEx.
 
 func (f *GocbcoreDCPFeed) SnapshotMarker(sm gocbcore.DcpSnapshotMarker) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("SnapshotMarker", sm.VbID, uint64(sm.StartSeqNo))
+		return
+	}
+
 	if f.currVBs[sm.VbID] == nil {
 		f.onError(true,
 			fmt.Errorf("[vb:%v stream:%v] SnapshotMarker, invalid vb", sm.VbID, sm.StreamID))
@@ -81,6 +94,11 @@ func (f *GocbcoreDCPFeed) SnapshotMarker(sm gocbcore.DcpSnapshotMarker) {
 }
 
 func (f *GocbcoreDCPFeed) Mutation(m gocbcore.DcpMutation) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("Mutation", m.VbID, uint64(m.SeqNo))
+		return
+	}
+
 	if err := f.checkAndUpdateVBucketState(m.VbID); err != nil {
 		f.onError(true,
 			fmt.Errorf("[vb:%v stream:%v] Mutation, %v", m.VbID, m.StreamID, err))
@@ -137,6 +155,11 @@ func (f *GocbcoreDCPFeed) Mutation(m gocbcore.DcpMutation) {
 }
 
 func (f *GocbcoreDCPFeed) Deletion(d gocbcore.DcpDeletion) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("Deletion", d.VbID, uint64(d.SeqNo))
+		return
+	}
+
 	if err := f.checkAndUpdateVBucketState(d.VbID); err != nil {
 		f.onError(true,
 			fmt.Errorf("[vb:%v stream:%v] Deletion, %v", d.VbID, d.StreamID, err))
@@ -192,6 +215,11 @@ func (f *GocbcoreDCPFeed) Deletion(d gocbcore.DcpDeletion) {
 }
 
 func (f *GocbcoreDCPFeed) Expiration(e gocbcore.DcpExpiration) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("Expiration", e.VbID, uint64(e.SeqNo))
+		return
+	}
+
 	f.Deletion(gocbcore.DcpDeletion{
 		SeqNo:        e.SeqNo,
 		RevNo:        e.RevNo,
@@ -240,6 +268,19 @@ func (f *GocbcoreDCPFeed) End(e gocbcore.DcpStreamEnd, err error) {
 		f.complete(e.VbID)
 		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
 			" closed by consumer", f.Name(), e.StreamID, e.VbID)
+	} else if errors.Is(err, gocbcore.ErrRequestCanceled) {
+		// MB-70770: a synthesized end from Cancel()ing a retained
+		// OpenStream op — on an opened DCP stream, only this feed's own
+		// cancels surface as ErrRequestCanceled. If the feed is closed,
+		// this is close()'s routing teardown: complete the vb. If not,
+		// it is a superseded handle whose vb has a live replacement
+		// stream, so leave its bookkeeping alone.
+		if f.isClosed() {
+			f.complete(e.VbID)
+		}
+		log.Debugf("feed_dcp_gocbcore: [%s] DCP stream [%v] for vb: %v,"+
+			" routing canceled (feed closed: %t)",
+			f.Name(), e.StreamID, e.VbID, f.isClosed())
 	} else {
 		f.complete(e.VbID)
 		log.Warnf("feed_dcp_gocbcore: [%s] DCP stream [%v] closed for vb: %v,"+
@@ -249,6 +290,11 @@ func (f *GocbcoreDCPFeed) End(e gocbcore.DcpStreamEnd, err error) {
 }
 
 func (f *GocbcoreDCPFeed) CreateCollection(c gocbcore.DcpCollectionCreation) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("CreateCollection", c.VbID, uint64(c.SeqNo))
+		return
+	}
+
 	if err := f.checkAndUpdateVBucketState(c.VbID); err != nil {
 		f.onError(true,
 			fmt.Errorf("[vb:%v stream:%v] CreateCollection, %v", c.VbID, c.StreamID, err))
@@ -292,6 +338,11 @@ func (f *GocbcoreDCPFeed) CreateCollection(c gocbcore.DcpCollectionCreation) {
 }
 
 func (f *GocbcoreDCPFeed) DeleteCollection(d gocbcore.DcpCollectionDeletion) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("DeleteCollection", d.VbID, uint64(d.SeqNo))
+		return
+	}
+
 	// initiate a feed closure on collection delete
 	f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] DeleteCollection,"+
 		" vb: %v, stream: %v, collection uid: %d",
@@ -307,6 +358,11 @@ func (f *GocbcoreDCPFeed) CreateScope(c gocbcore.DcpScopeCreation) {
 }
 
 func (f *GocbcoreDCPFeed) DeleteScope(d gocbcore.DcpScopeDeletion) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("DeleteScope", d.VbID, uint64(d.SeqNo))
+		return
+	}
+
 	// initiate a feed closure on scope delete
 	f.initiateShutdown(fmt.Errorf("feed_dcp_gocbcore: [%s] DeleteScope,"+
 		" vb: %v, stream: %v, scope uid: %d",
@@ -318,6 +374,11 @@ func (f *GocbcoreDCPFeed) ModifyCollection(m gocbcore.DcpCollectionModification)
 }
 
 func (f *GocbcoreDCPFeed) OSOSnapshot(o gocbcore.DcpOSOSnapshot) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("OSOSnapshot", o.VbID, 0)
+		return
+	}
+
 	if err := f.checkAndUpdateVBucketState(o.VbID); err != nil {
 		f.onError(true,
 			fmt.Errorf("[vb:%v stream:%v] OSOSnapshot, %v", o.VbID, o.StreamID, err))
@@ -340,6 +401,11 @@ func (f *GocbcoreDCPFeed) OSOSnapshot(o gocbcore.DcpOSOSnapshot) {
 }
 
 func (f *GocbcoreDCPFeed) SeqNoAdvanced(s gocbcore.DcpSeqNoAdvanced) {
+	if f.isClosed() {
+		f.dropStaleObserverEvent("SeqNoAdvanced", s.VbID, uint64(s.SeqNo))
+		return
+	}
+
 	if err := f.checkAndUpdateVBucketState(s.VbID); err != nil {
 		f.onError(true,
 			fmt.Errorf("[vb:%v stream:%v] SeqNoAdvanced, %v", s.VbID, s.StreamID, err))
