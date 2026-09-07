@@ -176,21 +176,29 @@ type WantSeqs map[string]map[string]map[string]cbgt.UUIDSeq
 
 // checkpoints the rebalance status in the cfg
 func CheckPointRebalanceStatus(cfg cbgt.Cfg, status cbgt.LastRebalanceStatus) error {
-	_, cas, err := cbgt.CfgGetLastRebalanceStatus(cfg)
-	if err != nil {
-		log.Errorf("rebalance_checkpoint: GetLastRebalanceStatus, err: %v",
-			err)
-		return err
+	// The Cfg entry is CAS'ed on, so re-read and retry whenever another
+	// node checkpoints in between the read and the write.
+	checkPointFunc := func() error {
+		_, cas, err := cbgt.CfgGetLastRebalanceStatus(cfg)
+		if err != nil {
+			log.Errorf("rebalance_checkpoint: GetLastRebalanceStatus, err: %v",
+				err)
+			return err
+		}
+
+		_, err = cbgt.CfgSetLastRebalanceStatus(cfg, status, cas)
+		if err != nil {
+			if _, ok := err.(*cbgt.CfgCASError); !ok {
+				log.Errorf("rebalance_checkpoint: SetLastRebalanceStatus:%v, "+
+					"err:%v", status, err)
+			}
+			return err
+		}
+
+		return nil
 	}
 
-	_, err = cbgt.CfgSetLastRebalanceStatus(cfg, status, cas)
-	if err != nil {
-		log.Errorf("rebalance_checkpoint: SetLastRebalanceStatus:%v, "+
-			"err:%v", status, err)
-		return err
-	}
-
-	return nil
+	return cbgt.RetryOnCASMismatch(checkPointFunc, 10)
 }
 
 // StartRebalance begins a concurrent, cluster-wide rebalancing of all

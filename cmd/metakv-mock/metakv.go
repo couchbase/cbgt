@@ -49,7 +49,35 @@ type listEntry struct {
 
 var store map[string]*dataEntry
 var list []*listEntry
+
+// revCounter mints a fresh rev on every mutation so that a stale rev
+// can be told apart from the current one, which is what lets a test
+// exercise the rev mismatch path.  Real metakv revs are opaque blobs;
+// decimal digits keep these readable and, being left alone by
+// url.Values.Encode(), keep parseBody() honest.
+var revCounter int
+
 var rpcBody string = "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"AuthCacheSvc.UpdateDB\",\"params\":[{\"specialUser\":\"@fts-cbauth\",\"nodes\":[{\"host\":\"127.0.0.1\",\"user\":\"_admin\",\"password\":\"c55756e3cf12269e4b49eb8cba10389d\",\"ports\":[9000,9200,9100,9101,9102,9103,9104,9105,9500,10000,12000,12001,9499],\"local\":true}],\"buckets\":[{\"name\":\"gamesim-sample\",\"password\":\"\"}],\"tokenCheckURL\":\"http://127.0.0.1:9000/_cbauth\",\"admin\":{\"user\":\"Administrator\",\"salt\":\"h+bTDx1y7VfNymzHos93kQ==\",\"mac\":\"XFaBj6SzQyzkNYMnRzt117OAhB0=\"}}]}"
+
+func nextRev() []byte {
+	revCounter++
+	return []byte(fmt.Sprintf("%d", revCounter))
+}
+
+// revMatches reports whether a mutation carrying rev may proceed.  An
+// empty rev is metakv's unconditional mutation, and matches anything.
+func revMatches(path, rev string) bool {
+	if rev == "" {
+		return true
+	}
+
+	cur := store[path]
+	if cur == nil {
+		return false
+	}
+
+	return string(cur.K.Rev) == rev
+}
 
 func sendData(w http.ResponseWriter, p string) {
 	data := []byte{}
@@ -156,18 +184,51 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		fmt.Printf("got body %s", body)
 		b := parseBody(string(body))
+		// ns_server answers a mutation whose rev is no longer the
+		// current one with a 409, which the metakv client surfaces as
+		// metakv.ErrRevMismatch.
+		if !revMatches(r.URL.Path, b["rev"]) {
+			fmt.Printf("rev mismatch on PUT %s, got rev %q",
+				r.URL.Path, b["rev"])
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
 		x, _ := url.Parse(b["value"])
 		v := x.Path
 		en := KvEntry{
 			Path:  r.URL.Path,
 			Value: []byte(v),
-			Rev:   []byte("1"),
+			Rev:   nextRev(),
 		}
 		fmt.Printf("storing entry is %v", en)
 		store[r.URL.Path] = &dataEntry{K: en}
 		w.WriteHeader(http.StatusOK)
 		val, _ := json.Marshal(en)
 		checkList(r.URL.Path, val)
+		return
+	}
+	if r.Method == "DELETE" {
+		// A DELETE carries its params in the query string rather than
+		// the body, and a dirpath (trailing "/") is a recursive delete
+		// of everything below it.
+		rev := r.URL.Query().Get("rev")
+		if strings.HasSuffix(r.URL.Path, "/") {
+			for k := range store {
+				if strings.HasPrefix(k, r.URL.Path) {
+					delete(store, k)
+				}
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !revMatches(r.URL.Path, rev) {
+			fmt.Printf("rev mismatch on DELETE %s, got rev %q",
+				r.URL.Path, rev)
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		delete(store, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	query := r.URL.Query()

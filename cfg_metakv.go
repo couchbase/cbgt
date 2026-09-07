@@ -9,7 +9,9 @@
 package cbgt
 
 import (
+	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -45,6 +47,15 @@ import (
 // Eventually, metakv replication will occur, and a reader will see a
 // union of NodeDef values that CfgMetaKv reconstructs on the fly for
 // the entire "directory".
+//
+// The CAS values that CfgMetaKv hands out for its non-composite
+// entries come from the opaque revisions ("rev"s) that metakv keeps
+// per key, as the Cfg API has no room for a rev.  A Get() pairs the
+// entry's current rev with a CAS, and a Set()/Del() carrying that CAS
+// resolves it back to the rev for metakv to compare against.
+//
+// A CAS from a Set() cannot be CAS'ed on, as metakv does not report
+// the rev that it assigned; mutating again means Get()'ing first.
 
 // Prefix of paths stored in metakv, and should be immutable after
 // process init()'ialization.
@@ -115,7 +126,12 @@ type CfgMetaKv struct {
 	lastSplitCAS uint64
 	splitEntries map[string]CfgMetaKvEntry
 	nsServerUrl  string
-	lastCAS      uint64 // Applicable to non-split metaKVEntries _only_
+
+	// Applicable to non-split metaKVEntries only: lastCAS is the
+	// source of their CAS values, and revEntries maps each current
+	// CAS back to the metakv rev it came from.
+	lastCAS    uint64
+	revEntries map[string]cfgMetaKvRev
 
 	advMetaEncodingSupported int32
 
@@ -126,6 +142,27 @@ type CfgMetaKv struct {
 type CfgMetaKvEntry struct {
 	cas  uint64
 	data []byte
+}
+
+// cfgMetaKvRev pairs a non-composite key's metakv rev with the CAS
+// handed out for it.  A fresh CAS is created only when a Get() sees a
+// rev differing from the recorded one, so repeated Get()'s of an
+// unchanged entry keep returning the same CAS.
+type cfgMetaKvRev struct {
+	cas uint64
+	rev interface{}
+}
+
+// sameRev compares two opaque metakv revs.
+func sameRev(a, b interface{}) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+
+	aBytes, aOk := a.([]byte)
+	bBytes, bOk := b.([]byte)
+
+	return aOk && bOk && bytes.Equal(aBytes, bBytes)
 }
 
 // VersionReader is an interface to be implemented by the
@@ -149,6 +186,7 @@ func NewCfgMetaKv(nodeUUID string, options map[string]string) (*CfgMetaKv, error
 		cfgMem:       NewCfgMem(),
 		cancelCh:     make(chan struct{}),
 		splitEntries: map[string]CfgMetaKvEntry{},
+		revEntries:   map[string]cfgMetaKvRev{},
 
 		readersPool: &sync.Pool{New: func() interface{} { return new(gzip.Reader) }},
 		writersPool: &sync.Pool{New: func() interface{} { return new(gzip.Writer) }},
@@ -195,10 +233,15 @@ func (c *CfgMetaKv) getLOCKED(key string, cas uint64) ([]byte, uint64, error) {
 	return c.getRawLOCKED(key, cas)
 }
 
+// getRawLOCKED reads a non-composite entry from metakv and returns a
+// CAS standing for the rev it was read at, so that a later
+// setRawLOCKED()/delRawLOCKED() can compare-and-swap against exactly
+// that version.  An incoming non-zero cas is not matched, as before.
+// Must be invoked with c.m.Lock()'ed.
 func (c *CfgMetaKv) getRawLOCKED(key string, cas uint64) ([]byte, uint64, error) {
 	path := c.keyToPath(key)
 
-	v, _, err := metakv.Get(path) // TODO: Handle rev.
+	v, rev, err := metakv.Get(path)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -208,7 +251,75 @@ func (c *CfgMetaKv) getRawLOCKED(key string, cas uint64) ([]byte, uint64, error)
 		return nil, 0, err
 	}
 
-	return v, 1, nil
+	if rev == nil {
+		// metakv reports a missing path as a nil value and nil rev.
+		delete(c.revEntries, key)
+
+		return v, 0, nil
+	}
+
+	return v, c.recordRevLOCKED(key, rev), nil
+}
+
+// recordRevLOCKED associates rev with key, reusing the CAS already
+// handed out if the rev has not moved on, and creating a fresh one
+// otherwise.  Must be invoked with c.m.Lock()'ed.
+func (c *CfgMetaKv) recordRevLOCKED(key string, rev interface{}) uint64 {
+	if entry, exists := c.revEntries[key]; exists && sameRev(entry.rev, rev) {
+		return entry.cas
+	}
+
+	c.lastCAS++
+
+	c.revEntries[key] = cfgMetaKvRev{cas: c.lastCAS, rev: rev}
+
+	return c.lastCAS
+}
+
+// forgetRevLOCKED creates a CAS for key with no rev behind it, which
+// is what a successful mutation leaves, as metakv does not report the
+// rev it assigned.  A later mutation carrying such a CAS gets a
+// CfgCASError, forcing a re-read rather than a blind overwrite.
+// Must be invoked with c.m.Lock()'ed.
+// This entire thing is techincally unnecessary because none of the
+// callers of Set actually do anything with the returned cas.
+// Leaving here anyways in case someone tries to use the returned cas.
+func (c *CfgMetaKv) forgetRevLOCKED(key string) uint64 {
+	c.lastCAS++
+
+	c.revEntries[key] = cfgMetaKvRev{cas: c.lastCAS}
+
+	return c.lastCAS
+}
+
+// revForCASLOCKED maps a CAS back to the metakv rev it came from, for
+// metakv to compare-and-swap on.  A zero CAS ("don't care") and
+// CFG_CAS_FORCE map to a nil rev, an unconditional mutation; a CAS
+// that is no longer the key's current one is a conflict.
+// Must be invoked with c.m.Lock()'ed.
+func (c *CfgMetaKv) revForCASLOCKED(key string, cas uint64) (
+	interface{}, error) {
+	if cas == 0 || cas == CFG_CAS_FORCE {
+		return nil, nil
+	}
+
+	entry, exists := c.revEntries[key]
+	if !exists || entry.cas != cas {
+		log.Warnf("cfg_metakv: key: %v, stale cas: %x, cur cas: %x",
+			key, cas, entry.cas)
+
+		return nil, &CfgCASError{}
+	}
+
+	if entry.rev == nil {
+		// See forgetRevLOCKED(): no rev, so re-read before mutating.
+		log.Warnf("cfg_metakv: key: %v, cas: %x has no rev to CAS on",
+			key, cas)
+
+		return nil, &CfgCASError{}
+	}
+
+	return entry.rev, nil
 }
 
 func (c *CfgMetaKv) Set(key string, val []byte, cas uint64) (
@@ -233,23 +344,42 @@ func (c *CfgMetaKv) setLOCKED(key string, val []byte, cas uint64) (
 	return c.setRawLOCKED(key, val, cas)
 }
 
+// setRawLOCKED writes a non-composite entry, letting metakv
+// compare-and-swap against the rev the incoming cas came from.  The
+// cas returned is not resolvable to a rev; see forgetRevLOCKED().
+// Must be invoked with c.m.Lock()'ed.
 func (c *CfgMetaKv) setRawLOCKED(key string, val []byte, cas uint64) (
 	uint64, error) {
 	path := c.keyToPath(key)
 
-	val, err := c.compressLocked(val)
+	// Resolve the rev first: compressLocked() below reads from the Cfg
+	// and so can move this key's CAS bookkeeping along.
+	rev, err := c.revForCASLOCKED(key, cas)
+	if err != nil {
+		return 0, err
+	}
+
+	val, err = c.compressLocked(val)
 	if err != nil {
 		return 0, err
 	}
 
 	log.Printf("cfg_metakv: Set path: %v", path)
 
-	err = metakv.Set(path, val, nil) // TODO: Handle rev better.
+	err = metakv.Set(path, val, rev)
 	if err != nil {
+		if errors.Is(err, metakv.ErrRevMismatch) {
+			// The entry moved on since its CAS was handed out.
+			log.Warnf("cfg_metakv: Set, key: %v, cas: %x, rev mismatch",
+				key, cas)
+
+			return 0, &CfgCASError{}
+		}
+
 		return 0, err
 	}
 
-	return 1, nil
+	return c.forgetRevLOCKED(key), nil
 }
 
 func (c *CfgMetaKv) Del(key string, cas uint64) error {
@@ -269,10 +399,32 @@ func (c *CfgMetaKv) delLOCKED(key string, cas uint64) error {
 	return c.delRawLOCKED(key, cas)
 }
 
+// delRawLOCKED removes a non-composite entry, letting metakv
+// compare-and-swap against the rev the incoming cas came from.
+// Must be invoked with c.m.Lock()'ed.
 func (c *CfgMetaKv) delRawLOCKED(key string, cas uint64) error {
 	path := c.keyToPath(key)
 
-	return metakv.Delete(path, nil) // TODO: Handle rev better.
+	rev, err := c.revForCASLOCKED(key, cas)
+	if err != nil {
+		return err
+	}
+
+	err = metakv.Delete(path, rev)
+	if err != nil {
+		if errors.Is(err, metakv.ErrRevMismatch) {
+			log.Warnf("cfg_metakv: Del, key: %v, cas: %x, rev mismatch",
+				key, cas)
+
+			return &CfgCASError{}
+		}
+
+		return err
+	}
+
+	delete(c.revEntries, key)
+
+	return nil
 }
 
 func (c *CfgMetaKv) Load() error {
@@ -563,37 +715,19 @@ func (a *cfgMetaKvNodeDefsSplitHandler) del(
 
 type cfgMetaKvIndexDefsHandler struct{}
 
+// set() stores the indexDefs as a single metakv entry; the CAS check
+// is the rev based one that setRawLOCKED() runs against metakv.
 // set() must be invoked with c.m.Lock()'ed.
 func (a *cfgMetaKvIndexDefsHandler) set(
 	c *CfgMetaKv, key string, val []byte, cas uint64) (uint64, error) {
-	// Skipping CAS checks if the force key is passed.
-	if cas != CFG_CAS_FORCE && cas != 0 && cas != c.lastCAS {
-		log.Warnf("cfg_metakv: Set, key: %v, cas mismatch: %x != %x",
-			key, cas, c.lastCAS)
-
-		return 0, &CfgCASError{}
-	}
-
-	_, err := c.setRawLOCKED(key, val, cas)
-	if err != nil {
-		return 0, err
-	}
-
-	casResult := c.lastCAS + 1
-	c.lastCAS = casResult
-	return casResult, nil
+	return c.setRawLOCKED(key, val, cas)
 }
 
 // get(..) retrieves entry from metakv for composite indexDefs;
 // must be invoked with c.m.Lock()'ed.
 func (a *cfgMetaKvIndexDefsHandler) get(
 	c *CfgMetaKv, key string, cas uint64) ([]byte, uint64, error) {
-	data, _, err := c.getRawLOCKED(key, cas)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return data, c.lastCAS, nil
+	return c.getRawLOCKED(key, cas)
 }
 
 func (a *cfgMetaKvIndexDefsHandler) del(

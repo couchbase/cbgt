@@ -98,15 +98,133 @@ func TestMetaKV(t *testing.T) {
 	options["nsServerUrl"] = "http://127.0.0.0:9000"
 
 	g, _ := NewCfgMetaKv(NewUUID(), options)
-	cas, _ := g.Set("test", []byte("test2"), 2)
-	val, _, err := g.Get("test", cas)
+	defer g.Del("test", CFG_CAS_FORCE)
+
+	// A zero cas is a "don't care", create-or-update set.
+	casSet, err := g.Set("test", []byte("test2"), 0)
 	if err != nil {
-		t.Errorf("error in setting simple key in metakv")
+		t.Fatalf("error in setting simple key in metakv: %v", err)
+	}
+
+	val, casGet, err := g.Get("test", 0)
+	if err != nil {
+		t.Fatalf("error in getting simple key from metakv: %v", err)
 	}
 	if "test2" != string(val) {
 		t.Errorf("wrong get value from metakv")
 	}
 
+	// metakv never reports the rev that a Set() landed on, so a cas
+	// from a Set() cannot be CAS'ed on -- only a Get() mints one that
+	// resolves back to a rev.
+	if casGet == casSet {
+		t.Errorf("expected the Get cas to differ from the Set cas: %x",
+			casSet)
+	}
+
+	_, err = g.Set("test", []byte("test3"), casSet)
+	if _, ok := err.(*CfgCASError); !ok {
+		t.Errorf("expected a CfgCASError on a Set's cas, got: %v", err)
+	}
+
+	// Nor may a cas that was never handed out for this key at all;
+	// this one is caught locally, before metakv is ever asked.
+	_, err = g.Set("test", []byte("test3"), casGet+1)
+	if _, ok := err.(*CfgCASError); !ok {
+		t.Errorf("expected a CfgCASError on an unknown cas, got: %v", err)
+	}
+
+	val, _, err = g.Get("test", 0)
+	if err != nil || "test2" != string(val) {
+		t.Errorf("expected the rejected Set()'s to have left the entry"+
+			" alone, val: %s, err: %v", val, err)
+	}
+
+	// ... whereas the cas that the Get() handed out must.
+	if _, err = g.Set("test", []byte("test3"), casGet); err != nil {
+		t.Errorf("unexpected error setting with the Get cas: %v", err)
+	}
+
+	// A missing entry has no cas to hand out.
+	if val, casGet, err = g.Get("key-not-there", 0); err != nil ||
+		val != nil || casGet != 0 {
+		t.Errorf("expected no hit on key-not-there,"+
+			" val: %s, cas: %x, err: %v", val, casGet, err)
+	}
+}
+
+// Tests the CAS check that runs inside metakv rather than in the local
+// rev bookkeeping: a cas that is still the current one for this
+// CfgMetaKv, but whose rev another node has already moved past.
+func TestMetaKVRevMismatch(t *testing.T) {
+	options := make(map[string]string)
+	options["nsServerUrl"] = "http://127.0.0.0:9000"
+
+	g, _ := NewCfgMetaKv(NewUUID(), options)
+
+	// A second CfgMetaKv stands in for another node: it mutates the
+	// entry behind g's back, so the rev that g holds goes stale in
+	// metakv without g's own bookkeeping noticing.
+	other, _ := NewCfgMetaKv(NewUUID(), options)
+
+	defer g.Del("test-rev", CFG_CAS_FORCE)
+
+	if _, err := g.Set("test-rev", []byte("v1"), 0); err != nil {
+		t.Fatalf("error in setting the key: %v", err)
+	}
+
+	// g mints a cas for the rev that the entry is at right now.
+	val, cas, err := g.Get("test-rev", 0)
+	if err != nil || "v1" != string(val) {
+		t.Fatalf("error in getting the key, val: %s, err: %v", val, err)
+	}
+	if cas == 0 {
+		t.Fatalf("expected a non-zero cas for an entry with a rev")
+	}
+
+	// The other node lands its update first, moving the rev on.
+	if _, err = other.Set("test-rev", []byte("v2"), 0); err != nil {
+		t.Fatalf("error in setting the key from the other node: %v", err)
+	}
+
+	// g's cas is still g's current one, so this gets past the local
+	// check and is rejected by metakv itself.
+	_, err = g.Set("test-rev", []byte("v3"), cas)
+	if _, ok := err.(*CfgCASError); !ok {
+		t.Errorf("expected a CfgCASError from metakv's rev check on Set,"+
+			" got: %v", err)
+	}
+
+	// The losing Set() must not have clobbered the winner.
+	if val, _, err = g.Get("test-rev", 0); err != nil || "v2" != string(val) {
+		t.Errorf("expected the other node's update to have survived,"+
+			" val: %s, err: %v", val, err)
+	}
+
+	// Del() is guarded by the same rev check.  Re-stale g's cas the
+	// same way, as the Get() above has since refreshed it.
+	_, cas, err = g.Get("test-rev", 0)
+	if err != nil {
+		t.Fatalf("error in re-getting the key: %v", err)
+	}
+
+	if _, err = other.Set("test-rev", []byte("v4"), 0); err != nil {
+		t.Fatalf("error in re-setting the key from the other node: %v", err)
+	}
+
+	if err = g.Del("test-rev", cas); err != nil {
+		if _, ok := err.(*CfgCASError); !ok {
+			t.Errorf("expected a CfgCASError from metakv's rev check on"+
+				" Del, got: %v", err)
+		}
+	} else {
+		t.Errorf("expected the Del with a stale rev to be rejected")
+	}
+
+	if val, _, err = g.Get("test-rev", 0); err != nil || "v4" != string(val) {
+		t.Errorf("expected the rejected Del to have left the entry alone,"+
+			" val: %s, err: %v", val, err)
+	}
 }
 
 func TestCfgSetNodeDefs(t *testing.T) {
