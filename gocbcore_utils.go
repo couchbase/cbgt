@@ -476,16 +476,105 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	}
 
 	// Build list of all collection IDs from the manifest
-	collectionsIDtoName := map[uint32]string{}
+	var collIDs []uint32
 	for _, manifestScope := range info.manifest.Scopes {
 		for _, coll := range manifestScope.Collections {
-			collectionsIDtoName[coll.UID] = manifestScope.Name + ":" + coll.Name
+			collIDs = append(collIDs, coll.UID)
 		}
 	}
 
+	rv, err := cbPartitionSeqsForCollIDs(info, collIDs)
+	if err != nil {
+		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs, %v", err)
+	}
+
+	return rv, nil
+}
+
+// CBPartitionSeqsForCollections is like CBPartitionSeqs, but only
+// considers the given collections of the given scope (or all the
+// collections of the scope when none are given). This yields the
+// high seqno per vbucket that a DCP stream filtered to just those
+// collections can actually reach, unlike the bucket wide high seqno
+// which keeps advancing with mutations to unrelated collections.
+func CBPartitionSeqsForCollections(sourceName, sourceUUID,
+	sourceParams, serverIn string, options map[string]string,
+	scope string, collections []string) (
+	map[string]UUIDSeq, error) {
+	if options["disableCollectionsSupport"] == "true" {
+		return nil,
+			fmt.Errorf("gocbcore_utils: CBPartitionSeqsForCollections," +
+				" collections support is disabled")
+	}
+
+	info, err := cbGetClusterInfo(sourceName, sourceUUID,
+		sourceParams, serverIn, options, nil)
+	if err != nil {
+		return nil,
+			fmt.Errorf("gocbcore_utils: CBPartitionSeqsForCollections, %v", err)
+	}
+
+	collIDs, err := manifestCollectionIDs(info.manifest, scope, collections)
+	if err != nil {
+		return nil,
+			fmt.Errorf("gocbcore_utils: CBPartitionSeqsForCollections, %v", err)
+	}
+
+	rv, err := cbPartitionSeqsForCollIDs(info, collIDs)
+	if err != nil {
+		return nil,
+			fmt.Errorf("gocbcore_utils: CBPartitionSeqsForCollections, %v", err)
+	}
+
+	return rv, nil
+}
+
+// manifestCollectionIDs resolves the collection names of a scope to
+// their IDs using the given manifest. All the collections of the scope
+// are returned when no collection names are given.
+func manifestCollectionIDs(manifest *gocbcore.Manifest, scope string,
+	collections []string) ([]uint32, error) {
+	for _, manifestScope := range manifest.Scopes {
+		if manifestScope.Name != scope {
+			continue
+		}
+
+		if len(collections) == 0 {
+			collIDs := make([]uint32, 0, len(manifestScope.Collections))
+			for _, coll := range manifestScope.Collections {
+				collIDs = append(collIDs, coll.UID)
+			}
+			return collIDs, nil
+		}
+
+		collIDs := make([]uint32, 0, len(collections))
+		for _, collName := range collections {
+			found := false
+			for _, coll := range manifestScope.Collections {
+				if coll.Name == collName {
+					collIDs = append(collIDs, coll.UID)
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("collection: %s not found in scope: %s",
+					collName, scope)
+			}
+		}
+		return collIDs, nil
+	}
+
+	return nil, fmt.Errorf("scope: %s not found", scope)
+}
+
+// cbPartitionSeqsForCollIDs returns a map keyed by partition/vbucket ID
+// with the highest seqno across the given collections in that vbucket.
+func cbPartitionSeqsForCollIDs(info *clusterInfo, collIDs []uint32) (
+	map[string]UUIDSeq, error) {
 	// Create filter options for each collection
-	filterOptionsList := make([]*gocbcore.GetVbucketSeqnoFilterOptions, 0, len(collectionsIDtoName))
-	for collID := range collectionsIDtoName {
+	filterOptionsList := make([]*gocbcore.GetVbucketSeqnoFilterOptions, 0, len(collIDs))
+	for _, collID := range collIDs {
 		filterOptionsList = append(filterOptionsList, &gocbcore.GetVbucketSeqnoFilterOptions{
 			CollectionID: collID,
 		})
@@ -506,7 +595,7 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 		}
 	}
 
-	err = cbFetchVBucketSeqNos(
+	err := cbFetchVBucketSeqNos(
 		info,
 		filterOptionsList,
 		nil,
@@ -522,12 +611,12 @@ func CBPartitionSeqs(sourceType, sourceName, sourceUUID,
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs, %v", err)
+		return nil, err
 	}
 
 	if len(rv) != info.numVBuckets {
-		return nil, fmt.Errorf("gocbcore_utils: CBPartitionSeqs," +
-			" Could not obtain high sequence numbers for all vbuckets")
+		return nil, fmt.Errorf("could not obtain high sequence" +
+			" numbers for all vbuckets")
 	}
 
 	return rv, nil

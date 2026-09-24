@@ -68,6 +68,10 @@ type PartitionStatsWriter interface {
 	IndexDef() *cbgt.IndexDef
 	// Returns a map of source's partition high sequence numbers.
 	SourcePartitionSeqs() map[string]cbgt.UUIDSeq
+	// Returns a map of source's partition high sequence numbers,
+	// considering only the given collections of the given scope.
+	SourcePartitionSeqsForCollections(scope string,
+		collections []string) map[string]cbgt.UUIDSeq
 
 	Write([]byte) (n int, err error)
 }
@@ -78,6 +82,13 @@ type statsWriter struct {
 	verbose             bool
 	indexDef            *cbgt.IndexDef
 	sourcePartitionSeqs map[string]cbgt.UUIDSeq
+
+	mgr    *cbgt.Manager
+	pindex *cbgt.PIndex
+	// Map of source name/scope/collections -> partition -> UUIDSeq,
+	// shared across the pindexes of a stats request; nil when the
+	// source seqs are not to be included.
+	collectionSeqs map[string]map[string]cbgt.UUIDSeq
 }
 
 func (s *statsWriter) VbStats() bool {
@@ -94,6 +105,29 @@ func (s *statsWriter) IndexDef() *cbgt.IndexDef {
 
 func (s *statsWriter) SourcePartitionSeqs() map[string]cbgt.UUIDSeq {
 	return s.sourcePartitionSeqs
+}
+
+func (s *statsWriter) SourcePartitionSeqsForCollections(scope string,
+	collections []string) map[string]cbgt.UUIDSeq {
+	if s.collectionSeqs == nil || s.pindex == nil || s.mgr == nil {
+		return nil
+	}
+
+	key := fmt.Sprintf("%s/%s/%v", s.pindex.SourceName, scope, collections)
+	if seqs, exists := s.collectionSeqs[key]; exists {
+		return seqs
+	}
+
+	seqs, err := cbgt.CBPartitionSeqsForCollections(s.pindex.SourceName,
+		s.pindex.SourceUUID, s.pindex.SourceParams, s.mgr.Server(),
+		s.mgr.Options(), scope, collections)
+	if err != nil {
+		log.Warnf("rest_manage: couldn't obtain source collection"+
+			" stats for pindex: `%s`, err: %v", s.pindex.Name, err)
+	}
+	s.collectionSeqs[key] = seqs
+
+	return seqs
 }
 
 func (s *statsWriter) Write(b []byte) (int, error) {
@@ -145,6 +179,7 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 
 	// Map of source name -> partition -> UUIDSeq
 	sourcePartitionSeqs := make(map[string]map[string]cbgt.UUIDSeq)
+	collectionSeqs := make(map[string]map[string]cbgt.UUIDSeq)
 
 	pindexStats := make(map[string][]byte)
 	for _, pindexName := range pindexNames {
@@ -176,6 +211,9 @@ func WriteManagerStatsJSON(mgr *cbgt.Manager, w io.Writer,
 			vbstats:             vbstats,
 			indexDef:            indexDef,
 			sourcePartitionSeqs: sourceSeqNos,
+			mgr:                 mgr,
+			pindex:              pindex,
+			collectionSeqs:      collectionSeqs,
 		}
 		err = pindexes[pindexName].Dest.Stats(statsWriter)
 		if err != nil {
@@ -250,6 +288,7 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 
 	// Map of source name -> partition -> UUIDSeq
 	sourcePartitionSeqs := map[string]map[string]cbgt.UUIDSeq{}
+	collectionSeqs := map[string]map[string]cbgt.UUIDSeq{}
 
 	w.Write(cbgt.JsonOpenBrace)
 	w.Write(statsPIndexesPrefix)
@@ -295,6 +334,9 @@ func writePartitionStatsJSON(mgr *cbgt.Manager, w http.ResponseWriter,
 
 		if includeSeqNos != "false" {
 			statsWriter.sourcePartitionSeqs = sourceSeqNos
+			statsWriter.mgr = mgr
+			statsWriter.pindex = pindex
+			statsWriter.collectionSeqs = collectionSeqs
 		}
 
 		err = pindex.Dest.Stats(statsWriter)
